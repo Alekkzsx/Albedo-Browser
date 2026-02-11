@@ -1,0 +1,15 @@
+[package]
+name = "albedo"
+version = "0.1.0"
+edition = "2021"
+authors = ["AlbedoUser"]
+
+[dependencies]
+slint = "1.9"
+wry = "0.48"
+tao = "0.30" 
+rfd = "0.14"
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+slint-build = "1.9"
