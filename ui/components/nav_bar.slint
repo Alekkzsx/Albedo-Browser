@@ -1,0 +1,33 @@
+import { LineEdit, Button } from "std-widgets.slint";
+
+export component NavBar inherits Rectangle {
+    in-out property <string> current-url;
+    callback reload();
+    callback back();
+    callback forward();
+    callback navigate(string);
+    callback go-home();
+
+    height: 40px;
+    background: #ffffff;
+    drop-shadow-blur: 5px;
+    drop-shadow-color: #00000010;
+
+    HorizontalLayout {
+        padding: 5px;
+        spacing: 10px;
+
+        Button { text: "<"; width: 30px; clicked => { root.back(); } }
+        Button { text: ">"; width: 30px; clicked => { root.forward(); } }
+        Button { text: "R"; width: 30px; clicked => { root.reload(); } }
+        Button { text: "🏠"; width: 30px; clicked => { root.go-home(); } }
+
+        browser_input := LineEdit {
+            text: root.current-url;
+            font-size: 14px;
+            height: 30px;
+            placeholder-text: "Enter URL or search...";
+            accepted => { root.navigate(self.text); }
+        }
+    }
+}

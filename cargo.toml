@@ -5,11 +5,14 @@ edition = "2021"
 authors = ["AlbedoUser"]
 
 [dependencies]
-slint = "1.9"
+slint = { version = "1.9", features = ["raw-window-handle-06"] }
 wry = "0.48"
 tao = "0.30" 
 rfd = "0.14"
 tokio = { version = "1", features = ["full"] }
+raw-window-handle = "0.6.2"
+uuid = { version = "1.20.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
+sysinfo = "0.38.1"
 
 [build-dependencies]
 slint-build = "1.9"

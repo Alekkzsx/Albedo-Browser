@@ -1,0 +1,152 @@
+// import { LineEdit } from "std-widgets.slint";
+import { IconButton } from "icon_button.slint";
+
+export component StartPage inherits Rectangle {
+    in-out property <string> current-url;
+    in-out property <bool> show-start-page;
+    in-out property <string> system-stats: "Initializing...";
+    callback navigate(string);
+
+    background: @linear-gradient(180deg, #e6efff 0%, #dbe4f0 100%);
+    
+    // Top Left Logo
+    Text {
+        x: 20px;
+        y: 20px;
+        text: "A";
+        font-size: 24px;
+        font-weight: 900;
+        color: #333333;
+        
+        Rectangle {
+            x: -5px;
+            y: -5px;
+            width: 35px;
+            height: 35px;
+            border-radius: 17px;
+            border-width: 2px;
+            border-color: #333333;
+        }
+    }
+    
+    // Top Right Menu
+    Text {
+        x: parent.width - 30px;
+        y: 20px;
+        text: "⋮";
+        font-size: 24px;
+        color: #555555;
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 40px;
+        
+        // Search Bar Container
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 600px;
+                height: 50px;
+                background: #ffffff;
+                border-radius: 25px;
+                drop-shadow-blur: 15px;
+                drop-shadow-color: #00000020;
+                
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 5px;
+                    spacing: 10px;
+                    
+                    // Search Icon
+                    Text {
+                        text: "🔍";
+                        vertical-alignment: center;
+                        color: #999999;
+                    }
+                    
+                    start_input := TextInput {
+                        font-size: 16px;
+                        height: 50px;
+                        width: 500px;
+                        color: black; 
+                        vertical-alignment: center;
+                        
+                        property <string> placeholder: "Search or type an URL";
+                        
+                        accepted => { 
+                            root.current-url = self.text;
+                            root.show-start-page = false;
+                            root.navigate(self.text);
+                        }
+
+                        // Placeholder
+                        Text {
+                            text: parent.placeholder;
+                            color: #999999;
+                            x: 0px;
+                            vertical-alignment: center;
+                            visible: parent.text == "";
+                        }
+                    }
+                    
+                    // Go Button / Flash Icon
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        y: 5px; // Centered relative to 50px height
+                        background: #7abaff;
+                        border-radius: 20px;
+                        
+                        Text {
+                            text: "⚡";
+                            color: white;
+                            font-size: 18px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        
+                        TouchArea {
+                            clicked => {
+                                root.current-url = start_input.text;
+                                root.show-start-page = false;
+                                root.navigate(start_input.text);
+                            }
+                        }
+                    }
+                }
+                
+                // Focus area for the whole bar
+                TouchArea {
+                    z: -1; // Behind content but inside container? No, needs to be on top but transparent to text input?
+                    // Actually LineEdit handles its own input. 
+                    // But clicking the "white space" around it should focus it.
+                    // If we put TouchArea on top, it might steal input from LineEdit.
+                    // Safe bet: The LineEdit width is 500px, container is 600px.
+                    // The padding is 20px. 
+                    // Let's just rely on LineEdit itself for now, or ensure LineEdit is wide enough. It is 500px.
+                }
+            }
+        }
+        
+        // Icons Row
+        HorizontalLayout {
+            alignment: center;
+            spacing: 40px;
+            
+            IconButton { icon-text: "🌐"; label: "Descobrir"; }
+            IconButton { icon-text: "⭐"; label: "Favoritos"; }
+            IconButton { icon-text: "⚙️"; label: "Settings"; }
+        }
+    }
+    
+    // Bottom Status
+    Text {
+        y: parent.height - 25px;
+        width: parent.width;
+        text: root.system-stats;
+        color: #555555;
+        font-size: 11px;
+        horizontal-alignment: center;
+    }
+}

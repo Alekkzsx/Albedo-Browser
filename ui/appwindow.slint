@@ -1,0 +1,69 @@
+import { StartPage } from "components/start_page.slint";
+import { BrowserView } from "components/browser_view.slint";
+import { TabBar, TabData } from "components/tab_bar.slint";
+import { NavBar } from "components/nav_bar.slint";
+
+export component AppWindow inherits Window {
+    title: "Albedo Browser";
+    min-width: 800px;
+    min-height: 600px;
+    background: #f0f4f8; // Soft light background
+
+    in-out property <string> current-url: "";
+    in-out property <bool> show-start-page: true;
+    in property <[TabData]> tabs_model; // Model from Rust
+    in-out property <string> system-stats: "Loading Stats...";
+    
+    callback navigate(string);
+    callback reload();
+    callback back();
+    callback forward();
+    
+    // Internal callbacks for WRY synchronization
+    callback url-updated(string, string); // (tab_id, new_url)
+    callback title-updated(string, string); // (tab_id, new_title)
+    
+    callback request_new_tab();
+    callback request_close_tab(int);
+    callback request_switch_tab(int);
+
+    VerticalLayout {
+        padding: 0px;
+        
+        // Tab Bar always visible
+        TabBar {
+            tabs: root.tabs_model;
+            new_tab => { root.request_new_tab(); }
+            close_tab(index) => { root.request_close_tab(index); }
+            switch_tab(index) => { root.request_switch_tab(index); }
+        }
+
+        NavBar {
+            current-url: root.current-url;
+            navigate(url) => { root.navigate(url); }
+            reload => { root.reload(); }
+            back => { root.back(); }
+            forward => { root.forward(); }
+            go-home => { 
+                root.show-start-page = true; 
+                root.current-url = "";
+            }
+        }
+
+        if root.show-start-page : StartPage {
+            current-url: root.current-url;
+            show-start-page: root.show-start-page;
+            system-stats: root.system-stats;
+            navigate(url) => { root.navigate(url); }
+        }
+
+        if !root.show-start-page : BrowserView {
+            current-url: root.current-url;
+            show-start-page: root.show-start-page;
+            reload => { root.reload(); }
+            back => { root.back(); }
+            forward => { root.forward(); }
+            navigate(url) => { root.navigate(url); }
+        }
+    }
+}
