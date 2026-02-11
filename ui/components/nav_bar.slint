@@ -22,12 +22,53 @@ export component NavBar inherits Rectangle {
         Button { text: "R"; width: 30px; clicked => { root.reload(); } }
         Button { text: "🏠"; width: 30px; clicked => { root.go-home(); } }
 
-        browser_input := LineEdit {
-            text: root.current-url;
-            font-size: 14px;
+        input_container := Rectangle {
+            background: #f0f0f0;
+            border-radius: 15px;
+            border-width: 1px;
+            border-color: #d0d0d0;
             height: 30px;
-            placeholder-text: "Enter URL or search...";
-            accepted => { root.navigate(self.text); }
+            
+            // Ensure focus on click (BACKGROUND)
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => { input.focus(); }
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                
+                input := TextInput {
+                    text: root.current-url;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    color: black;
+                    single-line: true;
+                    
+                    property <string> placeholder: "Enter URL or search...";
+                    
+                    accepted => { root.navigate(self.text); }
+                }
+            }
+
+            // Placeholder Text (on top of input if empty)
+            Text {
+                text: input.placeholder;
+                color: #888888;
+                x: 10px;
+                vertical-alignment: center;
+                visible: input.text == "";
+                // Pass clicks through to TouchArea behind? Or explicitly focus input?
+                // Text doesn't capture mouse events by default unless checking hit test?
+                // Let's add explicit TouchArea for placeholder just in case
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    clicked => { input.focus(); }
+                }
+            }
         }
     }
 }
