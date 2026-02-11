@@ -1,0 +1,22 @@
+import { LineEdit, Button } from "std-widgets.slint";
+
+export component BrowserView inherits VerticalLayout {
+    in-out property <string> current-url;
+    callback reload();
+    callback back();
+    callback forward();
+    callback navigate(string);
+    in-out property <bool> show-start-page;
+
+    padding: 0px;
+    
+    // Top bar removed - moved to AppWindow
+
+    // Webview Placeholder
+
+    // Webview Placeholder
+    Rectangle {
+        background: white; 
+        // Wry renders here
+    }
+}
