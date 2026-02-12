@@ -1,68 +1,78 @@
-   Compiling albedo v0.1.0 (C:\Users\24802449\Documents\Albedo---Smothest-Browser)
-error[E0382]: use of moved value: `ui_handle`
-  --> src\tab_manager.rs:75:62
-   |
-61 |                     let ui_handle = self.ui_handle.clone();
-   |                         --------- move occurs because `ui_handle` has type `slint::Weak<AppWindow>`, which does not implement the `Copy` trait
-...
-68 |                         .with_on_page_load_handler(move |_event, url| {
-   |                                                    ------------------ value moved into closure here
-...
-71 |                             let _ = ui_handle.upgrade_in_event_loop(move |ui| {
-   |                                     --------- variable moved due to use in closure
-...
-75 |                         .with_document_title_changed_handler(move |title| {
-   |                                                              ^^^^^^^^^^^^ value used here after move
-...
-78 |                              let _ = ui_handle.upgrade_in_event_loop(move |ui| {
-   |                                      --------- use occurs due to use in closure
-   |
-help: consider cloning the value before moving it into the closure
-   |
-65 ~                     let value = ui_handle.clone();
-66 ~                     let result = WebViewBuilder::new()
-67 |                         .with_url(url)
-...
-71 |                             let id_clone = tab_id.clone();
-72 ~                             let _ = value.upgrade_in_event_loop(move |ui| {
-   |
+﻿cargo : warning: albedo@0.1.0: padding only has effect on 
+layout elements
+No linha:1 caractere:1
++ cargo check 2>&1 | Out-File -Encoding utf8 build_log.txt
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: alb 
+   edo...layout elements:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: albedo@0.1.0:   --> C:\Users\24802449\Documents\A
+lbedo---Smothest-Browser\ui\components\browser_view.slint:
+26:14
+warning: albedo@0.1.0:    |
+warning: albedo@0.1.0: 26 |     padding: 0px;
+warning: albedo@0.1.0:    |              ^
+    Checking albedo v0.1.0 
+(C:\Users\24802449\Documents\Albedo---Smothest-Browser)
+warning: unused import: `kuchiki::traits::*`
+ --> src\engine\dom.rs:1:5
+  |
+1 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
 
-error[E0382]: use of moved value: `ui_handle`
-   --> src\tab_manager.rs:190:70
+error[E0277]: `DomTree` doesn't implement `Debug`
+   --> src\engine\mod.rs:8:5
     |
-176 | ...                   let ui_handle = self.ui_handle.clone();
-    |                           --------- move occurs because `ui_handle` has type `slint::Weak<AppWindow>`, which does not implement the `Copy` trait
-...
-183 | ...                       .with_on_page_load_handler(move |_event, url| {
-    |                                                      ------------------ value moved into closure here
-...
-186 | ...                           let _ = ui_handle.upgrade_in_event_loop(move |ui| {
-    |                                       --------- variable moved due to use in closure
-...
-190 | ...                       .with_document_title_changed_handler(move |title| {
-    |                                                                ^^^^^^^^^^^^ value used here after move
-...
-193 | ...                            let _ = ui_handle.upgrade_in_event_loop(move |ui| {
-    |                                        --------- use occurs due to use in closure
+  6 | #[derive(Debug, Clone)]
+    |          ----- in this derive macro expansion
+  7 | pub struct AceEngine {
+  8 |     pub dom: Option<dom::DomTree>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Debug` 
+is not implemented for `DomTree`
     |
-help: consider cloning the value before moving it into the closure
+    = note: add `#[derive(Debug)]` to `DomTree` or 
+manually `impl Debug for DomTree`
+help: the trait `Debug` is implemented for 
+`std::option::Option<T>`
+   --> C:\Users\24802449\scoop\persist\rustup\.rustup\tool
+chains\stable-x86_64-pc-windows-gnu\lib/rustlib/src/rust\l
+ibrary\core\src\option.rs:594:16
     |
-180 ~                             let value = ui_handle.clone();
-181 ~                             let result = WebViewBuilder::new()
-182 |                                 .with_url(&final_url)
-...
-186 |                                     let id_clone = tab_id.clone();
-187 ~                                     let _ = value.upgrade_in_event_loop(move |ui| {
+594 | #[derive(Copy, Debug, Hash)]
+    |                ^^^^^
+help: consider annotating `DomTree` with 
+`#[derive(Debug)]`
+   --> src\engine\dom.rs:5:1
+    |
+  5 + #[derive(Debug)]
+  6 | pub struct DomTree {
     |
 
 warning: unused variable: `scale`
-   --> src\tab_manager.rs:218:25
+   --> src\tab_manager.rs:280:25
     |
-218 |                     let scale = window.scale_factor();
-    |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_scale`
+280 |                     let scale = 
+window.scale_factor();
+    |                         ^^^^^ help: if this is 
+intentional, prefix it with an underscore: `_scale`
     |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+    = note: `#[warn(unused_variables)]` (part of 
+`#[warn(unused)]`) on by default
 
-For more information about this error, try `rustc --explain E0382`.
-warning: `albedo` (bin "albedo") generated 1 warning
-error: could not compile `albedo` (bin "albedo") due to 2 previous errors; 1 warning emitted
+For more information about this error, try `rustc 
+--explain E0277`.
+warning: `albedo` (bin "albedo") generated 2 warnings
+warning: albedo@0.1.0: padding only has effect on layout 
+elements
+warning: albedo@0.1.0:   --> C:\Users\24802449\Documents\A
+lbedo---Smothest-Browser\ui\components\browser_view.slint:
+26:14
+warning: albedo@0.1.0:    |
+warning: albedo@0.1.0: 26 |     padding: 0px;
+warning: albedo@0.1.0:    |              ^
+error: could not compile `albedo` (bin "albedo") due to 1 
+previous error; 2 warnings emitted

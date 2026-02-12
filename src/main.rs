@@ -1,7 +1,9 @@
 mod tab_manager;
+mod engine;
 
 use slint::ComponentHandle;
 use tab_manager::TabManager;
+use tab_manager::TabMode;
 
 slint::include_modules!();
 
@@ -98,7 +100,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.on_navigate(move |url: slint::SharedString| {
         let url_str = url.as_str();
         let final_url = if url_str.contains(' ') || !url_str.contains('.') {
-            format!("https://www.google.com/search?q={}", url_str)
+            if !url_str.starts_with("albedo://") {
+                format!("https://www.google.com/search?q={}", url_str)
+            } else {
+                url_str.to_string()
+            }
         } else if url_str.starts_with("http") || url_str.starts_with("albedo://") {
              url_str.to_string()
         } else {
@@ -107,15 +113,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("Navigating to: {}", final_url);
         if let Some(ui) = ui_handle_clone.upgrade() {
-             tm_clone.navigate(ui.window(), &final_url);
-             // Sync tabs to update title
+             if let Some((url, show_start, native_content, mode)) = tm_clone.navigate(ui.window(), &final_url) {
+                ui.set_current_url(url.into());
+                ui.set_show_start_page(show_start);
+                ui.set_is_native(mode == TabMode::Native);
+                ui.set_native_content(native_content.into());
+
+                // Set ACE visual model if native
+                if mode == TabMode::Native {
+                    if let Some((_, Some(engine))) = tm_clone.get_active_tab_native_data() {
+                        let primitives = engine.render_visual();
+                        let mut max_y = 0.0;
+                         let slint_boxes: Vec<ACEBox> = primitives.into_iter().map(|p| {
+                            if p.y + p.height > max_y {
+                                max_y = p.y + p.height;
+                            }
+                            let color = match p.color.as_str() {
+                                "blue" => slint::Color::from_rgb_u8(0, 0, 255),
+                                "red" => slint::Color::from_rgb_u8(255, 0, 0),
+                                "green" => slint::Color::from_rgb_u8(0, 255, 0),
+                                _ => slint::Color::from_rgb_u8(200, 200, 200),
+                            };
+                            let (image_data, has_image) = if let Some(url) = &p.image_url {
+                                // Simple synchronous loading for local files
+                                // TODO: Handle HTTP URLs asynchronously
+                                if url.starts_with("http") {
+                                     (slint::Image::default(), false)
+                                } else {
+                                     match slint::Image::load_from_path(std::path::Path::new(url)) {
+                                         Ok(img) => (img, true),
+                                         Err(_) => (slint::Image::default(), false)
+                                     }
+                                }
+                            } else {
+                                (slint::Image::default(), false)
+                            };
+
+                            ACEBox {
+                                x: p.x,
+                                y: p.y,
+                                width: p.width,
+                                height: p.height,
+                                background: color,
+                                text: p.text.into(),
+                                font_size: p.font_size,
+                                text_color: slint::Color::from_rgb_u8(51, 51, 51),
+                                image_data,
+                                has_image,
+                                link_url: p.link_url.unwrap_or_default().into(),
+                            }
+                        }).collect();
+                        let model = std::rc::Rc::new(slint::VecModel::from(slint_boxes));
+                        ui.set_ace_model(model.into());
+                        ui.set_content_height(max_y + 50.0); // Add some padding
+                    }
+                }
+                
+                if !show_start && mode != TabMode::Native {
+                    tm_clone.set_visible(true);
+                } else {
+                    tm_clone.set_visible(false);
+                }
+             }
              sync_clone();
-             // Manually update UI state
-             ui.set_show_start_page(false);
-             // Don't update URL bar immediately to the long google search URL? 
-             // Actually, standard behavior is to show the search term or the URL.
-             // For now, setting current_url to the result is fine.
-             ui.set_current_url(final_url.into());
         }
     });
 
@@ -127,20 +187,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ui) = ui_handle_clone.upgrade() {
              tm_clone.create_tab(ui.window(), "albedo://start");
              sync_clone();
-             // Switch to new tab (logic inside create_tab handles activation if single tab, 
-             // but if multiple tabs, create_tab appends. 
-             // Wait, create_tab doesn't automatically switch unless it's the *only* tab.
-             // We need to switch to the new tab!
-             // Let's look at create_tab again. It pushes to vec.
-             // We should probably switch to it.
-             // For now, let's keep existing behavior (it appends) but we likely want to switch.
-             // User expects new tab to open immediately? Yes.
-             // Let's modify create_tab to return index or just handle it here?
-             // Accessing len is hard without borrow.
-             // Let's just update the URL/StartPage *if* we switch.
-             // Actually, the current UI callback just creates it. It doesn't switch.
-             // User has to click it.
-             // If user stays on current tab, UI shouldn't change. Good.
         }
     });
 
@@ -152,10 +198,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let result = tm_clone.switch_to_tab(index as usize);
         sync_clone();
         
-        if let Some((url, show_start)) = result {
+        if let Some((url, show_start, native_content, mode)) = result {
              if let Some(ui) = ui_handle_clone.upgrade() {
                  ui.set_current_url(url.into());
                  ui.set_show_start_page(show_start);
+                 ui.set_is_native(mode == TabMode::Native);
+                 ui.set_native_content(native_content.into());
+
+                 if mode == TabMode::Native {
+                    if let Some((_, Some(engine))) = tm_clone.get_active_tab_native_data() {
+                        let primitives = engine.render_visual();
+                        let mut max_y = 0.0;
+                         let slint_boxes: Vec<ACEBox> = primitives.into_iter().map(|p| {
+                            if p.y + p.height > max_y {
+                                max_y = p.y + p.height;
+                            }
+                            let color = match p.color.as_str() {
+                                "blue" => slint::Color::from_rgb_u8(0, 0, 255),
+                                "red" => slint::Color::from_rgb_u8(255, 0, 0),
+                                "green" => slint::Color::from_rgb_u8(0, 255, 0),
+                                _ => slint::Color::from_rgb_u8(200, 200, 200),
+                            };
+                            let (image_data, has_image) = if let Some(url) = &p.image_url {
+                                if url.starts_with("http") {
+                                     (slint::Image::default(), false)
+                                } else {
+                                     match slint::Image::load_from_path(std::path::Path::new(url)) {
+                                         Ok(img) => (img, true),
+                                         Err(_) => (slint::Image::default(), false)
+                                     }
+                                }
+                            } else {
+                                (slint::Image::default(), false)
+                            };
+
+                            ACEBox {
+                                x: p.x,
+                                y: p.y,
+                                width: p.width,
+                                height: p.height,
+                                background: color,
+                                text: p.text.into(),
+                                font_size: p.font_size,
+                                text_color: slint::Color::from_rgb_u8(51, 51, 51),
+                                image_data,
+                                has_image,
+                                link_url: p.link_url.unwrap_or_default().into(),
+                            }
+                        }).collect();
+                        let model = std::rc::Rc::new(slint::VecModel::from(slint_boxes));
+                        ui.set_ace_model(model.into());
+                        ui.set_content_height(max_y + 50.0);
+                    }
+                 }
+                 
+                 if !show_start && mode != TabMode::Native {
+                    tm_clone.set_visible(true);
+                 } else {
+                    tm_clone.set_visible(false);
+                 }
              }
         }
     });
