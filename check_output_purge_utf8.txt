@@ -1,0 +1,590 @@
+﻿cargo :    Compiling proc-macro2 v1.0.106
+No linha:1 caractere:1
++ cargo check > check_output_purge.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling   
+  proc-macro2 v1.0.106:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling quote v1.0.44
+   Compiling unicode-ident v1.0.23
+   Compiling libm v0.2.16
+   Compiling cfg-if v1.0.4
+   Compiling autocfg v1.5.0
+   Compiling zerocopy v0.8.39
+    Checking windows-link v0.2.1
+   Compiling crossbeam-utils v0.8.21
+    Checking smallvec v1.15.1
+   Compiling serde_core v1.0.228
+    Checking stable_deref_trait v1.2.1
+   Compiling rayon-core v1.13.0
+   Compiling crc32fast v1.5.0
+   Compiling log v0.4.29
+   Compiling version_check v0.9.5
+   Compiling libc v0.2.181
+   Compiling portable-atomic v1.13.1
+   Compiling num-traits v0.2.19
+   Compiling anyhow v1.0.101
+    Checking critical-section v1.2.0
+   Compiling thiserror v2.0.18
+    Checking scopeguard v1.2.0
+   Compiling siphasher v1.0.2
+    Checking memchr v2.8.0
+   Compiling getrandom v0.3.4
+    Checking arrayvec v0.7.6
+   Compiling av-scenechange v0.14.1
+    Checking bitflags v2.10.0
+   Compiling built v0.8.0
+   Compiling pastey v0.1.1
+   Compiling paste v1.0.15
+   Compiling syn v2.0.114
+   Compiling parking_lot_core v0.9.12
+    Checking once_cell v1.21.3
+   Compiling getrandom v0.1.16
+    Checking simd-adler32 v0.3.8
+   Compiling windows_x86_64_gnu v0.53.1
+   Compiling unicode-segmentation v1.12.0
+    Checking pin-project-lite v0.2.16
+   Compiling rav1e v0.8.1
+   Compiling simd_helpers v0.1.0
+    Checking new_debug_unreachable v1.0.6
+   Compiling icu_normalizer_data v2.1.1
+   Compiling noop_proc_macro v0.3.0
+   Compiling convert_case v0.10.0
+   Compiling cfg_aliases v0.2.1
+   Compiling icu_properties_data v2.1.2
+   Compiling unicode-xid v0.2.6
+   Compiling synstructure v0.13.2
+   Compiling crossbeam-epoch v0.9.18
+    Checking lock_api v0.4.14
+    Checking adler2 v2.0.1
+    Checking equivalent v1.0.2
+   Compiling rand_core v0.5.1
+   Compiling zerocopy-derive v0.8.39
+   Compiling zerofrom-derive v0.1.6
+   Compiling yoke-derive v0.8.1
+   Compiling zerovec-derive v0.11.2
+   Compiling equator-macro v0.4.2
+   Compiling displaydoc v0.2.5
+   Compiling thiserror-impl v2.0.18
+   Compiling arg_enum_proc_macro v0.3.4
+   Compiling profiling-procmacros v1.0.17
+   Compiling num-derive v0.4.2
+   Compiling fax_derive v0.2.0
+   Compiling bytemuck_derive v1.10.2
+   Compiling derive_more-impl v2.1.1
+   Compiling crossbeam-deque v0.8.6
+    Checking parking_lot v0.12.5
+    Checking miniz_oxide v0.8.9
+    Checking windows-targets v0.53.5
+   Compiling windows-interface v0.59.3
+   Compiling windows-implement v0.60.2
+   Compiling thiserror v1.0.69
+   Compiling serde v1.0.228
+    Checking windows-sys v0.60.2
+   Compiling zerofrom v0.1.6
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v1.0.69
+    Checking bytemuck v1.25.0
+   Compiling core_maths v0.1.1
+   Compiling slotmap v1.1.1
+   Compiling either v1.15.0
+    Checking flate2 v1.1.9
+   Compiling yoke v0.8.1
+   Compiling jobserver v0.1.34
+   Compiling ttf-parser v0.25.1
+    Checking equator v0.4.2
+   Compiling rand_pcg v0.2.1
+   Compiling zerovec v0.11.5
+    Checking num-integer v0.1.46
+   Compiling shlex v1.3.0
+   Compiling windows_x86_64_gnu v0.52.6
+   Compiling heck v0.5.0
+   Compiling siphasher v0.3.11
+   Compiling find-msvc-tools v0.1.9
+   Compiling tinyvec_macros v0.1.1
+    Checking slab v0.4.12
+   Compiling khronos_api v3.1.0
+    Checking aligned-vec v0.6.4
+   Compiling phf_shared v0.8.0
+   Compiling strum_macros v0.27.2
+   Compiling tinyvec v1.10.0
+   Compiling cc v1.2.55
+   Compiling tinystr v0.8.2
+    Checking num-bigint v0.4.6
+   Compiling rayon v1.11.0
+    Checking windows-link v0.1.3
+    Checking bytes v1.11.1
+   Compiling litemap v0.8.1
+   Compiling writeable v0.6.2
+   Compiling syn v1.0.109
+   Compiling memmap2 v0.9.9
+   Compiling zmij v1.0.20
+   Compiling rand_core v0.6.4
+    Checking num-rational v0.4.2
+   Compiling fontdb v0.23.0
+   Compiling rand v0.8.5
+   Compiling cmake v0.1.57
+   Compiling icu_locale_core v2.1.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling potential_utf v0.1.4
+    Checking v_frame v0.3.9
+   Compiling zerotrie v0.2.3
+    Checking tracing-core v0.1.36
+    Checking fdeflate v0.3.7
+   Compiling phf_shared v0.11.3
+    Checking as-slice v0.2.1
+    Checking windows-sys v0.61.2
+    Checking quick-error v2.0.1
+   Compiling rand_chacha v0.2.2
+    Checking futures-core v0.3.31
+   Compiling fs_extra v1.3.0
+   Compiling dunce v1.0.5
+    Checking raw-window-handle v0.6.2
+   Compiling semver v1.0.27
+    Checking weezl v0.1.12
+   Compiling xml-rs v0.8.28
+   Compiling rand v0.7.3
+    Checking tracing v0.1.44
+   Compiling aws-lc-sys v0.37.1
+   Compiling rustc_version v0.4.1
+   Compiling phf_generator v0.11.3
+    Checking aligned v0.4.3
+   Compiling icu_provider v2.1.1
+   Compiling icu_collections v2.1.1
+    Checking windows-targets v0.52.6
+   Compiling phf_generator v0.8.0
+   Compiling gl_generator v0.14.0
+    Checking nom v8.0.0
+    Checking core2 v0.4.0
+   Compiling memoffset v0.9.1
+   Compiling serde_json v1.0.149
+    Checking base64 v0.22.1
+    Checking foldhash v0.1.5
+    Checking bitflags v1.3.2
+   Compiling hashbrown v0.16.1
+   Compiling winapi-x86_64-pc-windows-gnu v0.4.0
+    Checking allocator-api2 v0.2.21
+   Compiling float-cmp v0.9.0
+    Checking y4m v0.8.0
+   Compiling winnow v0.7.14
+    Checking zune-core v0.4.12
+    Checking color_quant v1.1.0
+    Checking strict-num v0.1.1
+    Checking hashbrown v0.15.5
+    Checking zune-jpeg v0.4.21
+    Checking maybe-rayon v0.1.1
+   Compiling indexmap v2.13.0
+    Checking bitstream-io v4.9.0
+   Compiling field-offset v0.3.6
+    Checking half v2.7.1
+    Checking windows-result v0.3.4
+    Checking windows-strings v0.4.2
+    Checking socket2 v0.6.2
+   Compiling derive_more v2.1.1
+   Compiling toml_parser v1.0.7+spec-1.1.0
+    Checking av1-grain v0.2.5
+    Checking itertools v0.14.0
+    Checking rgb v0.8.52
+    Checking profiling v1.0.17
+   Compiling tokio-macros v2.6.0
+    Checking euclid v0.22.13
+    Checking windows-result v0.4.1
+    Checking windows-strings v0.5.1
+    Checking fnv v1.0.7
+    Checking unicode-ccc v0.4.0
+    Checking unicode-script v0.5.8
+    Checking futures-sink v0.3.31
+   Compiling toml_writer v1.0.6+spec-1.1.0
+    Checking mio v1.1.1
+    Checking unicode-properties v0.1.4
+    Checking arrayref v0.3.9
+    Checking byteorder-lite v0.1.0
+    Checking unicode-bidi-mirroring v0.4.0
+   Compiling winapi v0.3.9
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+    Checking itoa v1.0.17
+    Checking imgref v1.12.0
+    Checking lyon_geom v1.0.18
+    Checking tokio v1.49.0
+    Checking image-webp v0.2.4
+    Checking loop9 v0.1.5
+   Compiling toml_edit v0.23.10+spec-1.0.0
+    Checking rustybuzz v0.20.1
+   Compiling tiny-skia-path v0.11.4
+   Compiling i-slint-common v1.13.1
+   Compiling icu_properties v2.1.2
+   Compiling icu_normalizer v2.1.1
+    Checking windows-core v0.61.2
+   Compiling string_cache_codegen v0.5.4
+    Checking fax v0.2.6
+   Compiling kurbo v0.11.3
+    Checking zune-inflate v0.2.54
+    Checking pxfm v0.1.27
+    Checking avif-serialize v0.8.8
+   Compiling proc-macro-hack v0.5.20+deprecated
+   Compiling aws-lc-rs v1.15.4
+    Checking lebe v0.5.3
+   Compiling rustversion v1.0.22
+    Checking unicode-bidi v0.3.18
+    Checking zune-core v0.5.1
+    Checking bit_field v0.10.3
+    Checking exr v1.74.0
+    Checking zune-jpeg v0.5.12
+    Checking svgtypes v0.15.3
+   Compiling png v0.17.16
+    Checking tiff v0.10.3
+   Compiling idna_adapter v1.2.1
+   Compiling winapi-util v0.1.11
+    Checking moxcms v0.7.11
+   Compiling proc-macro-crate v3.4.0
+    Checking lyon_path v1.0.16
+    Checking http v1.4.0
+    Checking ravif v0.12.0
+    Checking gif v0.14.1
+   Compiling phf_codegen v0.8.0
+    Checking windows-sys v0.52.0
+    Checking png v0.18.0
+    Checking qoi v0.4.1
+   Compiling const-field-offset-macro v0.1.5
+    Checking simplecss v0.2.2
+    Checking roxmltree v0.20.0
+   Compiling utf8_iter v1.0.4
+   Compiling xmlwriter v0.1.0
+   Compiling data-url v0.3.2
+    Checking imagesize v0.13.0
+   Compiling pico-args v0.5.0
+   Compiling percent-encoding v2.3.2
+    Checking unicode-vo v0.1.0
+    Checking zeroize v1.8.2
+    Checking usvg v0.45.1
+   Compiling form_urlencoded v1.2.2
+    Checking image v0.25.9
+   Compiling idna v1.1.0
+    Checking const-field-offset v0.1.5
+    Checking tiny-skia v0.11.4
+   Compiling num_enum_derive v0.7.5
+   Compiling termcolor v1.4.1
+   Compiling gif v0.13.3
+   Compiling glutin_wgl_sys v0.6.1
+   Compiling glutin_egl_sys v0.7.1
+    Checking windows-threading v0.1.0
+   Compiling pin-project-internal v1.1.10
+   Compiling vtable-macro v0.3.0
+   Compiling winit v0.30.12
+   Compiling derive_utils v0.15.0
+   Compiling linereader v0.4.0
+   Compiling countme v3.0.1
+    Checking mac v0.1.1
+    Checking pin-utils v0.1.0
+   Compiling text-size v1.1.1
+    Checking dpi v0.1.2
+   Compiling hashbrown v0.14.5
+   Compiling linked-hash-map v0.5.6
+   Compiling ttf-parser v0.21.1
+   Compiling i-slint-compiler v1.13.1
+   Compiling rustc-hash v1.1.0
+    Checking precomputed-hash v0.1.1
+   Compiling codemap v0.1.3
+   Compiling linked_hash_set v0.1.6
+   Compiling codemap-diagnostic v0.1.2
+   Compiling auto_enums v0.8.7
+    Checking vtable v0.3.0
+   Compiling rowan v0.16.1
+    Checking futf v0.1.5
+    Checking pin-project v1.1.10
+   Compiling polib v0.2.0
+    Checking lyon_extra v1.0.3
+    Checking fontdue v0.9.3
+    Checking windows-future v0.2.1
+    Checking resvg v0.45.1
+   Compiling phf_macros v0.8.0
+   Compiling num_enum v0.7.5
+   Compiling url v2.5.8
+   Compiling i-slint-core-macros v1.13.1
+    Checking rustls-pki-types v1.14.0
+    Checking http-body v1.0.1
+    Checking lyon_algorithms v1.0.16
+    Checking windows-numerics v0.2.0
+    Checking windows-collections v0.2.0
+   Compiling strum v0.27.2
+   Compiling glutin v0.32.3
+    Checking chrono v0.4.43
+    Checking integer-sqrt v0.1.5
+   Compiling typed-index-collections v3.5.0
+    Checking futures-task v0.3.31
+    Checking smol_str v0.2.2
+    Checking utf-8 v0.7.6
+   Compiling httparse v1.10.1
+    Checking cursor-icon v1.2.0
+    Checking pin-weak v1.1.0
+   Compiling by_address v1.2.1
+    Checking unicode-linebreak v0.1.5
+   Compiling smol_str v0.3.5
+    Checking sys-locale v0.3.2
+    Checking scoped-tls-hkt v0.1.5
+    Checking untrusted v0.9.0
+    Checking clru v0.6.2
+   Compiling rustls v0.23.36
+    Checking accesskit v0.20.0
+    Checking futures-io v0.3.31
+   Compiling spin_on v0.1.1
+    Checking futures-util v0.3.31
+    Checking tendril v0.4.3
+    Checking accesskit_consumer v0.29.0
+    Checking i-slint-core v1.13.1
+    Checking phf v0.8.0
+    Checking windows v0.61.3
+    Checking string_cache v0.8.9
+    Checking wio v0.2.2
+    Checking tokio-util v0.7.18
+    Checking windows-core v0.62.2
+   Compiling glutin-winit v0.5.0
+   Compiling softbuffer v0.4.6
+    Checking libloading v0.8.9
+    Checking try-lock v0.2.5
+    Checking atomic-waker v1.1.2
+    Checking subtle v2.6.1
+    Checking error-code v3.3.2
+    Checking glow v0.16.0
+    Checking lru v0.16.3
+    Checking lazy_static v1.5.0
+   Compiling i-slint-backend-qt v1.13.1
+    Checking static_assertions v1.1.0
+    Checking tower-service v0.3.3
+   Compiling windows_x86_64_gnu v0.48.5
+    Checking clipboard-win v5.4.1
+    Checking dwrote v0.11.5
+    Checking h2 v0.4.13
+    Checking want v0.3.1
+    Checking femtovg v0.17.0
+   Compiling markup5ever v0.10.1
+   Compiling cssparser v0.27.2
+    Checking futures-channel v0.3.31
+    Checking windows-sys v0.59.0
+   Compiling phf_codegen v0.11.3
+    Checking keyboard-types v0.7.0
+   Compiling i-slint-backend-winit v1.13.1
+    Checking crossbeam-channel v0.5.15
+    Checking dtoa v1.0.11
+    Checking rand_core v0.9.5
+    Checking dtoa-short v0.3.5
+   Compiling markup5ever v0.12.1
+    Checking muda v0.17.1
+    Checking i-slint-renderer-femtovg v1.13.1
+    Checking hyper v1.8.1
+    Checking copypasta v0.10.2
+   Compiling selectors v0.22.0
+   Compiling i-slint-backend-selector v1.13.1
+   Compiling html5ever v0.25.2
+    Checking windows-registry v0.6.1
+    Checking sync_wrapper v1.0.2
+   Compiling cssparser-macros v0.6.1
+    Checking windows-threading v0.2.1
+    Checking tower-layer v0.3.3
+    Checking ipnet v2.11.0
+    Checking nodrop v0.1.14
+   Compiling ntapi v0.4.3
+    Checking byteorder v1.5.0
+   Compiling convert_case v0.4.0
+    Checking matches v0.1.10
+    Checking itoa v0.4.8
+    Checking rand_chacha v0.9.0
+    Checking fxhash v0.2.1
+    Checking servo_arc v0.1.1
+   Compiling derive_more v0.99.20
+    Checking hyper-util v0.1.20
+    Checking tower v0.5.3
+    Checking windows-future v0.3.2
+    Checking windows-targets v0.48.5
+    Checking windows-collections v0.3.2
+    Checking windows-numerics v0.3.1
+    Checking phf v0.11.3
+   Compiling html5ever v0.27.0
+   Compiling rfd v0.14.1
+    Checking iri-string v0.7.10
+    Checking thin-slice v0.1.1
+    Checking windows v0.62.2
+    Checking windows-sys v0.48.0
+    Checking rand v0.9.2
+    Checking http-body-util v0.1.3
+    Checking encoding_rs v0.8.35
+    Checking mime v0.3.17
+    Checking uuid v1.20.0
+    Checking accesskit_windows v0.28.0
+    Checking tower-http v0.6.8
+    Checking kuchiki v0.8.1
+    Checking accesskit_winit v0.28.0
+   Compiling slint-build v1.13.1
+   Compiling albedo v0.1.0 
+(C:\Users\24802449\Documents\Albedo---Smothest-Browser)
+   Compiling slint-macros v1.13.1
+    Checking slint v1.13.1
+    Checking rustls-webpki v0.103.9
+    Checking tokio-rustls v0.26.4
+    Checking rustls-platform-verifier v0.6.2
+    Checking hyper-rustls v0.27.7
+    Checking reqwest v0.13.2
+    Checking sysinfo v0.38.1
+warning: unused import: `raw_window_handle::HasWindowHandle`
+ --> src\tab_manager.rs:3:5
+  |
+3 | use raw_window_handle::HasWindowHandle;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: unused import: `kuchiki::traits::*`
+ --> src\engine\dom.rs:1:5
+  |
+1 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tab_manager::TabMode`
+ --> src\main.rs:6:5
+  |
+6 | use tab_manager::TabMode;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `set_is_native` found for 
+struct `AppWindow` in the current scope
+     --> src\main.rs:174:21
+      |
+  174 |                  ui.set_is_native(true);
+      |                     ^^^^^^^^^^^^^ method not found 
+in `AppWindow`
+      |
+     ::: C:\Users\24802449\Documents\Albedo---Smothest-Brows
+er\target\debug\build\albedo-276d604e1aefddca\out\appwindow.
+rs:10134:6
+      |
+10134 |      pub struct r#AppWindow (sp :: VRc < sp :: 
+ItemTreeVTable , InnerAppWindow >) ;
+      |      ---------------------- method `set_is_native` 
+not found for this struct
+
+error[E0599]: no method named `set_native_content` found 
+for struct `AppWindow` in the current scope
+     --> src\main.rs:175:21
+      |
+  175 |                  
+ui.set_native_content(native_content.into());
+      |                     ^^^^^^^^^^^^^^^^^^ method not 
+found in `AppWindow`
+      |
+     ::: C:\Users\24802449\Documents\Albedo---Smothest-Brows
+er\target\debug\build\albedo-276d604e1aefddca\out\appwindow.
+rs:10134:6
+      |
+10134 |      pub struct r#AppWindow (sp :: VRc < sp :: 
+ItemTreeVTable , InnerAppWindow >) ;
+      |      ---------------------- method 
+`set_native_content` not found for this struct
+
+warning: variable does not need to be mutable
+  --> src\tab_manager.rs:62:13
+   |
+62 |         let mut new_tab = Tab::new(url.to_string());
+   |             ----^^^^^^^
+   |             |
+   |             help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> src\engine\layout.rs:84:13
+   |
+84 |         let mut main_axis_pos = 0.0;
+   |             ----^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src\engine\layout.rs:85:13
+   |
+85 |         let mut cross_axis_pos = 0.0; // For now start 
+at 0
+   |             ----^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: unused variable: `main_axis_pos`
+  --> src\engine\layout.rs:84:13
+   |
+84 |         let mut main_axis_pos = 0.0;
+   |             ^^^^^^^^^^^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: `_main_axis_pos`
+   |
+   = note: `#[warn(unused_variables)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: unused variable: `cross_axis_pos`
+  --> src\engine\layout.rs:85:13
+   |
+85 |         let mut cross_axis_pos = 0.0; // For now start 
+at 0
+   |             ^^^^^^^^^^^^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: `_cross_axis_pos`
+
+warning: unused variable: `container_width`
+  --> src\engine\layout.rs:88:13
+   |
+88 |         let container_width = 
+self.dimensions.content.width;
+   |             ^^^^^^^^^^^^^^^ help: if this is 
+intentional, prefix it with an underscore: 
+`_container_width`
+
+warning: unused variable: `step`
+   --> src\engine\layout.rs:123:13
+    |
+123 |         let step = match self.style.justify_content {
+    |             ^^^^ help: if this is intentional, prefix 
+it with an underscore: `_step`
+
+warning: value assigned to `current_main_pos` is never read
+   --> src\engine\layout.rs:118:65
+    |
+118 |             JustifyContent::Center | 
+JustifyContent::FlexEnd => spacing,
+    |                                                       
+          ^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: value assigned to `current_main_pos` is never read
+   --> src\engine\layout.rs:119:44
+    |
+119 |             JustifyContent::SpaceAround => spacing / 
+2.0,
+    |                                            
+^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `current_main_pos` is never read
+   --> src\engine\layout.rs:120:18
+    |
+120 |             _ => 0.0,
+    |                  ^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+   --> src\engine\layout.rs:431:17
+    |
+431 |             let mut children_primitives = 
+child.flatten();
+    |                 ----^^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+For more information about this error, try `rustc --explain 
+E0599`.
+warning: `albedo` (bin "albedo") generated 14 warnings
+error: could not compile `albedo` (bin "albedo") due to 2 
+previous errors; 14 warnings emitted
