@@ -1,22 +1,91 @@
 import { LineEdit, Button } from "std-widgets.slint";
 
-export component BrowserView inherits VerticalLayout {
+export struct ACEBox {
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    background: color,
+    text: string,
+    font_size: length,
+    text_color: color,
+    image_data: image,
+    has_image: bool,
+    link_url: string,
+}
+
+export component BrowserView inherits Rectangle {
     in-out property <string> current-url;
     callback reload();
     callback back();
     callback forward();
     callback navigate(string);
     in-out property <bool> show-start-page;
+    in property <bool> is-native: false;
+    in property <string> native-content: "";
+    in property <[ACEBox]> ace_model;
+    in property <length> content-height: 0px; // Calculated by Rust
 
-    padding: 0px;
-    
     // Top bar removed - moved to AppWindow
 
     // Webview Placeholder
-
-    // Webview Placeholder
-    Rectangle {
+    if !root.is-native : Rectangle {
         background: white; 
         // Wry renders here
+    }
+
+    if root.is-native : Rectangle {
+        background: #fdfdfd;
+        
+        Flickable {
+            viewport-height: root.content-height;
+            width: 100%;
+            height: 100%;
+            interactive: true;
+
+            Rectangle {
+                height: root.content-height;
+                width: 100%;
+
+                for box in root.ace_model : Rectangle {
+                    x: box.x;
+                    y: box.y;
+                    width: box.width;
+                    height: box.height;
+                    background: box.background;
+                    
+                    if box.has_image : Image {
+                        source: box.image_data;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: fill;
+                    }
+
+                    if box.text != "" : Text {
+                        text: box.text;
+                        font_size: box.font_size;
+                        color: box.text_color;
+                        width: 100%;
+                        height: 100%;
+                    }
+
+                    if box.link_url != "" : TouchArea {
+                        clicked => { root.navigate(box.link_url); }
+                        mouse-cursor: pointer;
+                    }
+                }
+            }
+        }
+
+        // Fallback or legacy view if core model is empty
+        if root.ace_model.length == 0 : VerticalLayout {
+            padding: 20px;
+            Text {
+                text: root.native-content;
+                font-size: 16px;
+                color: #333333;
+                // wrap: word-wrap; 
+            }
+        }
     }
 }

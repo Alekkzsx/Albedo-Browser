@@ -1,5 +1,5 @@
 import { StartPage } from "components/start_page.slint";
-import { BrowserView } from "components/browser_view.slint";
+import { BrowserView, ACEBox } from "components/browser_view.slint";
 import { TabBar, TabData } from "components/tab_bar.slint";
 import { NavBar } from "components/nav_bar.slint";
 
@@ -11,8 +11,14 @@ export component AppWindow inherits Window {
 
     in-out property <string> current-url: "";
     in-out property <bool> show-start-page: true;
+
     in property <[TabData]> tabs_model; // Model from Rust
     in-out property <string> system-stats: "Loading Stats...";
+    in property <bool> is-native: false;
+    in property <string> native-content: "";
+    in property <[ACEBox]> ace_model: [];
+    in property <length> content-height: 0px; // Added for scrolling
+
     
     callback navigate(string);
     callback reload();
@@ -60,6 +66,10 @@ export component AppWindow inherits Window {
         if !root.show-start-page : BrowserView {
             current-url: root.current-url;
             show-start-page: root.show-start-page;
+            is-native: root.is-native;
+            native-content: root.native-content;
+            ace_model: root.ace_model;
+            content-height: root.content-height;
             reload => { root.reload(); }
             back => { root.back(); }
             forward => { root.forward(); }
