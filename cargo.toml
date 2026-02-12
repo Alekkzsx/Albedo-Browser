@@ -6,8 +6,6 @@ authors = ["AlbedoUser"]
 
 [dependencies]
 slint = { version = "1.9", features = ["raw-window-handle-06"] }
-wry = "0.48"
-tao = "0.30" 
 rfd = "0.14"
 tokio = { version = "1", features = ["full"] }
 raw-window-handle = "0.6.2"

@@ -21,20 +21,10 @@ export component BrowserView inherits Rectangle {
     callback forward();
     callback navigate(string);
     in-out property <bool> show-start-page;
-    in property <bool> is-native: false;
-    in property <string> native-content: "";
     in property <[ACEBox]> ace_model;
     in property <length> content-height: 0px; // Calculated by Rust
 
-    // Top bar removed - moved to AppWindow
-
-    // Webview Placeholder
-    if !root.is-native : Rectangle {
-        background: white; 
-        // Wry renders here
-    }
-
-    if root.is-native : Rectangle {
+    Rectangle {
         background: #fdfdfd;
         
         Flickable {
@@ -74,17 +64,6 @@ export component BrowserView inherits Rectangle {
                         mouse-cursor: pointer;
                     }
                 }
-            }
-        }
-
-        // Fallback or legacy view if core model is empty
-        if root.ace_model.length == 0 : VerticalLayout {
-            padding: 20px;
-            Text {
-                text: root.native-content;
-                font-size: 16px;
-                color: #333333;
-                // wrap: word-wrap; 
             }
         }
     }

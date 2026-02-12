@@ -307,26 +307,22 @@ impl LayoutBox {
     }
 }
 
-pub fn build_layout_tree(node: &kuchiki::NodeRef) -> Option<LayoutBox> {
+pub fn build_layout_tree(node: &kuchiki::NodeRef, stylesheet: &crate::engine::style::Stylesheet) -> Option<LayoutBox> {
     use kuchiki::NodeData;
     
     match node.data() {
         NodeData::Element(element) => {
             let tag = element.name.local.to_string();
-            let mut style = Style::default_for_tag(&tag);
             
-            if let Some(s) = element.attributes.borrow().get("style") {
-                let inline = Style::parse_inline_style(s);
-                // Merge inline into default (simplistic)
-                style.color = inline.color;
-                if inline.font_size != 16.0 { style.font_size = inline.font_size; }
-            }
+            // 1. Resolve Styles
+            let style = resolve_style(node, element, stylesheet);
 
             if style.display == DisplayMode::None { return None; }
 
             let box_type = match style.display {
                 DisplayMode::Block => BoxType::BlockNode,
                 DisplayMode::Inline => BoxType::InlineNode,
+                DisplayMode::Flex => BoxType::BlockNode, // Flex container is block-level for its parent
                 _ => BoxType::BlockNode,
             };
 
@@ -341,7 +337,6 @@ pub fn build_layout_tree(node: &kuchiki::NodeRef) -> Option<LayoutBox> {
                  if let Some(w) = element.attributes.borrow().get("width") {
                     if let Ok(val) = w.parse::<f32>() {
                         layout_node.dimensions.content.width = val;
-                        // If provided, assume it's fixed
                     }
                 }
                 if let Some(h) = element.attributes.borrow().get("height") {
@@ -349,23 +344,16 @@ pub fn build_layout_tree(node: &kuchiki::NodeRef) -> Option<LayoutBox> {
                         layout_node.dimensions.content.height = val;
                     }
                 }
-                // If no dimensions provided, we might default to something non-zero
-                // for the placeholder until loaded?
                 if layout_node.dimensions.content.width == 0.0 { layout_node.dimensions.content.width = 100.0; }
                 if layout_node.dimensions.content.height == 0.0 { layout_node.dimensions.content.height = 100.0; }
             } else if tag == "a" {
                 if let Some(href) = element.attributes.borrow().get("href") {
                     layout_node.link_url = Some(href.to_string());
-                    // Links should look clickable
-                    if layout_node.style.color == "#333333" { // Default color
-                        layout_node.style.color = "blue".to_string();
-                        // TODO: Underline
-                    }
                 }
             }
 
             for child in node.children() {
-                if let Some(child_box) = build_layout_tree(&child) {
+                if let Some(child_box) = build_layout_tree(&child, stylesheet) {
                     layout_node.children.push(child_box);
                 }
             }
@@ -386,6 +374,62 @@ pub fn build_layout_tree(node: &kuchiki::NodeRef) -> Option<LayoutBox> {
             None
         }
     }
+}
+
+fn resolve_style(node: &kuchiki::NodeRef, element: &kuchiki::ElementData, stylesheet: &crate::engine::style::Stylesheet) -> Style {
+    let tag = element.name.local.to_string();
+    
+    // 1. Default (UA) Styles
+    let mut style = Style::default_for_tag(&tag);
+    
+    // 2. Stylesheet Rules (Author Styles)
+    // Extract ID and Classes for matching
+    let id = element.attributes.borrow().get("id").unwrap_or_default().to_string();
+    let class_attr = element.attributes.borrow().get("class").unwrap_or_default().to_string();
+    let classes: Vec<String> = class_attr.split_whitespace().map(|s| s.to_string()).collect();
+
+    // Collect all matching rules
+    let mut matched_rules = Vec::new();
+    for rule in &stylesheet.rules {
+        for selector in &rule.selectors {
+            let matches = match selector {
+                crate::engine::style::Selector::Tag(t) => t == &tag,
+                crate::engine::style::Selector::Class(c) => classes.contains(c),
+                crate::engine::style::Selector::Id(i) => i == &id,
+                crate::engine::style::Selector::Universal => true,
+            };
+            
+            if matches {
+                matched_rules.push((selector.specificity(), rule));
+            }
+        }
+    }
+    
+    // Sort by specificity
+    matched_rules.sort_by_key(|(spec, _)| *spec);
+    
+    // Apply rules in order of specificity
+    for (_, rule) in matched_rules {
+        for decl in &rule.declarations {
+            style.apply_declaration(decl);
+        }
+    }
+    
+    // 3. Inline Styles (Highest specificity basically)
+    if let Some(s) = element.attributes.borrow().get("style") {
+        let inline = Style::parse_inline_style(s);
+        // We could just re-parse and apply decls, but apply_declaration is defined on Style
+        for decl_str in s.split(';') {
+             let parts: Vec<&str> = decl_str.split(':').collect();
+             if parts.len() == 2 {
+                 let name = parts[0].trim().to_string();
+                 let value = parts[1].trim().to_string();
+                 style.apply_declaration(&crate::engine::style::Declaration { name, value });
+             }
+        }
+    }
+    
+    style
 }
 
 pub struct RenderPrimitive {
