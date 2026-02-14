@@ -1,0 +1,394 @@
+   Compiling albedo v0.1.0 (/home/alekkzsx/Documentos/GitHub/Albedo---Smothest-Browser)
+warning: unused imports: `Arc` and `Mutex`
+ --> src/engine/style/mod.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `taffy::prelude::*`
+ --> src/engine/style/types.rs:1:5
+  |
+1 | use taffy::prelude::*;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `precomputed_hash::PrecomputedHash`
+ --> src/engine/style/selector_impl.rs:5:5
+  |
+5 | use precomputed_hash::PrecomputedHash;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Length`
+ --> src/engine/style/mod.rs:7:46
+  |
+7 | pub use types::{AlbedoStyle as Style, Color, Length, DisplayMode};
+  |                                              ^^^^^^
+
+warning: unused import: `kuchiki::traits::*`
+ --> src/engine/layout/tree_builder.rs:4:5
+  |
+4 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::engine::style::AlbedoStyle`
+ --> src/engine/layout.rs:6:5
+  |
+6 | use crate::engine::style::AlbedoStyle;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `dom::DomTree`
+ --> src/engine/mod.rs:9:9
+  |
+9 | pub use dom::DomTree;
+  |         ^^^^^^^^^^^^
+
+warning: unused import: `style::Style`
+  --> src/engine/mod.rs:10:9
+   |
+10 | pub use style::Style;
+   |         ^^^^^^^^^^^^
+
+warning: unused import: `layout::LayoutBox`
+  --> src/engine/mod.rs:11:9
+   |
+11 | pub use layout::LayoutBox;
+   |         ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Ctx` and `Value`
+ --> src/js/event_loop.rs:3:38
+  |
+3 | use rquickjs::{Persistent, Function, Ctx, Value};
+  |                                      ^^^  ^^^^^
+
+warning: unused import: `Exception`
+ --> src/js/runtime.rs:1:46
+  |
+1 | use rquickjs::{Context, Runtime, Ctx, Value, Exception};
+  |                                              ^^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> src/js/runtime_tests.rs:2:17
+  |
+2 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused import: `crate::engine::style::Stylesheet`
+ --> src/js/runtime_tests.rs:3:5
+  |
+3 | use crate::engine::style::Stylesheet;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `event_loop::EventLoop`
+ --> src/js/mod.rs:3:9
+  |
+3 | pub use event_loop::EventLoop;
+  |         ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rquickjs::Result`
+ --> src/js/bindings/token_list.rs:1:5
+  |
+1 | use rquickjs::Result;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `kuchiki::traits::*`
+ --> src/js/bindings/token_list.rs:3:5
+  |
+3 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rquickjs::Result`
+ --> src/js/bindings/style_declaration.rs:1:5
+  |
+1 | use rquickjs::Result;
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused import: `kuchiki::traits::*`
+ --> src/js/bindings/style_declaration.rs:3:5
+  |
+3 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Ctx`
+ --> src/js/bindings/timers.rs:1:16
+  |
+1 | use rquickjs::{Ctx, Function, Persistent};
+  |                ^^^
+
+warning: unused import: `Result`
+ --> src/js/bindings/event.rs:1:21
+  |
+1 | use rquickjs::{Ctx, Result, Value, Function};
+  |                     ^^^^^^
+
+warning: unused imports: `Class`, `Ctx`, and `Result`
+ --> src/js/bindings/event_subclasses.rs:1:16
+  |
+1 | use rquickjs::{Class, Ctx, Result, Value};
+  |                ^^^^^  ^^^  ^^^^^^
+
+warning: unused import: `Value`
+ --> src/js/bindings/storage.rs:1:36
+  |
+1 | use rquickjs::{Class, Result, Ctx, Value};
+  |                                    ^^^^^
+
+warning: unused import: `Ctx`
+ --> src/js/bindings/navigator.rs:1:40
+  |
+1 | use rquickjs::{Context, Result, Class, Ctx};
+  |                                        ^^^
+
+warning: unused imports: `Ctx` and `Value`
+ --> src/js/bindings/location.rs:1:40
+  |
+1 | use rquickjs::{Context, Result, Class, Ctx, Value};
+  |                                        ^^^  ^^^^^
+
+warning: unused import: `Ctx`
+ --> src/js/bindings/shims.rs:1:40
+  |
+1 | use rquickjs::{Context, Result, Class, Ctx};
+  |                                        ^^^
+
+warning: unused import: `kuchiki::traits`
+ --> src/engine/dom.rs:2:5
+  |
+2 | use kuchiki::traits::*;
+  |     ^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+  --> src/engine/style/mod.rs:73:9
+   |
+73 |     let mut computer = StyleComputer::new(stylesheet);
+   |         ----^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `ctx`
+  --> src/js/bindings/element.rs:58:39
+   |
+58 |     pub fn dispatch_event<'js>(&self, ctx: Ctx<'js>, event: Value<'js>) -> bool {
+   |                                       ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `ctx`
+   --> src/js/bindings/storage.rs:115:19
+    |
+115 |         ctx.with(|ctx| {
+    |                   ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+
+warning: unused variable: `tabs`
+   --> src/main.rs:156:22
+    |
+156 |                  let tabs = tm_click.get_tabs_info();
+    |                      ^^^^ help: if this is intentional, prefix it with an underscore: `_tabs`
+
+warning: field `is_active` is never read
+  --> src/tab.rs:18:9
+   |
+11 | pub struct Tab {
+   |            --- field in this struct
+...
+18 |     pub is_active: bool,
+   |         ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `ui_handle` is never read
+  --> src/tab_manager.rs:15:5
+   |
+12 | pub struct TabManager {
+   |            ---------- field in this struct
+...
+15 |     ui_handle: slint::Weak<AppWindow>,
+   |     ^^^^^^^^^
+   |
+   = note: `TabManager` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `resize`, `set_visible`, `update_tab_url`, and `update_tab_title` are never used
+   --> src/tab_manager.rs:193:12
+    |
+ 18 | impl TabManager {
+    | --------------- methods in this implementation
+...
+193 |     pub fn resize(&self, _window: &slint::Window, _top_offset: i32) {}
+    |            ^^^^^^
+194 |
+195 |     pub fn set_visible(&self, _visible: bool) {}
+    |            ^^^^^^^^^^^
+...
+216 |     pub fn update_tab_url(&self, id_str: &str, url: String) -> bool {
+    |            ^^^^^^^^^^^^^^
+...
+226 |     pub fn update_tab_title(&self, id_str: &str, title: String) -> bool {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: method `load_css` is never used
+  --> src/engine/mod.rs:31:12
+   |
+19 | impl AceEngine {
+   | -------------- method in this implementation
+...
+31 |     pub fn load_css(&mut self, css: &str) {
+   |            ^^^^^^^^
+
+warning: function `render_to_string` is never used
+  --> src/engine/dom.rs:35:8
+   |
+35 | pub fn render_to_string(node: &NodeRef) -> String {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `render_to_string_recursive` is never used
+  --> src/engine/dom.rs:41:4
+   |
+41 | fn render_to_string_recursive(node: &NodeRef, output: &mut String) {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `left`, `right`, `top`, and `bottom` are never read
+  --> src/engine/layout/types.rs:16:9
+   |
+15 | pub struct EdgeSizes {
+   |            --------- fields in this struct
+16 |     pub left: f32,
+   |         ^^^^
+17 |     pub right: f32,
+   |         ^^^^^
+18 |     pub top: f32,
+   |         ^^^
+19 |     pub bottom: f32,
+   |         ^^^^^^
+   |
+   = note: `EdgeSizes` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `padding`, `border`, and `margin` are never read
+  --> src/engine/layout/types.rs:25:9
+   |
+23 | pub struct Dimensions {
+   |            ---------- fields in this struct
+24 |     pub content: Rect,
+25 |     pub padding: EdgeSizes,
+   |         ^^^^^^^
+26 |     pub border: EdgeSizes,
+   |         ^^^^^^
+27 |     pub margin: EdgeSizes,
+   |         ^^^^^^
+   |
+   = note: `Dimensions` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variant `AnonymousBlock` is never constructed
+  --> src/engine/layout/types.rs:34:5
+   |
+31 | pub enum BoxType {
+   |          ------- variant in this enum
+...
+34 |     AnonymousBlock,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `BoxType` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `id` is never read
+  --> src/js/event_loop.rs:18:9
+   |
+17 | pub struct TimerTask {
+   |            --------- field in this struct
+18 |     pub id: u32,
+   |         ^^
+   |
+   = note: `TimerTask` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `queue_macro_task` is never used
+  --> src/js/event_loop.rs:68:12
+   |
+35 | impl EventLoop {
+   | -------------- method in this implementation
+...
+68 |     pub fn queue_macro_task<F>(&mut self, task: F)
+   |            ^^^^^^^^^^^^^^^^
+
+warning: method `register_global_function` is never used
+   --> src/js/runtime.rs:116:12
+    |
+ 24 | impl JsRuntime {
+    | -------------- method in this implementation
+...
+116 |     pub fn register_global_function<F, A>(&self, name: &str, func: F) -> JsResult<()>
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `output` is never read
+  --> src/js/console.rs:11:5
+   |
+10 | pub struct Console {
+   |            ------- field in this struct
+11 |     output: Arc<Mutex<Box<dyn Write + Send>>>,
+   |     ^^^^^^
+
+warning: associated functions `new` and `with_output` are never used
+  --> src/js/console.rs:16:12
+   |
+14 | impl Console {
+   | ------------ associated functions in this implementation
+15 |     /// Create a new Console that writes to stdout
+16 |     pub fn new() -> Self {
+   |            ^^^
+...
+23 |     pub fn with_output(output: Box<dyn Write + Send>) -> Self {
+   |            ^^^^^^^^^^^
+
+warning: method `onLine` should have a snake case name
+  --> src/js/bindings/navigator.rs:32:12
+   |
+32 |     pub fn onLine(&self) -> bool {
+   |            ^^^^^^ help: convert the identifier to snake case: `on_line`
+   |
+   = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: method `pushState` should have a snake case name
+  --> src/js/bindings/shims.rs:14:12
+   |
+14 |     pub fn pushState(&self) {
+   |            ^^^^^^^^^ help: convert the identifier to snake case: `push_state`
+
+warning: method `replaceState` should have a snake case name
+  --> src/js/bindings/shims.rs:18:12
+   |
+18 |     pub fn replaceState(&self) {
+   |            ^^^^^^^^^^^^ help: convert the identifier to snake case: `replace_state`
+
+warning: method `colorDepth` should have a snake case name
+  --> src/js/bindings/shims.rs:42:12
+   |
+42 |     pub fn colorDepth(&self) -> i32 { 24 }
+   |            ^^^^^^^^^^ help: convert the identifier to snake case: `color_depth`
+
+warning: method `availWidth` should have a snake case name
+  --> src/js/bindings/shims.rs:38:12
+   |
+38 |     pub fn availWidth(&self) -> i32 { 1920 }
+   |            ^^^^^^^^^^ help: convert the identifier to snake case: `avail_width`
+
+warning: method `pixelDepth` should have a snake case name
+  --> src/js/bindings/shims.rs:44:12
+   |
+44 |     pub fn pixelDepth(&self) -> i32 { 24 }
+   |            ^^^^^^^^^^ help: convert the identifier to snake case: `pixel_depth`
+
+warning: method `availHeight` should have a snake case name
+  --> src/js/bindings/shims.rs:40:12
+   |
+40 |     pub fn availHeight(&self) -> i32 { 1040 }
+   |            ^^^^^^^^^^^ help: convert the identifier to snake case: `avail_height`
+
+warning: `albedo` (bin "albedo" test) generated 51 warnings (run `cargo fix --bin "albedo" -p albedo --tests` to apply 29 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 49s
+warning: the following packages contain code that will be rejected by a future version of Rust: ashpd v0.8.1, rquickjs-core v0.6.2
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 2`
+     Running unittests src/main.rs (target/debug/deps/albedo-d21958462ddd6b46)
+
+thread 'engine::layout_tests::tests::test_flexbox_demo_layout' (5106) panicked at src/engine/layout_tests.rs:18:123:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: test failed, to rerun pass `--bin albedo`

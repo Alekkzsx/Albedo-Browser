@@ -53,7 +53,7 @@ fn test_event_subclasses() {
 #[test]
 fn test_set_timeout() {
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     
     let script = "
         var called = 'false';
@@ -79,7 +79,7 @@ fn test_set_timeout() {
 #[test]
 fn test_set_interval() {
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     
     let script = "
         var counter = 0;
@@ -114,7 +114,7 @@ fn test_dom_sync_with_timers() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     rt.execute_script(r#"
@@ -137,7 +137,7 @@ fn test_dom_sync_with_timers() {
 #[test]
 fn test_fetch_registration() {
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     
     // Check if fetch is defined and is a function
     let result = rt.execute_script("typeof fetch").unwrap();
@@ -164,7 +164,7 @@ fn test_computed_style() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     let result = rt.execute_script(r#"
@@ -195,7 +195,7 @@ fn test_dom_traversal() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     let result = rt.execute_script(r#"
@@ -230,7 +230,7 @@ fn test_dynamic_css() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     // 1. Initial color should be red
@@ -300,7 +300,7 @@ fn test_css_specificity() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     let result = rt.execute_script(r#"
@@ -331,7 +331,7 @@ fn test_event_complex_propagation() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     rt.register_events().unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
@@ -368,7 +368,7 @@ fn test_dom_attribute_manipulation() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     let result = rt.execute_script(r#"
@@ -416,7 +416,7 @@ fn test_computed_style_extended() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     let result = rt.execute_script(r#"
@@ -446,7 +446,7 @@ fn test_inner_html_extended() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    rt.init_stdlib().unwrap();
+    rt.init_stdlib("http://test.com").unwrap();
     document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     rt.execute_script(r##"

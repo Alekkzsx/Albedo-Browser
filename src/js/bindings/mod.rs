@@ -1,14 +1,13 @@
-
-pub mod document;
 pub mod element;
+pub mod document;
 pub mod token_list;
 pub mod style_declaration;
+pub mod computed_style;
+pub mod timers;
 pub mod event;
 pub mod event_subclasses;
-pub mod timers;
-// pub mod element; 
-// pub mod window;
-// pub mod event;
-pub mod storage;
 pub mod fetch;
-pub mod computed_style;
+pub mod storage;
+pub mod navigator;
+pub mod location;
+pub mod shims;

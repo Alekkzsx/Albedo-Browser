@@ -1,94 +1,69 @@
-use kuchiki::NodeData;
+use kuchiki::NodeRef;
 use kuchiki::traits::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DomTree {
-    pub root: kuchiki::NodeRef,
+    pub root: NodeRef,
 }
 
 impl DomTree {
-    pub fn new(root: kuchiki::NodeRef) -> Self {
+    pub fn new(root: NodeRef) -> Self {
         Self { root }
     }
-    
-    pub fn find_by_id(&self, id: &str) -> Option<kuchiki::NodeRef> {
-        if let Ok(mut match_iter) = self.root.select(&format!("#{}", id)) {
-            match_iter.next().map(|m| m.as_node().clone())
-        } else {
-            None
-        }
+
+    pub fn find_by_id(&self, id: &str) -> Option<NodeRef> {
+        self.root.select(&format!("#{}", id)).ok()?.next().map(|m| m.as_node().clone())
     }
 
-    pub fn find_by_ptr(&self, ptr: usize) -> Option<kuchiki::NodeRef> {
-        Self::recursive_find_by_ptr(&self.root, ptr)
+    pub fn find_by_ptr(&self, ptr: usize) -> Option<NodeRef> {
+        self.find_recursive(&self.root, ptr)
     }
 
-    fn recursive_find_by_ptr(node: &kuchiki::NodeRef, ptr: usize) -> Option<kuchiki::NodeRef> {
-        if (&**node as *const _ as usize) == ptr {
+    fn find_recursive(&self, node: &NodeRef, ptr: usize) -> Option<NodeRef> {
+        if node as *const _ as usize == ptr {
             return Some(node.clone());
         }
         for child in node.children() {
-            if let Some(n) = Self::recursive_find_by_ptr(&child, ptr) {
-                return Some(n);
+            if let Some(found) = self.find_recursive(&child, ptr) {
+                return Some(found);
             }
         }
         None
     }
+}
+
+pub fn render_to_string(node: &NodeRef) -> String {
+    let mut output = String::new();
+    render_to_string_recursive(node, &mut output);
+    output
+}
+
+fn render_to_string_recursive(node: &NodeRef, output: &mut String) {
+    use kuchiki::NodeData;
     
-    pub fn text_contents(&self) -> String {
-        self.root.text_contents()
-    }
-
-    pub fn render_text(&self) -> String {
-        let mut output = String::new();
-        Self::walk_tree(&self.root, &mut output);
-        output
-    }
-
-    fn walk_tree(node: &kuchiki::NodeRef, output: &mut String) {
-        // Handle element data
-        if let NodeData::Element(element) = node.data() {
-            let tag_name = element.name.local.to_string();
+    match node.data() {
+        NodeData::Element(element) => {
+            let tag = element.name.local.to_string();
+            output.push_str(&format!("<{}>", tag));
             
-            // Basic User Agent Styles
-            match tag_name.as_str() {
-                "h1" => output.push_str("\n\n [STYLE size=32] "),
-                "h2" => output.push_str("\n\n [STYLE size=24] "),
-                "p" => output.push_str("\n"),
-                "li" => output.push_str("\n • "),
-                _ => {}
-            }
-
-            // Parse inline style attribute
-            if let Some(style_attr) = element.attributes.borrow().get("style") {
+             if let Some(style_attr) = element.attributes.borrow().get("style") {
                  let style = crate::engine::style::Style::parse_inline_style(style_attr);
-                 if style.color != "#333333" {
-                     output.push_str(&format!(" [COLOR={}] ", style.color));
+                 if style.color != crate::engine::style::types::Color::parse("#333333") {
+                     output.push_str(&format!(" [COLOR={:?}] ", style.color));
                  }
+             }
+
+            for child in node.children() {
+                render_to_string_recursive(&child, output);
             }
-        }
-
-        // Handle text nodes
-        if let NodeData::Text(text) = node.data() {
-            let content = text.borrow();
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                output.push_str(trimmed);
-                output.push(' ');
-            }
-        }
-
-        // Recurse children
-        for child in node.children() {
-            Self::walk_tree(&child, output);
-        }
-
-        // Post-processing for elements (closing tags basically)
-        if let NodeData::Element(element) = node.data() {
-            let tag_name = element.name.local.to_string();
-            match tag_name.as_str() {
-                "h1" | "h2" | "p" | "div" => output.push('\n'),
-                _ => {}
+            output.push_str(&format!("</{}>", tag));
+        },
+        NodeData::Text(text) => {
+            output.push_str(&text.borrow());
+        },
+        _ => {
+            for child in node.children() {
+                render_to_string_recursive(&child, output);
             }
         }
     }

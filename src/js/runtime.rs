@@ -1,4 +1,4 @@
-use rquickjs::{Context, Runtime, Ctx, Value};
+use rquickjs::{Context, Runtime, Ctx, Value, Exception};
 use rquickjs::function::IntoJsFunc;
 use std::sync::{Arc, Mutex};
 use std::result::Result as StdResult;
@@ -7,14 +7,16 @@ pub type JsResult<T> = StdResult<T, rquickjs::Error>;
 
 /// JavaScript runtime wrapper around QuickJS
 /// 
+///
 /// Provides a safe, ergonomic interface for executing JavaScript code
 /// and interacting with the JS environment.
 pub struct JsRuntime {
-    context: Arc<Mutex<Context>>,
-    runtime: Arc<Mutex<Runtime>>,
+    pub(crate) context: Arc<Mutex<Context>>,
+    pub(crate) runtime: Arc<Mutex<Runtime>>,
     pub event_loop: Arc<Mutex<EventLoop>>,
     pub mutations: Arc<Mutex<bool>>,
     pub stylesheet_dirty: Arc<Mutex<bool>>,
+    pub pending_navigation: Arc<Mutex<Option<String>>>,
 }
 
 use crate::js::event_loop::EventLoop;
@@ -31,6 +33,7 @@ impl JsRuntime {
             event_loop: Arc::new(Mutex::new(EventLoop::new())),
             mutations: Arc::new(Mutex::new(false)),
             stylesheet_dirty: Arc::new(Mutex::new(false)),
+            pending_navigation: Arc::new(Mutex::new(None)),
         })
     }
     
@@ -43,25 +46,7 @@ impl JsRuntime {
     /// assert_eq!(result.as_int(), Some(4));
     /// ```
     pub fn execute_script(&self, code: &str) -> JsResult<String> {
-        let ctx = self.context.lock().unwrap();
-        ctx.with(|ctx| {
-            let result: Value = ctx.eval(code)?;
-            
-            // Try to convert to string, fallback to debug
-            if let Some(s) = result.as_string() {
-                Ok(s.to_string()?)
-            } else if result.is_null() {
-                Ok("null".to_string())
-            } else if result.is_undefined() {
-                Ok("undefined".to_string())
-            } else {
-                // Try JSON stringify
-                match ctx.json_stringify(result.clone()) {
-                    Ok(Some(s)) => Ok(s.to_string()?),
-                    _ => Ok(format!("{:?}", result))
-                }
-            }
-        })
+        crate::js::eval::execute_script(self, code)
     }
     
     /*
@@ -134,73 +119,11 @@ impl JsRuntime {
     }
 
 
-    pub fn init_stdlib(&self) -> JsResult<()> {
-        self.register_events()?;
-        crate::js::console::Console::register(self)?;
-        crate::js::bindings::timers::register(self)?;
-        crate::js::bindings::fetch::register(self)?;
-        // localStorage/sessionStorage are initialized separately via init_storage per domain
-        Ok(())
+    pub fn get_pending_navigation(&self) -> Option<String> {
+        let mut pending = self.pending_navigation.lock().unwrap();
+        pending.take()
     }
 
-    pub fn init_storage(&self, origin: &str) -> JsResult<()> {
-        let storage_dir = if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(".local/share/albedo/storage")
-        } else {
-            std::path::PathBuf::from("./storage")
-        };
-        
-        // Sanitize origin for filename
-        let sanitized_origin = origin.replace("://", "_")
-            .replace(".", "_")
-            .replace("/", "_")
-            .replace(":", "_");
-            
-        let local_storage_path = storage_dir.join(format!("{}.json", sanitized_origin));
-        
-        use crate::js::bindings::storage::Storage;
-        
-        self.with_context(|ctx| {
-            ctx.with(|ctx| {
-                Storage::register(&ctx, "localStorage", Storage::new_local(local_storage_path))?;
-                Storage::register(&ctx, "sessionStorage", Storage::new_session())?;
-                Ok(())
-            })
-        })
-    }
-
-    pub fn register_events(&self) -> JsResult<()> {
-        let ctx = self.context.lock().unwrap();
-        ctx.with(|ctx: rquickjs::Ctx| {
-            let global = ctx.globals();
-            
-            // Register base Event
-            use crate::js::bindings::event::Event;
-            rquickjs::Class::<Event>::define(&global)?;
-            
-            // Register subclasses
-            use crate::js::bindings::event_subclasses::{MouseEvent, KeyboardEvent};
-            rquickjs::Class::<MouseEvent>::define(&global)?;
-            rquickjs::Class::<KeyboardEvent>::define(&global)?;
-            
-            // Setup prototype chain (basic inheritance simulation)
-            // MouseEvent.prototype.__proto__ = Event.prototype
-            // This allows 'instanceof Event' to work
-            
-            let event_ctor: rquickjs::Function = global.get("Event")?;
-            let mouse_ctor: rquickjs::Function = global.get("MouseEvent")?;
-            let kbd_ctor: rquickjs::Function = global.get("KeyboardEvent")?;
-            
-            let event_proto: rquickjs::Object = event_ctor.get("prototype")?;
-            let mouse_proto: rquickjs::Object = mouse_ctor.get("prototype")?;
-            let kbd_proto: rquickjs::Object = kbd_ctor.get("prototype")?;
-            
-            mouse_proto.set_prototype(Some(&event_proto))?;
-            kbd_proto.set_prototype(Some(&event_proto))?;
-            
-            Ok(())
-        })
-    }
 
     pub fn run_gc(&self) {
         let rt = self.runtime.lock().unwrap();
@@ -208,106 +131,7 @@ impl JsRuntime {
     }
 
     pub fn run_pending(&self) -> (bool, bool) {
-        let mut executed = false;
-        
-        // 0. Check for DOM mutations that happened since last pulse
-        {
-            let mut muts = self.mutations.lock().unwrap();
-            if *muts {
-                executed = true;
-                *muts = false;
-            }
-        }
-
-        // 1. Run QuickJS pending jobs (Promises/microtasks)
-        {
-            let ctx = self.context.lock().unwrap();
-            ctx.with(|ctx| {
-                if ctx.execute_pending_job() {
-                    executed = true;
-                }
-            });
-        }
-
-        // 2. Handle Async Bridge (Fetch, etc)
-        let async_results = {
-            let mut el = self.event_loop.lock().unwrap();
-            el.receive_async_results()
-        };
-
-        if !async_results.is_empty() {
-            self.with_context(|ctx| {
-                ctx.with(|ctx| {
-                    let mut el = self.event_loop.lock().unwrap();
-                    for res in async_results {
-                        if let Some(resolution) = el.take_resolution(res.id) {
-                            match res.result {
-                                Ok((status, body)) => {
-                                    if let Ok(resolve) = resolution.resolve.restore(&ctx) {
-                                        use crate::js::bindings::fetch::Response;
-                                        let response = Response { status, body };
-                                        if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), response) {
-                                            let _: rquickjs::Result<()> = resolve.call((instance,));
-                                            executed = true;
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    if let Ok(reject) = resolution.reject.restore(&ctx) {
-                                        let _: rquickjs::Result<()> = reject.call((err,));
-                                        executed = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Run jobs again as resolutions might trigger then() callbacks
-                    if ctx.execute_pending_job() {
-                        executed = true;
-                    }
-                })
-            });
-        }
-
-        // 3. Run EventLoop tasks (timers, etc)
-        let (timers, macros) = {
-            let mut el = self.event_loop.lock().unwrap();
-            el.take_pending_tasks()
-        };
-        
-        if !timers.is_empty() {
-             self.with_context(|ctx| {
-                ctx.with(|ctx| {
-                    for timer in timers {
-                         if let Ok(func) = timer.callback.restore(&ctx) {
-                            let _: rquickjs::Result<Value> = func.call(());
-                            executed = true;
-                        }
-                    }
-                    
-                    // Run pending jobs AGAIN after timers might have resolved promises
-                    if ctx.execute_pending_job() {
-                        executed = true;
-                    }
-                })
-             });
-        }
-             
-        for task in macros {
-            task();
-            executed = true;
-        }
-
-        // 4. Stylesheet dirty check
-        let mut stylesheet_dirty = false;
-        if let Ok(mut sd) = self.stylesheet_dirty.lock() {
-            if *sd {
-                stylesheet_dirty = true;
-                *sd = false;
-            }
-        }
-        
-        (executed, stylesheet_dirty)
+        crate::js::executor::run_pending(self)
     }
 }
 
@@ -319,6 +143,7 @@ impl Clone for JsRuntime {
             event_loop: Arc::clone(&self.event_loop),
             mutations: Arc::clone(&self.mutations),
             stylesheet_dirty: Arc::clone(&self.stylesheet_dirty),
+            pending_navigation: Arc::clone(&self.pending_navigation),
         }
     }
 }
