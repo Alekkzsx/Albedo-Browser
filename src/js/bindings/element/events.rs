@@ -1,0 +1,73 @@
+use crate::js::bindings::element::Element;
+use crate::js::bindings::event::EventTargetImpl;
+use rquickjs::{Function, Result, Value, Ctx};
+
+pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'js>) {
+    let ptr = &*el.node as *const _ as usize;
+    unsafe {
+        let listener_static: Function<'static> = std::mem::transmute(listener);
+        EventTargetImpl::add_listener(ptr, type_, listener_static);
+    }
+}
+
+pub fn remove_event_listener<'js>(el: &Element, type_: String, _listener: Function<'js>) {
+    let ptr = &*el.node as *const _ as usize;
+    EventTargetImpl::remove_listener(ptr, type_);
+}
+
+pub fn dispatch_event<'js>(el: &Element, ctx: Ctx<'js>, event: Value<'js>) -> bool {
+    let ptr = &*el.node as *const _ as usize;
+    
+    // Helper to find parent
+    let get_parent = |p: usize| -> Option<usize> {
+        unsafe {
+            let node_ref = &*(p as *const kuchiki::Node);
+            node_ref.parent().map(|p| &*p as *const _ as usize)
+        }
+    };
+
+    if let Some(event_obj_js) = event.as_object() {
+            if let Ok(type_val) = event_obj_js.get::<_, String>("type") {
+                let bubbles = event_obj_js.get::<_, bool>("bubbles").unwrap_or(false);
+                
+                let event_data = crate::js::bindings::event::Event {
+                    type_: type_val.clone(),
+                    bubbles,
+                    cancelable: false, 
+                    target: None,
+                    current_target: None,
+                };
+                
+                let _ = event_obj_js.set("target", el.clone());
+
+                let listeners_chain = EventTargetImpl::dispatch_event_with_bubbling(ptr, &event_data, get_parent);
+                
+                let mut last_ptr = 0;
+                if let Some((first, _)) = listeners_chain.first() {
+                    last_ptr = *first;
+                }
+                
+                for (curr_ptr, listener_static) in listeners_chain {
+                    let event_obj = event_obj_js.clone();
+                    
+                    let propagation_stopped = event_obj.get::<_, bool>("_propagationStopped").unwrap_or(false);
+                    let immediate_stopped = event_obj.get::<_, bool>("_immediatePropagationStopped").unwrap_or(false);
+                    
+                    if curr_ptr != last_ptr {
+                        if propagation_stopped {
+                            break; 
+                        }
+                        last_ptr = curr_ptr;
+                    }
+                    
+                    if immediate_stopped {
+                        continue; 
+                    }
+                    
+                    let listener: Function<'js> = unsafe { std::mem::transmute(listener_static) };
+                    let _: Result<Value> = listener.call((event.clone(),));
+                }
+            }
+    }
+    true 
+}
