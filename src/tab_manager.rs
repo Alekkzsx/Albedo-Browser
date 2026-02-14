@@ -1,13 +1,5 @@
-use std::rc::Rc;
-use std::cell::RefCell;
-// use raw_window_handle::HasWindowHandle; // Unused
-// use slint::ComponentHandle;
-use uuid::Uuid;
-use reqwest; // Added for fetching external URLs
-
 use crate::engine::AceEngine;
 use crate::js::JsRuntime;
-use crate::js::console::Console;
 
 use crate::tab::{Tab, TabMode};
 
@@ -31,7 +23,7 @@ impl TabManager {
 
     pub fn create_tab(&self, _window: &slint::Window, url: &str) {
         let mut tabs = self.tabs.borrow_mut();
-        let mut new_tab = Tab::new(url.to_string());
+        let new_tab = Tab::new(url.to_string());
         
         tabs.push(new_tab);
         

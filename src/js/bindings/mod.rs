@@ -10,3 +10,4 @@ pub mod timers;
 // pub mod window;
 // pub mod event;
 pub mod storage;
+pub mod fetch;
