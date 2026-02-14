@@ -192,7 +192,47 @@ impl JsRuntime {
             });
         }
 
-        // 2. Run EventLoop tasks (timers, etc)
+        // 2. Handle Async Bridge (Fetch, etc)
+        let async_results = {
+            let mut el = self.event_loop.lock().unwrap();
+            el.receive_async_results()
+        };
+
+        if !async_results.is_empty() {
+            self.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    let mut el = self.event_loop.lock().unwrap();
+                    for res in async_results {
+                        if let Some(resolution) = el.take_resolution(res.id) {
+                            match res.result {
+                                Ok((status, body)) => {
+                                    if let Ok(resolve) = resolution.resolve.restore(&ctx) {
+                                        use crate::js::bindings::fetch::Response;
+                                        let response = Response { status, body };
+                                        if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), response) {
+                                            let _: rquickjs::Result<()> = resolve.call((instance,));
+                                            executed = true;
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    if let Ok(reject) = resolution.reject.restore(&ctx) {
+                                        let _: rquickjs::Result<()> = reject.call((err,));
+                                        executed = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Run jobs again as resolutions might trigger then() callbacks
+                    if ctx.execute_pending_job() {
+                        executed = true;
+                    }
+                })
+            });
+        }
+
+        // 3. Run EventLoop tasks (timers, etc)
         let (timers, macros) = {
             let mut el = self.event_loop.lock().unwrap();
             el.take_pending_tasks()

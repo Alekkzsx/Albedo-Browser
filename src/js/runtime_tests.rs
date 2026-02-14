@@ -131,3 +131,17 @@ fn test_dom_sync_with_timers() {
     // Now SHOULD be "Updated"
     assert_eq!(dom.root.select_first("#target").unwrap().text_contents(), "Updated");
 }
+
+#[test]
+fn test_fetch_registration() {
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    
+    // Check if fetch is defined and is a function
+    let result = rt.execute_script("typeof fetch").unwrap();
+    assert_eq!(result, "function");
+    
+    // Check if Response class is defined
+    let result = rt.execute_script("typeof Response").unwrap();
+    assert_eq!(result, "function");
+}
