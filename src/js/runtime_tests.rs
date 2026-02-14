@@ -274,4 +274,206 @@ fn test_dynamic_css() {
         getComputedStyle(document.getElementById("target")).fontSize
     "#).unwrap();
     assert_eq!(result3, "50px");
+    
+    rt.run_gc();
+}
+
+#[test]
+fn test_css_specificity() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <style>
+            div { color: green; }
+            .content { color: yellow; }
+            #target { color: red; }
+            
+            p.important { color: purple; }
+            p { color: orange; }
+        </style>
+        <div id="target" class="content">Specificity Test</div>
+        <p class="important">P Test</p>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        const div = document.getElementById("target");
+        const p = document.querySelector("p");
+        getComputedStyle(div).color + "|" + getComputedStyle(p).color
+    "#).unwrap();
+
+    assert_eq!(result, "red|purple");
+    
+    rt.run_gc();
+}
+
+#[test]
+fn test_event_complex_propagation() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <div id="outer">
+            <div id="inner">
+                <button id="btn">Click me</button>
+            </div>
+        </div>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    rt.register_events().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        const outer = document.getElementById("outer");
+        const inner = document.getElementById("inner");
+        const btn = document.getElementById("btn");
+        
+        let path = [];
+        outer.addEventListener("click", () => path.push("outer"));
+        inner.addEventListener("click", (e) => {
+            path.push("inner");
+            e.stopPropagation();
+        });
+        btn.addEventListener("click", () => path.push("btn"));
+        
+        btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        path.join("|")
+    "#).unwrap();
+
+    assert_eq!(result, "btn|inner");
+    
+    rt.run_gc();
+}
+
+#[test]
+fn test_dom_attribute_manipulation() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"<div id="target" class="foo"></div>"#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        const el = document.getElementById("target");
+        let log = [];
+        
+        log.push(el.getAttribute("class"));
+        el.setAttribute("title", "hello");
+        log.push(el.getAttribute("title"));
+        log.push(el.hasAttribute("title"));
+        el.removeAttribute("class");
+        log.push(el.hasAttribute("class"));
+        
+        log.join("|")
+    "#).unwrap();
+
+    assert_eq!(result, "foo|hello|true|false");
+    
+    // Verify sync to native DOM
+    let el_data = dom.root.select_first("#target").unwrap();
+    let attrs = el_data.attributes.borrow();
+    assert_eq!(attrs.get("title").unwrap(), "hello");
+    assert!(attrs.get("class").is_none());
+}
+
+#[test]
+fn test_computed_style_extended() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <style>
+            #target { 
+                margin: 10px;
+                padding: 20px;
+                border: 1px solid black;
+                width: 100px;
+                height: 50px;
+            }
+        </style>
+        <div id="target"></div>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        const el = document.getElementById("target");
+        const style = getComputedStyle(el);
+        [
+            style.getPropertyValue('margin-top'),
+            style.getPropertyValue('padding-left'),
+            style.getPropertyValue('width'),
+            style.getPropertyValue('height')
+        ].join('|')
+    "#).unwrap();
+
+    assert_eq!(result, "10px|20px|100px|50px");
+    
+    rt.run_gc();
+}
+
+#[test]
+fn test_inner_html_extended() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"<div id="container"></div>"#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    rt.execute_script(r##"
+        const container = document.getElementById("container");
+        container.innerHTML = `
+            <style>#dynamic { color: cyan; }</style>
+            <div class="wrapper">
+                <span id="dynamic">Hello</span>
+            </div>
+        `;
+    "##).unwrap();
+
+    let (mutated, stylesheet_dirty) = rt.run_pending();
+    if mutated || stylesheet_dirty {
+        engine.update_stylesheet();
+    }
+
+    let result = rt.execute_script(r#"
+        const span = document.getElementById("dynamic");
+        getComputedStyle(span).color
+    "#).unwrap();
+
+    assert_eq!(result, "cyan");
+    
+    // Check DOM structure
+    let span_count = dom.root.select("span#dynamic").unwrap().count();
+    assert_eq!(span_count, 1);
+    
+    rt.run_gc();
 }
