@@ -1,6 +1,7 @@
 use reqwest::blocking::Client;
 use std::time::Duration;
 use kuchiki::traits::TendrilSink;
+use crate::layout;
 
 // Estrutura Visual Simplificada
 #[derive(Clone, Debug)]
@@ -108,14 +109,29 @@ impl AceEngine {
                     None
                 };
 
+                let container_width = 760.0; // Largura disponível (max_width)
+
+                // CHAMAR O MATEMÁTICO (Layout)
+                // Só calculamos wrap para textos longos (p, div, h1...), botões/inputs tem altura fixa geralmente
+                let (final_text, calculated_height) = if tag_name == "p" || tag_name == "div" || tag_name == "li" || tag_name == "span" || tag_name.starts_with('h') {
+                    let layout_result = layout::calculate_text_wrapping(&text_content, font_size, container_width);
+                    
+                    // DICA ALBEDO: O Slint tem suporte nativo a "word-wrap", então podemos mandar o texto inteiro.
+                    // O IMPORTANTE é que o Rust saiba a ALTURA para empurrar o cursor_y.
+                    (text_content.trim().to_string(), layout_result.total_height)
+                } else {
+                    // Inputs, imagens e outros elementos continuam com altura padrão
+                    (text_content.trim().to_string(), height) // Use 'height' from the match above
+                };
+
                 // 4. CRIAR O BLOCO VISUAL (ACEPrimitive)
                 self.primitives.push(ACEPrimitive {
                     x: start_x,
                     y: cursor_y,
-                    width: 760.0,
-                    height: height,
+                    width: container_width,
+                    height: calculated_height, // <--- AQUI A MÁGICA (Altura dinâmica)
                     color: bg_color.to_string(), // <--- CORRIGIDO: Usando a cor definida!
-                    text: text_content.trim().to_string(),
+                    text: final_text,
                     font_size,
                     image_url: None,
                     link_url,
@@ -123,7 +139,9 @@ impl AceEngine {
                     element_type: if tag_name == "input" { "input".into() } else { "text".into() }
                 });
 
-                cursor_y += height + 5.0; // Espaçamento
+                // A VITAL ATUALIZAÇÃO DO CURSOR
+                // Agora o próximo elemento respeitará se este texto teve 1 linha ou 10 linhas.
+                cursor_y += calculated_height + 10.0; // +10px de margem (respiro)
             }
         }
         println!("ENGINE: Gerados {} elementos visuais coloridos.", self.primitives.len());
