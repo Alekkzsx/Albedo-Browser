@@ -3,7 +3,7 @@ use crate::js::JsRuntime;
 use crate::js::event_loop::AsyncResult;
 
 #[derive(rquickjs::class::Trace, Clone)]
-#[rquickjs::class]
+#[rquickjs::class(rename = "Response")]
 pub struct Response {
     pub status: u16,
     #[qjs(skip_trace)]
@@ -12,6 +12,14 @@ pub struct Response {
 
 #[rquickjs::methods]
 impl Response {
+    #[qjs(constructor)]
+    pub fn new() -> Self {
+        Self {
+            status: 200,
+            body: String::new(),
+        }
+    }
+
     pub fn text<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<(String,), ()>((self.body.clone(),));
@@ -36,56 +44,53 @@ impl Response {
     }
 }
 
-struct InternalFetch {
-    rt: JsRuntime,
-}
-
-impl<'js> rquickjs::function::Func<'js> for InternalFetch {
-    fn call(self, ctx: Ctx<'js>, args: rquickjs::function::Args<'js>) -> Result<()> {
-        let (url, resolve, reject): (String, Function<'js>, Function<'js>) = args.into_args()?;
-        
-        let (id, sender) = {
-            let mut el = self.rt.event_loop.lock().unwrap();
-            let id = el.register_promise(
-                Persistent::save(&ctx, resolve),
-                Persistent::save(&ctx, reject)
-            );
-            (id, el.async_sender.clone())
-        };
-
-        tokio::spawn(async move {
-            let result = reqwest::get(&url).await;
-            let final_result = match result {
-                Ok(resp) => {
-                    let status = resp.status().as_u16();
-                    let body = resp.text().await.unwrap_or_default();
-                    Ok((status, body))
-                }
-                Err(e) => Err(e.to_string()),
-            };
-
-            let _ = sender.send(AsyncResult {
-                id,
-                result: final_result,
-            });
-        });
-
-        Ok(())
-    }
-}
-
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
             let global = ctx.globals();
             Class::<Response>::define(&global)?;
             
-            global.set("__internal_fetch", rquickjs::Function::new(ctx.clone(), InternalFetch { rt: rt.clone() }))?;
+            let rt_clone = rt.clone();
+            let internal_fetch = rquickjs::Function::new(ctx.clone(), move |url: String, resolvers: rquickjs::Array| -> Result<()> {
+                let ctx = resolvers.ctx();
+                let resolve: Function = resolvers.get(0)?;
+                let reject: Function = resolvers.get(1)?;
+                
+                let (id, sender) = {
+                    let mut el = rt_clone.event_loop.lock().unwrap();
+                    let id = el.register_promise(
+                        Persistent::save(ctx, resolve),
+                        Persistent::save(ctx, reject)
+                    );
+                    (id, el.async_sender.clone())
+                };
+
+                tokio::spawn(async move {
+                    let result: reqwest::Result<reqwest::Response> = reqwest::get(&url).await;
+                    let final_result: std::result::Result<(u16, String), String> = match result {
+                        Ok(resp) => {
+                            let status = resp.status().as_u16();
+                            let body = resp.text().await.unwrap_or_default();
+                            Ok((status, body))
+                        }
+                        Err(e) => Err(e.to_string()),
+                    };
+
+                    let _ = sender.send(AsyncResult {
+                        id,
+                        result: final_result,
+                    });
+                });
+
+                Ok(())
+            })?;
+
+            global.set("__internal_fetch", internal_fetch)?;
 
             ctx.eval::<(), _>(r#"
                 globalThis.fetch = function(url) {
                     return new Promise((resolve, reject) => {
-                        __internal_fetch(url, resolve, reject);
+                        __internal_fetch(url, [resolve, reject]);
                     });
                 };
             "#)?;

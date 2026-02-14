@@ -8,6 +8,10 @@ use crate::js::bindings::token_list::DomTokenList;
 pub struct Element {
     #[qjs(skip_trace)]
     pub node: NodeRef,
+    #[qjs(skip_trace)]
+    pub mutations: std::sync::Arc<std::sync::Mutex<bool>>,
+    #[qjs(skip_trace)]
+    pub stylesheet_dirty: std::sync::Arc<std::sync::Mutex<bool>>,
 }
 
 use crate::js::bindings::style_declaration::CssStyleDeclaration;
@@ -16,6 +20,19 @@ use rquickjs::Function;
 
 #[rquickjs::methods]
 impl Element {
+    fn mark_mutation(&self) {
+        if let Ok(mut m) = self.mutations.lock() {
+            *m = true;
+        }
+
+        // If this is a <style> tag, mark stylesheet as dirty
+        if self.node.as_element().map(|e| e.name.local.to_string() == "style").unwrap_or(false) {
+            if let Ok(mut sd) = self.stylesheet_dirty.lock() {
+                *sd = true;
+            }
+        }
+    }
+
     #[qjs(rename = "addEventListener")]
     pub fn add_event_listener<'js>(&self, type_: String, listener: Function<'js>) {
         let ptr = &*self.node as *const _ as usize;
@@ -112,7 +129,11 @@ impl Element {
     // Getter for style
     #[qjs(get, rename = "style")]
     pub fn style<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let decl = CssStyleDeclaration { node: self.node.clone() };
+        let decl = CssStyleDeclaration { 
+            node: self.node.clone(),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
         let instance = Class::instance(ctx, decl)?;
         Ok(instance.into_value())
     }
@@ -120,7 +141,11 @@ impl Element {
     // Getter for classList
     #[qjs(get, rename = "classList")]
     pub fn class_list<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let list = DomTokenList { node: self.node.clone() };
+        let list = DomTokenList { 
+            node: self.node.clone(),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
         let instance = Class::instance(ctx, list)?;
         Ok(instance.into_value())
     }
@@ -147,6 +172,7 @@ impl Element {
         // We can detach all children
         self.node.children().for_each(|child| child.detach());
         self.node.append(NodeRef::new_text(text));
+        self.mark_mutation();
     }
 
     #[qjs(rename = "getAttribute")]
@@ -160,6 +186,7 @@ impl Element {
     pub fn set_attribute(&self, name: String, value: String) {
         if let Some(data) = self.node.as_element() {
             data.attributes.borrow_mut().insert(name, value);
+            self.mark_mutation();
         }
     }
     
@@ -177,21 +204,24 @@ impl Element {
         // kuchiki::parse_html().one(html) creates a full document
         let document = kuchiki::parse_html().one(html);
         
-        // Extract content from body and append to this node
-        // Warning: This is a simplification. Context-aware parsing is harder.
-        if let Ok(body) = document.select_first("body") {
-            // We need to collect children first to avoid iterator invalidation during move
-            let children: Vec<_> = body.as_node().children().collect();
-            for child in children {
-                self.node.append(child);
+        // Extract content from head and body and append to this node
+        // In full document parsing, things like <style> might end up in <head>
+        for section in &["head", "body"] {
+            if let Ok(sec_node) = document.select_first(section) {
+                let children: Vec<_> = sec_node.as_node().children().collect();
+                for child in children {
+                    self.node.append(child);
+                }
             }
         }
+        self.mark_mutation();
     }
 
     #[qjs(rename = "appendChild")]
     pub fn append_child<'js>(&self, _ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
         let child_borrow = child.borrow();
         self.node.append(child_borrow.node.clone());
+        self.mark_mutation();
         Ok(child.clone())
     }
 
@@ -203,6 +233,7 @@ impl Element {
         if let Some(parent) = child_borrow.node.parent() {
             if parent == self.node {
                 child_borrow.node.detach();
+                self.mark_mutation();
                 return Ok(child.clone());
             }
         }
@@ -214,7 +245,11 @@ impl Element {
     pub fn query_selector<'js>(&self, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
         if let Ok(mut match_iter) = self.node.select(&selector) {
              if let Some(node_match) = match_iter.next() {
-                 let element = Element { node: node_match.as_node().clone() };
+                 let element = Element { 
+                     node: node_match.as_node().clone(),
+                     mutations: self.mutations.clone(),
+                     stylesheet_dirty: self.stylesheet_dirty.clone(),
+                 };
                  return Class::instance(ctx, element).map(|i| i.into_value());
              }
         }
@@ -227,11 +262,125 @@ impl Element {
         let array = rquickjs::Array::new(ctx.clone())?;
         if let Ok(match_iter) = self.node.select(&selector) {
             for (i, node_match) in match_iter.enumerate() {
-                let element = Element { node: node_match.as_node().clone() };
+                let element = Element { 
+                    node: node_match.as_node().clone(),
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
                 let instance = Class::instance(ctx.clone(), element)?;
                 array.set(i, instance)?;
             }
         }
         Ok(array.into_value())
+    }
+
+    #[qjs(get, rename = "children")]
+    pub fn children<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let array = rquickjs::Array::new(ctx.clone())?;
+        let mut i = 0;
+        for child in self.node.children() {
+            if child.as_element().is_some() {
+                let element = Element { 
+                    node: child,
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                let instance = Class::instance(ctx.clone(), element)?;
+                array.set(i, instance)?;
+                i += 1;
+            }
+        }
+        Ok(array.into_value())
+    }
+
+    #[qjs(get, rename = "parentElement")]
+    pub fn parent_element<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        if let Some(parent) = self.node.parent() {
+            if parent.as_element().is_some() {
+                let element = Element { 
+                    node: parent,
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                let instance = Class::instance(ctx, element)?;
+                return Ok(instance.into_value());
+            }
+        }
+        Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "firstElementChild")]
+    pub fn first_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        for child in self.node.children() {
+            if child.as_element().is_some() {
+                let element = Element { 
+                    node: child,
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                let instance = Class::instance(ctx, element)?;
+                return Ok(instance.into_value());
+            }
+        }
+        Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "lastElementChild")]
+    pub fn last_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        // Kuchiki doesn't have a direct reverse iterator for children easily, but we can collect or just use children().last() if it's DoubleEnded
+        // Actually children() returns an iterator.
+        let mut last_el = None;
+        for child in self.node.children() {
+            if child.as_element().is_some() {
+                last_el = Some(child);
+            }
+        }
+
+        if let Some(node) = last_el {
+            let element = Element { 
+                node,
+                mutations: self.mutations.clone(),
+                stylesheet_dirty: self.stylesheet_dirty.clone(),
+            };
+            let instance = Class::instance(ctx, element)?;
+            return Ok(instance.into_value());
+        }
+        Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "nextElementSibling")]
+    pub fn next_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let mut curr = self.node.next_sibling();
+        while let Some(node) = curr {
+            if node.as_element().is_some() {
+                let element = Element { 
+                    node,
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                let instance = Class::instance(ctx, element)?;
+                return Ok(instance.into_value());
+            }
+            curr = node.next_sibling();
+        }
+        Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "previousElementSibling")]
+    pub fn previous_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let mut curr = self.node.previous_sibling();
+        while let Some(node) = curr {
+            if node.as_element().is_some() {
+                let element = Element { 
+                    node,
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                let instance = Class::instance(ctx, element)?;
+                return Ok(instance.into_value());
+            }
+            curr = node.previous_sibling();
+        }
+        Ok(Value::new_null(ctx))
     }
 }

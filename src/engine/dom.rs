@@ -18,6 +18,22 @@ impl DomTree {
             None
         }
     }
+
+    pub fn find_by_ptr(&self, ptr: usize) -> Option<kuchiki::NodeRef> {
+        Self::recursive_find_by_ptr(&self.root, ptr)
+    }
+
+    fn recursive_find_by_ptr(node: &kuchiki::NodeRef, ptr: usize) -> Option<kuchiki::NodeRef> {
+        if (&**node as *const _ as usize) == ptr {
+            return Some(node.clone());
+        }
+        for child in node.children() {
+            if let Some(n) = Self::recursive_find_by_ptr(&child, ptr) {
+                return Some(n);
+            }
+        }
+        None
+    }
     
     pub fn text_contents(&self) -> String {
         self.root.text_contents()

@@ -3,10 +3,13 @@ pub mod parser;
 pub mod style;
 pub mod layout;
 
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug, Clone)]
 pub struct AceEngine {
     pub dom: Option<dom::DomTree>,
-    pub stylesheet: style::Stylesheet,
+    pub stylesheet: Arc<Mutex<style::Stylesheet>>,
+    pub stylesheet_dirty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -19,25 +22,36 @@ impl AceEngine {
     pub fn new() -> Self {
         Self { 
             dom: None,
-            stylesheet: style::Stylesheet::default(),
+            stylesheet: Arc::new(Mutex::new(style::Stylesheet::default())),
+            stylesheet_dirty: true,
         }
     }
 
     pub fn load_html(&mut self, html: &str) -> Vec<Script> {
         let dom = parser::parse_html(html);
         
-        // Extract <style> tags
-        let mut css_text = String::new();
-        Self::extract_styles(&dom.root, &mut css_text);
-        
         // Extract <script> tags
         let mut scripts = Vec::new();
         Self::extract_scripts(&dom.root, &mut scripts);
         
-        self.stylesheet = style::Stylesheet::parse(&css_text);
         self.dom = Some(dom);
+        self.stylesheet_dirty = true;
+        self.update_stylesheet();
         
         scripts
+    }
+
+    pub fn update_stylesheet(&mut self) {
+        if let Some(dom) = &self.dom {
+            let mut css_text = String::new();
+            Self::extract_styles(&dom.root, &mut css_text);
+            *self.stylesheet.lock().unwrap() = style::Stylesheet::parse(&css_text);
+            self.stylesheet_dirty = false;
+        }
+    }
+
+    pub fn mark_stylesheet_dirty(&mut self) {
+        self.stylesheet_dirty = true;
     }
 
     fn extract_styles(node: &kuchiki::NodeRef, output: &mut String) {
@@ -79,7 +93,7 @@ impl AceEngine {
     pub fn render(&self) -> String {
         if let Some(dom) = &self.dom {
             // Updated to pass stylesheet if layout engine supports it
-            if let Some(mut layout_root) = layout::build_layout_tree(&dom.root, &self.stylesheet) {
+            if let Some(mut layout_root) = layout::build_layout_tree(&dom.root, &self.stylesheet.lock().unwrap()) {
                 let mut viewport = layout::Dimensions::default();
                 viewport.content.width = 800.0;
                 layout_root.layout(viewport);
@@ -94,7 +108,7 @@ impl AceEngine {
 
     pub fn render_visual(&self) -> Vec<layout::RenderPrimitive> {
         if let Some(dom) = &self.dom {
-            if let Some(mut layout_root) = layout::build_layout_tree(&dom.root, &self.stylesheet) {
+            if let Some(mut layout_root) = layout::build_layout_tree(&dom.root, &self.stylesheet.lock().unwrap()) {
                  let mut viewport = layout::Dimensions::default();
                  viewport.content.width = 800.0;
                  layout_root.layout(viewport);

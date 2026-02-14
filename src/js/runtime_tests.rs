@@ -1,4 +1,6 @@
 use super::*;
+use std::sync::{Arc, Mutex};
+use crate::engine::style::Stylesheet;
 
 #[test]
 fn test_basic_execution() {
@@ -113,7 +115,7 @@ fn test_dom_sync_with_timers() {
 
     let rt = JsRuntime::new().unwrap();
     rt.init_stdlib().unwrap();
-    document::register(&rt, dom.clone()).unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
 
     rt.execute_script(r#"
         setTimeout(function() {
@@ -144,4 +146,132 @@ fn test_fetch_registration() {
     // Check if Response class is defined
     let result = rt.execute_script("typeof Response").unwrap();
     assert_eq!(result, "function");
+}
+
+#[test]
+fn test_computed_style() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <style>
+            #target { color: red; font-size: 20px; }
+        </style>
+        <div id="target">Test</div>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        var el = document.getElementById("target");
+        var style = getComputedStyle(el);
+        style.getPropertyValue('color') + '|' + style.getPropertyValue('font-size')
+    "#).unwrap();
+
+    assert_eq!(result, "red|20px");
+}
+
+#[test]
+fn test_dom_traversal() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <div id="parent">
+            <span id="child1">Target 1</span>
+            <div id="child2">
+                <p id="subchild">Deep</p>
+            </div>
+            <span id="child3">Target 3</span>
+        </div>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    let result = rt.execute_script(r#"
+        var parent = document.getElementById("parent");
+        var child1 = document.getElementById("child1");
+        var sub = document.getElementById("subchild");
+        
+        var log = [
+            parent.children.length,
+            parent.firstElementChild.getAttribute('id'),
+            parent.lastElementChild.getAttribute('id'),
+            child1.nextElementSibling.getAttribute('id'),
+            sub.parentElement.getAttribute('id')
+        ].join('|');
+        log
+    "#).unwrap();
+
+    assert_eq!(result, "3|child1|child3|child2|child2");
+}
+
+#[test]
+fn test_dynamic_css() {
+    use crate::engine::AceEngine;
+    use crate::js::bindings::document;
+
+    let mut engine = AceEngine::new();
+    let html = r#"
+        <div id="target">Hello</div>
+        <style id="style-tag">#target { color: red; }</style>
+    "#;
+    engine.load_html(html);
+    let dom = engine.dom.as_ref().unwrap().clone();
+
+    let rt = JsRuntime::new().unwrap();
+    rt.init_stdlib().unwrap();
+    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+
+    // 1. Initial color should be red
+    let result1 = rt.execute_script(r#"
+        const el = document.getElementById("target");
+        getComputedStyle(el).color
+    "#).unwrap();
+    assert_eq!(result1, "red");
+
+    // 2. Change style tag content via JS
+    rt.execute_script(r##"
+        const style = document.getElementById("style-tag");
+        style.textContent = "#target { color: blue; }";
+    "##).unwrap();
+
+    // In a real browser, the mutation would trigger run_pending which calls update_stylesheet.
+    // Here we simulate that if run_pending returns true.
+    let (mutated, stylesheet_dirty) = rt.run_pending();
+    if mutated || stylesheet_dirty {
+        engine.update_stylesheet();
+    }
+
+    let result2 = rt.execute_script(r#"
+        getComputedStyle(document.getElementById("target")).color
+    "#).unwrap();
+    assert_eq!(result2, "blue");
+
+    // 3. Add new style tag via innerHTML
+    rt.execute_script(r##"
+        const div = document.createElement("div");
+        div.innerHTML = "<style>#target { font-size: 50px; }</style>";
+        document.body.appendChild(div);
+    "##).unwrap();
+
+    let (mutated, stylesheet_dirty) = rt.run_pending();
+    if mutated || stylesheet_dirty {
+        engine.update_stylesheet();
+    }
+
+    let result3 = rt.execute_script(r#"
+        getComputedStyle(document.getElementById("target")).fontSize
+    "#).unwrap();
+    assert_eq!(result3, "50px");
 }

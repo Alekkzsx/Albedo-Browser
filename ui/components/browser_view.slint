@@ -12,6 +12,7 @@ export struct ACEBox {
     image_data: image,
     has_image: bool,
     link_url: string,
+    node_id: string,
 }
 
 export component BrowserView inherits Rectangle {
@@ -20,6 +21,7 @@ export component BrowserView inherits Rectangle {
     callback back();
     callback forward();
     callback navigate(string);
+    callback box_clicked(string);
     in-out property <bool> show-start-page;
     in property <[ACEBox]> ace_model;
     in property <length> content-height: 0px; // Calculated by Rust
@@ -59,8 +61,14 @@ export component BrowserView inherits Rectangle {
                         height: 100%;
                     }
 
-                    if box.link_url != "" : TouchArea {
-                        clicked => { root.navigate(box.link_url); }
+                    if box.node_id != "" || box.link_url != "" : TouchArea {
+                        clicked => { 
+                            if box.link_url != "" {
+                                root.navigate(box.link_url); 
+                            } else {
+                                root.box_clicked(box.node_id);
+                            }
+                        }
                         mouse-cursor: pointer;
                     }
                 }
