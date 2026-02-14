@@ -9,30 +9,26 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
 
         let slint_boxes: Vec<ACEBox> = primitives.into_iter().map(|p| {
             
-            // 1. DECODIFICADOR DE CORES
-            let bg_color = match p.color.as_str() {
-                // Cores nomeadas básicas
-                "white" | "#ffffff" | "#FFFFFF" => slint::Color::from_rgb_u8(255, 255, 255),
-                "black" | "#000000" => slint::Color::from_rgb_u8(0, 0, 0),
-                "transparent" => slint::Color::from_argb_u8(0, 0, 0, 0),
-                
-                // Decodificador HEX (#RRGGBB)
-                s if s.starts_with("#") && s.len() == 7 => {
+            // 1. DECODIFICADOR DE CORES (Atualizado para ACE 1.5)
+            let color_para_slint = match p.color.as_str() {
+                s if s.starts_with("#") && s.len() >= 7 => {
                     let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
                     let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
                     let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
                     slint::Color::from_rgb_u8(r, g, b)
-                }
-                
-                // Fallback (Marca texto rosa para denunciar erro)
-                _ => slint::Color::from_rgb_u8(255, 0, 255), 
+                },
+                "blue" => slint::Color::from_rgb_u8(0, 0, 255),
+                "transparent" => slint::Color::from_argb_u8(0, 0, 0, 0),
+                _ => slint::Color::from_rgb_u8(0, 0, 0), // Padrão preto
             };
             
-            // 2. CONTRASTE DE TEXTO AUTOMÁTICO
-            let txt_color = if p.color == "black" || p.color == "#000000" { 
-                slint::Color::from_rgb_u8(255, 255, 255) 
-            } else { 
-                slint::Color::from_rgb_u8(0, 0, 0) 
+            // 2. Lógica de Fundo vs Texto (Senior Fix)
+            // Se for "box" (como o fundo branco), a cor vai pro background.
+            // Se for "text", a cor vai pro texto e o fundo fica transparente.
+            let (bg_color, txt_color) = if p.element_type == "box" {
+                (color_para_slint, slint::Color::from_argb_u8(0, 0, 0, 0))
+            } else {
+                (slint::Color::from_argb_u8(0, 0, 0, 0), color_para_slint)
             };
 
             ACEBox {
