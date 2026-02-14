@@ -10,8 +10,8 @@ pub type JsResult<T> = StdResult<T, rquickjs::Error>;
 /// Provides a safe, ergonomic interface for executing JavaScript code
 /// and interacting with the JS environment.
 pub struct JsRuntime {
-    runtime: Arc<Mutex<Runtime>>,
     context: Arc<Mutex<Context>>,
+    runtime: Arc<Mutex<Runtime>>,
     pub event_loop: Arc<Mutex<EventLoop>>,
     pub mutations: Arc<Mutex<bool>>,
     pub stylesheet_dirty: Arc<Mutex<bool>>,
@@ -26,8 +26,8 @@ impl JsRuntime {
         let context = Context::full(&runtime)?;
         
         Ok(Self {
-            runtime: Arc::new(Mutex::new(runtime)),
             context: Arc::new(Mutex::new(context)),
+            runtime: Arc::new(Mutex::new(runtime)),
             event_loop: Arc::new(Mutex::new(EventLoop::new())),
             mutations: Arc::new(Mutex::new(false)),
             stylesheet_dirty: Arc::new(Mutex::new(false)),
@@ -314,8 +314,8 @@ impl JsRuntime {
 impl Clone for JsRuntime {
     fn clone(&self) -> Self {
         Self {
-            runtime: Arc::clone(&self.runtime),
             context: Arc::clone(&self.context),
+            runtime: Arc::clone(&self.runtime),
             event_loop: Arc::clone(&self.event_loop),
             mutations: Arc::clone(&self.mutations),
             stylesheet_dirty: Arc::clone(&self.stylesheet_dirty),

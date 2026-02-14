@@ -189,6 +189,21 @@ impl Element {
             self.mark_mutation();
         }
     }
+
+    #[qjs(rename = "hasAttribute")]
+    pub fn has_attribute(&self, name: String) -> bool {
+        self.node.as_element()
+            .map(|data| data.attributes.borrow().contains(name.as_str()))
+            .unwrap_or(false)
+    }
+
+    #[qjs(rename = "removeAttribute")]
+    pub fn remove_attribute(&self, name: String) {
+        if let Some(data) = self.node.as_element() {
+            data.attributes.borrow_mut().remove(name);
+            self.mark_mutation();
+        }
+    }
     
     #[qjs(get, rename = "innerHTML")]
     pub fn inner_html(&self) -> String {
