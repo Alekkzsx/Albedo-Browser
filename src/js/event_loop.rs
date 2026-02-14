@@ -1,6 +1,17 @@
 use std::collections::{VecDeque, HashMap};
 use std::time::{Duration, Instant};
 use rquickjs::{Persistent, Function, Ctx, Value};
+use std::sync::mpsc::{Sender, Receiver, channel};
+
+pub struct AsyncResult {
+    pub id: u32,
+    pub result: Result<(u16, String), String>,
+}
+
+pub struct PromiseResolution {
+    pub resolve: Persistent<Function<'static>>,
+    pub reject: Persistent<Function<'static>>,
+}
 
 #[derive(Clone)]
 pub struct TimerTask {
@@ -11,23 +22,52 @@ pub struct TimerTask {
 }
 
 pub struct EventLoop {
-    macro_tasks: VecDeque<Box<dyn FnOnce()>>,
+    macro_tasks: VecDeque<Box<dyn FnOnce() + Send>>,
     timers: HashMap<u32, TimerTask>,
     next_timer_id: u32,
+    // Async bridge
+    pub async_sender: Sender<AsyncResult>,
+    async_receiver: Receiver<AsyncResult>,
+    pending_resolutions: HashMap<u32, PromiseResolution>,
+    next_resolution_id: u32,
 }
 
 impl EventLoop {
     pub fn new() -> Self {
+        let (tx, rx) = channel();
         Self {
             macro_tasks: VecDeque::new(),
             timers: HashMap::new(),
             next_timer_id: 1,
+            async_sender: tx,
+            async_receiver: rx,
+            pending_resolutions: HashMap::new(),
+            next_resolution_id: 1,
         }
+    }
+
+    pub fn register_promise(&mut self, resolve: Persistent<Function<'static>>, reject: Persistent<Function<'static>>) -> u32 {
+        let id = self.next_resolution_id;
+        self.next_resolution_id += 1;
+        self.pending_resolutions.insert(id, PromiseResolution { resolve, reject });
+        id
+    }
+
+    pub fn take_resolution(&mut self, id: u32) -> Option<PromiseResolution> {
+        self.pending_resolutions.remove(&id)
+    }
+
+    pub fn receive_async_results(&mut self) -> Vec<AsyncResult> {
+        let mut results = Vec::new();
+        while let Ok(res) = self.async_receiver.try_recv() {
+            results.push(res);
+        }
+        results
     }
 
     pub fn queue_macro_task<F>(&mut self, task: F)
     where
-        F: FnOnce() + 'static,
+        F: FnOnce() + Send + 'static,
     {
         self.macro_tasks.push_back(Box::new(task));
     }
