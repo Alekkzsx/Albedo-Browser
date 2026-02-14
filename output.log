@@ -1,0 +1,150 @@
+   Compiling albedo v0.1.0 (/home/alekkzsx/Documentos/GitHub/Albedo---Smothest-Browser)
+warning: unused import: `TabMode`
+ --> src/tab/collection.rs:1:23
+  |
+1 | use crate::tab::{Tab, TabMode};
+  |                       ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Tab`
+ --> src/tab_manager.rs:4:18
+  |
+4 | use crate::tab::{Tab, TabMode};
+  |                  ^^^
+
+warning: unused import: `slint::ComponentHandle`
+ --> src/app/setup.rs:2:5
+  |
+2 | use slint::ComponentHandle;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `slint::ComponentHandle`
+ --> src/app/sync.rs:3:5
+  |
+3 | use slint::ComponentHandle;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `color`
+  --> src/engine.rs:91:30
+   |
+91 |                 let (f_size, color, height, is_link) = match tag.as_str() {
+   |                              ^^^^^ help: if this is intentional, prefix it with an underscore: `_color`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `is_active` is never read
+  --> src/tab.rs:16:9
+   |
+10 | pub struct Tab {
+   |            --- field in this struct
+...
+16 |     pub is_active: bool,
+   |         ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `get_active_mut`, `pulse`, and `dispatch_click` are never used
+  --> src/tab/collection.rs:35:12
+   |
+ 9 | impl TabCollection {
+   | ------------------ methods in this implementation
+...
+35 |     pub fn get_active_mut(&mut self) -> Option<&mut Tab> {
+   |            ^^^^^^^^^^^^^^
+...
+67 |     pub fn pulse(&mut self) -> (bool, Option<(String, String)>) {
+   |            ^^^^^
+...
+71 |     pub fn dispatch_click(&mut self, _ptr: usize) -> bool {
+   |            ^^^^^^^^^^^^^^
+
+warning: field `ui_handle` is never read
+  --> src/tab_manager.rs:11:5
+   |
+ 9 | pub struct TabManager {
+   |            ---------- field in this struct
+10 |     collection: Rc<RefCell<TabCollection>>,
+11 |     ui_handle: slint::Weak<AppWindow>,
+   |     ^^^^^^^^^
+   |
+   = note: `TabManager` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `pulse` is never used
+  --> src/tab_manager.rs:97:12
+   |
+14 | impl TabManager {
+   | --------------- method in this implementation
+...
+97 |     pub fn pulse(&self) -> bool {
+   |            ^^^^^
+
+warning: fields `image_url`, `node_ptr`, and `element_type` are never read
+  --> src/engine.rs:15:9
+   |
+ 7 | pub struct ACEPrimitive {
+   |            ------------ fields in this struct
+...
+15 |     pub image_url: Option<String>,
+   |         ^^^^^^^^^
+16 |     pub link_url: Option<String>,
+17 |     pub node_ptr: usize,
+   |         ^^^^^^^^
+18 |     pub element_type: String, // "text", "input", "button", "box"
+   |         ^^^^^^^^^^^^
+   |
+   = note: `ACEPrimitive` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `fetch_url` is never used
+ --> src/services/fetcher.rs:1:8
+  |
+1 | pub fn fetch_url(url: &str) -> (String, String) {
+  |        ^^^^^^^^^
+
+warning: function `handle_pulse` is never used
+  --> src/app/callbacks.rs:91:8
+   |
+91 | pub fn handle_pulse(ui_handle: &Weak<AppWindow>, tm: &TabManager) {
+   |        ^^^^^^^^^^^^
+
+warning: `albedo` (bin "albedo") generated 12 warnings (run `cargo fix --bin "albedo" -p albedo` to apply 5 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 34.90s
+warning: the following packages contain code that will be rejected by a future version of Rust: ashpd v0.8.1, rquickjs-core v0.6.2
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 2`
+     Running `target/debug/albedo`
+[Main] Starting Albedo Browser...
+[TabManager] Creating new tab for URL: https://example.com
+[TabManager] Loading URL: https://example.com
+[Tab] Loading URL: https://example.com
+ENGINE: Carregando URL: https://example.com
+ENGINE: Gerados 6 elementos visuais.
+MAIN: Sincronizando 6 primitivos com a UI
+Navigating to: https://example.com
+[TabManager] Loading URL: https://example.com
+[Tab] Loading URL: https://example.com
+ENGINE: Carregando URL: https://example.com
+ENGINE: Gerados 6 elementos visuais.
+MAIN: Sincronizando 6 primitivos com a UI
+Navigating to: https://example.com
+[Navigation] Ignoring duplicate request to: https://example.com
+Navigating to: https://example.com
+[Navigation] Ignoring duplicate request to: https://example.com
+[TabManager] Creating new tab for URL: albedo://start
+[TabManager] Loading URL: albedo://start
+[Tab] Loading URL: albedo://start
+ENGINE: Carregando URL: albedo://start
+[TabManager] Switching to tab index: 1
+[TabManager] Tab switched successfully to: albedo://start
+MAIN: Sincronizando 0 primitivos com a UI
+Navigating to: https://example.com
+[TabManager] Loading URL: https://example.com
+[Tab] Loading URL: https://example.com
+ENGINE: Carregando URL: https://example.com
+ENGINE: Gerados 6 elementos visuais.
+MAIN: Sincronizando 6 primitivos com a UI
+Navigating to: https://example.com
+[Navigation] Ignoring duplicate request to: https://example.com
+Navigating to: https://example.com
+[Navigation] Ignoring duplicate request to: https://example.com
+Navigating to: https://example.com
+[Navigation] Ignoring duplicate request to: https://example.com

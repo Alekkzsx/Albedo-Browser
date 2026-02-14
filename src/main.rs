@@ -1,7 +1,7 @@
 mod tab;
 mod tab_manager;
 mod engine;
-mod js;
+// mod js;
 mod services;
 
 use slint::ComponentHandle;
@@ -82,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app::callbacks::handle_close_tab(&tm_clone, index, &tabs_model_clone);
     });
 
+    /*
     // JS Pulse Timer
     let tm_pulse = tab_manager.clone();
     let ui_pulse = ui_handle.clone();
@@ -89,6 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     pulse_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), move || {
         app::callbacks::handle_pulse(&ui_pulse, &tm_pulse);
     });
+    */
 
     let tm_click = tab_manager.clone();
     let ui_click = ui_handle.clone();

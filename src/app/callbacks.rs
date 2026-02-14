@@ -54,7 +54,7 @@ pub fn handle_navigate(ui_handle: &Weak<AppWindow>, tm: &TabManager, url: Shared
                 return;
             }
 
-            if let Some((url, show_start, _native_content, _mode)) = tm.navigate(ui.window(), &final_url) {
+            if let Some((url, show_start, _is_loading, _status)) = tm.navigate(ui.window(), &final_url) {
             ui.set_current_url(url.into());
             ui.set_show_start_page(show_start);
             sync_ace_visuals(&ui, tm);
