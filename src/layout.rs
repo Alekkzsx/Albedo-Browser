@@ -1,69 +1,41 @@
-#[derive(Clone, Debug)]
-pub struct TextLayout {
-    pub text_lines: Vec<String>,
-    pub total_height: f32,
+// ARQUIVO: src/layout.rs
+
+#[derive(Debug, Clone)]
+pub struct LayoutMetrics {
+    pub width: f32,
+    pub height: f32,
+    pub line_height: f32,
 }
 
-pub struct FontMetrics {
-    pub char_width_ratio: f32, // Largura média de um char (0.6 para fontes padrão)
-    pub line_height_ratio: f32, // Altura da linha (1.2 é um bom respiro)
-}
+/// Calcula o espaço que um texto ocupará na tela usando uma heurística rápida.
+/// Não carrega fontes reais para economizar CPU (Filosofia Albedo).
+pub fn measure_text(text: &str, font_size: f32, container_width: f32) -> LayoutMetrics {
+    // 1. Definições Base
+    // Fator 0.6 é uma média segura para fontes sans-serif (Arial/Roboto)
+    let avg_char_width = font_size * 0.6; 
+    let line_height = font_size * 1.3; // 1.3 dá um respiro bom para leitura
 
-impl Default for FontMetrics {
-    fn default() -> Self {
-        Self {
-            char_width_ratio: 0.6,
-            line_height_ratio: 1.4,
-        }
-    }
-}
-
-pub fn calculate_text_wrapping(text: &str, font_size: f32, max_width: f32) -> TextLayout {
-    let metrics = FontMetrics::default();
-    
-    // 1. Estimar largura de um caractere em pixels
-    // Ex: Fonte 16px -> char_width ~= 9.6px
-    let avg_char_width = font_size * metrics.char_width_ratio;
-    
-    // 2. Calcular quantos caracteres cabem em uma linha
-    let chars_per_line = (max_width / avg_char_width).floor() as usize;
-    
-    // 3. O algoritmo de "Word Wrap" (Quebra por palavra)
-    let mut lines = Vec::new();
-    let words: Vec<&str> = text.split_whitespace().collect();
-    
-    let mut current_line = String::new();
-    let mut current_len = 0;
-
-    for word in words {
-        let word_len = word.chars().count();
-        
-        // Se a palavra sozinha é maior que a linha, corta ela (edge case)
-        // Se a linha atual + palavra passar do limite -> Nova Linha
-        if current_len + word_len + 1 > chars_per_line && current_len > 0 {
-            lines.push(current_line);
-            current_line = String::from(word);
-            current_len = word_len;
-        } else {
-            if !current_line.is_empty() {
-                current_line.push(' ');
-                current_len += 1;
-            }
-            current_line.push_str(word);
-            current_len += word_len;
-        }
-    }
-    // Empurra a última linha que sobrou
-    if !current_line.is_empty() {
-        lines.push(current_line);
+    // 2. Proteção contra texto vazio
+    if text.trim().is_empty() {
+        return LayoutMetrics { width: container_width, height: 0.0, line_height };
     }
 
-    // 4. Calcular Altura Total (Baseado no número de linhas geradas)
-    let line_height = font_size * metrics.line_height_ratio;
-    let total_height = (lines.len() as f32 * line_height).max(line_height); // Mínimo 1 linha
+    // 3. Matemática de Quebra de Linha
+    // Quantos caracteres cabem em uma linha antes de bater na borda?
+    let chars_per_line = (container_width / avg_char_width).floor().max(1.0) as usize;
+    
+    // Quantos caracteres o texto tem?
+    let total_chars = text.chars().count();
 
-    TextLayout {
-        text_lines: lines, // Retornamos o texto já dividido (ou unido para o Slint lidar com wrap)
-        total_height,      // IMPORTANTE: Isso diz pro próximo elemento onde começar!
+    // Quantas linhas serão necessárias? (Arredondamento para cima)
+    // Exemplo: 105 chars / 50 por linha = 2.1 -> 3 linhas
+    let num_lines = (total_chars as f32 / chars_per_line as f32).ceil() as usize;
+    let safe_num_lines = num_lines.max(1); // Mínimo 1 linha
+
+    // 4. Resultado Final
+    LayoutMetrics {
+        width: container_width,
+        height: safe_num_lines as f32 * line_height,
+        line_height,
     }
 }

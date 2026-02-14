@@ -67,84 +67,66 @@ impl AceEngine {
     fn parse_html(&mut self, html: &str) {
         let document = kuchiki::parse_html().one(html);
         
-        let mut cursor_y = 10.0;
-        let start_x = 20.0;
+        // 1. Iniciar o Sistema de CSS (Fase 1 que estava "unused")
+        // Vamos criar um CSS padrão básico para o Albedo
+        let default_css = "h1 { color: #000000; font-size: 32px; } a { color: #0000ff; } p { color: #333333; }";
+        let stylesheet = crate::css::parse(default_css);
 
-        // 1. FUNDO BRANCO GIGANTE (O papel)
-        // Isso garante que não estamos desenhando cinza sobre cinza
+        let mut cursor_y = 20.0;
+        let start_x = 20.0;
+        let container_width = 760.0;
+
+        self.primitives.clear();
+
+        // Fundo Branco
         self.primitives.push(ACEPrimitive {
-            x: 0.0, y: 0.0, width: 2000.0, height: 5000.0,
-            color: "#FFFFFF".to_string(), // Branco Hexadecimal
-            text: "".into(), font_size: 0.0, image_url: None, link_url: None, node_ptr: 0, 
-            element_type: "box".into()
+            x: 0.0, y: 0.0, width: 2000.0, height: 8000.0,
+            color: "#FFFFFF".to_string(), text: "".into(), font_size: 0.0, 
+            image_url: None, link_url: None, node_ptr: 0, element_type: "box".into()
         });
 
-        // 2. BUSCAR CONTEÚDO
-        if let Ok(selectors) = document.select("h1, h2, p, a, div, li") {
+        // 2. Seleção refinada para evitar duplicação (filtramos apenas os 'filhos' com texto)
+        if let Ok(selectors) = document.select("h1, h2, h3, p, a, li") {
             for css_match in selectors {
                 let node = css_match.as_node();
-                let text_content = node.text_contents();
+                let text_content = node.text_contents().trim().to_string();
                 
-                // Pula elementos vazios
-                if text_content.trim().is_empty() { continue; }
+                if text_content.is_empty() { continue; }
 
-                let tag_name = node.as_element().unwrap().name.local.to_string();
+                let element = node.as_element().unwrap();
+                let tag_name = element.name.local.to_string();
+
+                // 3. USAR O MÓDULO CSS (Fase 1 integrada!)
+                let element_data = crate::css::ElementData {
+                    tag_name: tag_name.clone(),
+                    id: None, // Futuro: pegar ID do atributo
+                    classes: vec![], // Futuro: pegar classes
+                };
                 
-                // 3. MAPA DE ESTILOS (CORES HEXADECIMAIS HARDCODED)
-                // Usando cores claras de fundo para facilitar leitura
-                let (font_size, bg_color, height) = match tag_name.as_str() {
-                    "h1" => (32.0, "#FFD700", 50.0),      // Amarelo Ouro
-                    "h2" => (24.0, "#ADFF2F", 40.0),      // Verde Limão
-                    "a"  => (16.0, "#E0FFFF", 30.0),      // Azul Ciano Claro (Links)
-                    "li" => (14.0, "#F5F5DC", 25.0),      // Bege
-                    "p"  => (14.0, "#FFFFFF", 20.0),      // Branco
-                    "div"=> (14.0, "#EEEEEE", 20.0),      // Cinza Claro
-                    _    => (14.0, "#FFFFFF", 20.0),
-                };
+                let (font_size, _bg_color, text_color_hex) = stylesheet.calculate_style(&element_data);
 
-                let link_url = if tag_name == "a" {
-                    let attributes = node.as_element().unwrap().attributes.borrow();
-                    attributes.get("href").map(|s| s.to_string())
-                } else {
-                    None
-                };
+                // 4. USAR O MÓDULO LAYOUT (Fase 2 integrada!)
+                let metrics = crate::layout::measure_text(&text_content, font_size, container_width);
 
-                let container_width = 760.0; // Largura disponível (max_width)
-
-                // CHAMAR O MATEMÁTICO (Layout)
-                // Só calculamos wrap para textos longos (p, div, h1...), botões/inputs tem altura fixa geralmente
-                let (final_text, calculated_height) = if tag_name == "p" || tag_name == "div" || tag_name == "li" || tag_name == "span" || tag_name.starts_with('h') {
-                    let layout_result = layout::calculate_text_wrapping(&text_content, font_size, container_width);
-                    
-                    // DICA ALBEDO: O Slint tem suporte nativo a "word-wrap", então podemos mandar o texto inteiro.
-                    // O IMPORTANTE é que o Rust saiba a ALTURA para empurrar o cursor_y.
-                    (text_content.trim().to_string(), layout_result.total_height)
-                } else {
-                    // Inputs, imagens e outros elementos continuam com altura padrão
-                    (text_content.trim().to_string(), height) // Use 'height' from the match above
-                };
-
-                // 4. CRIAR O BLOCO VISUAL (ACEPrimitive)
+                // 5. CRIAR O PRIMITIVO
                 self.primitives.push(ACEPrimitive {
                     x: start_x,
                     y: cursor_y,
                     width: container_width,
-                    height: calculated_height, // <--- AQUI A MÁGICA (Altura dinâmica)
-                    color: bg_color.to_string(), // <--- CORRIGIDO: Usando a cor definida!
-                    text: final_text,
+                    height: metrics.height,
+                    color: text_color_hex, // Cor vinda do CSS!
+                    text: text_content,
                     font_size,
                     image_url: None,
-                    link_url,
+                    link_url: element.attributes.borrow().get("href").map(|s| s.to_string()),
                     node_ptr: 0,
-                    element_type: if tag_name == "input" { "input".into() } else { "text".into() }
+                    element_type: "text".into()
                 });
 
-                // A VITAL ATUALIZAÇÃO DO CURSOR
-                // Agora o próximo elemento respeitará se este texto teve 1 linha ou 10 linhas.
-                cursor_y += calculated_height + 10.0; // +10px de margem (respiro)
+                cursor_y += metrics.height + 15.0; // Espaçamento entre blocos
             }
         }
-        println!("ENGINE: Gerados {} elementos visuais coloridos.", self.primitives.len());
+        println!("ENGINE: Layout ACE 1.5 finalizado. Altura: {}px", cursor_y);
     }
 
     fn render_error(&mut self, msg: &str) {
