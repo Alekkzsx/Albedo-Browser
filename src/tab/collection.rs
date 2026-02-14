@@ -14,9 +14,9 @@ impl TabCollection {
         }
     }
 
-    pub fn add(&mut self, url: String) -> Uuid {
-        let new_tab = Tab::new(url);
-        let id = new_tab.id;
+    pub fn add(&mut self, url: String) -> String {
+        let id = Uuid::new_v4().to_string();
+        let new_tab = Tab::new(id.clone(), url);
         self.tabs.push(new_tab);
         if self.tabs.len() == 1 {
             self.active_index = Some(0);
@@ -63,19 +63,13 @@ impl TabCollection {
         }
     }
 
-    pub fn pulse(&mut self) -> (bool, Option<(Uuid, String)>) {
-        if let Some(tab) = self.get_active_mut() {
-             let (redraw, nav) = tab.handle_pulse();
-             let nav_req = nav.map(|url| (tab.id, url));
-             return (redraw, nav_req);
-        }
+    // Pulse is minimal now, removed JS runtime logic
+    pub fn pulse(&mut self) -> (bool, Option<(String, String)>) {
         (false, None)
     }
 
-    pub fn dispatch_click(&mut self, ptr: usize) -> bool {
-        if let Some(tab) = self.get_active_mut() {
-            return tab.dispatch_click(ptr);
-        }
+    pub fn dispatch_click(&mut self, _ptr: usize) -> bool {
+        // No JS runtime, so no click dispatch for now
         false
     }
 }
