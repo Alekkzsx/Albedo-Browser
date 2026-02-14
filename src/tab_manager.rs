@@ -6,38 +6,10 @@ use uuid::Uuid;
 use reqwest; // Added for fetching external URLs
 
 use crate::engine::AceEngine;
+use crate::js::JsRuntime;
+use crate::js::console::Console;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TabMode {
-    Native, // Everything is ACE now
-}
-
-pub struct Tab {
-    pub id: Uuid,
-    pub title: String,
-    pub url: String,
-    pub engine: AceEngine, // Always present
-    pub mode: TabMode,
-    pub is_active: bool,
-    pub show_start_page: bool,
-}
-
-impl Tab {
-    pub fn new(url: String) -> Self {
-        let show_start_page = url == "albedo://start";
-        let title = if show_start_page { "New Tab".to_string() } else { "Loading...".to_string() };
-        
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            url,
-            engine: AceEngine::new(),
-            mode: TabMode::Native,
-            is_active: false,
-            show_start_page,
-        }
-    }
-}
+use crate::tab::{Tab, TabMode};
 
 use crate::AppWindow;
 
@@ -166,7 +138,63 @@ impl TabManager {
                     }
                 };
 
-                tab.engine.load_html(&html_content);
+                let mut engine = AceEngine::new();
+                let scripts = engine.load_html(&html_content);
+                
+                // Initialize/Reset JS Runtime for the new page
+                if let Ok(rt) = JsRuntime::new() {
+                    let origin = get_origin(url);
+                    if let Err(e) = rt.init_storage(origin) {
+                        eprintln!("Failed to initialize storage for {}: {}", origin, e);
+                    }
+                    
+                    if let Some(dom) = &engine.dom {
+                        if let Err(e) = crate::js::bindings::document::register(&rt, dom.clone()) {
+                             eprintln!("Failed to register document API: {}", e);
+                        }
+                    }
+                    if let Err(e) = crate::js::console::Console::register(&rt) {
+                         eprintln!("Failed to register console: {}", e);
+                    }
+                    if let Err(e) = rt.register_events() {
+                        eprintln!("Failed to register events: {}", e);
+                    }
+                    if let Err(e) = rt.init_stdlib() {
+                        eprintln!("Failed to init stdlib: {}", e);
+                    }
+                    tab.js_runtime = Some(rt);
+                }
+                
+                tab.engine = engine;
+                tab.title = tab.engine.dom.as_ref()
+                    .and_then(|dom| dom.root.select("title").ok()?.next())
+                    .map(|el| el.text_contents())
+                    .unwrap_or_else(|| url.to_string());
+
+                // Execute scripts if runtime is available
+                if let Some(rt) = &tab.js_runtime {
+                    for script in scripts {
+                        let code = if let Some(src) = script.src {
+                            // Fetch external script
+                             match reqwest::blocking::get(&src) {
+                                Ok(resp) => resp.text().unwrap_or_else(|_| "".to_string()),
+                                Err(e) => {
+                                    eprintln!("Failed to fetch script {}: {}", src, e);
+                                    continue;
+                                }
+                            }
+                        } else {
+                            script.content
+                        };
+
+                        if !code.trim().is_empty() {
+                            if let Err(e) = rt.execute_script(&code) {
+                                 eprintln!("JS Error: {}", e);
+                            }
+                        }
+                    }
+                }
+
                 let rendered = tab.engine.render();
                 return Some((tab.url.clone(), tab.show_start_page, rendered, tab.mode));
             }
@@ -215,4 +243,27 @@ impl TabManager {
         }
         false
     }
+    pub fn pulse(&self) -> bool {
+        let tabs = self.tabs.borrow();
+        if let Some(idx) = *self.active_tab_index.borrow() {
+            if let Some(tab) = tabs.get(idx) {
+                if let Some(rt) = &tab.js_runtime {
+                    return rt.run_pending();
+                }
+            }
+        }
+        false
+    }
+}
+
+fn get_origin(url: &str) -> &str {
+    if let Some(pos) = url.find("://") {
+        let rest = &url[pos + 3..];
+        if let Some(slash_pos) = rest.find('/') {
+            return &url[..pos + 3 + slash_pos];
+        } else {
+            return url;
+        }
+    }
+    url
 }
