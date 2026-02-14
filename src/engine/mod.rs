@@ -9,6 +9,12 @@ pub struct AceEngine {
     pub stylesheet: style::Stylesheet,
 }
 
+#[derive(Debug, Clone)]
+pub struct Script {
+    pub content: String,
+    pub src: Option<String>,
+}
+
 impl AceEngine {
     pub fn new() -> Self {
         Self { 
@@ -17,15 +23,21 @@ impl AceEngine {
         }
     }
 
-    pub fn load_html(&mut self, html: &str) {
+    pub fn load_html(&mut self, html: &str) -> Vec<Script> {
         let dom = parser::parse_html(html);
         
         // Extract <style> tags
         let mut css_text = String::new();
         Self::extract_styles(&dom.root, &mut css_text);
         
+        // Extract <script> tags
+        let mut scripts = Vec::new();
+        Self::extract_scripts(&dom.root, &mut scripts);
+        
         self.stylesheet = style::Stylesheet::parse(&css_text);
         self.dom = Some(dom);
+        
+        scripts
     }
 
     fn extract_styles(node: &kuchiki::NodeRef, output: &mut String) {
@@ -41,6 +53,26 @@ impl AceEngine {
         }
         for child in node.children() {
             Self::extract_styles(&child, output);
+        }
+    }
+
+    fn extract_scripts(node: &kuchiki::NodeRef, output: &mut Vec<Script>) {
+        if let Some(element) = node.as_element() {
+            if element.name.local.to_string() == "script" {
+                let src = element.attributes.borrow().get("src").map(|s| s.to_string());
+                let mut content = String::new();
+                
+                for child in node.children() {
+                    if let Some(text) = child.as_text() {
+                        content.push_str(&text.borrow());
+                    }
+                }
+                
+                output.push(Script { content, src });
+            }
+        }
+        for child in node.children() {
+            Self::extract_scripts(&child, output);
         }
     }
 
@@ -72,3 +104,6 @@ impl AceEngine {
         Vec::new()
     }
 }
+
+#[cfg(test)]
+mod tests_scripts;

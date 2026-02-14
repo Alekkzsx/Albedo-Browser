@@ -1,5 +1,5 @@
-use kuchiki::traits::*;
 use kuchiki::NodeData;
+use kuchiki::traits::*;
 
 #[derive(Debug, Clone)]
 pub struct DomTree {
@@ -9,6 +9,18 @@ pub struct DomTree {
 impl DomTree {
     pub fn new(root: kuchiki::NodeRef) -> Self {
         Self { root }
+    }
+    
+    pub fn find_by_id(&self, id: &str) -> Option<kuchiki::NodeRef> {
+        if let Ok(mut match_iter) = self.root.select(&format!("#{}", id)) {
+            match_iter.next().map(|m| m.as_node().clone())
+        } else {
+            None
+        }
+    }
+    
+    pub fn text_contents(&self) -> String {
+        self.root.text_contents()
     }
 
     pub fn render_text(&self) -> String {
