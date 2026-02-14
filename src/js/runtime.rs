@@ -13,6 +13,8 @@ pub struct JsRuntime {
     runtime: Arc<Mutex<Runtime>>,
     context: Arc<Mutex<Context>>,
     pub event_loop: Arc<Mutex<EventLoop>>,
+    pub mutations: Arc<Mutex<bool>>,
+    pub stylesheet_dirty: Arc<Mutex<bool>>,
 }
 
 use crate::js::event_loop::EventLoop;
@@ -27,6 +29,8 @@ impl JsRuntime {
             runtime: Arc::new(Mutex::new(runtime)),
             context: Arc::new(Mutex::new(context)),
             event_loop: Arc::new(Mutex::new(EventLoop::new())),
+            mutations: Arc::new(Mutex::new(false)),
+            stylesheet_dirty: Arc::new(Mutex::new(false)),
         })
     }
     
@@ -105,12 +109,36 @@ impl JsRuntime {
         f(&ctx)
     }
 
+    pub fn dispatch_event(&self, node: kuchiki::NodeRef, type_: &str) {
+        self.with_context(|ctx| {
+            ctx.with(|ctx| {
+                use crate::js::bindings::element::Element;
+                let element = Element { 
+                    node, 
+                    mutations: self.mutations.clone(),
+                    stylesheet_dirty: self.stylesheet_dirty.clone(),
+                };
+                if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
+                    let instance_val = instance.into_value();
+                    let script = format!("new Event('{}', {{ bubbles: true }})", type_);
+                    if let Ok(event_obj) = ctx.eval::<rquickjs::Value, _>(script) {
+                         if let Some(obj) = instance_val.as_object() {
+                             if let Ok(dispatch) = obj.get::<_, rquickjs::Function>("dispatchEvent") {
+                                 let _: rquickjs::Result<rquickjs::Value> = dispatch.call((event_obj,));
+                             }
+                         }
+                    }
+                }
+            })
+        });
+    }
+
 
     pub fn init_stdlib(&self) -> JsResult<()> {
-        let _ = self.register_events();
-        let _ = crate::js::console::Console::register(self);
-        let _ = crate::js::bindings::timers::register(self);
-        let _ = crate::js::bindings::fetch::register(self);
+        self.register_events()?;
+        crate::js::console::Console::register(self)?;
+        crate::js::bindings::timers::register(self)?;
+        crate::js::bindings::fetch::register(self)?;
         // localStorage/sessionStorage are initialized separately via init_storage per domain
         Ok(())
     }
@@ -179,9 +207,18 @@ impl JsRuntime {
         rt.run_gc();
     }
 
-    pub fn run_pending(&self) -> bool {
+    pub fn run_pending(&self) -> (bool, bool) {
         let mut executed = false;
         
+        // 0. Check for DOM mutations that happened since last pulse
+        {
+            let mut muts = self.mutations.lock().unwrap();
+            if *muts {
+                executed = true;
+                *muts = false;
+            }
+        }
+
         // 1. Run QuickJS pending jobs (Promises/microtasks)
         {
             let ctx = self.context.lock().unwrap();
@@ -260,8 +297,17 @@ impl JsRuntime {
             task();
             executed = true;
         }
+
+        // 4. Stylesheet dirty check
+        let mut stylesheet_dirty = false;
+        if let Ok(mut sd) = self.stylesheet_dirty.lock() {
+            if *sd {
+                stylesheet_dirty = true;
+                *sd = false;
+            }
+        }
         
-        executed
+        (executed, stylesheet_dirty)
     }
 }
 
@@ -271,6 +317,8 @@ impl Clone for JsRuntime {
             runtime: Arc::clone(&self.runtime),
             context: Arc::clone(&self.context),
             event_loop: Arc::clone(&self.event_loop),
+            mutations: Arc::clone(&self.mutations),
+            stylesheet_dirty: Arc::clone(&self.stylesheet_dirty),
         }
     }
 }

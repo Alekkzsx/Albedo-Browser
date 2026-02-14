@@ -1,4 +1,5 @@
 use crate::engine::style::Style;
+use kuchiki::NodeRef;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Rect {
@@ -39,6 +40,7 @@ pub struct LayoutBox {
     pub text_content: String,
     pub image_url: Option<String>,
     pub link_url: Option<String>,
+    pub node: Option<NodeRef>,
 }
 
 impl LayoutBox {
@@ -51,6 +53,7 @@ impl LayoutBox {
             text_content: String::new(),
             image_url: None,
             link_url: None,
+            node: None,
         }
     }
 }
@@ -65,4 +68,5 @@ pub struct RenderPrimitive {
     pub font_size: f32,
     pub image_url: Option<String>,
     pub link_url: Option<String>,
+    pub node_ptr: usize,
 }

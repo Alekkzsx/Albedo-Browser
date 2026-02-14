@@ -142,6 +142,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    let tm_click = tab_manager.clone();
+    let ui_click = ui_handle.clone();
+    ui.on_box_clicked(move |ptr_str| {
+        let ptr = if ptr_str.starts_with("0x") {
+            usize::from_str_radix(&ptr_str[2..], 16).unwrap_or(0)
+        } else {
+            ptr_str.parse::<usize>().unwrap_or(0)
+        };
+
+        if ptr != 0 {
+            if let Some(ui) = ui_click.upgrade() {
+                 let tabs = tm_click.get_tabs_info();
+                 // We need to find the active tab and its runtime
+                 // TabManager::get_active_tab_native_data only gives engine
+                 // I should probably add a method to TabManager to dispatch event by ptr
+                 if tm_click.dispatch_click_to_active_tab(ptr) {
+                     sync_ace_visuals(&ui, &tm_click);
+                 }
+            }
+        }
+    });
+
     ui.run()?;
     Ok(())
 }
@@ -188,6 +210,7 @@ fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                 image_data,
                 has_image,
                 link_url: p.link_url.unwrap_or_default().into(),
+                node_id: format!("0x{:x}", p.node_ptr).into(),
             }
         }).collect();
         let model = std::rc::Rc::new(slint::VecModel::from(slint_boxes));

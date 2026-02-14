@@ -5,3 +5,6 @@ pub mod console;
 pub mod bindings;
 
 pub use runtime::JsRuntime;
+
+#[cfg(test)]
+mod runtime_tests;

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Selector {
     Tag(String),
@@ -21,6 +23,11 @@ pub struct Rule {
 #[derive(Debug, Clone, Default)]
 pub struct Stylesheet {
     pub rules: Vec<Rule>,
+    // Buckets for faster matching
+    pub id_rules: HashMap<String, Vec<(u32, Rule)>>,
+    pub class_rules: HashMap<String, Vec<(u32, Rule)>>,
+    pub tag_rules: HashMap<String, Vec<(u32, Rule)>>,
+    pub universal_rules: Vec<(u32, Rule)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -70,36 +77,12 @@ pub enum AlignItems {
 }
 
 impl Selector {
-    pub fn specificity(&self) -> (u32, u32, u32) {
+    pub fn specificity(&self) -> u32 {
         match self {
-            Selector::Id(_) => (1, 0, 0),
-            Selector::Class(_) => (0, 1, 0),
-            Selector::Tag(_) => (0, 0, 1),
-            Selector::Universal => (0, 0, 0),
-        }
-    }
-
-    pub fn matches_tag(&self, tag: &str) -> bool {
-        match self {
-            Selector::Tag(t) => t == tag,
-            Selector::Universal => true,
-            _ => false,
-        }
-    }
-
-    pub fn matches_class(&self, classes: &[String]) -> bool {
-        match self {
-            Selector::Class(c) => classes.contains(c),
-            Selector::Universal => true,
-            _ => false,
-        }
-    }
-
-    pub fn matches_id(&self, id: &str) -> bool {
-        match self {
-            Selector::Id(i) => i == id,
-            Selector::Universal => true,
-            _ => false,
+            Selector::Id(_) => 100,
+            Selector::Class(_) => 10,
+            Selector::Tag(_) => 1,
+            Selector::Universal => 0,
         }
     }
 }
@@ -109,9 +92,7 @@ impl Stylesheet {
         let mut stylesheet = Self::default();
         let mut input = css.to_string();
         
-        // Very basic CSS parser
         while !input.trim().is_empty() {
-            // Find selector block
             if let Some(brace_pos) = input.find('{') {
                 let selectors_str = input[..brace_pos].trim();
                 let mut selectors = Vec::new();
@@ -142,7 +123,18 @@ impl Stylesheet {
                             });
                         }
                     }
-                    stylesheet.rules.push(Rule { selectors, declarations });
+                    
+                    let rule = Rule { selectors, declarations };
+                    for selector in &rule.selectors {
+                        let specificity = selector.specificity();
+                        match selector {
+                            Selector::Id(id) => stylesheet.id_rules.entry(id.clone()).or_default().push((specificity, rule.clone())),
+                            Selector::Class(cls) => stylesheet.class_rules.entry(cls.clone()).or_default().push((specificity, rule.clone())),
+                            Selector::Tag(tag) => stylesheet.tag_rules.entry(tag.clone()).or_default().push((specificity, rule.clone())),
+                            Selector::Universal => stylesheet.universal_rules.push((specificity, rule.clone())),
+                        }
+                    }
+                    stylesheet.rules.push(rule);
                     input = input[end_brace + 1..].to_string();
                 } else {
                     break;
@@ -165,6 +157,34 @@ impl Style {
             flex_direction: FlexDirection::Row,
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::Stretch,
+        }
+    }
+
+
+    pub fn get(&self, property: &str) -> String {
+        match property {
+            "color" => self.color.clone(),
+            "font-size" => format!("{}px", self.font_size),
+            "background-color" => self.background_color.clone(),
+            "display" => format!("{:?}", self.display).to_lowercase(),
+            "flex-direction" => match self.flex_direction {
+                FlexDirection::Row => "row".to_string(),
+                FlexDirection::Column => "column".to_string(),
+            },
+            "justify-content" => match self.justify_content {
+                JustifyContent::FlexStart => "flex-start".to_string(),
+                JustifyContent::Center => "center".to_string(),
+                JustifyContent::FlexEnd => "flex-end".to_string(),
+                JustifyContent::SpaceBetween => "space-between".to_string(),
+                JustifyContent::SpaceAround => "space-around".to_string(),
+            },
+            "align-items" => match self.align_items {
+                AlignItems::Stretch => "stretch".to_string(),
+                AlignItems::FlexStart => "flex-start".to_string(),
+                AlignItems::Center => "center".to_string(),
+                AlignItems::FlexEnd => "flex-end".to_string(),
+            },
+            _ => String::new(),
         }
     }
 
@@ -251,4 +271,60 @@ impl Style {
         }
         style
     }
+}
+
+pub fn resolve_style(_node: &kuchiki::NodeRef, element: &kuchiki::ElementData, stylesheet: &Stylesheet) -> Style {
+    let tag = element.name.local.to_string();
+    let mut style = Style::default_for_tag(&tag);
+    
+    let id = element.attributes.borrow().get("id").unwrap_or_default().to_string();
+    let class_attr = element.attributes.borrow().get("class").unwrap_or_default().to_string();
+    let classes: Vec<String> = class_attr.split_whitespace().map(|s| s.to_string()).collect();
+
+    let mut matched_rules = Vec::new();
+    
+    // 1. Match ID rules
+    if !id.is_empty() {
+        if let Some(rules) = stylesheet.id_rules.get(&id) {
+            matched_rules.extend(rules);
+        }
+    }
+    
+    // 2. Match Class rules
+    for cls in &classes {
+        if let Some(rules) = stylesheet.class_rules.get(cls) {
+            matched_rules.extend(rules);
+        }
+    }
+    
+    // 3. Match Tag rules
+    if let Some(rules) = stylesheet.tag_rules.get(&tag) {
+        matched_rules.extend(rules);
+    }
+    
+    // 4. Match Universal rules
+    matched_rules.extend(&stylesheet.universal_rules);
+    
+    // Sort by specificity
+    matched_rules.sort_by_key(|(spec, _)| *spec);
+    
+    for (_, rule) in matched_rules {
+        for decl in &rule.declarations {
+            style.apply_declaration(decl);
+        }
+    }
+    
+    // Inline styles (highest priority)
+    if let Some(s) = element.attributes.borrow().get("style") {
+        for decl_str in s.split(';') {
+             let parts: Vec<&str> = decl_str.split(':').collect();
+             if parts.len() == 2 {
+                 let name = parts[0].trim().to_string();
+                 let value = parts[1].trim().to_string();
+                 style.apply_declaration(&Declaration { name, value });
+             }
+        }
+    }
+    
+    style
 }

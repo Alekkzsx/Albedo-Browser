@@ -8,6 +8,10 @@ use std::collections::HashSet;
 pub struct DomTokenList {
     #[qjs(skip_trace)]
     pub node: NodeRef,
+    #[qjs(skip_trace)]
+    pub mutations: std::sync::Arc<std::sync::Mutex<bool>>,
+    #[qjs(skip_trace)]
+    pub stylesheet_dirty: std::sync::Arc<std::sync::Mutex<bool>>,
 }
 
 impl DomTokenList {
@@ -35,6 +39,11 @@ impl DomTokenList {
 
 #[rquickjs::methods]
 impl DomTokenList {
+    fn mark_mutation(&self) {
+        if let Ok(mut m) = self.mutations.lock() {
+            *m = true;
+        }
+    }
 
     #[qjs(rename = "add")]
     pub fn add(&self, token: String) {
@@ -44,6 +53,7 @@ impl DomTokenList {
         let mut classes = self.get_classes();
         classes.insert(token);
         self.update_class_attribute(&classes);
+        self.mark_mutation();
     }
 
     #[qjs(rename = "remove")]
@@ -51,6 +61,7 @@ impl DomTokenList {
         let mut classes = self.get_classes();
         if classes.remove(&token) {
             self.update_class_attribute(&classes);
+            self.mark_mutation();
         }
     }
 
@@ -65,6 +76,7 @@ impl DomTokenList {
             true
         };
         self.update_class_attribute(&classes);
+        self.mark_mutation();
         present
     }
 

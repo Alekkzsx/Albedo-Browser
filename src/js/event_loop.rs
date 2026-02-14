@@ -95,7 +95,7 @@ impl EventLoop {
     }
 
     /// Extract all pending tasks ensuring no locks are held during execution later
-    pub fn take_pending_tasks(&mut self) -> (Vec<TimerTask>, VecDeque<Box<dyn FnOnce()>>) {
+    pub fn take_pending_tasks(&mut self) -> (Vec<TimerTask>, VecDeque<Box<dyn FnOnce() + Send>>) {
         let now = Instant::now();
         let mut expired_ids = Vec::new();
         

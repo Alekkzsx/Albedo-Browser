@@ -11,3 +11,4 @@ pub mod timers;
 // pub mod event;
 pub mod storage;
 pub mod fetch;
+pub mod computed_style;

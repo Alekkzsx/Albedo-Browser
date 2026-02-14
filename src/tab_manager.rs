@@ -143,7 +143,7 @@ impl TabManager {
                     }
                     
                     if let Some(dom) = &engine.dom {
-                        if let Err(e) = crate::js::bindings::document::register(&rt, dom.clone()) {
+                        if let Err(e) = crate::js::bindings::document::register(&rt, dom.clone(), engine.stylesheet.clone()) {
                              eprintln!("Failed to register document API: {}", e);
                         }
                     }
@@ -238,11 +238,36 @@ impl TabManager {
         false
     }
     pub fn pulse(&self) -> bool {
-        let tabs = self.tabs.borrow();
+        let mut tabs = self.tabs.borrow_mut();
         if let Some(idx) = *self.active_tab_index.borrow() {
-            if let Some(tab) = tabs.get(idx) {
+            if let Some(tab) = tabs.get_mut(idx) {
                 if let Some(rt) = &tab.js_runtime {
-                    return rt.run_pending();
+                    let (mutated, stylesheet_dirty) = rt.run_pending();
+                    if stylesheet_dirty {
+                        tab.engine.update_stylesheet();
+                    }
+                    return mutated || stylesheet_dirty;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn dispatch_click_to_active_tab(&self, ptr: usize) -> bool {
+        let mut tabs = self.tabs.borrow_mut();
+        if let Some(idx) = *self.active_tab_index.borrow() {
+            if let Some(tab) = tabs.get_mut(idx) {
+                if let Some(dom) = &tab.engine.dom {
+                    if let Some(node) = dom.find_by_ptr(ptr) {
+                        if let Some(rt) = &tab.js_runtime {
+                            rt.dispatch_event(node, "click");
+                            let (mutated, stylesheet_dirty) = rt.run_pending();
+                            if stylesheet_dirty {
+                                tab.engine.update_stylesheet();
+                            }
+                            return mutated || stylesheet_dirty;
+                        }
+                    }
                 }
             }
         }

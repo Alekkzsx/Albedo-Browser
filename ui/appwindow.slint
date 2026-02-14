@@ -30,6 +30,7 @@ export component AppWindow inherits Window {
     callback request_new_tab();
     callback request_close_tab(int);
     callback request_switch_tab(int);
+    callback box_clicked(string);
 
     VerticalLayout {
         padding: 0px;
@@ -70,6 +71,7 @@ export component AppWindow inherits Window {
             back => { root.back(); }
             forward => { root.forward(); }
             navigate(url) => { root.navigate(url); }
+            box_clicked(ptr_str) => { root.box_clicked(ptr_str); }
         }
     }
 }
