@@ -19,15 +19,32 @@ pub struct DomTokenList {
 impl DomTokenList {
     fn update_class_attribute(&self, classes: &HashSet<String>) {
         if let Ok(mut dom) = self.dom.lock() {
-            if let Some(node) = dom.nodes.get_mut(self.index) {
-                if let AceNodeType::Element(element) = &mut node.node_type {
-                    if classes.is_empty() {
-                        element.attributes.remove("class");
-                    } else {
-                        let val = classes.iter().cloned().collect::<Vec<_>>().join(" ");
-                        element.attributes.insert("class".to_string(), val);
+            let val = if classes.is_empty() {
+                None
+            } else {
+                Some(classes.iter().cloned().collect::<Vec<_>>().join(" "))
+            };
+
+            if let Some(v) = val {
+                dom.set_attribute_notify(self.index, "class".to_string(), v);
+            } else {
+                // We need a remove_attribute_notify too, or just call notify manually
+                let mut old_value = None;
+                if let Some(node) = dom.nodes.get_mut(self.index) {
+                    if let AceNodeType::Element(element) = &mut node.node_type {
+                        old_value = element.attributes.remove("class");
                     }
                 }
+                dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
+                    type_: "attributes".to_string(),
+                    target: self.index,
+                    added_nodes: vec![],
+                    removed_nodes: vec![],
+                    previous_sibling: None,
+                    next_sibling: None,
+                    attribute_name: Some("class".to_string()),
+                    old_value,
+                });
             }
         }
     }

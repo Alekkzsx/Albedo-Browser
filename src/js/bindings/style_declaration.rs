@@ -75,6 +75,20 @@ impl CssStyleDeclaration {
         let mut map = self.parse_style();
         map.insert(property, value);
         self.update_style_attribute(&map);
+        
+        if let Ok(dom) = self.dom.lock() {
+            dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
+                type_: "attributes".to_string(),
+                target: self.index,
+                added_nodes: vec![],
+                removed_nodes: vec![],
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: Some("style".to_string()),
+                old_value: None, // We could compute this but it's expensive
+            });
+        }
+        
         self.mark_mutation();
     }
 
@@ -89,6 +103,20 @@ impl CssStyleDeclaration {
         let mut map = self.parse_style();
         let val = map.remove(&property).unwrap_or_default();
         self.update_style_attribute(&map);
+        
+        if let Ok(dom) = self.dom.lock() {
+            dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
+                type_: "attributes".to_string(),
+                target: self.index,
+                added_nodes: vec![],
+                removed_nodes: vec![],
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: Some("style".to_string()),
+                old_value: None,
+            });
+        }
+
         self.mark_mutation();
         val
     }

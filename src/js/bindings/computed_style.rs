@@ -19,10 +19,13 @@ impl ComputedCSSStyleDeclaration {
     pub fn get_property_value(&self, property: String) -> String {
         let stylesheet = self.stylesheet.lock().unwrap();
         let dom = self.dom.lock().unwrap();
+        let stylesheet_lock = self.stylesheet.lock().unwrap();
+        let dom_lock = self.dom.lock().unwrap();
         // stylesheet.calculate_style signature was updated in previous steps to accept &AceDOM and usize
         // For now, we don't have parent context easily available here without traversing up.
         // We'll pass None for parent_style for now (inheritance will be limited for JS query until we fix this loop).
-        let style = stylesheet.calculate_style(&dom, self.node_idx, None);
+        let root_style = stylesheet_lock.calculate_style(&dom_lock, 0, None, None, None, None); // Using 0 as root element index usually
+        let style = stylesheet_lock.calculate_style(&dom_lock, self.node_idx, None, Some(&root_style), None, None);
         
         match property.as_str() {
             "color" => format!("{:?}", style.color), // Todo: Implement proper Display or to_string for CssColor

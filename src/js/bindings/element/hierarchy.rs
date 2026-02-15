@@ -6,28 +6,10 @@ use crate::js::bindings::element::mark_mutation;
 pub fn append_child<'js>(el: &Element, _ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
     let child_borrow = child.borrow();
     let child_idx = child_borrow.index;
+    let parent_idx = el.index;
 
     if let Ok(mut dom) = el.dom.lock() {
-        // 1. Detach from old parent
-        let mut old_parent_idx = None;
-        if let Some(child_node) = dom.nodes.get(child_idx) {
-            old_parent_idx = child_node.parent;
-        }
-
-        if let Some(p_idx) = old_parent_idx {
-             if let Some(parent_node) = dom.nodes.get_mut(p_idx) {
-                 parent_node.children.retain(|&x| x != child_idx);
-             }
-        }
-
-        // 2. Attach to new parent
-        if let Some(child_node) = dom.nodes.get_mut(child_idx) {
-            child_node.parent = Some(el.index);
-        }
-        
-        if let Some(parent_node) = dom.nodes.get_mut(el.index) {
-             parent_node.children.push(child_idx);
-        }
+        dom.append_child(parent_idx, child_idx);
     }
 
     mark_mutation(el);
@@ -39,25 +21,14 @@ pub fn remove_child<'js>(el: &Element, _ctx: Ctx<'js>, child: Class<'js, Element
     let child_idx = child_borrow.index;
 
     if let Ok(mut dom) = el.dom.lock() {
-        let mut is_child = false;
-        
-        if let Some(child_node) = dom.nodes.get(child_idx) {
-             if child_node.parent == Some(el.index) {
-                 is_child = true;
-             }
-        }
+        let is_child = dom.nodes.get(child_idx)
+            .map(|n| n.parent == Some(el.index))
+            .unwrap_or(false);
 
         if is_child {
-            // Remove from parent's children list
-             if let Some(parent_node) = dom.nodes.get_mut(el.index) {
-                 parent_node.children.retain(|&x| x != child_idx);
-             }
-             // Clear child's parent ptr
-             if let Some(child_node) = dom.nodes.get_mut(child_idx) {
-                 child_node.parent = None;
-             }
-             mark_mutation(el);
-             return Ok(child.clone());
+            dom.remove_node_from_parent(child_idx);
+            mark_mutation(el);
+            return Ok(child.clone());
         }
     }
     
@@ -209,4 +180,25 @@ pub fn previous_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Valu
         }
      }
     Ok(Value::new_null(ctx))
+}
+
+pub fn insert_before<'js>(el: &Element, ctx: Ctx<'js>, child: Class<'js, Element>, ref_child: Value<'js>) -> Result<Class<'js, Element>> {
+    let child_idx = child.borrow().index;
+    let parent_idx = el.index;
+    
+    let ref_idx: Option<usize> = if ref_child.is_null() || ref_child.is_undefined() {
+        None
+    } else {
+        let ref_el = Class::<Element>::from_value(&ref_child)
+            .map_err(|_| rquickjs::Error::new_from_js("TypeError", "Argument 2 must be an Element or null"))?;
+        let idx = ref_el.borrow().index;
+        Some(idx)
+    };
+
+    if let Ok(mut dom) = el.dom.lock() {
+        dom.insert_before(parent_idx, child_idx, ref_idx);
+    }
+
+    mark_mutation(el);
+    Ok(child.clone())
 }

@@ -8,6 +8,7 @@ pub enum CssLength {
     Vh(f32),
     Rem(f32),
     Em(f32),
+    Fr(f32),
     Auto,
     Zero,
 }
@@ -27,23 +28,25 @@ impl fmt::Display for CssLength {
             CssLength::Vh(v) => write!(f, "{}vh", v),
             CssLength::Rem(v) => write!(f, "{}rem", v),
             CssLength::Em(v) => write!(f, "{}em", v),
+            CssLength::Fr(v) => write!(f, "{}fr", v),
             CssLength::Auto => write!(f, "auto"),
             CssLength::Zero => write!(f, "0"),
         }
     }
 }
 
-/// Resolve CSS length to pixels given a base font size and viewport
-pub fn resolve_length(length: &CssLength, base_font_size: f32, viewport_width: f32, viewport_height: f32) -> f32 {
+/// Resolve CSS length to pixels given parent and root font sizes
+pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size: f32, viewport_width: f32, viewport_height: f32) -> f32 {
     match length {
         CssLength::Px(v) => *v,
-        CssLength::Percent(v) => *v / 100.0, // This needs context - simplified
+        CssLength::Percent(v) => *v / 100.0, // This needs context - usually handled by layout engine
         CssLength::Vw(v) => *v / 100.0 * viewport_width,
         CssLength::Vh(v) => *v / 100.0 * viewport_height,
-        CssLength::Rem(v) => *v * base_font_size,
-        CssLength::Em(v) => *v * base_font_size,
+        CssLength::Rem(v) => *v * root_font_size,
+        CssLength::Em(v) => *v * parent_font_size,
+        CssLength::Fr(v) => *v, // Fr is handled specifically by Grid engine, but resolve to v as value
         CssLength::Zero => 0.0,
-        CssLength::Auto => 0.0, // Auto resolves to 0 for position calculations
+        CssLength::Auto => 0.0,
     }
 }
 
@@ -231,6 +234,18 @@ pub enum CssFontWeight {
     Weight(f32),
 }
 
+impl CssFontWeight {
+    pub fn to_cosmic(&self) -> cosmic_text::Weight {
+        match self {
+            CssFontWeight::Normal => cosmic_text::Weight::NORMAL,
+            CssFontWeight::Bold => cosmic_text::Weight::BOLD,
+            CssFontWeight::Lighter => cosmic_text::Weight::THIN,
+            CssFontWeight::Bolder => cosmic_text::Weight::EXTRA_BOLD,
+            CssFontWeight::Weight(w) => cosmic_text::Weight(*w as u16),
+        }
+    }
+}
+
 impl Default for CssFontWeight {
     fn default() -> Self {
         Self::Normal
@@ -318,6 +333,21 @@ impl Default for BoxShadow {
     }
 }
 
+/// CSS content property for pseudo-elements (::before, ::after)
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssContent {
+    None,
+    Normal,
+    String(String),
+    // Future: Url, Counter, Attr, etc.
+}
+
+impl Default for CssContent {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ComputedStyle {
     // Display & Layout
@@ -377,7 +407,7 @@ pub struct ComputedStyle {
     pub line_height: CssLength,
     
     // Typography
-    pub font_size: CssLength,
+    pub font_size: f32,
     pub font_family: String,
     pub font_weight: CssFontWeight,
     pub text_align: CssTextAlign,
@@ -390,6 +420,19 @@ pub struct ComputedStyle {
     pub flex_grow: f32,
     pub flex_shrink: f32,
     pub flex_basis: CssLength,
+    
+    // Grid Layout
+    pub grid_template_columns: Vec<CssLength>,
+    pub grid_template_rows: Vec<CssLength>,
+    pub grid_column_start: CssLength,
+    pub grid_column_end: CssLength,
+    pub grid_row_start: CssLength,
+    pub grid_row_end: CssLength,
+    pub grid_column_gap: CssLength,
+    pub grid_row_gap: CssLength,
+    
+    // Pseudo-element content
+    pub content: CssContent,
     
     // Custom properties (CSS Variables)
     pub custom_properties: std::collections::HashMap<String, String>,
@@ -455,7 +498,7 @@ impl Default for ComputedStyle {
             line_height: CssLength::Px(1.2), // Default line-height
             
             // Typography
-            font_size: CssLength::Px(16.0),
+            font_size: 16.0,
             font_family: "sans-serif".to_string(),
             font_weight: CssFontWeight::Normal,
             text_align: CssTextAlign::Left,
@@ -468,6 +511,19 @@ impl Default for ComputedStyle {
             flex_grow: 0.0,
             flex_shrink: 1.0,
             flex_basis: CssLength::Auto,
+            
+            // Grid Default
+            grid_template_columns: Vec::new(),
+            grid_template_rows: Vec::new(),
+            grid_column_start: CssLength::Auto,
+            grid_column_end: CssLength::Auto,
+            grid_row_start: CssLength::Auto,
+            grid_row_end: CssLength::Auto,
+            grid_column_gap: CssLength::Zero,
+            grid_row_gap: CssLength::Zero,
+            
+            // Pseudo-element content
+            content: CssContent::Normal,
             
             // Custom properties
             custom_properties: std::collections::HashMap::new(),

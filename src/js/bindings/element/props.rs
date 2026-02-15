@@ -1,6 +1,7 @@
-use crate::js::bindings::element::Element;
-use crate::js::bindings::element::mark_mutation;
+use rquickjs::{Ctx, Class, Value, Result};
+use super::{Element, mark_mutation};
 use crate::engine::dom::{AceDOM, AceNodeType, AceNode};
+use kuchiki::traits::*;
 use std::collections::HashMap;
 
 pub fn tag_name(el: &Element) -> String {
@@ -51,6 +52,7 @@ pub fn set_text_content(el: &Element, text: String) {
             children: Vec::new(),
             prev_sibling: None,
             next_sibling: None,
+            shadow_root: None,
         });
         
         if let Some(node) = dom.nodes.get_mut(el.index) {
@@ -73,11 +75,7 @@ pub fn get_attribute(el: &Element, name: String) -> Option<String> {
 
 pub fn set_attribute(el: &Element, name: String, value: String) {
     if let Ok(mut dom) = el.dom.lock() {
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-             if let AceNodeType::Element(element) = &mut node.node_type {
-                 element.attributes.insert(name, value);
-             }
-        }
+        dom.set_attribute_notify(el.index, name, value);
     }
     mark_mutation(el);
 }
@@ -95,11 +93,25 @@ pub fn has_attribute(el: &Element, name: String) -> bool {
 
 pub fn remove_attribute(el: &Element, name: String) {
     if let Ok(mut dom) = el.dom.lock() {
+        // Need a remove_attribute_notify in AceDOM?
+        // For simplicity, let's just implement it here or call a notify
+        let mut old_value = None;
         if let Some(node) = dom.nodes.get_mut(el.index) {
              if let AceNodeType::Element(element) = &mut node.node_type {
-                 element.attributes.remove(&name);
+                 old_value = element.attributes.remove(&name);
              }
         }
+        
+        dom.notify_mutation(el.index, crate::engine::dom::MutationRecord {
+            type_: "attributes".to_string(),
+            target: el.index,
+            added_nodes: vec![],
+            removed_nodes: vec![],
+            previous_sibling: None,
+            next_sibling: None,
+            attribute_name: Some(name),
+            old_value,
+        });
     }
     mark_mutation(el);
 }
@@ -142,16 +154,36 @@ fn serialize_node(dom: &AceDOM, node_idx: usize) -> String {
 }
 
 pub fn set_inner_html(el: &Element, html: String) {
-    // TODO: Parse HTML fragment and append to AceDOM
-    // For now: clear children and add a text node saying "HTML Content"
     if let Ok(mut dom) = el.dom.lock() {
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-            node.children.clear();
-        }
+        // Parse HTML como um documento completo (mais simples que fragmento no kuchiki)
+        let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
         
-        // This is a stub because implementing a full HTML fragment parser 
-        // that integrates into existing AceDOM arena is complex for this step.
-        // Ideally we use kuchiki to parse fragment, then convert to AceDOM nodes, then append.
+        // Encontrar o body do fragmento analisado
+        if let Ok(body_match) = kuchiki_root.select_first("body") {
+            let body_node = body_match.as_node().clone();
+            dom.set_inner_html_from_kuchiki(el.index, body_node.children());
+        } else {
+            // Se não houver body (ex: texto puro ou fragmento sem tags estruturais), 
+            // kuchiki_root costuma ter o conteúdo no html ou diretamente.
+            // Vamos tentar pegar os filhos da raiz se o body falhar.
+            dom.set_inner_html_from_kuchiki(el.index, kuchiki_root.children());
+        }
     }
     mark_mutation(el);
+}
+pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    if let Ok(mut dom) = el.dom.lock() {
+        let shadow_idx = dom.attach_shadow(el.index);
+        
+        let element = Element { 
+            dom: el.dom.clone(),
+            index: shadow_idx,
+            mutations: el.mutations.clone(),
+            stylesheet_dirty: el.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, element)?;
+        return Ok(instance.into_value());
+    }
+    // Erro ao travar mutex
+    Err(rquickjs::Error::Unknown)
 }

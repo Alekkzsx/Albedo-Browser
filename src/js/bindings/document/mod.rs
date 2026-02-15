@@ -63,6 +63,34 @@ impl Document {
         *self.cookie_storage.lock().unwrap() = val;
     }
 
+    #[qjs(get, rename = "title")]
+    pub fn title(&self) -> String {
+        let dom = self.dom.lock().unwrap();
+        // Look for <title> text
+        if let Some(head_idx) = dom.head {
+            if let Some(head_node) = dom.get_node(head_idx) {
+                for &child_idx in &head_node.children {
+                    if let Some(child) = dom.get_node(child_idx) {
+                        if let AceNodeType::Element(el) = &child.node_type {
+                            if el.tag == "title" {
+                                return dom.serialize_subtree(child_idx)
+                                    .replace("<title>", "")
+                                    .replace("</title>", "");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "".to_string()
+    }
+
+    #[qjs(set, rename = "title")]
+    pub fn set_title(&self, title: String) {
+        println!("Document title set to: {}", title);
+        // For now, we don't mutate the DOM for title, but we could
+    }
+
     #[qjs(rename = "createElement")]
     pub fn create_element<'js>(&self, ctx: Ctx<'js>, tag_name: String) -> Result<Value<'js>> {
         // TODO: Implement node creation in AceDOM
@@ -84,6 +112,7 @@ impl Document {
             children: Vec::new(),
             prev_sibling: None,
             next_sibling: None,
+            shadow_root: None,
         });
 
         let element = Element { 
@@ -110,8 +139,6 @@ impl Document {
     pub fn body<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
         if let Some(body_idx) = dom.body {
-             // AceDOM now stores indices for body
-             // Release lock before creating JS object (though safe here, simpler to minimize lock scope)
              let idx = body_idx;
              drop(dom);
              
@@ -125,6 +152,41 @@ impl Document {
             return Ok(instance.into_value());
         }
         Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "head")]
+    pub fn head<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let dom = self.dom.lock().unwrap();
+        if let Some(head_idx) = dom.head {
+             let idx = head_idx;
+             drop(dom);
+             
+             let element = Element { 
+                dom: self.dom.clone(),
+                index: idx,
+                mutations: self.mutations.clone(),
+                stylesheet_dirty: self.stylesheet_dirty.clone(),
+            };
+            let instance = Class::instance(ctx, element)?;
+            return Ok(instance.into_value());
+        }
+        Ok(Value::new_null(ctx))
+    }
+
+    #[qjs(get, rename = "documentElement")]
+    pub fn document_element<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let dom = self.dom.lock().unwrap();
+        let root_idx = dom.root;
+        drop(dom);
+        
+        let element = Element { 
+            dom: self.dom.clone(),
+            index: root_idx,
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, element)?;
+        Ok(instance.into_value())
     }
 }
 
@@ -159,6 +221,7 @@ pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::
             Class::<crate::js::bindings::style_declaration::CssStyleDeclaration>::define(&ctx.globals())?;
             Class::<crate::js::bindings::computed_style::ComputedCSSStyleDeclaration>::define(&ctx.globals())?;
             Class::<crate::js::bindings::event::Event>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::mutation_observer::MutationObserver>::define(&ctx.globals())?;
             Class::<Document>::define(&ctx.globals())?;
             
             // Create instance and set as global 'document'

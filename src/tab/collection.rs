@@ -32,6 +32,14 @@ impl TabCollection {
         }
     }
 
+    pub fn get_active_mut(&mut self) -> Option<&mut Tab> {
+        if let Some(idx) = self.active_index {
+            self.tabs.get_mut(idx)
+        } else {
+            None
+        }
+    }
+
     pub fn switch_to(&mut self, index: usize) -> Option<&Tab> {
         if index < self.tabs.len() {
             self.active_index = Some(index);
