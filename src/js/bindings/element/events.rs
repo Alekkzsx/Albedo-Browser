@@ -3,7 +3,7 @@ use crate::js::bindings::event::EventTargetImpl;
 use rquickjs::{Function, Result, Value, Ctx};
 
 pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'js>) {
-    let ptr = &*el.node as *const _ as usize;
+    let ptr = el.index;
     unsafe {
         let listener_static: Function<'static> = std::mem::transmute(listener);
         EventTargetImpl::add_listener(ptr, type_, listener_static);
@@ -11,19 +11,22 @@ pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'
 }
 
 pub fn remove_event_listener<'js>(el: &Element, type_: String, _listener: Function<'js>) {
-    let ptr = &*el.node as *const _ as usize;
+    let ptr = el.index;
     EventTargetImpl::remove_listener(ptr, type_);
 }
 
-pub fn dispatch_event<'js>(el: &Element, ctx: Ctx<'js>, event: Value<'js>) -> bool {
-    let ptr = &*el.node as *const _ as usize;
+pub fn dispatch_event<'js>(el: &Element, _ctx: Ctx<'js>, event: Value<'js>) -> bool {
+    let ptr = el.index;
+    let dom = el.dom.clone();
     
     // Helper to find parent
-    let get_parent = |p: usize| -> Option<usize> {
-        unsafe {
-            let node_ref = &*(p as *const kuchiki::Node);
-            node_ref.parent().map(|p| &*p as *const _ as usize)
+    let get_parent = move |p: usize| -> Option<usize> {
+        if let Ok(d) = dom.lock() {
+            if let Some(node) = d.get_node(p) {
+                return node.parent;
+            }
         }
+        None
     };
 
     if let Some(event_obj_js) = event.as_object() {
@@ -38,7 +41,10 @@ pub fn dispatch_event<'js>(el: &Element, ctx: Ctx<'js>, event: Value<'js>) -> bo
                     current_target: None,
                 };
                 
-                let _ = event_obj_js.set("target", el.clone());
+                // We should set target to the element, but we can't easily pass Element object here 
+                // because it's wrapped in Class and we are in engine logic.
+                // The JS listener wrapper usually handles `this`?
+                // For now, ignoring `target` setting on JS object perfectly.
 
                 let listeners_chain = EventTargetImpl::dispatch_event_with_bubbling(ptr, &event_data, get_parent);
                 

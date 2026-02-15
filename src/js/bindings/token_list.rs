@@ -1,36 +1,45 @@
-use rquickjs::Result;
-use kuchiki::NodeRef;
-use kuchiki::traits::*;
+use rquickjs::{Result, Class};
+use crate::engine::dom::{AceDOM, AceNodeType};
+use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct DomTokenList {
     #[qjs(skip_trace)]
-    pub node: NodeRef,
+    pub dom: Arc<Mutex<AceDOM>>,
     #[qjs(skip_trace)]
-    pub mutations: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub index: usize,
     #[qjs(skip_trace)]
-    pub stylesheet_dirty: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub mutations: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
+    pub stylesheet_dirty: Arc<Mutex<bool>>,
 }
 
 impl DomTokenList {
     fn update_class_attribute(&self, classes: &HashSet<String>) {
-        if let Some(data) = self.node.as_element() {
-            let mut attrs = data.attributes.borrow_mut();
-            if classes.is_empty() {
-                attrs.remove("class");
-            } else {
-                let val = classes.iter().cloned().collect::<Vec<_>>().join(" ");
-                attrs.insert("class", val);
+        if let Ok(mut dom) = self.dom.lock() {
+            if let Some(node) = dom.nodes.get_mut(self.index) {
+                if let AceNodeType::Element(element) = &mut node.node_type {
+                    if classes.is_empty() {
+                        element.attributes.remove("class");
+                    } else {
+                        let val = classes.iter().cloned().collect::<Vec<_>>().join(" ");
+                        element.attributes.insert("class".to_string(), val);
+                    }
+                }
             }
         }
     }
 
     fn get_classes(&self) -> HashSet<String> {
-        if let Some(data) = self.node.as_element() {
-            if let Some(class_attr) = data.attributes.borrow().get("class") {
-                return class_attr.split_whitespace().map(|s| s.to_string()).collect();
+        if let Ok(dom) = self.dom.lock() {
+            if let Some(node) = dom.get_node(self.index) {
+                if let AceNodeType::Element(element) = &node.node_type {
+                    if let Some(class_attr) = element.attributes.get("class") {
+                        return class_attr.split_whitespace().map(|s| s.to_string()).collect();
+                    }
+                }
             }
         }
         HashSet::new()
@@ -42,6 +51,10 @@ impl DomTokenList {
     fn mark_mutation(&self) {
         if let Ok(mut m) = self.mutations.lock() {
             *m = true;
+        }
+        // Invalidate styles if class changes
+        if let Ok(mut sd) = self.stylesheet_dirty.lock() {
+            *sd = true; 
         }
     }
 
@@ -77,7 +90,7 @@ impl DomTokenList {
         };
         self.update_class_attribute(&classes);
         self.mark_mutation();
-        present
+        return present;
     }
 
     #[qjs(rename = "contains")]

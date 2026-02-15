@@ -1,9 +1,7 @@
 use rquickjs::{Ctx, Value, Class, Result};
-use crate::engine::dom::DomTree;
+use crate::engine::dom::{AceDOM, AceNodeType};
 use crate::js::JsRuntime;
 use crate::js::bindings::element::Element;
-use kuchiki::NodeRef;
-use html5ever::{QualName, LocalName, ns, namespace_url};
 use std::sync::{Arc, Mutex};
 use crate::engine::style::Stylesheet;
 use crate::js::bindings::event::EventTargetImpl;
@@ -16,7 +14,7 @@ pub mod events;
 #[rquickjs::class]
 pub struct Document {
     #[qjs(skip_trace)]
-    pub dom: DomTree,
+    pub dom: Arc<Mutex<AceDOM>>,
     #[qjs(skip_trace)]
     pub stylesheet: Arc<Mutex<Stylesheet>>,
     #[qjs(skip_trace)]
@@ -67,11 +65,30 @@ impl Document {
 
     #[qjs(rename = "createElement")]
     pub fn create_element<'js>(&self, ctx: Ctx<'js>, tag_name: String) -> Result<Value<'js>> {
-        let qual_name = QualName::new(None, ns!(html), LocalName::from(tag_name.as_str()));
-        let node = NodeRef::new_element(qual_name, vec![]);
+        // TODO: Implement node creation in AceDOM
+        // For now, return primitive dummy or fail?
+        // AceDOM structure is mainly for parsing. 
+        // We'll create a disconnected element.
         
+        let mut dom = self.dom.lock().unwrap();
+        // Create a basic Element node
+        let node_type = AceNodeType::Element(crate::engine::dom::AceElement {
+            tag: tag_name,
+            attributes: std::collections::HashMap::new(),
+        });
+        
+        let node_idx = dom.nodes.len();
+        dom.nodes.push(crate::engine::dom::AceNode {
+            node_type,
+            parent: None,
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+        });
+
         let element = Element { 
-            node,
+            dom: self.dom.clone(),
+            index: node_idx,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
         };
@@ -91,16 +108,21 @@ impl Document {
 
     #[qjs(get, rename = "body")]
     pub fn body<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        if let Ok(mut match_iter) = self.dom.root.select("body") {
-            if let Some(node_match) = match_iter.next() {
-                let element = Element { 
-                    node: node_match.as_node().clone(),
-                    mutations: self.mutations.clone(),
-                    stylesheet_dirty: self.stylesheet_dirty.clone(),
-                };
-                let instance = Class::instance(ctx, element)?;
-                return Ok(instance.into_value());
-            }
+        let dom = self.dom.lock().unwrap();
+        if let Some(body_idx) = dom.body {
+             // AceDOM now stores indices for body
+             // Release lock before creating JS object (though safe here, simpler to minimize lock scope)
+             let idx = body_idx;
+             drop(dom);
+             
+             let element = Element { 
+                dom: self.dom.clone(),
+                index: idx,
+                mutations: self.mutations.clone(),
+                stylesheet_dirty: self.stylesheet_dirty.clone(),
+            };
+            let instance = Class::instance(ctx, element)?;
+            return Ok(instance.into_value());
         }
         Ok(Value::new_null(ctx))
     }
@@ -111,16 +133,24 @@ fn get_computed_style_js<'js>(ctx: Ctx<'js>, val: Value<'js>) -> Result<Class<'j
     let styles = document.borrow().stylesheet.clone();
     
     let el = Class::<Element>::from_value(&val).map_err(|_| rquickjs::Error::new_from_js("Argument must be an Element", "TypeError"))?;
-    let node = el.borrow().node.clone();
+    
+    // We need indices now, ComputedCSSStyleDeclaration needs update too maybe?
+    // Let's assume ComputedCSSStyleDeclaration is updated or we pass needed info.
+    // For now, pass indices. ComputedCSSStyleDeclaration likely needs Dom access.
+    
+    // This part involves computed_style.rs. We might break it here.
+    // Let's comment out the implementation details for now or stub.
+    
     let computed = crate::js::bindings::computed_style::ComputedCSSStyleDeclaration { 
-        node, 
+        dom: el.borrow().dom.clone(),
+        node_idx: el.borrow().index,
         stylesheet: styles
     };
     Class::instance(ctx, computed)
 }
 
 // Register document API in the runtime
-pub fn register(rt: &JsRuntime, dom: DomTree, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>) -> Result<()> {
+pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             // Register classes

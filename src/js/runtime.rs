@@ -2,6 +2,7 @@ use rquickjs::{Context, Runtime, Ctx, Value, Exception};
 use rquickjs::function::IntoJsFunc;
 use std::sync::{Arc, Mutex};
 use std::result::Result as StdResult;
+use crate::engine::dom::AceDOM;
 
 pub type JsResult<T> = StdResult<T, rquickjs::Error>;
 
@@ -94,12 +95,13 @@ impl JsRuntime {
         f(&ctx)
     }
 
-    pub fn dispatch_event(&self, node: kuchiki::NodeRef, type_: &str) {
+    pub fn dispatch_event(&self, dom: Arc<Mutex<AceDOM>>, index: usize, type_: &str) {
         self.with_context(|ctx| {
             ctx.with(|ctx| {
                 use crate::js::bindings::element::Element;
                 let element = Element { 
-                    node, 
+                    dom,
+                    index, 
                     mutations: self.mutations.clone(),
                     stylesheet_dirty: self.stylesheet_dirty.clone(),
                 };
