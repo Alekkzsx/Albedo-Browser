@@ -11,9 +11,8 @@ pub struct Tab {
     pub id: String,
     pub title: String,
     pub url: String,
-    pub engine: AceEngine, // Garanta que isso usa a struct nova
+    pub engine: AceEngine,
     pub mode: TabMode,
-    pub is_active: bool,
     pub show_start_page: bool,
 }
 
@@ -23,9 +22,8 @@ impl Tab {
             id,
             title: "Nova Aba".into(),
             url,
-            engine: AceEngine::new(), // Inicia motor simples
+            engine: AceEngine::new(),
             mode: TabMode::Native,
-            is_active: false,
             show_start_page: false,
         }
     }

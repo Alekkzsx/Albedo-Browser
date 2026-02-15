@@ -1,5 +1,4 @@
 use crate::ui::AppWindow;
-use slint::ComponentHandle;
 
 pub fn set_panic_hook() {
     std::panic::set_hook(Box::new(|info| {

@@ -3,6 +3,7 @@ use std::time::Duration;
 use kuchiki::traits::TendrilSink;
 use taffy::prelude::*;
 use std::sync::{Arc, Mutex};
+use url::Url;
 
 pub mod dom;
 pub mod style;
@@ -10,7 +11,7 @@ pub mod css_values;
 #[cfg(test)]
 mod dom_tests;
 
-use self::dom::{AceDOM, AceNode, AceNodeType};
+use self::dom::{AceDOM, AceNodeType};
 use self::style::Stylesheet;
 
 // Estrutura Visual Simplificada
@@ -23,10 +24,13 @@ pub struct ACEPrimitive {
     pub color: String,
     pub text: String,
     pub font_size: f32,
-    pub image_url: Option<String>,
     pub link_url: Option<String>,
-    pub node_ptr: usize,
-    pub element_type: String, // "text", "image", "button", "box"
+    pub element_type: String,
+    pub image_url: Option<String>, // URL da imagem para baixar
+    pub z_index: i32, // FASE 1: z-index for stacking
+    pub overflow_hidden: bool, // FASE 1: overflow handling
+    pub opacity: f32, // FASE 2: opacity
+    pub border_radius: f32, // FASE 2: border-radius
 }
 
 pub struct AceEngine {
@@ -37,6 +41,7 @@ pub struct AceEngine {
     client: Client,
     taffy: Taffy,
     root_node: Option<Node>,
+    pub viewport_width: f32, // Dynamic viewport width
 }
 
 impl Clone for AceEngine {
@@ -49,6 +54,7 @@ impl Clone for AceEngine {
             client: self.client.clone(),
             taffy: Taffy::new(),
             root_node: None,
+            viewport_width: self.viewport_width,
         }
     }
 }
@@ -65,10 +71,11 @@ impl AceEngine {
             current_url: "albedo://start".to_string(),
             primitives: Vec::new(),
             dom: None,
-            stylesheet: Arc::new(Mutex::new(Stylesheet { rules: Vec::new() })),
+            stylesheet: Arc::new(Mutex::new(Stylesheet { rules: Vec::new(), media_rules: Vec::new() })),
             client,
             taffy: Taffy::new(),
             root_node: None,
+            viewport_width: 1024.0, // Default width
         }
     }
 
@@ -96,10 +103,6 @@ impl AceEngine {
             Err(e) => self.render_error(&format!("Erro de Conexão: {}", e)),
         }
     }
-    pub fn load_html(&mut self, html: &str) {
-        self.parse_html(html);
-    }
-
     fn parse_html(&mut self, html: &str) {
         let document = kuchiki::parse_html().one(html);
         self.dom = Some(Arc::new(Mutex::new(AceDOM::new(document)))); 
@@ -114,18 +117,50 @@ impl AceEngine {
             return;
         };
 
+        let base_url = Url::parse(&self.current_url).ok();
+
         {
             let dom = dom_ptr.lock().unwrap();
-            let mut new_style = style::Stylesheet { rules: Vec::new() };
-            // Default CSS
-            let default_css = "h1 { color: #000000; font-size: 32px; } a { color: #0000ff; text-decoration: underline; } p { color: #333333; } div { display: flex; flex-direction: column; }";
+            let mut new_style = style::Stylesheet { rules: Vec::new(), media_rules: Vec::new() };
+            
+            // FASE 6: Default CSS - User agent stylesheet with semantic elements
+            let default_css = r#"
+                html, body { display: block; margin: 0; padding: 0; }
+                h1 { color: #000000; font-size: 32px; display: block; margin: 16px 0; }
+                h2 { color: #000000; font-size: 24px; display: block; margin: 14px 0; }
+                h3 { color: #000000; font-size: 20px; display: block; margin: 12px 0; }
+                h4, h5, h6 { color: #000000; display: block; margin: 10px 0; }
+                p { color: #333333; display: block; margin: 16px 0; }
+                a { color: #0000ff; text-decoration: underline; }
+                div { display: flex; flex-direction: column; }
+                span { display: inline; }
+                ul, ol { display: block; padding-left: 40px; margin: 16px 0; }
+                li { display: list-item; }
+                img { display: inline-block; }
+                table { display: table; border-collapse: collapse; }
+                tr { display: table-row; }
+                td, th { display: table-cell; padding: 4px 8px; border: 1px solid #ccc; }
+                
+                /* FASE 6: Semantic HTML elements */
+                header { display: block; margin: 0 0 16px 0; }
+                footer { display: block; margin: 16px 0 0 0; }
+                nav { display: block; margin: 8px 0; }
+                article { display: block; margin: 16px 0; padding: 16px; }
+                section { display: block; margin: 16px 0; }
+                aside { display: block; margin: 16px 0; }
+                
+                /* FASE 6: Form elements */
+                input { display: inline-block; margin: 4px; padding: 4px 8px; border: 1px solid #ccc; }
+                button { display: inline-block; margin: 4px; padding: 6px 12px; cursor: pointer; }
+                textarea { display: inline-block; margin: 4px; padding: 4px 8px; border: 1px solid #ccc; }
+                select { display: inline-block; margin: 4px; padding: 4px 8px; border: 1px solid #ccc; }
+            "#;
             new_style.rules.extend(style::parse(default_css).rules);
 
-            // Extract all <style> tags traversing the flat nodes list
+            // Extract all <style> tags
             for node in &dom.nodes {
                 if let AceNodeType::Element(el) = &node.node_type {
                     if el.tag == "style" {
-                         // Collect text from children
                          let mut css_text = String::new();
                          for &child_idx in &node.children {
                              if let Some(child) = dom.get_node(child_idx) {
@@ -138,6 +173,50 @@ impl AceEngine {
                     }
                 }
             }
+
+            // Extract all <link rel="stylesheet"> tags and fetch external CSS
+            for node in &dom.nodes {
+                if let AceNodeType::Element(el) = &node.node_type {
+                    if el.tag == "link" {
+                        // Check if it's a stylesheet link
+                        let rel = el.attributes.get("rel").map(|s| s.to_lowercase()).unwrap_or_default();
+                        let href = el.attributes.get("href").map(|s| s.to_string());
+                        
+                        if rel.contains("stylesheet") && href.is_some() {
+                            let href = href.unwrap();
+                            
+                            // Resolve relative URL
+                            let css_url = if let Some(ref base) = base_url {
+                                base.join(&href).ok()
+                            } else {
+                                Url::parse(&href).ok()
+                            };
+
+                            if let Some(css_url) = css_url {
+                                println!("ENGINE: Fetching external CSS: {}", css_url);
+                                
+                                // Fetch the CSS file
+                                if let Ok(resp) = self.client.get(css_url.as_str())
+                                    .timeout(Duration::from_secs(10))
+                                    .send() 
+                                {
+                                    if resp.status().is_success() {
+                                        if let Ok(css_text) = resp.text() {
+                                            println!("ENGINE: Loaded {} bytes of external CSS", css_text.len());
+                                            new_style.rules.extend(style::parse(&css_text).rules);
+                                        }
+                                    } else {
+                                        println!("ENGINE: Failed to fetch CSS: {}", resp.status());
+                                    }
+                                } else {
+                                    println!("ENGINE: Error fetching external CSS: {}", css_url);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             *self.stylesheet.lock().unwrap() = new_style;
         }
         
@@ -151,32 +230,36 @@ impl AceEngine {
             return;
         };
 
+        let viewport_width = self.viewport_width;
+
         {
             let dom = dom_ptr.lock().unwrap();
-            let root_idx = dom.root;
+            
+            // Use body as display root, fallback to root
+            let display_root = dom.body.unwrap_or(dom.root);
+            
             let stylesheet_ptr = self.stylesheet.clone();
             let stylesheet = stylesheet_ptr.lock().unwrap();
             
             self.taffy = Taffy::new();
             
-            let display_root = root_idx; 
-
             // Pass &mut self.taffy explicitly
             let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None);
             self.root_node = Some(root_node);
 
             let available_space = Size {
-                width: AvailableSpace::Definite(1024.0),
+                width: AvailableSpace::Definite(viewport_width),
                 height: AvailableSpace::MaxContent,
             };
             let _ = self.taffy.compute_layout(root_node, available_space);
 
             self.primitives.clear();
-            // Background
+            // Background - use viewport width
             self.primitives.push(ACEPrimitive {
-                x: 0.0, y: 0.0, width: 2000.0, height: 8000.0,
+                x: 0.0, y: 0.0, width: viewport_width, height: 8000.0,
                 color: "#FFFFFF".to_string(), text: "".into(), font_size: 0.0, 
-                image_url: None, link_url: None, node_ptr: 0, element_type: "box".into()
+                link_url: None, element_type: "box".into(), image_url: None,
+                z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0
             });
             
             // Pass fields explicitly to avoid &mut self borrow conflict
@@ -194,12 +277,21 @@ impl AceEngine {
         }
     }
 
+    /// Set viewport size for responsive layout
+    pub fn set_viewport_size(&mut self, width: f32) {
+        if (self.viewport_width - width).abs() > 1.0 {
+            self.viewport_width = width;
+            self.recompute_layout();
+        }
+    }
+
     fn render_error(&mut self, msg: &str) {
         self.primitives.push(ACEPrimitive {
             x: 20.0, y: 20.0, width: 600.0, height: 50.0,
             color: "transparent".into(),
             text: msg.to_string(),
-            font_size: 20.0, image_url: None, link_url: None, node_ptr: 0, element_type: "text".into()
+            font_size: 20.0, link_url: None, element_type: "text".into(), image_url: None,
+            z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0
         });
     }
 
@@ -209,7 +301,7 @@ impl AceEngine {
 }
 
 // Helper functions (standalone to avoid borrow checker issues)
-use crate::engine::css_values::{CssLength, CssColor, CssDisplay};
+use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle};
 
 fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>) -> Node {
     let node = dom.get_node(node_idx).unwrap();
@@ -221,9 +313,10 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     
     style.display = match computed.display {
         CssDisplay::None => Display::None,
-        CssDisplay::Grid => Display::Grid,
         CssDisplay::Flex => Display::Flex,
-        CssDisplay::Block => Display::Flex, // Taffy treats block as flex-col usually or we simulate it
+        CssDisplay::InlineFlex => Display::Flex,
+        CssDisplay::Grid => Display::Grid,
+        CssDisplay::Block => Display::Flex,
         CssDisplay::InlineBlock => Display::Flex, 
         CssDisplay::Inline => Display::Flex, 
     };
@@ -237,16 +330,39 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             }
     }
 
-    style.flex_direction = FlexDirection::Column;
+    style.flex_direction = match computed.flex_direction {
+        CssFlexDirection::Row => FlexDirection::Row,
+        CssFlexDirection::RowReverse => FlexDirection::RowReverse,
+        CssFlexDirection::Column => FlexDirection::Column,
+        CssFlexDirection::ColumnReverse => FlexDirection::ColumnReverse,
+    };
+
+    // FASE 1: Apply CSS position (static, relative, absolute, fixed)
+    // Note: Taffy 0.3 only has Relative and Absolute
+    style.position = match computed.position {
+        CssPosition::Static | CssPosition::Relative | CssPosition::Sticky => Position::Relative,
+        CssPosition::Absolute | CssPosition::Fixed => Position::Absolute,
+    };
+
+    // FASE 1: Apply position offsets (top/left/right/bottom)
+    style.inset = Rect {
+        left: to_taffy_lpa(&computed.left),
+        right: to_taffy_lpa(&computed.right),
+        top: to_taffy_lpa(&computed.top),
+        bottom: to_taffy_lpa(&computed.bottom),
+    };
 
     // Helper to convert CssLength to Taffy LengthPercentageAuto or Dimension
     fn to_taffy_lpa(l: &CssLength) -> LengthPercentageAuto {
         match l {
             CssLength::Px(v) => LengthPercentageAuto::Points(*v),
             CssLength::Percent(v) => LengthPercentageAuto::Percent(*v / 100.0),
+            CssLength::Vw(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
+            CssLength::Vh(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
+            CssLength::Rem(v) => LengthPercentageAuto::Points(*v * 16.0), // Simplified: 1rem = 16px
+            CssLength::Em(v) => LengthPercentageAuto::Points(*v * 16.0), // Simplified: 1em = 16px
             CssLength::Auto => LengthPercentageAuto::Auto,
             CssLength::Zero => LengthPercentageAuto::Points(0.0),
-            _ => LengthPercentageAuto::Auto, // Fallback
         }
     }
     
@@ -254,8 +370,12 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         match l {
             CssLength::Px(v) => LengthPercentage::Points(*v),
             CssLength::Percent(v) => LengthPercentage::Percent(*v / 100.0),
+            CssLength::Vw(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
+            CssLength::Vh(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
+            CssLength::Rem(v) => LengthPercentage::Points(*v * 16.0),
+            CssLength::Em(v) => LengthPercentage::Points(*v * 16.0),
             CssLength::Zero => LengthPercentage::Points(0.0),
-             _ => LengthPercentage::Points(0.0), // Fallback
+            CssLength::Auto => LengthPercentage::Points(0.0),
         }
     }
 
@@ -263,8 +383,12 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         match l {
             CssLength::Px(v) => Dimension::Points(*v),
             CssLength::Percent(v) => Dimension::Percent(*v / 100.0),
+            CssLength::Vw(v) => Dimension::Percent(*v / 100.0), // Simplified
+            CssLength::Vh(v) => Dimension::Percent(*v / 100.0), // Simplified
+            CssLength::Rem(v) => Dimension::Points(*v * 16.0),
+            CssLength::Em(v) => Dimension::Points(*v * 16.0),
             CssLength::Auto => Dimension::Auto,
-             _ => Dimension::Auto, 
+            CssLength::Zero => Dimension::Points(0.0),
         }
     }
 
@@ -284,9 +408,11 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     style.size.width = to_taffy_dim(&computed.width);
     style.size.height = to_taffy_dim(&computed.height);
 
+    // Ensure minimum width for text elements and flex containers
     if let AceNodeType::Text(text) = &node.node_type {
             let text_content = text.trim();
             if !text_content.is_empty() {
+                // Use percent width but ensure parent has constraints
                 style.size.width = Dimension::Percent(1.0);
                 // Basic font mapping: assume 16px if not Px
                 let font_size = match computed.font_size {
@@ -294,7 +420,16 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
                     _ => 16.0,
                 };
                 style.size.height = Dimension::Points(font_size * 1.2);
+                // Add min-width to ensure text is visible
+                style.min_size.width = Dimension::Points(100.0);
             }
+    }
+    
+    // Ensure body/html have a defined width
+    if let AceNodeType::Element(el) = &node.node_type {
+        if el.tag == "body" || el.tag == "html" {
+            style.size.width = Dimension::Percent(1.0);
+        }
     }
     
     let taffy_node = taffy.new_leaf(style).unwrap();
@@ -353,36 +488,92 @@ fn generate_display_list(
     
     let current_color = match &computed.color {
         CssColor::Named(s) => s.clone(),
-        CssColor::Transparent => "transparent".to_string(), // Text shouldn't be transparent usually but ok
-        CssColor::CurrentColor => "black".to_string(), // Fallback
-         _ => "black".to_string(),
+        CssColor::Transparent => "transparent".to_string(),
+        CssColor::CurrentColor => "black".to_string(),
+        CssColor::Rgba(r, g, b, a) => {
+            if *a < 1.0 {
+                format!("rgba({},{},{},{})", r, g, b, a)
+            } else {
+                format!("#{:02x}{:02x}{:02x}", r, g, b)
+            }
+        }
     };
 
     if let AceNodeType::Element(element) = &node.node_type {
         let tag_name = &element.tag;
         let mut link_url = None;
-        let mut image_url = None;
         let mut element_type = "box".to_string();
+        let mut image_url = None;
 
         if tag_name == "a" {
             link_url = element.attributes.get("href").map(|s| s.to_string());
         } else if tag_name == "img" {
-            image_url = element.attributes.get("src").map(|s| s.to_string());
             element_type = "image".to_string();
+            // Extract image URL from src attribute
+            image_url = element.attributes.get("src").map(|s| s.to_string());
+        } else if tag_name == "iframe" {
+            // FASE 6: iframe support - render as placeholder
+            element_type = "iframe".to_string();
+            // Extract src if present
+            let src = element.attributes.get("src").map(|s| s.to_string());
+            if let Some(src) = src {
+                primitives.push(ACEPrimitive {
+                    x, y, width: width.max(100.0), height: height.max(50.0),
+                    color: "#f0f0f0".to_string(),
+                    text: format!("[iframe: {}]", src),
+                    font_size: 12.0,
+                    link_url: None,
+                    element_type: "iframe".to_string(),
+                    image_url: None,
+                    z_index: computed.z_index,
+                    overflow_hidden: false,
+                    opacity: computed.opacity,
+                    border_radius: 0.0
+                });
+                return; // Skip normal rendering for iframe
+            }
+        } else if tag_name == "input" || tag_name == "button" || tag_name == "textarea" || tag_name == "select" {
+            // FASE 6: Form elements - render with background
+            element_type = tag_name.to_string();
         }
 
         let bg_color = match &computed.background_color {
             CssColor::Named(s) => s.clone(),
             CssColor::Transparent => "transparent".to_string(),
-             _ => "transparent".to_string(),
+            CssColor::CurrentColor => "transparent".to_string(),
+            CssColor::Rgba(r, g, b, a) => {
+                if *a < 1.0 {
+                    format!("rgba({},{},{},{})", r, g, b, a)
+                } else {
+                    format!("#{:02x}{:02x}{:02x}", r, g, b)
+                }
+            }
         };
 
-        if bg_color != "transparent" || tag_name == "img" || tag_name == "a" {
+        if bg_color != "transparent" || tag_name == "img" || tag_name == "a" || 
+           tag_name == "input" || tag_name == "button" || tag_name == "textarea" || 
+           tag_name == "select" || tag_name == "iframe" {
+                // FASE 1: Get overflow value
+                let overflow_hidden = matches!(computed.overflow, CssOverflow::Hidden);
+                // FASE 2: Get opacity and border-radius
+                let opacity = computed.opacity;
+                let border_radius = computed.border_radius_top_left.max(computed.border_radius_top_right)
+                    .max(computed.border_radius_bottom_left).max(computed.border_radius_bottom_right);
+                
+                // For form elements, ensure there's a background
+                let bg = if bg_color == "transparent" && 
+                    (tag_name == "input" || tag_name == "button" || tag_name == "textarea" || tag_name == "select") {
+                    "#ffffff".to_string()
+                } else {
+                    bg_color
+                };
+                
                 primitives.push(ACEPrimitive {
                 x, y, width, height,
-                color: bg_color,
+                color: bg,
                 text: "".into(), font_size: 0.0,
-                image_url, link_url, node_ptr: node_idx, element_type
+                link_url, element_type, image_url,
+                z_index: computed.z_index, overflow_hidden, opacity, border_radius
                 });
         }
     }
@@ -395,7 +586,8 @@ fn generate_display_list(
                 color: current_color.clone(),
                 text: text_content.to_string(),
                 font_size: current_font_size,
-                image_url: None, link_url: None, node_ptr: node_idx, element_type: "text".into()     
+                link_url: None, element_type: "text".into(), image_url: None,
+                z_index: computed.z_index, overflow_hidden: false, opacity: computed.opacity, border_radius: 0.0
                 });
             }
     }
