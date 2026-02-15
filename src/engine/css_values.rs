@@ -92,6 +92,61 @@ impl CssColor {
     }
 }
 
+/// Text shadow structure for text-shadow CSS property
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextShadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur: f32,
+    pub color: CssColor,
+}
+
+impl Default for TextShadow {
+    fn default() -> Self {
+        Self {
+            offset_x: 0.0,
+            offset_y: 0.0,
+            blur: 0.0,
+            color: CssColor::Named("black".to_string()),
+        }
+    }
+}
+
+/// Gradient color stop
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientStop {
+    pub color: CssColor,
+    pub position: Option<f32>, // 0.0 to 1.0
+}
+
+/// Gradient type
+#[derive(Debug, Clone, PartialEq)]
+pub enum Gradient {
+    Linear {
+        angle: f32, // degrees
+        stops: Vec<GradientStop>,
+    },
+    Radial {
+        shape: String, // circle or ellipse
+        stops: Vec<GradientStop>,
+    },
+}
+
+/// Background image - supports colors, gradients, and URLs
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackgroundImage {
+    None,
+    Color(CssColor),
+    Gradient(Gradient),
+    Url(String),
+}
+
+impl Default for BackgroundImage {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CssDisplay {
     None,
@@ -315,8 +370,10 @@ pub struct ComputedStyle {
     // Visual
     pub color: CssColor,
     pub background_color: CssColor,
+    pub background_image: BackgroundImage,
     pub opacity: f32,
     pub box_shadow: Vec<BoxShadow>,
+    pub text_shadow: Vec<TextShadow>,
     pub line_height: CssLength,
     
     // Typography
@@ -391,8 +448,10 @@ impl Default for ComputedStyle {
             // Visual
             color: CssColor::Named("black".to_string()),
             background_color: CssColor::Transparent,
+            background_image: BackgroundImage::None,
             opacity: 1.0,
             box_shadow: Vec::new(),
+            text_shadow: Vec::new(),
             line_height: CssLength::Px(1.2), // Default line-height
             
             // Typography

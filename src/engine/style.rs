@@ -7,7 +7,7 @@ use crate::engine::dom::{AceDOM, AceNodeType};
 use crate::engine::css_values::{
     ComputedStyle, CssLength, CssColor, CssDisplay, CssTextAlign, CssFontWeight,
     CssPosition, CssOverflow, CssFloat, CssFlexDirection, CssJustifyContent,
-    CssAlignItems, CssFlexWrap, BoxShadow,
+    CssAlignItems, CssFlexWrap, BoxShadow, TextShadow, BackgroundImage, Gradient, GradientStop,
 };
 
 pub struct Stylesheet {
@@ -903,6 +903,15 @@ impl Stylesheet {
                              "border-bottom-right-radius" => style.border_radius_bottom_right = parse_border_radius(val),
                              "border-bottom-left-radius" => style.border_radius_bottom_left = parse_border_radius(val),
                              
+                             // MELHORIA: Box-shadow
+                             "box-shadow" => style.box_shadow = parse_box_shadow(val),
+                             
+                             // MELHORIA: Text-shadow
+                             "text-shadow" => style.text_shadow = parse_text_shadow(val),
+                             
+                             // MELHORIA: Background-image (gradients)
+                             "background-image" => style.background_image = parse_background_image(val),
+                             
                              // CSS Custom Properties (variables)
                              name if name.starts_with("--") => {
                                  style.custom_properties.insert(name.to_string(), val.to_string());
@@ -1124,5 +1133,321 @@ fn parse_font_weight(val: &str) -> CssFontWeight {
                 CssFontWeight::Normal
             }
         }
+    }
+}
+
+// MELHORIA: Parse box-shadow
+fn parse_box_shadow(val: &str) -> Vec<BoxShadow> {
+    let val = val.trim();
+    if val == "none" || val.is_empty() {
+        return Vec::new();
+    }
+    
+    let mut shadows = Vec::new();
+    
+    // Split by comma for multiple shadows
+    for shadow_val in val.split(',') {
+        let shadow_val = shadow_val.trim();
+        if shadow_val.is_empty() || shadow_val == "none" {
+            continue;
+        }
+        
+        let mut offset_x = 0.0f32;
+        let mut offset_y = 0.0f32;
+        let mut blur = 0.0f32;
+        let mut spread = 0.0f32;
+        let mut color = CssColor::Named("black".to_string());
+        let mut inset = false;
+        
+        let parts: Vec<&str> = shadow_val.split_whitespace().collect();
+        let mut i = 0;
+        
+        while i < parts.len() {
+            let part = parts[i];
+            
+            // Check for inset keyword
+            if part == "inset" {
+                inset = true;
+                i += 1;
+                continue;
+            }
+            
+            // Try to parse as length
+            if let Some(n) = part.strip_suffix("px") {
+                if let Ok(num) = n.parse::<f32>() {
+                    if i == 0 || (i > 0 && parts.get(i - 1) == Some(&"inset")) {
+                        offset_x = num;
+                        i += 1;
+                        if i < parts.len() {
+                            if let Some(n2) = parts[i].strip_suffix("px") {
+                                if let Ok(num2) = n2.parse::<f32>() {
+                                    offset_y = num2;
+                                    i += 1;
+                                    continue;
+                                }
+                            }
+                        }
+                    } else if i > 0 {
+                        if let Ok(num2) = part.parse::<f32>() {
+                            if blur == 0.0 {
+                                blur = num2;
+                            } else {
+                                spread = num2;
+                            }
+                            i += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            // If not a number, might be a color
+            if !part.ends_with("px") && !part.ends_with("em") && !part.ends_with("rem") {
+                color = parse_color(part);
+            }
+            i += 1;
+        }
+        
+        shadows.push(BoxShadow {
+            offset_x,
+            offset_y,
+            blur,
+            spread,
+            color,
+            inset,
+        });
+    }
+    
+    shadows
+}
+
+// MELHORIA: Parse text-shadow
+fn parse_text_shadow(val: &str) -> Vec<TextShadow> {
+    let val = val.trim();
+    if val == "none" || val.is_empty() {
+        return Vec::new();
+    }
+    
+    let mut shadows = Vec::new();
+    
+    // Split by comma for multiple shadows
+    for shadow_val in val.split(',') {
+        let shadow_val = shadow_val.trim();
+        if shadow_val.is_empty() || shadow_val == "none" {
+            continue;
+        }
+        
+        let mut offset_x = 0.0f32;
+        let mut offset_y = 0.0f32;
+        let mut blur = 0.0f32;
+        let mut color = CssColor::Named("black".to_string());
+        
+        let parts: Vec<&str> = shadow_val.split_whitespace().collect();
+        let mut i = 0;
+        
+        while i < parts.len() {
+            let part = parts[i];
+            
+            // Try to parse as length
+            if let Some(n) = part.strip_suffix("px") {
+                if let Ok(num) = n.parse::<f32>() {
+                    if i == 0 {
+                        offset_x = num;
+                    } else if i == 1 {
+                        offset_y = num;
+                    } else {
+                        blur = num;
+                    }
+                    i += 1;
+                    continue;
+                }
+            }
+            
+            // If not a number, might be a color
+            if !part.ends_with("px") && !part.ends_with("em") && !part.ends_with("rem") {
+                color = parse_color(part);
+            }
+            i += 1;
+        }
+        
+        shadows.push(TextShadow {
+            offset_x,
+            offset_y,
+            blur,
+            color,
+        });
+    }
+    
+    shadows
+}
+
+// MELHORIA: Parse background-image (supports gradients)
+fn parse_background_image(val: &str) -> BackgroundImage {
+    let val = val.trim();
+    
+    if val == "none" || val.is_empty() {
+        return BackgroundImage::None;
+    }
+    
+    // Check for linear-gradient
+    if val.starts_with("linear-gradient(") {
+        if let Some(gradient) = parse_linear_gradient(val) {
+            return BackgroundImage::Gradient(gradient);
+        }
+    }
+    
+    // Check for radial-gradient
+    if val.starts_with("radial-gradient(") {
+        if let Some(gradient) = parse_radial_gradient(val) {
+            return BackgroundImage::Gradient(gradient);
+        }
+    }
+    
+    // Check for url()
+    if val.starts_with("url(") {
+        if let Some(end) = val.find(')') {
+            let url = &val[4..end];
+            return BackgroundImage::Url(url.to_string());
+        }
+    }
+    
+    // Check if it's a solid color
+    if !val.contains("gradient") && !val.contains("url(") {
+        return BackgroundImage::Color(parse_color(val));
+    }
+    
+    BackgroundImage::None
+}
+
+fn parse_linear_gradient(val: &str) -> Option<Gradient> {
+    let inner = val.strip_prefix("linear-gradient(")?.strip_suffix(')')?;
+    
+    let mut angle = 180.0f32; // Default is to bottom (180 degrees)
+    let mut stops = Vec::new();
+    
+    // Parse angle if present
+    let mut remaining = inner;
+    if remaining.starts_with("to ") {
+        // Handle "to right", "to bottom right", etc.
+        let parts: Vec<&str> = remaining.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let direction = parts[1];
+            angle = match direction {
+                "top" => 0.0,
+                "right" => 90.0,
+                "bottom" => 180.0,
+                "left" => 270.0,
+                _ => {
+                    if parts.len() >= 3 {
+                        let dir2 = parts[2];
+                        match (direction, dir2) {
+                            ("top", "left") => 315.0,
+                            ("top", "right") => 45.0,
+                            ("bottom", "left") => 225.0,
+                            ("bottom", "right") => 135.0,
+                            _ => 180.0,
+                        }
+                    } else {
+                        180.0
+                    }
+                }
+            };
+            remaining = remaining.splitn(2, ')').nth(1).unwrap_or("");
+        }
+    } else if remaining.starts_with("deg") {
+        if let Some(deg) = remaining.split_whitespace().next() {
+            if let Some(n) = deg.strip_suffix("deg") {
+                if let Ok(a) = n.parse::<f32>() {
+                    angle = a;
+                }
+            }
+        }
+        // Find the first color stop
+        if let Some(idx) = remaining.find(',') {
+            remaining = &remaining[idx + 1..];
+        }
+    } else if let Some(idx) = remaining.find(',') {
+        // Check if first part is angle in degrees
+        let first = remaining[..idx].trim();
+        if let Ok(a) = first.parse::<f32>() {
+            angle = a;
+            remaining = &remaining[idx + 1..];
+        }
+    }
+    
+    // Parse color stops
+    parse_color_stops(remaining, &mut stops);
+    
+    if stops.is_empty() {
+        // Add default stops
+        stops.push(GradientStop { color: CssColor::Transparent, position: Some(0.0) });
+        stops.push(GradientStop { color: CssColor::Named("black".to_string()), position: Some(1.0) });
+    }
+    
+    Some(Gradient::Linear { angle, stops })
+}
+
+fn parse_radial_gradient(val: &str) -> Option<Gradient> {
+    let inner = val.strip_prefix("radial-gradient(")?.strip_suffix(')')?;
+    
+    let mut shape = "circle".to_string();
+    let mut stops = Vec::new();
+    
+    // Parse shape
+    if inner.contains("circle") {
+        shape = "circle".to_string();
+    } else if inner.contains("ellipse") {
+        shape = "ellipse".to_string();
+    }
+    
+    // Find the color stops (after shape specification)
+    let remaining = if let Some(idx) = inner.find(',') {
+        &inner[idx + 1..]
+    } else {
+        inner
+    };
+    
+    parse_color_stops(remaining, &mut stops);
+    
+    if stops.is_empty() {
+        stops.push(GradientStop { color: CssColor::Transparent, position: Some(0.0) });
+        stops.push(GradientStop { color: CssColor::Named("black".to_string()), position: Some(1.0) });
+    }
+    
+    Some(Gradient::Radial { shape, stops })
+}
+
+fn parse_color_stops(input: &str, stops: &mut Vec<GradientStop>) {
+    let parts: Vec<&str> = input.split(',').collect();
+    
+    for (i, part) in parts.iter().enumerate() {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        
+        let mut color = CssColor::Named("black".to_string());
+        let mut position = None;
+        
+        // Split by space to find color and position
+        let tokens: Vec<&str> = part.split_whitespace().collect();
+        let has_tokens = !tokens.is_empty();
+        
+        for token in &tokens {
+            if token.ends_with("%") {
+                if let Ok(p) = token.strip_suffix("%").unwrap().parse::<f32>() {
+                    position = Some(p / 100.0);
+                }
+            } else if !token.is_empty() {
+                color = parse_color(token);
+            }
+        }
+        
+        // If no position specified, calculate based on index
+        if position.is_none() && has_tokens {
+            position = Some(i as f32 / parts.len() as f32);
+        }
+        
+        stops.push(GradientStop { color, position });
     }
 }
