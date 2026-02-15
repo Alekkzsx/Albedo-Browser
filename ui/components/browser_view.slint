@@ -28,66 +28,34 @@ export component BrowserView inherits Rectangle {
     in property <length> content-height: 0px; // Calculated by Rust
 
     Rectangle {
-        background: #fdfdfd;
+        background: white; // Força fundo branco para ver se algo desenha em cima
         
         Flickable {
-            viewport-height: root.content-height;
             width: 100%;
             height: 100%;
-            interactive: true;
+            // Importante: O viewport precisa saber a altura total
+            viewport-height: root.content-height; 
 
+            // Container dos elementos
             Rectangle {
-                height: root.content-height;
                 width: 100%;
+                height: root.content-height;
 
                 for box in root.ace_model : Rectangle {
                     x: box.x;
                     y: box.y;
                     width: box.width;
                     height: box.height;
-                    background: box.background;
+                    background: box.background; // Se isso for transparente, some tudo!
                     
-                    if box.has_image : Image {
-                        source: box.image_data;
-                        width: 100%;
-                        height: 100%;
-                        image-fit: fill;
-                    }
-
-                    if box.element_type == "input" : LineEdit {
-                        width: 100%;
-                        height: 100%;
-                        placeholder-text: box.text;
-                        font-size: box.font_size;
-                    }
-
-                    if box.element_type == "button" || box.element_type == "submit" : Button {
-                        width: 100%;
-                        height: 100%;
+                    Text {
                         text: box.text;
-                    }
-
-                    if box.element_type != "input" && box.element_type != "button" && box.element_type != "submit" && box.text != "" : Text {
-                        text: box.text;
-                        font_size: box.font_size;
                         color: box.text_color;
-                        width: 100%;       // Ocupa toda a largura do retângulo calculado
-                        height: 100%;      // Ocupa toda a altura calculada
-                        wrap: word-wrap;   // <--- VITAL: Permite quebrar linha visualmente
-                        vertical-alignment: top; // Começa de cima
-                        overflow: elide;   // Segurança se o cálculo falhar por pouco
-                    }
-                    
-                    if box.node_id != "" || box.link_url != "" : TouchArea {
-                        clicked => { 
-                            if box.link_url != "" {
-                                root.navigate(box.link_url); 
-                            } else {
-                                root.box_clicked(box.node_id);
-                            }
-                        }
-                        mouse-cursor: pointer;
-                        z: 10; // Ensure it's on top
+                        font-size: box.font_size;
+                        width: 100%;
+                        height: 100%;
+                        wrap: word-wrap;
+                        vertical-alignment: top;
                     }
                 }
             }

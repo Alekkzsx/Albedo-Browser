@@ -5,39 +5,29 @@ use slint::ComponentHandle;
 pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
     if let Some((_, Some(engine))) = tm.get_active_tab_native_data() {
         let primitives = engine.render_visual();
-        println!("MAIN: Sincronizando UI. Itens: {}", primitives.len());
-
+        
         let slint_boxes: Vec<ACEBox> = primitives.into_iter().map(|p| {
-            
-            // 1. DECODIFICADOR DE CORES (Atualizado para ACE 1.5)
-            let color_para_slint = match p.color.as_str() {
-                s if s.starts_with("#") && s.len() >= 7 => {
-                    let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-                    let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-                    let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-                    slint::Color::from_rgb_u8(r, g, b)
-                },
-                "blue" => slint::Color::from_rgb_u8(0, 0, 255),
-                "transparent" => slint::Color::from_argb_u8(0, 0, 0, 0),
-                _ => slint::Color::from_rgb_u8(0, 0, 0), // Padrão preto
-            };
-            
-            // 2. Lógica de Fundo vs Texto (Senior Fix)
-            // Se for "box" (como o fundo branco), a cor vai pro background.
-            // Se for "text", a cor vai pro texto e o fundo fica transparente.
-            let (bg_color, txt_color) = if p.element_type == "box" {
-                (color_para_slint, slint::Color::from_argb_u8(0, 0, 0, 0))
+            // Conversor Hexadecimal Robusto
+            let bg_color = if p.color.starts_with('#') && p.color.len() == 7 {
+                let r = u8::from_str_radix(&p.color[1..3], 16).unwrap_or(255);
+                let g = u8::from_str_radix(&p.color[3..5], 16).unwrap_or(255);
+                let b = u8::from_str_radix(&p.color[5..7], 16).unwrap_or(255);
+                slint::Color::from_rgb_u8(r, g, b)
             } else {
-                (slint::Color::from_argb_u8(0, 0, 0, 0), color_para_slint)
+                // Fallback se não for hex: Verde limão para denunciar o erro!
+                slint::Color::from_rgb_u8(50, 255, 50) 
             };
 
             ACEBox {
-                x: p.x, y: p.y, width: p.width, height: p.height,
+                x: p.x,
+                y: p.y,
+                width: p.width,
+                height: p.height,
                 background: bg_color,
                 text: p.text.into(),
                 font_size: p.font_size,
-                text_color: txt_color,
-                image_data: slint::Image::default(), 
+                text_color: slint::Color::from_rgb_u8(0, 0, 0), // Força texto preto para testar
+                image_data: slint::Image::default(),
                 has_image: false,
                 link_url: p.link_url.unwrap_or_default().into(),
                 node_id: "".into(),
@@ -45,14 +35,13 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
             }
         }).collect();
 
-        // 3. CALCULA ALTURA TOTAL DO SCROLL
-        let max_height = slint_boxes.last()
-            .map(|b| b.y + b.height + 100.0) // +100px de folga no final
-            .unwrap_or(800.0);
+        // LOG DE DEBUG: Se isso printar > 0, os dados chegaram no Slint
+        println!("DEBUG: Enviando {} caixas para a UI", slint_boxes.len());
 
-        // 4. ENVIA PRO SLINT
+        let last_y = slint_boxes.last().map(|b| b.y + b.height).unwrap_or(0.0);
+        
         let model = std::rc::Rc::new(slint::VecModel::from(slint_boxes));
         ui.set_ace_model(model.into());
-        ui.set_content_height(max_height);
+        ui.set_content_height(last_y);
     }
 }

@@ -3,7 +3,10 @@ use crate::js::bindings::event::EventTargetImpl;
 use rquickjs::{Function, Result, Value};
 
 pub fn add_event_listener<'js>(doc: &Document, type_: String, listener: Function<'js>) {
-    let ptr = &*doc.dom.root as *const _ as usize;
+    let ptr = {
+        let dom = doc.dom.lock().unwrap();
+        dom.root
+    };
     unsafe {
         let listener_static: Function<'static> = std::mem::transmute(listener);
         EventTargetImpl::add_listener(ptr, type_, listener_static);
@@ -11,12 +14,18 @@ pub fn add_event_listener<'js>(doc: &Document, type_: String, listener: Function
 }
 
 pub fn remove_event_listener<'js>(doc: &Document, type_: String, _listener: Function<'js>) {
-    let ptr = &*doc.dom.root as *const _ as usize;
+    let ptr = {
+        let dom = doc.dom.lock().unwrap();
+        dom.root
+    };
     EventTargetImpl::remove_listener(ptr, type_);
 }
 
 pub fn dispatch_event<'js>(doc: &Document, event: Value<'js>) -> bool {
-    let ptr = &*doc.dom.root as *const _ as usize;
+    let ptr = {
+        let dom = doc.dom.lock().unwrap();
+        dom.root
+    };
     if let Some(obj) = event.as_object() {
             if let Ok(type_val) = obj.get::<_, String>("type") {
                 let listeners_static = EventTargetImpl::get_listeners(ptr, &type_val);

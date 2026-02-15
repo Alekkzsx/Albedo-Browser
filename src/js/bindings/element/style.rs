@@ -5,7 +5,8 @@ use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let decl = CssStyleDeclaration { 
-        node: el.node.clone(),
+        dom: el.dom.clone(),
+        index: el.index,
         mutations: el.mutations.clone(),
         stylesheet_dirty: el.stylesheet_dirty.clone(),
     };
@@ -15,7 +16,8 @@ pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 
 pub fn class_list<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let list = DomTokenList { 
-        node: el.node.clone(),
+        dom: el.dom.clone(),
+        index: el.index,
         mutations: el.mutations.clone(),
         stylesheet_dirty: el.stylesheet_dirty.clone(),
     };

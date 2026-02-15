@@ -1,12 +1,14 @@
-use kuchiki::NodeRef;
+use crate::engine::dom::AceDOM;
 use std::sync::{Arc, Mutex};
-use crate::engine::style::{Stylesheet, resolve_style};
+use crate::engine::style::Stylesheet;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct ComputedCSSStyleDeclaration {
     #[qjs(skip_trace)]
-    pub node: NodeRef,
+    pub dom: Arc<Mutex<AceDOM>>,
+    #[qjs(skip_trace)]
+    pub node_idx: usize,
     #[qjs(skip_trace)]
     pub stylesheet: Arc<Mutex<Stylesheet>>,
 }
@@ -15,12 +17,29 @@ pub struct ComputedCSSStyleDeclaration {
 impl ComputedCSSStyleDeclaration {
     #[qjs(rename = "getPropertyValue")]
     pub fn get_property_value(&self, property: String) -> String {
-        if let Some(element) = self.node.as_element() {
-            let stylesheet = self.stylesheet.lock().unwrap();
-            let style = resolve_style(&self.node, element, &stylesheet);
-            style.get(&property)
-        } else {
-            String::new()
+        let stylesheet = self.stylesheet.lock().unwrap();
+        let dom = self.dom.lock().unwrap();
+        // stylesheet.calculate_style signature was updated in previous steps to accept &AceDOM and usize
+        // For now, we don't have parent context easily available here without traversing up.
+        // We'll pass None for parent_style for now (inheritance will be limited for JS query until we fix this loop).
+        let style = stylesheet.calculate_style(&dom, self.node_idx, None);
+        
+        match property.as_str() {
+            "color" => format!("{:?}", style.color), // Todo: Implement proper Display or to_string for CssColor
+            "background-color" | "background" => format!("{:?}", style.background_color),
+            "font-size" => style.font_size.to_string(),
+            "display" => format!("{:?}", style.display), // Todo: to_lowercase()
+            "width" => style.width.to_string(),
+            "height" => style.height.to_string(),
+            "margin-top" => style.margin_top.to_string(),
+            "margin-right" => style.margin_right.to_string(),
+            "margin-bottom" => style.margin_bottom.to_string(),
+            "margin-left" => style.margin_left.to_string(),
+            "padding-top" => style.padding_top.to_string(),
+            "padding-right" => style.padding_right.to_string(),
+            "padding-bottom" => style.padding_bottom.to_string(),
+            "padding-left" => style.padding_left.to_string(),
+            _ => String::new(),
         }
     }
 

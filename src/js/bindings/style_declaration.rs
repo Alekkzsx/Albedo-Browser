@@ -1,29 +1,35 @@
 use rquickjs::Result;
-use kuchiki::NodeRef;
-use kuchiki::traits::*;
+use crate::engine::dom::{AceDOM, AceNodeType};
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct CssStyleDeclaration {
     #[qjs(skip_trace)]
-    pub node: NodeRef,
+    pub dom: Arc<Mutex<AceDOM>>,
     #[qjs(skip_trace)]
-    pub mutations: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub index: usize,
     #[qjs(skip_trace)]
-    pub stylesheet_dirty: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub mutations: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
+    pub stylesheet_dirty: Arc<Mutex<bool>>,
 }
 
 impl CssStyleDeclaration {
     fn parse_style(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
-        if let Some(data) = self.node.as_element() {
-            if let Some(style_attr) = data.attributes.borrow().get("style") {
-                for decl in style_attr.split(';') {
-                    let decl = decl.trim();
-                    if decl.is_empty() { continue; }
-                    if let Some((key, val)) = decl.split_once(':') {
-                        map.insert(key.trim().to_string(), val.trim().to_string());
+        if let Ok(dom) = self.dom.lock() {
+            if let Some(node) = dom.get_node(self.index) {
+                if let AceNodeType::Element(element) = &node.node_type {
+                    if let Some(style_attr) = element.attributes.get("style") {
+                        for decl in style_attr.split(';') {
+                            let decl = decl.trim();
+                            if decl.is_empty() { continue; }
+                            if let Some((key, val)) = decl.split_once(':') {
+                                map.insert(key.trim().to_string(), val.trim().to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -32,21 +38,24 @@ impl CssStyleDeclaration {
     }
 
     fn update_style_attribute(&self, map: &HashMap<String, String>) {
-        if let Some(data) = self.node.as_element() {
-            let mut attrs = data.attributes.borrow_mut();
-            if map.is_empty() {
-                attrs.remove("style");
-            } else {
-                let mut style_str = String::new();
-                for (key, val) in map {
-                    style_str.push_str(key);
-                    style_str.push_str(": ");
-                    style_str.push_str(val);
-                    style_str.push_str("; ");
+         if let Ok(mut dom) = self.dom.lock() {
+            if let Some(node) = dom.nodes.get_mut(self.index) {
+                if let AceNodeType::Element(element) = &mut node.node_type {
+                    if map.is_empty() {
+                         element.attributes.remove("style");
+                    } else {
+                         let mut style_str = String::new();
+                         for (key, val) in map {
+                             style_str.push_str(key);
+                             style_str.push_str(": ");
+                             style_str.push_str(val);
+                             style_str.push_str("; ");
+                         }
+                         element.attributes.insert("style".to_string(), style_str.trim().to_string());
+                    }
                 }
-                attrs.insert("style", style_str.trim().to_string());
             }
-        }
+         }
     }
 }
 
@@ -55,6 +64,9 @@ impl CssStyleDeclaration {
     fn mark_mutation(&self) {
         if let Ok(mut m) = self.mutations.lock() {
             *m = true;
+        }
+        if let Ok(mut sd) = self.stylesheet_dirty.lock() {
+            *sd = true;
         }
     }
 
@@ -83,9 +95,11 @@ impl CssStyleDeclaration {
     
     #[qjs(get, rename = "cssText")]
     pub fn get_css_text(&self) -> String {
-        if let Some(data) = self.node.as_element() {
-            if let Some(style_attr) = data.attributes.borrow().get("style") {
-                return style_attr.to_string();
+        if let Ok(dom) = self.dom.lock() {
+            if let Some(node) = dom.get_node(self.index) {
+                if let AceNodeType::Element(element) = &node.node_type {
+                    return element.attributes.get("style").cloned().unwrap_or_default();
+                }
             }
         }
         String::new()
@@ -93,10 +107,14 @@ impl CssStyleDeclaration {
 
     #[qjs(set, rename = "cssText")]
     pub fn set_css_text(&self, value: String) {
-        if let Some(data) = self.node.as_element() {
-            data.attributes.borrow_mut().insert("style", value);
-            self.mark_mutation();
+        if let Ok(mut dom) = self.dom.lock() {
+            if let Some(node) = dom.nodes.get_mut(self.index) {
+                if let AceNodeType::Element(element) = &mut node.node_type {
+                     element.attributes.insert("style".to_string(), value);
+                }
+            }
         }
+        self.mark_mutation();
     }
 
     // Common CSS property helpers

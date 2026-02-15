@@ -1,17 +1,19 @@
 use rquickjs::{Ctx, Class, Result, Value, Function};
-use kuchiki::NodeRef;
-use kuchiki::traits::*;
 use crate::js::bindings::token_list::DomTokenList;
+use crate::engine::dom::{AceDOM, AceNodeType};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct Element {
     #[qjs(skip_trace)]
-    pub node: NodeRef,
+    pub dom: Arc<Mutex<AceDOM>>,
     #[qjs(skip_trace)]
-    pub mutations: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub index: usize,
     #[qjs(skip_trace)]
-    pub stylesheet_dirty: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub mutations: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
+    pub stylesheet_dirty: Arc<Mutex<bool>>,
 }
 
 pub mod query;
@@ -32,10 +34,16 @@ impl Element {
             *m = true;
         }
 
-        // If this is a <style> tag, mark stylesheet as dirty
-        if self.node.as_element().map(|e| e.name.local.to_string() == "style").unwrap_or(false) {
-            if let Ok(mut sd) = self.stylesheet_dirty.lock() {
-                *sd = true;
+        // Check if style tag
+        if let Ok(dom) = self.dom.lock() {
+            if let Some(node) = dom.get_node(self.index) {
+                if let AceNodeType::Element(el) = &node.node_type {
+                    if el.tag == "style" {
+                        if let Ok(mut sd) = self.stylesheet_dirty.lock() {
+                            *sd = true;
+                        }
+                    }
+                }
             }
         }
     }
