@@ -1,12 +1,17 @@
 mod tab;
 mod tab_manager;
 mod engine;
+mod js;
+mod services;
 
 use slint::ComponentHandle;
 use tab_manager::TabManager;
 
 mod app;
 mod ui;
+mod net;
+mod graphics;
+mod media;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -77,7 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app::callbacks::handle_close_tab(&tm_clone, index, &tabs_model_clone);
     });
 
-    /*
     // JS Pulse Timer
     let tm_pulse = tab_manager.clone();
     let ui_pulse = ui_handle.clone();
@@ -85,12 +89,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     pulse_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), move || {
         app::callbacks::handle_pulse(&ui_pulse, &tm_pulse);
     });
-    */
+
 
     let tm_click = tab_manager.clone();
     let ui_click = ui_handle.clone();
-    ui.on_box_clicked(move |ptr_str| {
-        app::callbacks::handle_click(&ui_click, &tm_click, ptr_str);
+    ui.on_pointer_click(move |x, y| {
+        app::callbacks::handle_pointer_click(&ui_click, &tm_click, x, y); 
+    });
+
+    let tm_move = tab_manager.clone();
+    let ui_move = ui_handle.clone();
+    ui.on_pointer_move(move |x, y| {
+        app::callbacks::handle_hover(&ui_move, &tm_move, x, y);
     });
 
     ui.run()?;

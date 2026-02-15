@@ -1,18 +1,25 @@
-use reqwest::blocking::Client;
-use std::time::Duration;
-use kuchiki::traits::TendrilSink;
-use taffy::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use url::Url;
+use crate::services::resource_manager::{ResourceManager, ResourceType, ResourceResponse};
+use tokio::sync::mpsc;
+use kuchiki::traits::TendrilSink;
 
 pub mod dom;
 pub mod style;
 pub mod css_values;
+pub mod text;
+pub mod svg;
 #[cfg(test)]
 mod dom_tests;
 
 use self::dom::{AceDOM, AceNodeType};
 use self::style::Stylesheet;
+use self::css_values::CssFontWeight;
+use taffy::prelude::*;
+use taffy::Taffy;
+use taffy::node::{MeasureFunc, Node};
+use taffy::style::{TrackSizingFunction, GridPlacement};
 
 // Estrutura Visual Simplificada
 #[derive(Clone, Debug)]
@@ -36,17 +43,23 @@ pub struct ACEPrimitive {
     pub box_shadow: Option<String>, // CSS box-shadow string for rendering
     pub text_shadow: Option<String>, // CSS text-shadow string
     pub background_image: Option<String>, // CSS background (gradient or url)
+    pub node_idx: usize, // Link back to DOM node
 }
 
 pub struct AceEngine {
     pub current_url: String,
-    pub primitives: Vec<ACEPrimitive>,
+    pub primitives: Arc<Mutex<Vec<ACEPrimitive>>>,
     pub dom: Option<Arc<Mutex<AceDOM>>>, 
     pub stylesheet: Arc<Mutex<Stylesheet>>,
-    client: Client,
+    pub resource_manager: Option<ResourceManager>,
     taffy: Taffy,
     root_node: Option<Node>,
     pub viewport_width: f32, // Dynamic viewport width
+    pub js_runtime: Option<crate::js::JsRuntime>,
+    pub image_cache: Arc<Mutex<HashMap<String, slint::Image>>>,
+    pub font_system: Arc<Mutex<cosmic_text::FontSystem>>,
+    pub hovered_element: Option<usize>,
+    pub focused_element: Option<usize>,
 }
 
 impl Clone for AceEngine {
@@ -56,37 +69,45 @@ impl Clone for AceEngine {
             primitives: self.primitives.clone(),
             dom: self.dom.clone(),
             stylesheet: self.stylesheet.clone(),
-            client: self.client.clone(),
+            resource_manager: self.resource_manager.clone(),
             taffy: Taffy::new(),
             root_node: None,
             viewport_width: self.viewport_width,
+            js_runtime: self.js_runtime.clone(),
+            image_cache: self.image_cache.clone(),
+            font_system: self.font_system.clone(),
+            hovered_element: self.hovered_element,
+            focused_element: self.focused_element,
         }
     }
 }
 
 impl AceEngine {
     pub fn new() -> Self {
-        let client = Client::builder()
-            .user_agent("AlbedoBrowser/0.1")
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap_or_default();
-
         Self {
             current_url: "albedo://start".to_string(),
-            primitives: Vec::new(),
+            primitives: Arc::new(Mutex::new(Vec::new())),
             dom: None,
-            stylesheet: Arc::new(Mutex::new(Stylesheet { rules: Vec::new(), media_rules: Vec::new() })),
-            client,
+            stylesheet: Arc::new(Mutex::new(Stylesheet { user_agent_rules: Vec::new(), rules: Vec::new(), media_rules: Vec::new() })),
+            resource_manager: None,
             taffy: Taffy::new(),
             root_node: None,
             viewport_width: 1024.0, // Default width
+            js_runtime: None,
+            image_cache: Arc::new(Mutex::new(HashMap::new())),
+            font_system: Arc::new(Mutex::new(cosmic_text::FontSystem::new())),
+            hovered_element: None,
+            focused_element: None,
         }
     }
 
+    pub fn set_resource_manager(&mut self, rm: ResourceManager) {
+        self.resource_manager = Some(rm);
+    }
+
     pub fn load_url(&mut self, url: &str) {
-        println!("ENGINE: Carregando URL: {}", url);
-        self.primitives.clear();
+        println!("ENGINE: Iniciando carregamento assíncrono: {}", url);
+        self.primitives.lock().unwrap().clear();
         self.current_url = url.to_string();
         
         self.taffy = Taffy::new();
@@ -96,23 +117,97 @@ impl AceEngine {
             return;
         }
 
-        match self.client.get(url).send() {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    let html = resp.text().unwrap_or_default();
-                    self.parse_html(&html);
-                } else {
-                    self.render_error(&format!("Erro HTTP: {}", resp.status()));
-                }
-            }
-            Err(e) => self.render_error(&format!("Erro de Conexão: {}", e)),
+        if let Some(ref rm) = self.resource_manager {
+            rm.fetch(url.to_string(), ResourceType::Html);
+        } else {
+            self.render_error("Resource Manager não inicializado.");
         }
     }
     fn parse_html(&mut self, html: &str) {
         let document = kuchiki::parse_html().one(html);
-        self.dom = Some(Arc::new(Mutex::new(AceDOM::new(document)))); 
+        let dom = Arc::new(Mutex::new(AceDOM::new(document)));
+        self.dom = Some(dom.clone()); 
+        
+        // Initialize JS Runtime
+        self.js_runtime = crate::js::init::init_js_for_url(&self.current_url, self);
         
         self.update_stylesheet();
+        self.execute_scripts();
+    }
+
+    pub fn execute_scripts(&mut self) {
+        let dom_ptr = if let Some(dom) = &self.dom {
+            dom.clone()
+        } else {
+            return;
+        };
+
+        let rt_ptr = if let Some(rt) = self.js_runtime.as_ref() {
+            rt.clone()
+        } else {
+            return;
+        };
+
+        let dom = dom_ptr.lock().unwrap();
+        for node in &dom.nodes {
+            if let AceNodeType::Element(el) = &node.node_type {
+                if el.tag == "script" {
+                    let mut script_content = String::new();
+                    for &child_idx in &node.children {
+                        if let Some(child) = dom.get_node(child_idx) {
+                            if let AceNodeType::Text(text) = &child.node_type {
+                                script_content.push_str(text);
+                            }
+                        }
+                    }
+                    
+                    if !script_content.is_empty() {
+                        println!("ENGINE: Executando script no carregamento");
+                        let _ = rt_ptr.execute_script(&script_content);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn process_resource_responses(&mut self, rx: &mut mpsc::UnboundedReceiver<ResourceResponse>) -> bool {
+        let mut needs_sync = false;
+        
+        while let Ok(res) = rx.try_recv() {
+            println!("ENGINE: Recebida resposta assíncrona para: {}", res.url);
+            match res.resource_type {
+                ResourceType::Html => {
+                    if let Ok(html) = String::from_utf8(res.data) {
+                        self.parse_html(&html);
+                        needs_sync = true;
+                    }
+                }
+                ResourceType::Css => {
+                    if let Ok(css_text) = String::from_utf8(res.data) {
+                        println!("ENGINE: Aplicando CSS externo recebido ({} bytes)", css_text.len());
+                        let parsed = style::parse(&css_text);
+                        self.stylesheet.lock().unwrap().rules.extend(parsed.rules);
+                        self.recompute_layout();
+                        needs_sync = true;
+                    }
+                }
+                ResourceType::Image => {
+                    println!("ENGINE: Processando dados de imagem para: {}", res.url);
+                    // Converter bytes para Slint Image (isso consome CPU, mas aqui já estamos no pulse)
+                    if let Ok(img) = image::load_from_memory(&res.data) {
+                        let rgba = img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+                        buffer.make_mut_bytes().copy_from_slice(&rgba.into_raw());
+                        let slint_img = slint::Image::from_rgba8_premultiplied(buffer);
+                        
+                        self.image_cache.lock().unwrap().insert(res.url, slint_img);
+                        needs_sync = true;
+                    }
+                }
+            }
+        }
+        needs_sync
     }
 
     pub fn update_stylesheet(&mut self) {
@@ -126,7 +221,7 @@ impl AceEngine {
 
         {
             let dom = dom_ptr.lock().unwrap();
-            let mut new_style = style::Stylesheet { rules: Vec::new(), media_rules: Vec::new() };
+            let mut new_style = style::Stylesheet { user_agent_rules: Vec::new(), rules: Vec::new(), media_rules: Vec::new() };
             
             // FASE 6: Default CSS - User agent stylesheet with semantic elements
             let default_css = r#"
@@ -183,14 +278,11 @@ impl AceEngine {
             for node in &dom.nodes {
                 if let AceNodeType::Element(el) = &node.node_type {
                     if el.tag == "link" {
-                        // Check if it's a stylesheet link
                         let rel = el.attributes.get("rel").map(|s| s.to_lowercase()).unwrap_or_default();
                         let href = el.attributes.get("href").map(|s| s.to_string());
                         
                         if rel.contains("stylesheet") && href.is_some() {
                             let href = href.unwrap();
-                            
-                            // Resolve relative URL
                             let css_url = if let Some(ref base) = base_url {
                                 base.join(&href).ok()
                             } else {
@@ -198,23 +290,9 @@ impl AceEngine {
                             };
 
                             if let Some(css_url) = css_url {
-                                println!("ENGINE: Fetching external CSS: {}", css_url);
-                                
-                                // Fetch the CSS file
-                                if let Ok(resp) = self.client.get(css_url.as_str())
-                                    .timeout(Duration::from_secs(10))
-                                    .send() 
-                                {
-                                    if resp.status().is_success() {
-                                        if let Ok(css_text) = resp.text() {
-                                            println!("ENGINE: Loaded {} bytes of external CSS", css_text.len());
-                                            new_style.rules.extend(style::parse(&css_text).rules);
-                                        }
-                                    } else {
-                                        println!("ENGINE: Failed to fetch CSS: {}", resp.status());
-                                    }
-                                } else {
-                                    println!("ENGINE: Error fetching external CSS: {}", css_url);
+                                if let Some(ref rm) = self.resource_manager {
+                                    println!("ENGINE: Solicitando CSS externo: {}", css_url);
+                                    rm.fetch(css_url.to_string(), ResourceType::Css);
                                 }
                             }
                         }
@@ -224,8 +302,6 @@ impl AceEngine {
             
             *self.stylesheet.lock().unwrap() = new_style;
         }
-        
-        self.recompute_layout();
     }
 
     pub fn recompute_layout(&mut self) {
@@ -236,6 +312,9 @@ impl AceEngine {
         };
 
         let viewport_width = self.viewport_width;
+        let text_measurer = text::TextMeasurer::new(self.font_system.clone());
+        let hovered_element = self.hovered_element;
+        let focused_element = self.focused_element;
 
         {
             let dom = dom_ptr.lock().unwrap();
@@ -248,8 +327,11 @@ impl AceEngine {
             
             self.taffy = Taffy::new();
             
+            // First calculate root style (of <html> or body fallback)
+            let root_style = stylesheet.calculate_style(&dom, display_root, None, None, hovered_element, focused_element);
+            
             // Pass &mut self.taffy explicitly
-            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None);
+            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None, Some(&root_style), &text_measurer, hovered_element, focused_element);
             self.root_node = Some(root_node);
 
             let available_space = Size {
@@ -258,27 +340,33 @@ impl AceEngine {
             };
             let _ = self.taffy.compute_layout(root_node, available_space);
 
-            self.primitives.clear();
+            let mut primitives = self.primitives.lock().unwrap();
+            primitives.clear();
             // Background - use viewport width
-            self.primitives.push(ACEPrimitive {
+            primitives.push(ACEPrimitive {
                 x: 0.0, y: 0.0, width: viewport_width, height: 8000.0,
                 color: "#FFFFFF".to_string(), text: "".into(), font_size: 0.0, 
                 link_url: None, element_type: "box".into(), image_url: None,
                 z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0,
                 box_shadow: None, text_shadow: None, background_image: None,
+                node_idx: display_root,
             });
             
             // Pass fields explicitly to avoid &mut self borrow conflict
             generate_display_list(
-                &mut self.primitives, 
+                &mut primitives, 
                 &self.taffy, 
                 display_root, 
                 &dom, 
-                root_node, 
+                root_node,
                 0.0, 
                 0.0, 
                 &stylesheet, 
-                None 
+                None,
+                Some(&root_style),
+                self.image_cache.clone(),
+                hovered_element,
+                focused_element
             );
         }
     }
@@ -291,24 +379,70 @@ impl AceEngine {
         }
     }
 
+    pub fn find_element_at_position(&self, x: f32, y: f32) -> Option<usize> {
+        let primitives = self.primitives.lock().unwrap();
+        // Search in reverse order (topmost first)
+        for prim in primitives.iter().rev() {
+            if x >= prim.x && x <= prim.x + prim.width &&
+               y >= prim.y && y <= prim.y + prim.height {
+                return Some(prim.node_idx);
+            }
+        }
+        None
+    }
+
+    pub fn set_hover(&mut self, node_id: Option<usize>) {
+        if self.hovered_element != node_id {
+            self.hovered_element = node_id;
+            // Recompute layout to apply :hover styles
+            self.recompute_layout();
+        }
+    }
+
     fn render_error(&mut self, msg: &str) {
-        self.primitives.push(ACEPrimitive {
+        self.primitives.lock().unwrap().push(ACEPrimitive {
             x: 20.0, y: 20.0, width: 600.0, height: 50.0,
             color: "transparent".into(),
             text: msg.to_string(),
             font_size: 20.0, link_url: None, element_type: "text".into(), image_url: None,
             z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0,
             box_shadow: None, text_shadow: None, background_image: None,
+            node_idx: 0,
         });
     }
 
     pub fn render_visual(&self) -> Vec<ACEPrimitive> {
-        self.primitives.clone()
+        self.primitives.lock().unwrap().clone()
+    }
+
+    pub fn check_mutations(&mut self) -> (bool, bool) {
+        if let Some(ref rt) = self.js_runtime {
+             let mut mutated = false;
+             let mut style_dirty = false;
+             
+             if let Ok(mut m) = rt.mutations.lock() {
+                 if *m {
+                     mutated = true;
+                     *m = false;
+                 }
+             }
+             
+             if let Ok(mut s) = rt.stylesheet_dirty.lock() {
+                 if *s {
+                     style_dirty = true;
+                     *s = false;
+                 }
+             }
+             
+             return (mutated, style_dirty);
+        }
+        (false, false)
     }
 }
 
+
 // Helper functions (standalone to avoid borrow checker issues)
-use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle, BackgroundImage, Gradient};
+use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle, BackgroundImage, Gradient, CssContent};
 
 fn format_gradient(g: &Gradient) -> String {
     match g {
@@ -341,23 +475,27 @@ fn format_gradient(g: &Gradient) -> String {
     }
 }
 
-fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>) -> Node {
+fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, text_measurer: &text::TextMeasurer, hovered_element: Option<usize>, focused_element: Option<usize>) -> Node {
     let node = dom.get_node(node_idx).unwrap();
     
     let mut style = Style::default();
     
     // Now we use the passed parent_style for inheritance
-    let computed = stylesheet.calculate_style(dom, node_idx, parent_style);
+    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element);
     
-    style.display = match computed.display {
-        CssDisplay::None => Display::None,
-        CssDisplay::Flex => Display::Flex,
-        CssDisplay::InlineFlex => Display::Flex,
-        CssDisplay::Grid => Display::Grid,
-        CssDisplay::Block => Display::Flex,
-        CssDisplay::InlineBlock => Display::Flex, 
-        CssDisplay::Inline => Display::Flex, 
-    };
+    if computed.display == CssDisplay::None {
+        style.display = Display::None;
+    } else {
+        style.display = match computed.display {
+            CssDisplay::None => Display::None,
+            CssDisplay::Flex => Display::Flex,
+            CssDisplay::InlineFlex => Display::Flex,
+            CssDisplay::Grid => Display::Grid,
+            CssDisplay::Block => Display::Flex,
+            CssDisplay::InlineBlock => Display::Flex, 
+            CssDisplay::Inline => Display::Flex, 
+        };
+    }
     
     if let AceNodeType::Element(el) = &node.node_type {
             match el.tag.as_str() {
@@ -397,8 +535,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Percent(v) => LengthPercentageAuto::Percent(*v / 100.0),
             CssLength::Vw(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
             CssLength::Vh(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) => LengthPercentageAuto::Points(*v * 16.0), // Simplified: 1rem = 16px
-            CssLength::Em(v) => LengthPercentageAuto::Points(*v * 16.0), // Simplified: 1em = 16px
+            CssLength::Rem(v) | CssLength::Em(v) | CssLength::Fr(v) => LengthPercentageAuto::Points(*v), // Fr fallback
             CssLength::Auto => LengthPercentageAuto::Auto,
             CssLength::Zero => LengthPercentageAuto::Points(0.0),
         }
@@ -410,8 +547,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Percent(v) => LengthPercentage::Percent(*v / 100.0),
             CssLength::Vw(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
             CssLength::Vh(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) => LengthPercentage::Points(*v * 16.0),
-            CssLength::Em(v) => LengthPercentage::Points(*v * 16.0),
+            CssLength::Rem(v) | CssLength::Em(v) | CssLength::Fr(v) => LengthPercentage::Points(*v),
             CssLength::Zero => LengthPercentage::Points(0.0),
             CssLength::Auto => LengthPercentage::Points(0.0),
         }
@@ -423,10 +559,28 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Percent(v) => Dimension::Percent(*v / 100.0),
             CssLength::Vw(v) => Dimension::Percent(*v / 100.0), // Simplified
             CssLength::Vh(v) => Dimension::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) => Dimension::Points(*v * 16.0),
-            CssLength::Em(v) => Dimension::Points(*v * 16.0),
+            CssLength::Rem(v) | CssLength::Em(v) => Dimension::Points(*v),
+            CssLength::Fr(v) => Dimension::Percent(*v), // Taffy uses percent for fr if not explicitly grid tracks, but in grid tracks it uses TrackSizingFunction
             CssLength::Auto => Dimension::Auto,
             CssLength::Zero => Dimension::Points(0.0),
+        }
+    }
+    
+    fn to_taffy_track(l: &CssLength) -> TrackSizingFunction {
+        match l {
+            CssLength::Px(v) => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Points(*v) }),
+            CssLength::Percent(v) => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Percent(*v / 100.0) }),
+            CssLength::Fr(v) => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Flex(*v) }),
+            CssLength::Auto => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Auto }),
+            CssLength::Zero => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Points(0.0) }),
+            _ => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Auto }),
+        }
+    }
+    
+    fn to_taffy_grid_pos(l: &CssLength) -> GridPlacement {
+        match l {
+            CssLength::Px(v) => GridPlacement::from_line_index((*v as i16).max(1)),
+            _ => GridPlacement::Auto,
         }
     }
 
@@ -443,24 +597,52 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         bottom: to_taffy_lp(&computed.padding_bottom),
     };
 
+    // Grid Layout
+    style.grid_template_columns = computed.grid_template_columns.iter().map(to_taffy_track).collect();
+    style.grid_template_rows = computed.grid_template_rows.iter().map(to_taffy_track).collect();
+    style.grid_column = Line {
+        start: to_taffy_grid_pos(&computed.grid_column_start),
+        end: to_taffy_grid_pos(&computed.grid_column_end),
+    };
+    style.grid_row = Line {
+        start: to_taffy_grid_pos(&computed.grid_row_start),
+        end: to_taffy_grid_pos(&computed.grid_row_end),
+    };
+    style.gap = Size {
+        width: to_taffy_lp(&computed.grid_column_gap),
+        height: to_taffy_lp(&computed.grid_row_gap),
+    };
+
     style.size.width = to_taffy_dim(&computed.width);
     style.size.height = to_taffy_dim(&computed.height);
 
-    // Ensure minimum width for text elements and flex containers
     if let AceNodeType::Text(text) = &node.node_type {
-            let text_content = text.trim();
-            if !text_content.is_empty() {
-                // Use percent width but ensure parent has constraints
-                style.size.width = Dimension::Percent(1.0);
-                // Basic font mapping: assume 16px if not Px
-                let font_size = match computed.font_size {
-                    CssLength::Px(v) => v,
-                    _ => 16.0,
-                };
-                style.size.height = Dimension::Points(font_size * 1.2);
-                // Add min-width to ensure text is visible
-                style.min_size.width = Dimension::Points(100.0);
-            }
+        let text_content = text.trim().to_string();
+        if !text_content.is_empty() {
+             let font_size = computed.font_size;
+            
+            let line_height = match computed.line_height {
+                CssLength::Px(v) => v,
+                CssLength::Percent(v) => font_size * (v / 100.0),
+                _ => font_size * 1.2,
+            };
+            
+            let family = Some(computed.font_family.clone());
+            let weight = computed.font_weight.to_cosmic();
+
+            let tm = text_measurer.clone();
+            let measure_func = move |known_dims: Size<Option<f32>>, available_space: Size<AvailableSpace>| {
+                let max_width = known_dims.width.or(match available_space.width {
+                    AvailableSpace::Definite(v) => Some(v),
+                    _ => None,
+                });
+                
+                let (w, h) = tm.measure_text(&text_content, font_size, line_height, family.as_deref(), weight, max_width);
+                Size { width: w, height: h }
+            };
+
+            return taffy.new_leaf_with_measure(style, MeasureFunc::Boxed(Box::new(measure_func))).unwrap();
+        }
     }
     
     // Ensure body/html have a defined width
@@ -471,6 +653,20 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     }
     
     let taffy_node = taffy.new_leaf(style).unwrap();
+    
+    // FASE 5: Shadow DOM support - if has shadow root, render it instead of children
+    if let Some(shadow_idx) = node.shadow_root {
+         let shadow_root_node = build_layout_tree(taffy, shadow_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element);
+         taffy.add_child(taffy_node, shadow_root_node).unwrap();
+         return taffy_node;
+    }
+
+    // Skip children for <template> as they are inert
+    if let AceNodeType::Element(el) = &node.node_type {
+        if el.tag == "template" {
+            return taffy_node;
+        }
+    }
 
     for &child_idx in &node.children {
             if let Some(child) = dom.get_node(child_idx) {
@@ -482,11 +678,49 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             }
         
         // Pass current computed style as parent style for children
-        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed));
+        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element);
         taffy.add_child(taffy_node, child_node).unwrap();
     }
 
     taffy_node
+}
+
+// Helper function to render pseudo-elements (::before, ::after)
+fn render_pseudo_element(
+    primitives: &mut Vec<ACEPrimitive>,
+    node_idx: usize,
+    pseudo_name: &str,
+    x: f32,
+    y: f32,
+    width: f32,
+    computed: &ComputedStyle,
+) {
+    // Only render if content is a string
+    if let CssContent::String(text) = &computed.content {
+        let font_size = computed.font_size;
+        let color = computed.color.to_rgba_string();
+        
+        primitives.push(ACEPrimitive {
+            x,
+            y,
+            width,
+            height: font_size * 1.2,
+            color,
+            text: text.clone(),
+            font_size,
+            link_url: None,
+            element_type: format!("pseudo-{}", pseudo_name),
+            image_url: None,
+            z_index: computed.z_index,
+            overflow_hidden: false,
+            opacity: computed.opacity,
+            border_radius: 0.0,
+            box_shadow: None,
+            text_shadow: None,
+            background_image: None,
+            node_idx,
+        });
+    }
 }
 
 fn generate_display_list(
@@ -494,11 +728,15 @@ fn generate_display_list(
     taffy: &Taffy,
     node_idx: usize, 
     dom: &AceDOM, 
-    taffy_node: Node, 
+    taffy_node: Node,
     parent_x: f32, 
     parent_y: f32, 
     stylesheet: &Stylesheet, 
-    parent_style: Option<&ComputedStyle> // Changed: pass full style context
+    parent_style: Option<&ComputedStyle>,
+    root_style: Option<&ComputedStyle>,
+    image_cache: Arc<Mutex<HashMap<String, slint::Image>>>,
+    hovered_element: Option<usize>,
+    focused_element: Option<usize>
 ) {
     let layout = match taffy.layout(taffy_node) {
         Ok(l) => l,
@@ -512,17 +750,14 @@ fn generate_display_list(
 
     let node = dom.get_node(node_idx).unwrap();
     // Use parent style for inheritance
-    let computed = stylesheet.calculate_style(dom, node_idx, parent_style);
+    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element);
     
     if computed.display == CssDisplay::None {
         return;
     }
 
     // Determine current text properties for rendering
-    let current_font_size = match computed.font_size {
-        CssLength::Px(v) => v,
-        _ => 16.0,
-    };
+    let current_font_size = computed.font_size;
     
     let current_color = match &computed.color {
         CssColor::Named(s) => s.clone(),
@@ -568,12 +803,110 @@ fn generate_display_list(
                     opacity: computed.opacity,
                     border_radius: 0.0,
                     box_shadow: None, text_shadow: None, background_image: None,
+                    node_idx,
                 });
                 return; // Skip normal rendering for iframe
             }
         } else if tag_name == "input" || tag_name == "button" || tag_name == "textarea" || tag_name == "select" {
             // FASE 6: Form elements - render with background
-            element_type = tag_name.to_string();
+            if tag_name == "input" {
+                let input_type = element.attributes.get("type").map(|s| s.to_lowercase()).unwrap_or("text".to_string());
+                element_type = format!("input-{}", input_type);
+                
+                // If text input, extract value as text
+                if input_type == "text" || input_type == "password" || input_type == "search" {
+                    let val = element.attributes.get("value").map(|s| s.to_string()).unwrap_or_default();
+                    let placeholder = element.attributes.get("placeholder").map(|s| s.to_string()).unwrap_or_default();
+                    
+                    let mut text_to_show = if val.is_empty() { placeholder } else { val };
+                    if input_type == "password" {
+                        text_to_show = "*".repeat(text_to_show.len());
+                    }
+
+                    primitives.push(ACEPrimitive {
+                        x, y, width, height,
+                        color: "#ffffff".into(),
+                        text: text_to_show,
+                        font_size: 14.0,
+                        link_url: None,
+                        element_type: element_type.clone(),
+                        image_url: None,
+                        z_index: computed.z_index,
+                        overflow_hidden: true,
+                        opacity: computed.opacity,
+                        border_radius: 2.0,
+                        box_shadow: None, text_shadow: None, background_image: None,
+                        node_idx,
+                    });
+                    return;
+                } else if input_type == "checkbox" || input_type == "radio" {
+                    let is_checked = element.attributes.contains_key("checked");
+                    let char = if is_checked { if input_type == "checkbox" { "X" } else { "●" } } else { "" };
+                    
+                    primitives.push(ACEPrimitive {
+                        x, y, width: 14.0, height: 14.0,
+                        color: "#ffffff".into(),
+                        text: char.into(),
+                        font_size: 12.0,
+                        link_url: None,
+                        element_type: element_type.clone(),
+                        image_url: None,
+                        z_index: computed.z_index,
+                        overflow_hidden: false,
+                        opacity: computed.opacity,
+                        border_radius: if input_type == "radio" { 7.0 } else { 2.0 },
+                        box_shadow: None, text_shadow: None, background_image: None,
+                        node_idx,
+                    });
+                    return;
+                }
+            } else if tag_name == "button" {
+                element_type = "button".to_string();
+                // Button text will be handled by children text nodes, 
+                // but we might want a default if empty or value attribute
+                if node.children.is_empty() {
+                    let val = element.attributes.get("value").map(|s| s.to_string()).unwrap_or_default();
+                    if !val.is_empty() {
+                        primitives.push(ACEPrimitive {
+                            x, y, width, height,
+                            color: "#efefef".into(),
+                            text: val,
+                            font_size: 14.0,
+                            link_url: None,
+                            element_type: "button".into(),
+                            image_url: None,
+                            z_index: computed.z_index,
+                            overflow_hidden: true,
+                            opacity: computed.opacity,
+                            border_radius: 3.0,
+                            box_shadow: None, text_shadow: None, background_image: None,
+                            node_idx,
+                        });
+                        return;
+                    }
+                }
+            } else {
+                element_type = tag_name.to_string();
+            }
+        } else if tag_name == "svg" {
+            // FASE 6: SVG support
+            let svg_content = dom.serialize_subtree(node_idx);
+            // Use content hash for cache key
+            let cache_key = format!("svg-{}x{}-{}", width, height, hash_string(&svg_content));
+            
+            let mut cache = image_cache.lock().unwrap();
+            if !cache.contains_key(&cache_key) {
+               if let Some(img) = crate::engine::svg::rasterize_svg(&svg_content, width, height) {
+                    cache.insert(cache_key.clone(), img);
+               }
+            }
+            
+            if cache.contains_key(&cache_key) {
+                element_type = "image".to_string();
+                image_url = Some(cache_key);
+            } else {
+                element_type = "box".to_string();
+            }
         }
 
         let bg_color = match &computed.background_color {
@@ -642,14 +975,22 @@ fn generate_display_list(
                 } else {
                     bg
                 };
-                
                 primitives.push(ACEPrimitive {
-                x, y, width, height,
-                color: final_bg,
-                text: "".into(), font_size: 0.0,
-                link_url, element_type, image_url,
-                z_index: computed.z_index, overflow_hidden, opacity, border_radius,
-                box_shadow: box_shadow_str, text_shadow: None, background_image: bg_image_str,
+                    x, y, width, height,
+                    color: final_bg,
+                    text: "".into(),
+                    font_size: 0.0,
+                    link_url,
+                    element_type,
+                    image_url,
+                    z_index: computed.z_index,
+                    overflow_hidden,
+                    opacity,
+                    border_radius,
+                    box_shadow: box_shadow_str,
+                    text_shadow: None,
+                    background_image: bg_image_str,
+                    node_idx,
                 });
         }
     }
@@ -676,8 +1017,26 @@ fn generate_display_list(
                 link_url: None, element_type: "text".into(), image_url: None,
                 z_index: computed.z_index, overflow_hidden: false, opacity: computed.opacity, border_radius: 0.0,
                 box_shadow: None, text_shadow: text_shadow_str, background_image: None,
+                node_idx,
                 });
             }
+    }
+
+    // FASE 5: Shadow DOM support - if has shadow root, prioritize its display list
+    if let Some(shadow_idx) = node.shadow_root {
+        if let Some(shadow_node) = dom.get_node(shadow_idx) {
+             let shadow_taffy = taffy.children(taffy_node).unwrap().first().copied();
+             if let Some(shadow_taffy) = shadow_taffy {
+                generate_display_list(primitives, taffy, shadow_idx, dom, shadow_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element);
+                return;
+             }
+        }
+    }
+
+    // Render ::before pseudo-element
+    let before_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::Before, hovered_element, focused_element);
+    if before_style.content != CssContent::Normal && before_style.content != CssContent::None {
+        render_pseudo_element(primitives, node_idx, "before", x, y, width, &before_style);
     }
 
     let taffy_children = taffy.children(taffy_node).unwrap();
@@ -694,6 +1053,23 @@ fn generate_display_list(
     }
     
     for (&child_dom_idx, &child_taffy) in relevant_children.iter().zip(taffy_children.iter()) {
-        generate_display_list(primitives, taffy, child_dom_idx, dom, child_taffy, x, y, stylesheet, Some(&computed));
+        generate_display_list(primitives, taffy, child_dom_idx, dom, child_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element);
     }
+    
+    // Render ::after pseudo-element
+    let after_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::After, hovered_element, focused_element);
+    if after_style.content != CssContent::Normal && after_style.content != CssContent::None {
+        // Calculate Y position for ::after (defaults to bottom of element for now)
+        // In a real layout engine, this would be part of the flow
+        let after_y = y + height; 
+        render_pseudo_element(primitives, node_idx, "after", x, after_y, width, &after_style);
+    }
+}
+
+fn hash_string(s: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hasher, Hash};
+    let mut hasher = DefaultHasher::new();
+    s.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
 }

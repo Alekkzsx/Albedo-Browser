@@ -88,18 +88,40 @@ pub fn handle_close_tab(tm: &TabManager, index: i32, tabs_model: &Rc<VecModel<Ta
     sync_tabs(tm, tabs_model);
 }
 
-pub fn handle_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, ptr_str: SharedString) {
-    let ptr = if ptr_str.starts_with("0x") {
-        usize::from_str_radix(&ptr_str[2..], 16).unwrap_or(0)
-    } else {
-        ptr_str.parse::<usize>().unwrap_or(0)
-    };
+pub fn handle_pointer_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
+    if let Some(ui) = ui_handle.upgrade() {
+         if tm.handle_click(x, y) {
+             sync_ace_visuals(&ui, tm);
+         }
+    }
+}
 
-    if ptr != 0 {
-        if let Some(ui) = ui_handle.upgrade() {
-             if tm.dispatch_click_to_active_tab(ptr) {
-                 sync_ace_visuals(&ui, tm);
-             }
+pub fn handle_hover(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
+    if let Some(ui) = ui_handle.upgrade() {
+         if tm.handle_hover(x, y) {
+             sync_ace_visuals(&ui, tm);
+         }
+    }
+}
+
+pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
+    if let Some(ui) = ui_handle.upgrade() {
+        // Processar recursos assíncronos primeiro
+        if tm.process_active_tab_resources() {
+            sync_ace_visuals(&ui, tm);
+        }
+
+        if let Some((_, Some(mut engine))) = tm.get_active_tab_native_data() {
+            let (mutated, style_dirty) = engine.check_mutations();
+            
+            if style_dirty {
+                engine.update_stylesheet();
+                sync_ace_visuals(&ui, tm);
+            } else if mutated {
+                engine.recompute_layout();
+                sync_ace_visuals(&ui, tm);
+            }
         }
     }
 }
+

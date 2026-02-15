@@ -51,11 +51,27 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             Class::<Response>::define(&global)?;
             
             let rt_clone = rt.clone();
-            let internal_fetch = rquickjs::Function::new(ctx.clone(), move |url: String, resolvers: rquickjs::Array| -> Result<()> {
+            let internal_fetch = rquickjs::Function::new(ctx.clone(), move |url: String, options: rquickjs::Object, resolvers: rquickjs::Array| -> Result<()> {
                 let ctx = resolvers.ctx();
                 let resolve: Function = resolvers.get(0)?;
                 let reject: Function = resolvers.get(1)?;
                 
+                // Extract options
+                let method = options.get::<_, String>("method").unwrap_or_else(|_| "GET".to_string()).to_uppercase();
+                let body = options.get::<_, Option<String>>("body").unwrap_or(None);
+                let headers_obj = options.get::<_, Option<rquickjs::Object>>("headers").unwrap_or(None);
+                
+                let mut headers_map = std::collections::HashMap::new();
+                if let Some(h_obj) = headers_obj {
+                    for key in h_obj.keys::<String>() {
+                        if let Ok(k) = key {
+                            if let Ok(v) = h_obj.get::<_, String>(k.clone()) {
+                                headers_map.insert(k, v);
+                            }
+                        }
+                    }
+                }
+
                 let (id, sender) = {
                     let mut el = rt_clone.event_loop.lock().unwrap();
                     let id = el.register_promise(
@@ -66,7 +82,24 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                 };
 
                 tokio::spawn(async move {
-                    let result: reqwest::Result<reqwest::Response> = reqwest::get(&url).await;
+                    let client = reqwest::Client::new();
+                    let mut req_builder = match method.as_str() {
+                        "POST" => client.post(&url),
+                        "PUT" => client.put(&url),
+                        "DELETE" => client.delete(&url),
+                        "PATCH" => client.patch(&url),
+                        _ => client.get(&url),
+                    };
+
+                    for (k, v) in headers_map {
+                        req_builder = req_builder.header(k, v);
+                    }
+
+                    if let Some(b) = body {
+                        req_builder = req_builder.body(b);
+                    }
+
+                    let result = req_builder.send().await;
                     let final_result: std::result::Result<(u16, String), String> = match result {
                         Ok(resp) => {
                             let status = resp.status().as_u16();
@@ -88,9 +121,10 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             global.set("__internal_fetch", internal_fetch)?;
 
             ctx.eval::<(), _>(r#"
-                globalThis.fetch = function(url) {
+                globalThis.fetch = function(url, options) {
+                    options = options || {};
                     return new Promise((resolve, reject) => {
-                        __internal_fetch(url, [resolve, reject]);
+                        __internal_fetch(url, options, [resolve, reject]);
                     });
                 };
             "#)?;

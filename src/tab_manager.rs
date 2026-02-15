@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use crate::engine::AceEngine;
 use crate::tab::TabMode;
 use crate::tab::collection::TabCollection;
+use crate::services::resource_manager::ResourceManager;
+use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct TabManager {
@@ -18,7 +20,22 @@ impl TabManager {
 
     pub fn create_tab(&self, _window: &slint::Window, url: &str) {
         println!("[TabManager] Creating new tab for URL: {}", url);
+        
+        // Criar canal para esta aba
+        let (tx, rx) = mpsc::unbounded_channel();
+        let rm = ResourceManager::new(tx);
+        
         let id = self.collection.borrow_mut().add(url.to_string());
+        
+        {
+            let mut col = self.collection.borrow_mut();
+            if let Some(pos) = col.tabs.iter().position(|t| t.id == id) {
+                let tab = &mut col.tabs[pos];
+                tab.resource_rx = Some(rx);
+                tab.engine.set_resource_manager(rm);
+            }
+        }
+        
         self.load_url(id, url.to_string());
     }
 
@@ -79,7 +96,46 @@ impl TabManager {
         self.collection.borrow_mut().close(index);
     }
 
-    pub fn dispatch_click_to_active_tab(&self, _ptr: usize) -> bool {
+    pub fn process_active_tab_resources(&self) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+            if let Some(mut rx) = tab.resource_rx.take() {
+                let needs_sync = tab.engine.process_resource_responses(&mut rx);
+                tab.resource_rx = Some(rx);
+                return needs_sync;
+            }
+        }
+        false
+    }
+
+    pub fn dispatch_click_to_active_tab(&self, node_idx: usize) -> bool {
+        let col = self.collection.borrow();
+        if let Some(tab) = col.get_active() {
+            if let Some(ref rt) = tab.engine.js_runtime {
+                if let Some(ref dom) = tab.engine.dom {
+                    println!("[TabManager] Dispatching click to node index: {}", node_idx);
+                    rt.dispatch_event(dom.clone(), node_idx, "click");
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn handle_click(&self, x: f32, y: f32) -> bool {
+        let col = self.collection.borrow();
+        if let Some(tab) = col.get_active() {
+            let node_id = tab.engine.find_element_at_position(x, y);
+            if let Some(idx) = node_id {
+                if let Some(ref rt) = tab.engine.js_runtime {
+                    if let Some(ref dom) = tab.engine.dom {
+                        println!("[TabManager] Click at ({}, {}) -> Node {}", x, y, idx);
+                        rt.dispatch_event(dom.clone(), idx, "click");
+                        return true;
+                    }
+                }
+            }
+        }
         false
     }
 }

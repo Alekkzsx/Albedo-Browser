@@ -8,9 +8,11 @@ use crate::engine::css_values::{
     ComputedStyle, CssLength, CssColor, CssDisplay, CssTextAlign, CssFontWeight,
     CssPosition, CssOverflow, CssFloat, CssFlexDirection, CssJustifyContent,
     CssAlignItems, CssFlexWrap, BoxShadow, TextShadow, BackgroundImage, Gradient, GradientStop,
+    CssContent
 };
 
 pub struct Stylesheet {
+    pub user_agent_rules: Vec<AceRule>,
     pub rules: Vec<AceRule>,
     pub media_rules: Vec<AceMediaRule>,
 }
@@ -83,14 +85,35 @@ impl selectors::parser::SelectorImpl for AceSelectorImpl {
     type NonTSPseudoClass = AceNonTSPseudoClass;
 }
 
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AcePseudoElement {}
+pub enum AcePseudoElement {
+    Before,
+    After,
+    Placeholder,
+    Selection,
+    Marker,
+}
+
+impl AcePseudoElement {
+    pub fn name(&self) -> &str {
+        match self {
+            AcePseudoElement::Before => "before",
+            AcePseudoElement::After => "after",
+            AcePseudoElement::Placeholder => "placeholder",
+            AcePseudoElement::Selection => "selection",
+            AcePseudoElement::Marker => "marker",
+        }
+    }
+}
+
 impl selectors::parser::PseudoElement for AcePseudoElement {
     type Impl = AceSelectorImpl;
 }
+
 impl ToCss for AcePseudoElement {
-    fn to_css<W>(&self, _dest: &mut W) -> std::fmt::Result where W: std::fmt::Write {
-        Ok(())
+    fn to_css<W>(&self, dest: &mut W) -> std::fmt::Result where W: std::fmt::Write {
+        write!(dest, "::{}", self.name())
     }
 }
 
@@ -148,6 +171,8 @@ impl ToCss for AceNonTSPseudoClass {
 pub struct AceElement<'a> {
     pub dom: &'a AceDOM,
     pub index: usize,
+    pub hovered_element: Option<usize>,
+    pub focused_element: Option<usize>,
 }
 
 impl<'a> selectors::Element for AceElement<'a> {
@@ -162,7 +187,7 @@ impl<'a> selectors::Element for AceElement<'a> {
             if let Some(parent_idx) = node.parent {
                 if let Some(parent_node) = self.dom.get_node(parent_idx) {
                     if let AceNodeType::Element(_) = &parent_node.node_type {
-                         return Some(AceElement { dom: self.dom, index: parent_idx });
+                         return Some(AceElement { dom: self.dom, index: parent_idx, hovered_element: self.hovered_element, focused_element: self.focused_element });
                     }
                 }
             }
@@ -175,7 +200,7 @@ impl<'a> selectors::Element for AceElement<'a> {
             for &child_idx in &node.children {
                 if let Some(child_node) = self.dom.get_node(child_idx) {
                     if let AceNodeType::Element(_) = &child_node.node_type {
-                        return Some(AceElement { dom: self.dom, index: child_idx });
+                        return Some(AceElement { dom: self.dom, index: child_idx, hovered_element: self.hovered_element, focused_element: self.focused_element });
                     }
                 }
             }
@@ -189,7 +214,7 @@ impl<'a> selectors::Element for AceElement<'a> {
             while let Some(prev_idx) = curr_prev {
                 if let Some(prev_node) = self.dom.get_node(prev_idx) {
                     if let AceNodeType::Element(_) = &prev_node.node_type {
-                        return Some(AceElement { dom: self.dom, index: prev_idx });
+                        return Some(AceElement { dom: self.dom, index: prev_idx, hovered_element: self.hovered_element, focused_element: self.focused_element });
                     }
                     curr_prev = prev_node.prev_sibling;
                 } else {
@@ -206,7 +231,7 @@ impl<'a> selectors::Element for AceElement<'a> {
             while let Some(next_idx) = curr_next {
                 if let Some(next_node) = self.dom.get_node(next_idx) {
                     if let AceNodeType::Element(_) = &next_node.node_type {
-                        return Some(AceElement { dom: self.dom, index: next_idx });
+                        return Some(AceElement { dom: self.dom, index: next_idx, hovered_element: self.hovered_element, focused_element: self.focused_element });
                     }
                     curr_next = next_node.next_sibling;
                 } else {
@@ -290,13 +315,27 @@ impl<'a> selectors::Element for AceElement<'a> {
         // FASE 5: Implement pseudo-class matching
         match pc {
             AceNonTSPseudoClass::Hover => {
-                // For now, we can't track hover state without JS interop
-                // Return false - would need event system integration
+                if let Some(hovered_idx) = self.hovered_element {
+                    if hovered_idx == self.index {
+                        return true;
+                    }
+                    // Bubbling: check if current element is an ancestor of the hovered element
+                    let mut curr = self.dom.get_node(hovered_idx).and_then(|n| n.parent);
+                    while let Some(idx) = curr {
+                        if idx == self.index {
+                            return true;
+                        }
+                        curr = self.dom.get_node(idx).and_then(|n| n.parent);
+                    }
+                }
                 false
             },
             AceNonTSPseudoClass::Focus => {
-                // Would need focus tracking
-                false
+                if let Some(focused) = self.focused_element {
+                    focused == self.index
+                } else {
+                    false
+                }
             },
             AceNonTSPseudoClass::Active => {
                 // Would need active state tracking
@@ -424,8 +463,45 @@ impl<'a> selectors::Element for AceElement<'a> {
     fn add_element_unique_hashes(&self, _filter: &mut selectors::bloom::BloomFilter) -> bool { false }
 }
 
+pub fn get_user_agent_stylesheet() -> Stylesheet {
+    let ua_css = "
+        header, footer, main, section, article, nav, aside, 
+        details, summary, figure, figcaption, h1, h2, h3, h4, 
+        h5, h6, p, ul, ol, li, div, blockquote, address { display: block; }
+        
+        template { display: none; }
+        
+        h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
+        h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
+        h3 { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
+        h4 { font-size: 1em; font-weight: bold; margin: 1.33em 0; }
+        h5 { font-size: 0.83em; font-weight: bold; margin: 1.67em 0; }
+        h6 { font-size: 0.67em; font-weight: bold; margin: 2.33em 0; }
+        
+        b, strong { font-weight: bold; }
+        i, em { font-style: italic; }
+        
+        ul { list-style-type: disc; margin: 1em 0; padding-left: 40px; }
+        ol { list-style-type: decimal; margin: 1em 0; padding-left: 40px; }
+        
+        button, input, select, textarea { 
+            display: inline-block; 
+            margin: 0; 
+            font: inherit; 
+        }
+        button { background-color: #efefef; border: 1px solid #767676; padding: 1px 6px; }
+        input[type=\"text\"] { background-color: white; border: 1px solid #767676; padding: 1px 2px; }
+    ";
+    
+    let mut ss = parse_simple(ua_css);
+    // Move rules to user_agent_rules
+    let rules = std::mem::take(&mut ss.rules);
+    ss.user_agent_rules = rules;
+    ss
+}
+
 pub fn parse(source: &str) -> Stylesheet {
-    let mut stylesheet = Stylesheet { rules: Vec::new(), media_rules: Vec::new() };
+    let mut stylesheet = get_user_agent_stylesheet();
     
     // FASE 5: Simple @media query support - find @media blocks
     // Extract @media blocks and parse them separately
@@ -497,7 +573,7 @@ pub fn parse(source: &str) -> Stylesheet {
 }
 
 fn parse_simple(source: &str) -> Stylesheet {
-    let mut stylesheet = Stylesheet { rules: Vec::new(), media_rules: Vec::new() };
+    let mut stylesheet = Stylesheet { user_agent_rules: Vec::new(), rules: Vec::new(), media_rules: Vec::new() };
     let mut input = ParserInput::new(source);
     let mut parser = Parser::new(&mut input);
 
@@ -608,17 +684,50 @@ impl<'i> selectors::parser::Parser<'i> for AceSelectorParser {
             })
         }
     }
+    
+    fn parse_pseudo_element(
+        &self,
+        location: SourceLocation,
+        name: CowRcStr<'i>,
+    ) -> Result<AcePseudoElement, ParseError<'i, Self::Error>> {
+        match name.as_ref() {
+            "before" => Ok(AcePseudoElement::Before),
+            "after" => Ok(AcePseudoElement::After),
+            "placeholder" => Ok(AcePseudoElement::Placeholder),
+            "selection" => Ok(AcePseudoElement::Selection),
+            "marker" => Ok(AcePseudoElement::Marker),
+            _ => Err(ParseError {
+                kind: cssparser::ParseErrorKind::Custom(
+                    selectors::parser::SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name)
+                ),
+                location,
+            })
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CascadeOrigin {
+    UserAgent = 0,
+    Author = 1,
+    AuthorMedia = 2,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CascadePriority {
+    pub origin: CascadeOrigin,
+    pub specificity: u32,
+    pub order: usize,
 }
 
 pub struct MatchedRule<'a> {
-    pub specificity: u32,
-    pub order: usize,
+    pub priority: CascadePriority,
     pub rule: &'a AceRule,
 }
 
 impl Stylesheet {
     // Calculate style with inheritance
-    pub fn calculate_style(&self, dom: &AceDOM, node_id: usize, parent_style: Option<&ComputedStyle>) -> ComputedStyle {
+    pub fn calculate_style(&self, dom: &AceDOM, node_id: usize, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, hovered_element: Option<usize>, focused_element: Option<usize>) -> ComputedStyle {
         let mut style = if let Some(parent) = parent_style {
             let mut s = ComputedStyle::default();
             // Inherited properties
@@ -640,184 +749,257 @@ impl Stylesheet {
 
         if let Some(node) = dom.get_node(node_id) {
              if let AceNodeType::Element(_) = &node.node_type {
-                 let ace_element = AceElement { dom, index: node_id };
+                 let ace_element = AceElement { dom, index: node_id, hovered_element, focused_element };
                  let mut matched_rules = Vec::new();
 
-                 for (order, rule) in self.rules.iter().enumerate() {
-                    let mut caches = selectors::matching::SelectorCaches::default();
-                     let mut context = MatchingContext::new(
-                        MatchingMode::Normal,
-                        None,
-                        &mut caches,
-                        selectors::matching::QuirksMode::NoQuirks,
-                        selectors::matching::NeedsSelectorFlags::No,
-                        selectors::matching::MatchingForInvalidation::No,
-                    );
-                    
-                    let mut best_specificity: Option<u32> = None;
-                    
-                    // Use matches_selector_list to check if any selector matches
-                    if selectors::matching::matches_selector_list(
-                        &rule.selectors,
-                        &ace_element,
-                        &mut context,
-                    ) {
-                        // If any selector matches, get the highest specificity
-                        // Since we can't iterate easily, just use order as specificity proxy
-                        best_specificity = Some(order as u32);
-                    }
+                   // 1. Process User Agent Rules (Lowest priority)
+                   for (order, rule) in self.user_agent_rules.iter().enumerate() {
+                       for selector in rule.selectors.slice() {
+                           let mut caches = selectors::matching::SelectorCaches::default();
+                           let mut context = MatchingContext::new(
+                               MatchingMode::Normal,
+                               None,
+                               &mut caches,
+                               selectors::matching::QuirksMode::NoQuirks,
+                               selectors::matching::NeedsSelectorFlags::No,
+                               selectors::matching::MatchingForInvalidation::No,
+                           );
+                           
+                           if selectors::matching::matches_selector(selector, 0, None, &ace_element, &mut context) {
+                               matched_rules.push(MatchedRule {
+                                   priority: CascadePriority {
+                                       origin: CascadeOrigin::UserAgent,
+                                       specificity: selector.specificity(),
+                                       order,
+                                   },
+                                   rule
+                               });
+                           }
+                       }
+                   }
 
-                    if let Some(spec) = best_specificity {
-                         matched_rules.push(MatchedRule {
-                             specificity: spec,
-                             order,
-                             rule
-                         });
-                    }
-                 }
+                   // 2. Process User Rules
+                   for (order, rule) in self.rules.iter().enumerate() {
+                       for selector in rule.selectors.slice() {
+                           let mut caches = selectors::matching::SelectorCaches::default();
+                           let mut context = MatchingContext::new(
+                               MatchingMode::Normal,
+                               None,
+                               &mut caches,
+                               selectors::matching::QuirksMode::NoQuirks,
+                               selectors::matching::NeedsSelectorFlags::No,
+                               selectors::matching::MatchingForInvalidation::No,
+                           );
+                           
+                           if selectors::matching::matches_selector(selector, 0, None, &ace_element, &mut context) {
+                               matched_rules.push(MatchedRule {
+                                   priority: CascadePriority {
+                                       origin: CascadeOrigin::Author,
+                                       specificity: selector.specificity(),
+                                       order: order + 1000,
+                                   },
+                                   rule
+                               });
+                           }
+                       }
+                   }
 
-                 // FASE 5: Apply media rules (simplified - apply all for now)
-                 // A full implementation would evaluate media query conditions against viewport
-                 for media_rule in &self.media_rules {
-                     // Simple media query evaluation - check if query matches
-                     let query = &media_rule.media_query;
-                     let should_apply = query.is_empty() || 
-                         query.contains("all") || 
-                         query.contains("screen") ||
-                         query.contains("print");
-                     
-                     if should_apply {
-                         for (order, rule) in media_rule.rules.iter().enumerate() {
-                             let mut caches = selectors::matching::SelectorCaches::default();
-                             let mut context = MatchingContext::new(
-                                 MatchingMode::Normal,
-                                 None,
-                                 &mut caches,
-                                 selectors::matching::QuirksMode::NoQuirks,
-                                 selectors::matching::NeedsSelectorFlags::No,
-                                 selectors::matching::MatchingForInvalidation::No,
-                             );
+                  // 3. Process Media Rules
+                  for media_rule in &self.media_rules {
+                      let query = &media_rule.media_query;
+                      let should_apply = query.is_empty() || 
+                          query.contains("all") || 
+                          query.contains("screen") ||
+                          query.contains("print");
+                                            if should_apply {
+                           for (order, rule) in media_rule.rules.iter().enumerate() {
+                               for selector in rule.selectors.slice() {
+                                   let mut caches = selectors::matching::SelectorCaches::default();
+                                   let mut context = MatchingContext::new(
+                                       MatchingMode::Normal,
+                                       None,
+                                       &mut caches,
+                                       selectors::matching::QuirksMode::NoQuirks,
+                                       selectors::matching::NeedsSelectorFlags::No,
+                                       selectors::matching::MatchingForInvalidation::No,
+                                   );
 
-                             if selectors::matching::matches_selector_list(&rule.selectors, &ace_element, &mut context) {
-                                 matched_rules.push(MatchedRule {
-                                     specificity: order as u32 + 1000, // Higher specificity for media rules
-                                     order: order + 1000,
-                                     rule
-                                 });
-                             }
-                         }
-                     }
-                 }
+                                   if selectors::matching::matches_selector(selector, 0, None, &ace_element, &mut context) {
+                                       matched_rules.push(MatchedRule {
+                                           priority: CascadePriority {
+                                               origin: CascadeOrigin::AuthorMedia,
+                                               specificity: selector.specificity(),
+                                               order: order + 2000,
+                                           },
+                                           rule
+                                       });
+                                   }
+                               }
+                           }
+                       }
+                   }
 
-                 // Sort by specificity then order
-                 matched_rules.sort_by(|a, b| {
-                     if a.specificity != b.specificity {
-                         a.specificity.cmp(&b.specificity)
-                     } else {
-                         a.order.cmp(&b.order)
-                     }
-                 });
+                  // Sort by priority (origin -> specificity -> order)
+                  matched_rules.sort_by(|a, b| {
+                      a.priority.cmp(&b.priority)
+                  });
 
-                 // Apply rules
-                 for match_rule in matched_rules {
-                     for decl in &match_rule.rule.declarations {
-                         let val = decl.value.trim();
-                         match decl.name.as_str() {
-                             // Display & Layout
-                             "background-color" | "background" => style.background_color = parse_color(val),
-                             "color" => style.color = parse_color(val),
-                             "display" => style.display = parse_display(val),
-                             
-                             // Position & Layout
-                             "position" => style.position = parse_position(val),
-                             "overflow" => style.overflow = parse_overflow(val),
-                             "z-index" | "zIndex" => {
-                                 if val == "auto" {
-                                     style.z_index = 0;
-                                 } else if let Ok(n) = val.parse::<i32>() {
-                                     style.z_index = n;
-                                 }
-                             },
-                             "float" => style.float = parse_float(val),
-                             
-                             // Dimensions
-                             "width" => style.width = parse_length(val),
-                             "height" => style.height = parse_length(val),
-                             "min-width" => style.min_width = parse_length(val),
-                             "max-width" => style.max_width = parse_length(val),
-                             "min-height" => style.min_height = parse_length(val),
-                             "max-height" => style.max_height = parse_length(val),
-                             
-                             // Position offsets
-                             "top" => style.top = parse_length(val),
-                             "right" => style.right = parse_length(val),
-                             "bottom" => style.bottom = parse_length(val),
-                             "left" => style.left = parse_length(val),
-                             
-                             // Margins
-                             "margin-top" => style.margin_top = parse_length(val),
-                             "margin-right" => style.margin_right = parse_length(val),
-                             "margin-bottom" => style.margin_bottom = parse_length(val),
-                             "margin-left" => style.margin_left = parse_length(val),
-                             "margin" => {
-                                 let parts: Vec<&str> = val.split_whitespace().collect();
-                                 match parts.len() {
-                                     1 => {
-                                         let m = parse_length(parts[0]);
-                                         style.margin_top = m.clone();
-                                         style.margin_right = m.clone();
-                                         style.margin_bottom = m.clone();
-                                         style.margin_left = m;
-                                     },
-                                     2 => {
-                                         style.margin_top = parse_length(parts[0]);
-                                         style.margin_bottom = parse_length(parts[0]);
-                                         style.margin_right = parse_length(parts[1]);
-                                         style.margin_left = parse_length(parts[1]);
-                                     },
-                                     4 => {
-                                         style.margin_top = parse_length(parts[0]);
-                                         style.margin_right = parse_length(parts[1]);
-                                         style.margin_bottom = parse_length(parts[2]);
-                                         style.margin_left = parse_length(parts[3]);
-                                     },
-                                     _ => {}
-                                 }
-                             },
-                             
-                             // Padding
-                             "padding-top" => style.padding_top = parse_length(val),
-                             "padding-right" => style.padding_right = parse_length(val),
-                             "padding-bottom" => style.padding_bottom = parse_length(val),
-                             "padding-left" => style.padding_left = parse_length(val),
+                  let parent_font_size = parent_style.map(|s| s.font_size).unwrap_or(16.0);
+                  let root_font_size = root_style.map(|s| s.font_size).unwrap_or(16.0);
+
+                  // Phase 1: Resolve font-size (because em in other properties depends on it)
+                  for match_rule in &matched_rules {
+                      for decl in &match_rule.rule.declarations {
+                          if decl.name == "font-size" {
+                              let val_raw = decl.value.trim();
+                              let val = if val_raw.contains("var(") {
+                                  resolve_css_variables(val_raw, &style)
+                              } else {
+                                  val_raw.to_string()
+                              };
+                              
+                              let parsed = parse_length(&val);
+                              style.font_size = match parsed {
+                                  CssLength::Px(v) => v,
+                                  CssLength::Em(v) => v * parent_font_size,
+                                  CssLength::Rem(v) => v * root_font_size,
+                                  CssLength::Percent(v) => v / 100.0 * parent_font_size,
+                                  _ => 16.0,
+                              };
+                          }
+                      }
+                  }
+
+                  let current_font_size = style.font_size;
+
+                  // Phase 2: Apply all rules
+                  for match_rule in matched_rules {
+                      for decl in &match_rule.rule.declarations {
+                          let name = decl.name.as_str();
+                          let val_raw = decl.value.trim();
+                          
+                          if name == "font-size" { continue; } // Already handled
+
+                          // Se for uma variável CSS (--name), armazena no HashMap
+                          if name.starts_with("--") {
+                              style.custom_properties.insert(name.to_string(), val_raw.to_string());
+                              continue;
+                          }
+
+                          // Lógica de Resolução de var()
+                          let val = if val_raw.contains("var(") {
+                              resolve_css_variables(val_raw, &style)
+                          } else {
+                              val_raw.to_string()
+                          };
+                          let val = val.as_str();
+
+                          // Helper to resolve relative lengths to Px immediately
+                          let resolve_rel = |l: CssLength| -> CssLength {
+                              match l {
+                                  CssLength::Em(v) => CssLength::Px(v * current_font_size),
+                                  CssLength::Rem(v) => CssLength::Px(v * root_font_size),
+                                  _ => l
+                              }
+                          };
+
+                          match name {
+                              // Display & Layout
+                              "background-color" | "background" => style.background_color = parse_color(val),
+                              "color" => style.color = parse_color(val),
+                              "display" => style.display = parse_display(val),
+                              
+                              // Position & Layout
+                              "position" => style.position = parse_position(val),
+                              "overflow" => style.overflow = parse_overflow(val),
+                              "z-index" | "zIndex" => {
+                                  if val == "auto" {
+                                      style.z_index = 0;
+                                  } else if let Ok(n) = val.parse::<i32>() {
+                                      style.z_index = n;
+                                  }
+                              },
+                              "float" => style.float = parse_float(val),
+                              
+                              // Dimensions
+                              "width" => style.width = resolve_rel(parse_length(val)),
+                              "height" => style.height = resolve_rel(parse_length(val)),
+                              "min-width" => style.min_width = resolve_rel(parse_length(val)),
+                              "max-width" => style.max_width = resolve_rel(parse_length(val)),
+                              "min-height" => style.min_height = resolve_rel(parse_length(val)),
+                              "max-height" => style.max_height = resolve_rel(parse_length(val)),
+                              
+                              // Position offsets
+                              "top" => style.top = resolve_rel(parse_length(val)),
+                              "right" => style.right = resolve_rel(parse_length(val)),
+                              "bottom" => style.bottom = resolve_rel(parse_length(val)),
+                              "left" => style.left = resolve_rel(parse_length(val)),
+                              
+                              // Margins
+                              "margin-top" => style.margin_top = resolve_rel(parse_length(val)),
+                              "margin-right" => style.margin_right = resolve_rel(parse_length(val)),
+                              "margin-bottom" => style.margin_bottom = resolve_rel(parse_length(val)),
+                              "margin-left" => style.margin_left = resolve_rel(parse_length(val)),
+                              "margin" => {
+                                  let parts: Vec<&str> = val.split_whitespace().collect();
+                                  match parts.len() {
+                                      1 => {
+                                          let m = resolve_rel(parse_length(parts[0]));
+                                          style.margin_top = m.clone();
+                                          style.margin_right = m.clone();
+                                          style.margin_bottom = m.clone();
+                                          style.margin_left = m;
+                                      },
+                                      2 => {
+                                          style.margin_top = resolve_rel(parse_length(parts[0]));
+                                          style.margin_bottom = resolve_rel(parse_length(parts[0]));
+                                          style.margin_right = resolve_rel(parse_length(parts[1]));
+                                          style.margin_left = resolve_rel(parse_length(parts[1]));
+                                      },
+                                      4 => {
+                                          style.margin_top = resolve_rel(parse_length(parts[0]));
+                                          style.margin_right = resolve_rel(parse_length(parts[1]));
+                                          style.margin_bottom = resolve_rel(parse_length(parts[2]));
+                                          style.margin_left = resolve_rel(parse_length(parts[3]));
+                                      },
+                                      _ => {}
+                                  }
+                              },
+                              
+                              // Padding
+                             "padding-top" => style.padding_top = resolve_rel(parse_length(val)),
+                             "padding-right" => style.padding_right = resolve_rel(parse_length(val)),
+                             "padding-bottom" => style.padding_bottom = resolve_rel(parse_length(val)),
+                             "padding-left" => style.padding_left = resolve_rel(parse_length(val)),
                              "padding" => {
                                  let parts: Vec<&str> = val.split_whitespace().collect();
                                  match parts.len() {
                                      1 => {
-                                         let p = parse_length(parts[0]);
+                                         let p = resolve_rel(parse_length(parts[0]));
                                          style.padding_top = p.clone();
                                          style.padding_right = p.clone();
                                          style.padding_bottom = p.clone();
                                          style.padding_left = p;
                                      },
                                      2 => {
-                                         style.padding_top = parse_length(parts[0]);
-                                         style.padding_bottom = parse_length(parts[0]);
-                                         style.padding_right = parse_length(parts[1]);
-                                         style.padding_left = parse_length(parts[1]);
+                                         style.padding_top = resolve_rel(parse_length(parts[0]));
+                                         style.padding_bottom = resolve_rel(parse_length(parts[0]));
+                                         style.padding_right = resolve_rel(parse_length(parts[1]));
+                                         style.padding_left = resolve_rel(parse_length(parts[1]));
                                      },
                                      4 => {
-                                         style.padding_top = parse_length(parts[0]);
-                                         style.padding_right = parse_length(parts[1]);
-                                         style.padding_bottom = parse_length(parts[2]);
-                                         style.padding_left = parse_length(parts[3]);
+                                         style.padding_top = resolve_rel(parse_length(parts[0]));
+                                         style.padding_right = resolve_rel(parse_length(parts[1]));
+                                         style.padding_bottom = resolve_rel(parse_length(parts[2]));
+                                         style.padding_left = resolve_rel(parse_length(parts[3]));
                                      },
                                      _ => {}
                                  }
                              },
                              
                              // Typography
-                             "font-size" => style.font_size = parse_length(val),
+                            // Typography
+                             // "font-size" handled in Phase 1
                              "font-family" => style.font_family = val.to_string(),
                              "font-weight" => style.font_weight = parse_font_weight(val),
                              "text-align" => style.text_align = parse_text_align(val),
@@ -848,11 +1030,54 @@ impl Stylesheet {
                                      style.flex_basis = parse_length(parts[2]);
                                  }
                              },
+                              
+                              // Grid Layout
+                              "grid-template-columns" => style.grid_template_columns = parse_length_list(val).into_iter().map(resolve_rel).collect(),
+                              "grid-template-rows" => style.grid_template_rows = parse_length_list(val).into_iter().map(resolve_rel).collect(),
+                              "grid-column-start" => style.grid_column_start = resolve_rel(parse_length(val)),
+                              "grid-column-end" => style.grid_column_end = resolve_rel(parse_length(val)),
+                              "grid-row-start" => style.grid_row_start = resolve_rel(parse_length(val)),
+                              "grid-row-end" => style.grid_row_end = resolve_rel(parse_length(val)),
+                              "grid-column-gap" => style.grid_column_gap = resolve_rel(parse_length(val)),
+                              "grid-row-gap" => style.grid_row_gap = resolve_rel(parse_length(val)),
+                              "grid-gap" | "gap" => {
+                                  let parts: Vec<&str> = val.split_whitespace().collect();
+                                  let g = resolve_rel(parse_length(parts[0]));
+                                  style.grid_column_gap = g.clone();
+                                  style.grid_row_gap = g;
+                                  if parts.len() > 1 {
+                                      style.grid_row_gap = resolve_rel(parse_length(parts[1]));
+                                  }
+                              },
+                              "grid-column" => {
+                                  let parts: Vec<&str> = val.split('/').collect();
+                                  if !parts.is_empty() {
+                                      style.grid_column_start = resolve_rel(parse_length(parts[0].trim()));
+                                  }
+                                  if parts.len() > 1 {
+                                      style.grid_column_end = resolve_rel(parse_length(parts[1].trim()));
+                                  }
+                              },
+                              "grid-row" => {
+                                  let parts: Vec<&str> = val.split('/').collect();
+                                  if !parts.is_empty() {
+                                      style.grid_row_start = resolve_rel(parse_length(parts[0].trim()));
+                                  }
+                                  if parts.len() > 1 {
+                                      style.grid_row_end = resolve_rel(parse_length(parts[1].trim()));
+                                  }
+                              },
                              
                              // Visual
                              "opacity" => {
                                  if let Ok(n) = val.parse::<f32>() { style.opacity = n.clamp(0.0, 1.0); }
                              },
+                             
+                             // Pseudo-element content
+                             "content" => {
+                                 style.content = parse_content(val);
+                             },
+                             
                              "border-radius" => {
                                  let parts: Vec<&str> = val.split_whitespace().collect();
                                  let mut has_width = false;
@@ -925,6 +1150,95 @@ impl Stylesheet {
 
         style
     }
+
+    pub fn calculate_pseudo_style(&self, dom: &AceDOM, node_id: usize, pseudo: &AcePseudoElement, hovered_element: Option<usize>, focused_element: Option<usize>) -> ComputedStyle {
+        let mut style = ComputedStyle::default();
+        
+        // Default display for pseudo-elements is inline
+        style.display = CssDisplay::Inline;
+        
+        if let Some(node) = dom.get_node(node_id) {
+             if let AceNodeType::Element(_) = &node.node_type {
+                 let ace_element = AceElement { dom, index: node_id, hovered_element, focused_element };
+                 let mut matched_rules = Vec::new();
+
+                 // 1. Process User Agent Rules
+                 for (order, rule) in self.user_agent_rules.iter().enumerate() {
+                     for selector in rule.selectors.slice() {
+                         if selector.pseudo_element() == Some(pseudo) {
+                              let mut caches = selectors::matching::SelectorCaches::default();
+                              let mut context = MatchingContext::new(
+                                 MatchingMode::Normal,
+                                 None,
+                                 &mut caches,
+                                 selectors::matching::QuirksMode::NoQuirks,
+                                 selectors::matching::NeedsSelectorFlags::No,
+                                 selectors::matching::MatchingForInvalidation::No,
+                             );
+                             if selectors::matching::matches_selector(selector, 0, None, &ace_element, &mut context) {
+                                 matched_rules.push(MatchedRule {
+                                     priority: CascadePriority { origin: CascadeOrigin::UserAgent, specificity: selector.specificity(), order },
+                                     rule
+                                 });
+                             }
+                         }
+                     }
+                 }
+                 
+                 // 2. Process User Rules
+                 for (order, rule) in self.rules.iter().enumerate() {
+                     for selector in rule.selectors.slice() {
+                         if selector.pseudo_element() == Some(pseudo) {
+                              let mut caches = selectors::matching::SelectorCaches::default();
+                              let mut context = MatchingContext::new(
+                                 MatchingMode::Normal,
+                                 None,
+                                 &mut caches,
+                                 selectors::matching::QuirksMode::NoQuirks,
+                                 selectors::matching::NeedsSelectorFlags::No,
+                                 selectors::matching::MatchingForInvalidation::No,
+                             );
+                             if selectors::matching::matches_selector(selector, 0, None, &ace_element, &mut context) {
+                                 matched_rules.push(MatchedRule {
+                                     priority: CascadePriority { origin: CascadeOrigin::Author, specificity: selector.specificity(), order: order + 1000 },
+                                     rule
+                                 });
+                             }
+                         }
+                     }
+                 }
+                 
+                 matched_rules.sort_by(|a, b| a.priority.cmp(&b.priority));
+                 
+                 for match_rule in &matched_rules {
+                     for decl in &match_rule.rule.declarations {
+                         let val = decl.value.trim();
+                         match decl.name.as_str() {
+                             "content" => style.content = parse_content(val),
+                             "color" => style.color = parse_color(val),
+                             "font-size" => style.font_size = resolve_length(&parse_length(val), 16.0, 16.0, 1024.0, 768.0),
+                             "display" => {
+                                 style.display = match val {
+                                     "block" => CssDisplay::Block,
+                                     "flex" => CssDisplay::Flex,
+                                     "grid" => CssDisplay::Grid,
+                                     "none" => CssDisplay::None,
+                                     _ => CssDisplay::Inline,
+                                 };
+                             },
+                             "background-color" => style.background_color = parse_color(val),
+                             "width" => style.width = parse_length(val),
+                             "height" => style.height = parse_length(val),
+                             "opacity" => if let Ok(n) = val.parse::<f32>() { style.opacity = n.clamp(0.0, 1.0); },
+                             "z-index" => if let Ok(n) = val.parse::<i32>() { style.z_index = n; },
+                             _ => {}
+                         }
+                     }
+                 }
+              }
+        }
+        style
+    }
 }
 
 // Parsing Helpers
@@ -963,8 +1277,35 @@ fn parse_length(val: &str) -> CssLength {
     if let Some(n) = val.strip_suffix("em") {
         if let Ok(num) = n.trim().parse::<f32>() { return CssLength::Em(num); }
     }
+    if let Some(n) = val.strip_suffix("fr") {
+        if let Ok(num) = n.trim().parse::<f32>() { return CssLength::Fr(num); }
+    }
     // Fallback unknown
     CssLength::Auto
+}
+
+fn parse_length_list(val: &str) -> Vec<CssLength> {
+    val.split_whitespace().map(parse_length).collect()
+}
+
+fn parse_content(val: &str) -> CssContent {
+    use crate::engine::css_values::CssContent;
+    
+    let val = val.trim();
+    match val {
+        "none" => CssContent::None,
+        "normal" => CssContent::Normal,
+        _ => {
+            // Handle quoted strings: "text" or 'text'
+            if (val.starts_with('"') && val.ends_with('"')) || (val.starts_with('\'') && val.ends_with('\'')) {
+                let text = &val[1..val.len()-1];
+                CssContent::String(text.to_string())
+            } else {
+                // Default to normal if not recognized
+                CssContent::Normal
+            }
+        }
+    }
 }
 
 fn parse_color(val: &str) -> CssColor {
@@ -1449,5 +1790,47 @@ fn parse_color_stops(input: &str, stops: &mut Vec<GradientStop>) {
         }
         
         stops.push(GradientStop { color, position });
+    }
+}
+
+fn resolve_css_variables(val: &str, style: &ComputedStyle) -> String {
+    let mut resolved = val.to_string();
+    
+    while let Some(start_idx) = resolved.find("var(") {
+        let rest = &resolved[start_idx + 4..];
+        if let Some(end_idx) = rest.find(')') {
+            let var_name = rest[..end_idx].trim();
+            // Buscar valor da variável
+            let var_value = style.custom_properties.get(var_name)
+                .map(|v| v.as_str())
+                .unwrap_or("");
+                
+            let full_var = &resolved[start_idx..start_idx + 4 + end_idx + 1];
+            resolved = resolved.replace(full_var, var_value);
+        } else {
+            break;
+        }
+    }
+    
+    resolved
+}
+
+// Helper to resolve lengths to pixels
+fn resolve_length(
+    length: &CssLength,
+    parent_font_size: f32,
+    root_font_size: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> f32 {
+    match length {
+        CssLength::Px(v) => *v,
+        CssLength::Em(v) => v * parent_font_size,
+        CssLength::Rem(v) => v * root_font_size,
+        CssLength::Percent(v) => v / 100.0 * parent_font_size, // Default to parent font size for font-size property, caller handles context
+        CssLength::Vw(v) => v / 100.0 * viewport_width,
+        CssLength::Vh(v) => v / 100.0 * viewport_height,
+        // For others, return 0 or default
+        _ => 0.0,
     }
 }

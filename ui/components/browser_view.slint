@@ -22,7 +22,9 @@ export component BrowserView inherits Rectangle {
     callback back();
     callback forward();
     callback navigate(string);
-    callback box_clicked(string);
+    callback pointer_click(length, length);
+    callback pointer_move(length, length);
+
     in-out property <bool> show-start-page;
     in property <[ACEBox]> ace_model;
     in property <length> content-height: 0px; // Calculated by Rust
@@ -33,13 +35,27 @@ export component BrowserView inherits Rectangle {
         Flickable {
             width: 100%;
             height: 100%;
-            // Importante: O viewport precisa saber a altura total
             viewport-height: root.content-height; 
 
             // Container dos elementos
             Rectangle {
                 width: 100%;
                 height: root.content-height;
+
+                // Mouse/Touch Handling Area (Global)
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: default;
+                    
+                    moved => {
+                        root.pointer_move(self.mouse-x, self.mouse-y);
+                    }
+                    
+                    clicked => {
+                        root.pointer_click(self.mouse-x, self.mouse-y);
+                    }
+                }
 
                 for box in root.ace_model : Rectangle {
                     x: box.x;
@@ -67,6 +83,7 @@ export component BrowserView inherits Rectangle {
                         vertical-alignment: top;
                     }
                 }
+
             }
         }
     }

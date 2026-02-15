@@ -29,6 +29,11 @@ pub(crate) fn mark_mutation(el: &ElementType) {
 
 #[rquickjs::methods]
 impl Element {
+    #[qjs(get, rename = "node_idx")]
+    pub fn get_node_idx(&self) -> usize {
+        self.index
+    }
+
     pub(crate) fn mark_mutation(&self) {
         if let Ok(mut m) = self.mutations.lock() {
             *m = true;
@@ -98,6 +103,11 @@ impl Element {
         self::props::set_attribute(self, name, value)
     }
 
+    #[qjs(rename = "attachShadow")]
+    pub fn attach_shadow<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::props::attach_shadow(self, ctx)
+    }
+
     #[qjs(rename = "hasAttribute")]
     pub fn has_attribute(&self, name: String) -> bool {
         self::props::has_attribute(self, name)
@@ -126,6 +136,11 @@ impl Element {
     #[qjs(rename = "removeChild")]
     pub fn remove_child<'js>(&self, ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
         self::hierarchy::remove_child(self, ctx, child)
+    }
+
+    #[qjs(rename = "insertBefore")]
+    pub fn insert_before<'js>(&self, ctx: Ctx<'js>, child: Class<'js, Element>, ref_child: Value<'js>) -> Result<Class<'js, Element>> {
+        self::hierarchy::insert_before(self, ctx, child, ref_child)
     }
 
     #[qjs(rename = "querySelector")]

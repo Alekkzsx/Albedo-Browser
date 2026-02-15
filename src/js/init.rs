@@ -59,6 +59,32 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
             let global = ctx.globals();
             global.set("window", global.clone())?;
             global.set("self", global.clone())?;
+            
+            // Global event listeners (window.addEventListener)
+            use crate::js::bindings::event::EventTargetImpl;
+            let add_event_listener = rquickjs::Function::new(ctx.clone(), |type_: String, listener: rquickjs::Function| {
+                // Use a special pointer for window (usize::MAX)
+                unsafe {
+                    let listener_static: rquickjs::Function<'static> = std::mem::transmute(listener);
+                    EventTargetImpl::add_listener(usize::MAX, type_, listener_static);
+                }
+            })?;
+            global.set("addEventListener", add_event_listener)?;
+            
+            let dispatch_event = rquickjs::Function::new(ctx.clone(), |event: Value| -> bool {
+                if let Some(obj) = event.as_object() {
+                    if let Ok(type_val) = obj.get::<_, String>("type") {
+                        let listeners_static = EventTargetImpl::get_listeners(usize::MAX, &type_val);
+                        for listener_static in listeners_static {
+                            let listener: rquickjs::Function = unsafe { std::mem::transmute(listener_static) };
+                            let _: rquickjs::Result<Value> = listener.call((event.clone(),));
+                        }
+                    }
+                }
+                true
+            })?;
+            global.set("dispatchEvent", dispatch_event)?;
+
             Ok::<_, rquickjs::Error>(())
         })?;
     }

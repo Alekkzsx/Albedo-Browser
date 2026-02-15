@@ -22,6 +22,17 @@ cssparser = "0.36"
 selectors = "0.35.0"
 precomputed-hash = "0.1.1"
 url = "2.5"
+cosmic-text = "0.12.1"
+resvg = "0.45.0"
+usvg = "0.45.0"
+tiny-skia = "0.11.4"
+wgpu = "23.0"
+rodio = "0.19"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
 
 [build-dependencies]
 slint-build = "1.9"

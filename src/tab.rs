@@ -14,6 +14,7 @@ pub struct Tab {
     pub engine: AceEngine,
     pub mode: TabMode,
     pub show_start_page: bool,
+    pub resource_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::services::resource_manager::ResourceResponse>>,
 }
 
 impl Tab {
@@ -25,6 +26,7 @@ impl Tab {
             engine: AceEngine::new(),
             mode: TabMode::Native,
             show_start_page: false,
+            resource_rx: None,
         }
     }
 
