@@ -1,28 +1,22 @@
 mod tab;
 mod tab_manager;
 mod engine;
-mod layout;
-mod js;
-mod services;
 
 use slint::ComponentHandle;
 use tab_manager::TabManager;
 
 mod app;
 mod ui;
-use ui::*;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Custom panic hook for better debugging
     app::setup::set_panic_hook();
 
     println!("[Main] Starting Albedo Browser...");
     let ui = app::setup::create_window()?;
     let ui_handle = ui.as_weak();
 
-    // Initialize Tab Manager
-    let tab_manager = TabManager::new(ui_handle.clone());
+    let tab_manager = TabManager::new();
 
     // System Monitor
     let system = std::rc::Rc::new(std::cell::RefCell::new(sysinfo::System::new_all()));

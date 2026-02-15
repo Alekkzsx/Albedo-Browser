@@ -1,25 +1,5 @@
-use kuchiki::traits::TendrilSink;
 use kuchiki::NodeRef;
 use std::collections::HashMap;
-
-#[derive(Clone, Debug)]
-pub struct PageMetadata {
-    pub title: String,
-    pub charset: String,
-    pub viewport: String,
-    pub lang: String,
-}
-
-impl Default for PageMetadata {
-    fn default() -> Self {
-        Self {
-            title: "Sem Título".to_string(),
-            charset: "utf-8".to_string(),
-            viewport: "".to_string(),
-            lang: "".to_string(),
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
@@ -27,8 +7,6 @@ pub struct AceDOM {
     pub root: usize,
     pub head: Option<usize>,
     pub body: Option<usize>,
-    pub metadata: PageMetadata,
-    pub resources: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,23 +34,17 @@ pub struct AceElement {
 
 impl AceDOM {
     pub fn new(kuchiki_root: NodeRef) -> Self {
-        let mut metadata = PageMetadata::default();
-        let mut resources = Vec::new();
         let mut nodes = Vec::new();
         
-        // Root is always index 0
-        let root_idx = Self::convert_recursive(&kuchiki_root, &mut nodes, None, &mut metadata, &mut resources);
+        let root_idx = Self::convert_recursive(&kuchiki_root, &mut nodes, None);
 
         let mut dom = Self {
             nodes,
             root: root_idx,
             head: None,
             body: None,
-            metadata,
-            resources,
         };
 
-        // Encontrar head e body após a construção
         dom.find_head_body();
         dom
     }
@@ -85,58 +57,12 @@ impl AceDOM {
         kuchiki_node: &NodeRef,
         nodes: &mut Vec<AceNode>,
         parent_idx: Option<usize>,
-        metadata: &mut PageMetadata,
-        resources: &mut Vec<String>,
     ) -> usize {
-        // 1. Determinar o tipo do nó e extrair dados
         let node_type = if let Some(el) = kuchiki_node.as_element() {
             let tag = el.name.local.to_string();
             let mut attributes = HashMap::new();
             for (curr_name, curr_val) in el.attributes.borrow().map.iter() {
                 attributes.insert(curr_name.local.to_string(), curr_val.value.to_string());
-            }
-
-            // Metadados
-            match tag.as_str() {
-                "title" => {
-                   if let Some(child) = kuchiki_node.first_child() {
-                       if let Some(text) = child.as_text() {
-                           metadata.title = text.borrow().trim().to_string();
-                       }
-                   }
-                }
-                "meta" => {
-                    if let Some(charset) = attributes.get("charset") {
-                        metadata.charset = charset.clone();
-                    }
-                    if let Some(name) = attributes.get("name") {
-                        if name == "viewport" {
-                            if let Some(content) = attributes.get("content") {
-                                metadata.viewport = content.clone();
-                            }
-                        }
-                    }
-                }
-                "html" => {
-                    if let Some(lang) = attributes.get("lang") {
-                        metadata.lang = lang.clone();
-                    }
-                }
-                "link" => {
-                     if let Some(rel) = attributes.get("rel") {
-                        if rel == "stylesheet" {
-                            if let Some(href) = attributes.get("href") {
-                                resources.push(href.clone());
-                            }
-                        }
-                     }
-                }
-                "img" | "script" => {
-                     if let Some(src) = attributes.get("src") {
-                        resources.push(src.clone());
-                     }
-                }
-                _ => {}
             }
 
             AceNodeType::Element(AceElement { tag, attributes })
@@ -148,7 +74,6 @@ impl AceDOM {
             AceNodeType::Document
         };
 
-        // 2. Cria o nó atual (ainda sem filhos/irmãos corretos) e reserva espaço
         let current_idx = nodes.len();
         nodes.push(AceNode {
             node_type,
@@ -158,21 +83,18 @@ impl AceDOM {
             next_sibling: None,
         });
 
-        // 3. Processar filhos
         let mut children_indices = Vec::new();
         for child in kuchiki_node.children() {
-            let child_idx = Self::convert_recursive(&child, nodes, Some(current_idx), metadata, resources);
+            let child_idx = Self::convert_recursive(&child, nodes, Some(current_idx));
             children_indices.push(child_idx);
         }
 
-        // 4. Configurar irmãos (siblings)
         if !children_indices.is_empty() {
              for i in 0..children_indices.len() {
                 let curr = children_indices[i];
                 let prev = if i > 0 { Some(children_indices[i-1]) } else { None };
                 let next = if i < children_indices.len() - 1 { Some(children_indices[i+1]) } else { None };
 
-                // Atualizar o nó no vetor
                 if let Some(node) = nodes.get_mut(curr) {
                     node.prev_sibling = prev;
                     node.next_sibling = next;
@@ -180,7 +102,6 @@ impl AceDOM {
              }
         }
 
-        // 5. Atualizar o nó atual com a lista de filhos
         if let Some(node) = nodes.get_mut(current_idx) {
             node.children = children_indices;
         }

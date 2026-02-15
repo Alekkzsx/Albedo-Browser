@@ -88,14 +88,6 @@ pub fn handle_close_tab(tm: &TabManager, index: i32, tabs_model: &Rc<VecModel<Ta
     sync_tabs(tm, tabs_model);
 }
 
-pub fn handle_pulse(ui_handle: &Weak<AppWindow>, tm: &TabManager) {
-    if tm.pulse() {
-        if let Some(ui) = ui_handle.upgrade() {
-            sync_ace_visuals(&ui, tm);
-        }
-    }
-}
-
 pub fn handle_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, ptr_str: SharedString) {
     let ptr = if ptr_str.starts_with("0x") {
         usize::from_str_radix(&ptr_str[2..], 16).unwrap_or(0)

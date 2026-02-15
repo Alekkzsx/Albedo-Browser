@@ -1,4 +1,4 @@
-use crate::tab::{Tab, TabMode};
+use crate::tab::Tab;
 use uuid::Uuid;
 
 pub struct TabCollection {
@@ -32,14 +32,6 @@ impl TabCollection {
         }
     }
 
-    pub fn get_active_mut(&mut self) -> Option<&mut Tab> {
-        if let Some(idx) = self.active_index {
-            self.tabs.get_mut(idx)
-        } else {
-            None
-        }
-    }
-
     pub fn switch_to(&mut self, index: usize) -> Option<&Tab> {
         if index < self.tabs.len() {
             self.active_index = Some(index);
@@ -61,15 +53,5 @@ impl TabCollection {
                 self.active_index = Some(new_index);
             }
         }
-    }
-
-    // Pulse is minimal now, removed JS runtime logic
-    pub fn pulse(&mut self) -> (bool, Option<(String, String)>) {
-        (false, None)
-    }
-
-    pub fn dispatch_click(&mut self, _ptr: usize) -> bool {
-        // No JS runtime, so no click dispatch for now
-        false
     }
 }

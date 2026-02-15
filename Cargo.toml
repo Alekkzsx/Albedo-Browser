@@ -21,6 +21,7 @@ taffy = "0.3"
 cssparser = "0.36"
 selectors = "0.35.0"
 precomputed-hash = "0.1.1"
+url = "2.5"
 
 [build-dependencies]
 slint-build = "1.9"

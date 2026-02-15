@@ -46,9 +46,18 @@ export component BrowserView inherits Rectangle {
                     y: box.y;
                     width: box.width;
                     height: box.height;
-                    background: box.background; // Se isso for transparente, some tudo!
+                    background: box.background;
                     
-                    Text {
+                    // Render image if available (element_type == "image")
+                    if box.has_image && box.element_type == "image" : Image {
+                        source: box.image_data;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: cover;
+                    }
+                    
+                    // Render text only if there's actual text and NOT an image box
+                    if box.text != "" && !box.has_image : Text {
                         text: box.text;
                         color: box.text_color;
                         font-size: box.font_size;
