@@ -31,6 +31,11 @@ pub struct ACEPrimitive {
     pub overflow_hidden: bool, // FASE 1: overflow handling
     pub opacity: f32, // FASE 2: opacity
     pub border_radius: f32, // FASE 2: border-radius
+    
+    // Novas propriedades visuais (FASE MELHORIA)
+    pub box_shadow: Option<String>, // CSS box-shadow string for rendering
+    pub text_shadow: Option<String>, // CSS text-shadow string
+    pub background_image: Option<String>, // CSS background (gradient or url)
 }
 
 pub struct AceEngine {
@@ -259,7 +264,8 @@ impl AceEngine {
                 x: 0.0, y: 0.0, width: viewport_width, height: 8000.0,
                 color: "#FFFFFF".to_string(), text: "".into(), font_size: 0.0, 
                 link_url: None, element_type: "box".into(), image_url: None,
-                z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0
+                z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0,
+                box_shadow: None, text_shadow: None, background_image: None,
             });
             
             // Pass fields explicitly to avoid &mut self borrow conflict
@@ -291,7 +297,8 @@ impl AceEngine {
             color: "transparent".into(),
             text: msg.to_string(),
             font_size: 20.0, link_url: None, element_type: "text".into(), image_url: None,
-            z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0
+            z_index: 0, overflow_hidden: false, opacity: 1.0, border_radius: 0.0,
+            box_shadow: None, text_shadow: None, background_image: None,
         });
     }
 
@@ -301,7 +308,38 @@ impl AceEngine {
 }
 
 // Helper functions (standalone to avoid borrow checker issues)
-use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle};
+use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle, BackgroundImage, Gradient};
+
+fn format_gradient(g: &Gradient) -> String {
+    match g {
+        Gradient::Linear { angle, stops } => {
+            let mut result = format!("linear-gradient({}deg", angle);
+            for stop in stops {
+                let color = stop.color.to_rgba_string();
+                if let Some(pos) = stop.position {
+                    result.push_str(&format!(", {} {}%", color, (pos * 100.0) as i32));
+                } else {
+                    result.push_str(&format!(", {}", color));
+                }
+            }
+            result.push(')');
+            result
+        },
+        Gradient::Radial { shape, stops } => {
+            let mut result = format!("radial-gradient({}", shape);
+            for stop in stops {
+                let color = stop.color.to_rgba_string();
+                if let Some(pos) = stop.position {
+                    result.push_str(&format!(", {} {}%", color, (pos * 100.0) as i32));
+                } else {
+                    result.push_str(&format!(", {}", color));
+                }
+            }
+            result.push(')');
+            result
+        },
+    }
+}
 
 fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>) -> Node {
     let node = dom.get_node(node_idx).unwrap();
@@ -528,7 +566,8 @@ fn generate_display_list(
                     z_index: computed.z_index,
                     overflow_hidden: false,
                     opacity: computed.opacity,
-                    border_radius: 0.0
+                    border_radius: 0.0,
+                    box_shadow: None, text_shadow: None, background_image: None,
                 });
                 return; // Skip normal rendering for iframe
             }
@@ -560,6 +599,31 @@ fn generate_display_list(
                 let border_radius = computed.border_radius_top_left.max(computed.border_radius_top_right)
                     .max(computed.border_radius_bottom_left).max(computed.border_radius_bottom_right);
                 
+                // MELHORIA: Get box-shadow
+                let box_shadow_str = if computed.box_shadow.is_empty() {
+                    None
+                } else {
+                    let shadows: Vec<String> = computed.box_shadow.iter().map(|s| {
+                        let color = s.color.to_rgba_string();
+                        if s.inset {
+                            format!("inset {}px {}px {}px {}px {}", s.offset_x, s.offset_y, s.blur, s.spread, color)
+                        } else {
+                            format!("{}px {}px {}px {}px {}", s.offset_x, s.offset_y, s.blur, s.spread, color)
+                        }
+                    }).collect();
+                    Some(shadows.join(", "))
+                };
+                
+                // MELHORIA: Get background-image
+                let bg_image_str = match &computed.background_image {
+                    BackgroundImage::None => None,
+                    BackgroundImage::Color(c) => Some(c.to_rgba_string()),
+                    BackgroundImage::Gradient(g) => {
+                        Some(format_gradient(g))
+                    },
+                    BackgroundImage::Url(url) => Some(format!("url({})", url)),
+                };
+                
                 // For form elements, ensure there's a background
                 let bg = if bg_color == "transparent" && 
                     (tag_name == "input" || tag_name == "button" || tag_name == "textarea" || tag_name == "select") {
@@ -568,12 +632,24 @@ fn generate_display_list(
                     bg_color
                 };
                 
+                // Override background with gradient if present
+                let final_bg = if let Some(ref gradient) = bg_image_str {
+                    if !gradient.starts_with("url(") && gradient != "transparent" {
+                        gradient.clone()
+                    } else {
+                        bg
+                    }
+                } else {
+                    bg
+                };
+                
                 primitives.push(ACEPrimitive {
                 x, y, width, height,
-                color: bg,
+                color: final_bg,
                 text: "".into(), font_size: 0.0,
                 link_url, element_type, image_url,
-                z_index: computed.z_index, overflow_hidden, opacity, border_radius
+                z_index: computed.z_index, overflow_hidden, opacity, border_radius,
+                box_shadow: box_shadow_str, text_shadow: None, background_image: bg_image_str,
                 });
         }
     }
@@ -581,13 +657,25 @@ fn generate_display_list(
     if let AceNodeType::Text(text) = &node.node_type {
             let text_content = text.trim();
             if !text_content.is_empty() {
+                // MELHORIA: Get text-shadow
+                let text_shadow_str = if computed.text_shadow.is_empty() {
+                    None
+                } else {
+                    let shadows: Vec<String> = computed.text_shadow.iter().map(|s| {
+                        let color = s.color.to_rgba_string();
+                        format!("{}px {}px {}px {}", s.offset_x, s.offset_y, s.blur, color)
+                    }).collect();
+                    Some(shadows.join(", "))
+                };
+                
                 primitives.push(ACEPrimitive {
                 x, y, width, height,
                 color: current_color.clone(),
                 text: text_content.to_string(),
                 font_size: current_font_size,
                 link_url: None, element_type: "text".into(), image_url: None,
-                z_index: computed.z_index, overflow_hidden: false, opacity: computed.opacity, border_radius: 0.0
+                z_index: computed.z_index, overflow_hidden: false, opacity: computed.opacity, border_radius: 0.0,
+                box_shadow: None, text_shadow: text_shadow_str, background_image: None,
                 });
             }
     }
