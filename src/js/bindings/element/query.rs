@@ -10,6 +10,7 @@ pub fn query_selector<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Res
                 index: found_idx,
                 mutations: el.mutations.clone(),
                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                primitives: el.primitives.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -28,12 +29,41 @@ pub fn query_selector_all<'js>(el: &Element, ctx: Ctx<'js>, selector: String) ->
                 index: idx,
                 mutations: el.mutations.clone(),
                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                primitives: el.primitives.clone(),
             };
             let instance = Class::instance(ctx.clone(), element)?;
             array.set(i, instance)?;
         }
     }
     Ok(array.into_value())
+}
+
+pub fn matches(el: &Element, selector: String) -> bool {
+    if let Ok(dom) = el.dom.lock() {
+        return matches_selector(&dom, el.index, &selector);
+    }
+    false
+}
+
+pub fn closest<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
+    if let Ok(dom) = el.dom.lock() {
+        let mut curr = Some(el.index);
+        while let Some(idx) = curr {
+            if matches_selector(&dom, idx, &selector) {
+                let element = Element { 
+                    dom: el.dom.clone(),
+                    index: idx,
+                    mutations: el.mutations.clone(),
+                    stylesheet_dirty: el.stylesheet_dirty.clone(),
+                    primitives: el.primitives.clone(),
+                };
+                let instance = Class::instance(ctx, element)?;
+                return Ok(instance.into_value());
+            }
+            curr = dom.get_node(idx).and_then(|n| n.parent);
+        }
+    }
+    Ok(Value::new_null(ctx))
 }
 
 // Helper: recursive finder

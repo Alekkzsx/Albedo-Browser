@@ -113,6 +113,8 @@ pub struct Event {
     pub target: Option<Value<'static>>, 
     #[qjs(skip_trace)]
     pub current_target: Option<Value<'static>>,
+    #[qjs(get, rename = "cancelBubble")]
+    pub cancel_bubble: bool,
 }
 
 #[rquickjs::methods]
@@ -138,6 +140,13 @@ impl Event {
         }
     }
     
+    #[qjs(rename = "initEvent")]
+    pub fn init_event(&mut self, type_: String, bubbles: bool, cancelable: bool) {
+        self.type_ = type_;
+        self.bubbles = bubbles;
+        self.cancelable = cancelable;
+    }
+
     #[qjs(get)]
     pub fn target<'js>(&self, ctx: Ctx<'js>) -> Value<'js> {
         // This is tricky. We are storing static values or need to resurrect?
@@ -157,6 +166,16 @@ impl Event {
         let _ = this.set("_propagationStopped", true);
     }
 
+    #[qjs(rename = "composedPath")]
+    pub fn composed_path<'js>(&self, ctx: Ctx<'js>, this: rquickjs::Object<'js>) -> Result<Value<'js>> {
+        let array = rquickjs::Array::new(ctx.clone())?;
+        // For simplicity, just return target as the only path element for now
+        if let Some(target) = self.target.as_ref() {
+            array.set(0, target.clone())?;
+        }
+        Ok(array.into_value())
+    }
+    
     #[qjs(rename = "preventDefault")]
     pub fn prevent_default<'js>(&self, this: rquickjs::Object<'js>) {
         if self.cancelable {

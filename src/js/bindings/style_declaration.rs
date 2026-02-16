@@ -205,4 +205,13 @@ impl CssStyleDeclaration {
     pub fn set_display(&self, value: String) {
         self.set_property("display".to_string(), value);
     }
+
+    #[qjs(get)]
+    pub fn length(&self) -> usize {
+        self.parse_style().len()
+    }
+
+    pub fn item(&self, index: usize) -> Option<String> {
+        self.parse_style().keys().nth(index).cloned()
+    }
 }

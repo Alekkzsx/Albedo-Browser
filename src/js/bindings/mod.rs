@@ -11,3 +11,7 @@ pub mod storage;
 pub mod navigator;
 pub mod location;
 pub mod shims;
+pub mod range;
+pub mod selection;
+pub mod mutation_observer;
+pub mod parser;

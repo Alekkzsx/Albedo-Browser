@@ -9,6 +9,8 @@ use rquickjs::Function;
 
 pub mod query;
 pub mod events;
+pub mod collections;
+pub mod fragment;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -23,6 +25,10 @@ pub struct Document {
     pub stylesheet_dirty: Arc<Mutex<bool>>,
     #[qjs(skip_trace)]
     pub cookie_storage: Arc<Mutex<String>>,
+    #[qjs(skip_trace)]
+    pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    pub url: String,
+    pub referrer: String,
 }
 
 #[rquickjs::methods]
@@ -50,6 +56,11 @@ impl Document {
     #[qjs(get)]
     pub fn location<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         ctx.globals().get("location")
+    }
+
+    #[qjs(get, rename = "defaultView")]
+    pub fn default_view<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(ctx.globals().into_value())
     }
     
     #[qjs(get, rename = "cookie")]
@@ -92,36 +103,162 @@ impl Document {
     }
 
     #[qjs(rename = "createElement")]
-    pub fn create_element<'js>(&self, ctx: Ctx<'js>, tag_name: String) -> Result<Value<'js>> {
-        // TODO: Implement node creation in AceDOM
-        // For now, return primitive dummy or fail?
-        // AceDOM structure is mainly for parsing. 
-        // We'll create a disconnected element.
-        
-        let mut dom = self.dom.lock().unwrap();
-        // Create a basic Element node
-        let node_type = AceNodeType::Element(crate::engine::dom::AceElement {
-            tag: tag_name,
-            attributes: std::collections::HashMap::new(),
-        });
-        
-        let node_idx = dom.nodes.len();
-        dom.nodes.push(crate::engine::dom::AceNode {
-            node_type,
-            parent: None,
-            children: Vec::new(),
-            prev_sibling: None,
-            next_sibling: None,
-            shadow_root: None,
-        });
+    pub fn create_element<'js>(&self, ctx: Ctx<'js>, tag: String) -> Result<Value<'js>> {
+        let idx = if let Ok(mut dom) = self.dom.lock() {
+            let idx = dom.nodes.len();
+            dom.nodes.push(AceNode {
+                node_type: AceNodeType::Element(crate::engine::dom::AceElement { tag, attributes: std::collections::HashMap::new() }),
+                parent: None,
+                children: Vec::new(),
+                prev_sibling: None,
+                next_sibling: None,
+                shadow_root: None,
+            });
+            idx
+        } else {
+            return Ok(Value::new_null(ctx));
+        };
 
-        let element = Element { 
+        let element = Element {
             dom: self.dom.clone(),
-            index: node_idx,
+            index: idx,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
+            primitives: self.primitives.clone(),
         };
+
         let instance = Class::instance(ctx, element)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(rename = "createDocumentFragment")]
+    pub fn create_document_fragment<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let idx = if let Ok(mut dom) = self.dom.lock() {
+            let idx = dom.nodes.len();
+            dom.nodes.push(AceNode {
+                node_type: AceNodeType::DocumentFragment,
+                parent: None,
+                children: Vec::new(),
+                prev_sibling: None,
+                next_sibling: None,
+                shadow_root: None,
+            });
+            idx
+        } else {
+            return Ok(Value::new_null(ctx));
+        };
+
+        let frag = crate::js::bindings::document::fragment::DocumentFragment {
+            dom: self.dom.clone(),
+            index: idx,
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+            primitives: self.primitives.clone(),
+        };
+
+        let instance = Class::instance(ctx, frag)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(rename = "createTextNode")]
+    pub fn create_text_node<'js>(&self, ctx: Ctx<'js>, text: String) -> Result<Value<'js>> {
+        let idx = if let Ok(mut dom) = self.dom.lock() {
+            let idx = dom.nodes.len();
+            dom.nodes.push(AceNode {
+                node_type: AceNodeType::Text(text),
+                parent: None,
+                children: Vec::new(),
+                prev_sibling: None,
+                next_sibling: None,
+                shadow_root: None,
+            });
+            idx
+        } else {
+            return Ok(Value::new_null(ctx));
+        };
+
+        let element = Element {
+            dom: self.dom.clone(),
+            index: idx,
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+            primitives: self.primitives.clone(),
+        };
+
+        let instance = Class::instance(ctx, element)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(rename = "createComment")]
+    pub fn create_comment<'js>(&self, ctx: Ctx<'js>, data: String) -> Result<Value<'js>> {
+        let idx = if let Ok(mut dom) = self.dom.lock() {
+            let idx = dom.nodes.len();
+            dom.nodes.push(AceNode {
+                node_type: AceNodeType::Comment(data),
+                parent: None,
+                children: Vec::new(),
+                prev_sibling: None,
+                next_sibling: None,
+                shadow_root: None,
+            });
+            idx
+        } else {
+            return Ok(Value::new_null(ctx));
+        };
+
+        let element = Element {
+            dom: self.dom.clone(),
+            index: idx,
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+            primitives: self.primitives.clone(),
+        };
+
+        let instance = Class::instance(ctx, element)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(set, rename = "onclick")]
+    pub fn set_onclick<'js>(&self, listener: Function<'js>) {
+        self.add_event_listener("click".to_string(), listener);
+    }
+
+    #[qjs(set, rename = "onload")]
+    pub fn set_onload<'js>(&self, listener: Function<'js>) {
+        self.add_event_listener("load".to_string(), listener);
+    }
+
+    #[qjs(rename = "createDocumentFragment")]
+    pub fn create_document_fragment<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let fragment = self::fragment::DocumentFragment::new(
+            self.dom.clone(),
+            self.mutations.clone(),
+            self.stylesheet_dirty.clone(),
+            self.primitives.clone(),
+        );
+        let instance = Class::instance(ctx, fragment)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(rename = "createEvent")]
+    pub fn create_event<'js>(&self, ctx: Ctx<'js>, _type_name: String) -> Result<Value<'js>> {
+        // Legacy: document.createEvent("HTMLEvents")
+        // Just return a basic Event object
+        let event = crate::js::bindings::event::Event {
+            type_: "event".into(),
+            bubbles: true,
+            cancelable: true,
+            target: None,
+            current_target: None,
+        };
+        let instance = Class::instance(ctx, event)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(rename = "createRange")]
+    pub fn create_range<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let range = crate::js::bindings::range::Range::new();
+        let instance = Class::instance(ctx, range)?;
         Ok(instance.into_value())
     }
 
@@ -147,6 +284,7 @@ impl Document {
                 index: idx,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
+                primitives: self.primitives.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -166,6 +304,7 @@ impl Document {
                 index: idx,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
+                primitives: self.primitives.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -187,6 +326,131 @@ impl Document {
         };
         let instance = Class::instance(ctx, element)?;
         Ok(instance.into_value())
+    }
+
+    #[qjs(get, rename = "images")]
+    pub fn images<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let collection = self::collections::HtmlCollection {
+            dom: self.dom.clone(),
+            selector_fn: std::sync::Arc::new(|dom, idx| {
+                if let Some(node) = dom.get_node(idx) {
+                    if let AceNodeType::Element(el) = &node.node_type {
+                        return el.tag == "img";
+                    }
+                }
+                false
+            }),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, collection)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(get, rename = "links")]
+    pub fn links<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let collection = self::collections::HtmlCollection {
+            dom: self.dom.clone(),
+            selector_fn: std::sync::Arc::new(|dom, idx| {
+                if let Some(node) = dom.get_node(idx) {
+                    if let AceNodeType::Element(el) = &node.node_type {
+                        return el.tag == "a" && el.attributes.contains_key("href");
+                    }
+                }
+                false
+            }),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, collection)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(get, rename = "forms")]
+    pub fn forms<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let collection = self::collections::HtmlCollection {
+            dom: self.dom.clone(),
+            selector_fn: std::sync::Arc::new(|dom, idx| {
+                if let Some(node) = dom.get_node(idx) {
+                    if let AceNodeType::Element(el) = &node.node_type {
+                        return el.tag == "form";
+                    }
+                }
+                false
+            }),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, collection)?;
+        Ok(instance.into_value())
+    }
+    
+    #[qjs(get, rename = "scripts")]
+    pub fn scripts<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let collection = self::collections::HtmlCollection {
+            dom: self.dom.clone(),
+            selector_fn: std::sync::Arc::new(|dom, idx| {
+                if let Some(node) = dom.get_node(idx) {
+                    if let AceNodeType::Element(el) = &node.node_type {
+                        return el.tag == "script";
+                    }
+                }
+                false
+            }),
+            mutations: self.mutations.clone(),
+            stylesheet_dirty: self.stylesheet_dirty.clone(),
+        };
+        let instance = Class::instance(ctx, collection)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(get, rename = "readyState")]
+    pub fn ready_state(&self) -> String {
+        "complete".to_string() // Simplified for now
+    }
+
+    #[qjs(get, rename = "cookie")]
+    pub fn get_cookie(&self) -> String {
+        self.cookie_storage.lock().unwrap().clone()
+    }
+
+    #[qjs(set, rename = "cookie")]
+    pub fn set_cookie(&self, cookie: String) {
+        let mut storage = self.cookie_storage.lock().unwrap();
+        // Naive implementation: just append or replace
+        // Real implementation should handle expiration, path, etc.
+        if storage.is_empty() {
+            *storage = cookie;
+        } else {
+            *storage = format!("{}; {}", *storage, cookie);
+        }
+    }
+
+    #[qjs(get, rename = "URL")]
+    pub fn url(&self) -> String {
+        self.url.clone()
+    }
+
+    #[qjs(get, rename = "referrer")]
+    pub fn referrer(&self) -> String {
+        self.referrer.clone()
+    }
+
+    #[qjs(get, rename = "activeElement")]
+    pub fn active_element<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let dom = self.dom.lock().unwrap();
+        if let Some(idx) = dom.active_element {
+            drop(dom);
+            let element = Element { 
+                dom: self.dom.clone(),
+                index: idx,
+                mutations: self.mutations.clone(),
+                stylesheet_dirty: self.stylesheet_dirty.clone(),
+            };
+            let instance = Class::instance(ctx, element)?;
+            return Ok(instance.into_value());
+        }
+        Ok(Value::new_null(ctx))
     }
 }
 
@@ -212,16 +476,23 @@ fn get_computed_style_js<'js>(ctx: Ctx<'js>, val: Value<'js>) -> Result<Class<'j
 }
 
 // Register document API in the runtime
-pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>) -> Result<()> {
+pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>, url: String, referrer: String) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             // Register classes
             Class::<Element>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::element::attributes::NamedNodeMap>::define(&ctx.globals())?;
             Class::<crate::js::bindings::token_list::DomTokenList>::define(&ctx.globals())?;
+            Class::<self::collections::HtmlCollection>::define(&ctx.globals())?;
+            Class::<self::fragment::DocumentFragment>::define(&ctx.globals())?;
             Class::<crate::js::bindings::style_declaration::CssStyleDeclaration>::define(&ctx.globals())?;
             Class::<crate::js::bindings::computed_style::ComputedCSSStyleDeclaration>::define(&ctx.globals())?;
             Class::<crate::js::bindings::event::Event>::define(&ctx.globals())?;
             Class::<crate::js::bindings::mutation_observer::MutationObserver>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::element::rect::DOMRect>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::range::Range>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::selection::Selection>::define(&ctx.globals())?;
+            Class::<crate::js::bindings::parser::DOMParser>::define(&ctx.globals())?;
             Class::<Document>::define(&ctx.globals())?;
             
             // Create instance and set as global 'document'
@@ -231,6 +502,9 @@ pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::
                 mutations: rt.mutations.clone(),
                 stylesheet_dirty: rt.stylesheet_dirty.clone(),
                 cookie_storage: Arc::new(Mutex::new(String::new())),
+                primitives,
+                url,
+                referrer,
             })?;
             ctx.globals().set("document", doc_instance)?;
             

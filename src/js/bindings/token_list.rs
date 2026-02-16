@@ -114,4 +114,28 @@ impl DomTokenList {
     pub fn contains(&self, token: String) -> bool {
         self.get_classes().contains(&token)
     }
+
+    #[qjs(rename = "replace")]
+    pub fn replace(&self, old_token: String, new_token: String) -> bool {
+        let mut classes = self.get_classes();
+        if classes.remove(&old_token) {
+            classes.insert(new_token);
+            self.update_class_attribute(&classes);
+            self.mark_mutation();
+            return true;
+        }
+        false
+    }
+
+    #[qjs(get, rename = "value")]
+    pub fn get_value(&self) -> String {
+        self.get_classes().iter().cloned().collect::<Vec<_>>().join(" ")
+    }
+
+    #[qjs(set, rename = "value")]
+    pub fn set_value(&self, val: String) {
+        let classes: HashSet<String> = val.split_whitespace().map(|s| s.to_string()).collect();
+        self.update_class_attribute(&classes);
+        self.mark_mutation();
+    }
 }

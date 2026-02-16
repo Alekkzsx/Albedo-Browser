@@ -64,11 +64,26 @@ impl MutationObserver {
     }
 
     pub fn disconnect(&mut self) {
-        // TODO: Implement removal of observer from DOM
+        let mut dom = self.dom.lock().unwrap();
+        // Remove from all target lists
+        for observers in dom.observers.values_mut() {
+            observers.retain(|o| o.callback_id != self.id);
+        }
     }
 
-    pub fn take_records(&self) -> Vec<Value<'static>> {
-        // TODO: Implement taking records
-        Vec::new()
+    pub fn take_records<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let mut dom = self.dom.lock().unwrap();
+        let records = dom.pending_mutations.remove(&self.id).unwrap_or_default();
+        
+        let arr = rquickjs::Array::new(ctx.clone())?;
+        for (i, rec) in records.into_iter().enumerate() {
+            let obj = rquickjs::Object::new(ctx.clone())?;
+            obj.set("type", rec.type_)?;
+            obj.set("attributeName", rec.attribute_name)?;
+            obj.set("oldValue", rec.old_value)?;
+            // Todo: target as Element
+            arr.set(i, obj)?;
+        }
+        Ok(arr.into_value())
     }
 }

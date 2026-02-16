@@ -9,6 +9,7 @@ pub struct AceDOM {
     pub body: Option<usize>,
     pub observers: HashMap<usize, Vec<DomObserver>>, // Map target_node_id -> Observers
     pub pending_mutations: HashMap<usize, Vec<MutationRecord>>, // Map callback_id -> Records
+    pub active_element: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +58,7 @@ pub enum AceNodeType {
     Comment(String),
     Document,
     ShadowRoot, // FASE 5: Shadow DOM root
+    DocumentFragment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -78,6 +80,7 @@ impl AceDOM {
             body: None,
             observers: HashMap::new(),
             pending_mutations: HashMap::new(),
+            active_element: None,
         };
 
         dom.find_head_body();
@@ -338,34 +341,14 @@ impl AceDOM {
         }
     }
 
-    pub fn serialize_subtree(&self, node_idx: usize) -> String {
+    pub fn serialize_subtree_text(&self, node_idx: usize) -> String {
         if let Some(node) = self.get_node(node_idx) {
             match &node.node_type {
                 AceNodeType::Text(t) => return t.clone(),
-                AceNodeType::Element(el) => {
-                    let mut s = format!("<{}", el.tag);
-                    for (k, v) in &el.attributes {
-                        s.push_str(&format!(" {}=\"{}\"", k, v));
-                    }
-                    s.push_str(">");
-                    for &child_idx in &node.children {
-                        s.push_str(&self.serialize_subtree(child_idx));
-                    }
-                    s.push_str(&format!("</{}>", el.tag));
-                    return s;
-                }
-                AceNodeType::Comment(c) => return format!("<!--{}-->", c),
-                AceNodeType::Document => {
+                _ => {
                     let mut s = String::new();
                     for &child_idx in &node.children {
-                        s.push_str(&self.serialize_subtree(child_idx));
-                    }
-                    return s;
-                }
-                AceNodeType::ShadowRoot => {
-                    let mut s = String::new();
-                     for &child_idx in &node.children {
-                        s.push_str(&self.serialize_subtree(child_idx));
+                        s.push_str(&self.serialize_subtree_text(child_idx));
                     }
                     return s;
                 }
@@ -495,5 +478,48 @@ impl AceDOM {
             attribute_name: Some(name),
             old_value,
         });
+    }
+
+    pub fn clone_subtree(&mut self, node_idx: usize, deep: bool) -> usize {
+        let node = self.nodes.get(node_idx).cloned().unwrap();
+        let new_idx = self.nodes.len();
+        
+        // Push initial stub to reserve index
+        self.nodes.push(node.clone());
+        
+        let mut new_node = node.clone();
+        new_node.parent = None;
+        new_node.prev_sibling = None;
+        new_node.next_sibling = None;
+        new_node.children = Vec::new();
+        
+        if deep {
+            let mut children_indices = Vec::new();
+            // Need to fetch original node's children
+            let original_children = node.children.clone();
+            for &child_idx in &original_children {
+                let new_child_idx = self.clone_subtree(child_idx, true);
+                children_indices.push(new_child_idx);
+                if let Some(child) = self.nodes.get_mut(new_child_idx) {
+                    child.parent = Some(new_idx);
+                }
+            }
+            
+            // Set siblings for new children
+            for i in 0..children_indices.len() {
+                let curr = children_indices[i];
+                let prev = if i > 0 { Some(children_indices[i-1]) } else { None };
+                let next = if i < children_indices.len() - 1 { Some(children_indices[i+1]) } else { None };
+                if let Some(child) = self.nodes.get_mut(curr) {
+                    child.prev_sibling = prev;
+                    child.next_sibling = next;
+                }
+            }
+            new_node.children = children_indices;
+        }
+        
+        // Update the reserved index with actual data
+        self.nodes[new_idx] = new_node;
+        new_idx
     }
 }
