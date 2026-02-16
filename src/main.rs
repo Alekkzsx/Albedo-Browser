@@ -1,24 +1,18 @@
-mod tab;
-mod tab_manager;
+mod browser;
 mod engine;
-mod js;
-mod services;
+mod runtime;
+mod network;
+mod ui;
 
 use slint::ComponentHandle;
-use tab_manager::TabManager;
-
-mod app;
-mod ui;
-mod net;
-mod graphics;
-mod media;
+use browser::tabs::manager::TabManager;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    app::setup::set_panic_hook();
+    browser::setup::set_panic_hook();
 
     println!("[Main] Starting Albedo Browser...");
-    let ui = app::setup::create_window()?;
+    let ui = browser::setup::create_window()?;
     let ui_handle = ui.as_weak();
 
     let tab_manager = TabManager::new();
@@ -30,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let system_timer = slint::Timer::default();
     system_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(2), move || {
-        app::callbacks::handle_system_monitor(&ui_handle_clone, &sys_clone);
+        browser::events::handle_system_monitor(&ui_handle_clone, &sys_clone);
     });
     
     // Tab Sync Logic (Initialization only now)
@@ -45,8 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create first tab immediately
     if let Some(ui) = ui_handle_clone.upgrade() {
         tm_clone.create_tab(ui.window(), "albedo://start");
-        app::sync::sync_ace_visuals(&ui, &tm_clone);
-        app::callbacks::sync_tabs(&tm_clone, &tabs_model_clone);
+        browser::bridge::sync_ace_visuals(&ui, &tm_clone);
+        browser::events::sync_tabs(&tm_clone, &tabs_model_clone);
         ui.set_current_url("".into());
         ui.set_show_start_page(true);
     }
@@ -57,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tabs_model_clone = tabs_model.clone();
     
     ui.on_navigate(move |url| {
-        app::callbacks::handle_navigate(&ui_handle_clone, &tm_clone, url, &tabs_model_clone);
+        browser::events::handle_navigate(&ui_handle_clone, &tm_clone, url, &tabs_model_clone);
     });
 
     let tm_clone = tab_manager.clone();
@@ -65,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_handle_clone = ui_handle.clone();
     
     ui.on_request_new_tab(move || {
-        app::callbacks::handle_new_tab(&ui_handle_clone, &tm_clone, &tabs_model_clone);
+        browser::events::handle_new_tab(&ui_handle_clone, &tm_clone, &tabs_model_clone);
     });
 
     let tm_clone = tab_manager.clone();
@@ -73,13 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_handle_clone = ui_handle.clone();
     
     ui.on_request_switch_tab(move |index| {
-        app::callbacks::handle_switch_tab(&ui_handle_clone, &tm_clone, index, &tabs_model_clone);
+        browser::events::handle_switch_tab(&ui_handle_clone, &tm_clone, index, &tabs_model_clone);
     });
 
     let tm_clone = tab_manager.clone();
     let tabs_model_clone = tabs_model.clone();
     ui.on_request_close_tab(move |index| {
-        app::callbacks::handle_close_tab(&tm_clone, index, &tabs_model_clone);
+        browser::events::handle_close_tab(&tm_clone, index, &tabs_model_clone);
     });
 
     // JS Pulse Timer
@@ -87,20 +81,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_pulse = ui_handle.clone();
     let pulse_timer = slint::Timer::default();
     pulse_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), move || {
-        app::callbacks::handle_pulse(&ui_pulse, &tm_pulse);
+        browser::events::handle_pulse(&ui_pulse, &tm_pulse);
     });
 
 
     let tm_click = tab_manager.clone();
     let ui_click = ui_handle.clone();
     ui.on_pointer_click(move |x, y| {
-        app::callbacks::handle_pointer_click(&ui_click, &tm_click, x, y); 
+        browser::events::handle_pointer_click(&ui_click, &tm_click, x, y); 
     });
 
     let tm_move = tab_manager.clone();
     let ui_move = ui_handle.clone();
     ui.on_pointer_move(move |x, y| {
-        app::callbacks::handle_hover(&ui_move, &tm_move, x, y);
+        browser::events::handle_hover(&ui_move, &tm_move, x, y);
     });
 
     ui.run()?;

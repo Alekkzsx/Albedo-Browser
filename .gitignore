@@ -1,5 +1,26 @@
+# Rust Build Artifacts
 /target
-Cargo.lock
 **/*.rs.bk
+
+# Debug symbols
 *.pdb
 *.exe
+*.dSYM/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
