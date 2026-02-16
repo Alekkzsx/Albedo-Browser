@@ -251,6 +251,7 @@ pub fn first_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js
                                 index: child_idx,
                                 mutations: el.mutations.clone(),
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                                primitives: el.primitives.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -274,6 +275,7 @@ pub fn last_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>
                                 index: child_idx,
                                 mutations: el.mutations.clone(),
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                                primitives: el.primitives.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -297,6 +299,7 @@ pub fn next_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'j
                                 index: sibling_idx,
                                 mutations: el.mutations.clone(),
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                                primitives: el.primitives.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -323,6 +326,7 @@ pub fn previous_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Valu
                                 index: sibling_idx,
                                 mutations: el.mutations.clone(),
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
+                                primitives: el.primitives.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -445,23 +449,7 @@ pub fn get_text_content(el: &Element) -> String {
 
 pub fn set_text_content(el: &Element, text: String) {
     if let Ok(mut dom) = el.dom.lock() {
-        // Clear children
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-            node.children.clear();
-        }
-        // Add text node
-        let text_idx = dom.nodes.len();
-        dom.nodes.push(crate::engine::dom::AceNode {
-            node_type: crate::engine::dom::AceNodeType::Text(text),
-            parent: Some(el.index),
-            children: Vec::new(),
-            prev_sibling: None,
-            next_sibling: None,
-            shadow_root: None,
-        });
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-            node.children.push(text_idx);
-        }
+        dom.set_text_content_notify(el.index, text);
     }
     mark_mutation(el);
 }

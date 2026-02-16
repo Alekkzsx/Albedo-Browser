@@ -4,12 +4,6 @@ use crate::js::JsRuntime;
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
-            let global = ctx.globals();
-            
-            // setTimeout
-            let rt_clone = rt.clone();
-            let set_timeout = Function::new(ctx.clone(), move |ctx: Ctx, callback: Function, delay: Option<f64>, args: rquickjs::prelude::Rest<Value>| -> rquickjs::Result<u32> {
-                let delay = delay.unwrap_or(0.0) as u64;
                 
                 // Wrap callback to include args
                 let args_persistent: Vec<Persistent<Value>> = args.0.into_iter()

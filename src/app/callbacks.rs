@@ -112,6 +112,14 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
         }
 
         if let Some((_, Some(mut engine))) = tm.get_active_tab_native_data() {
+            // Pulse JS Runtime
+            if let Some(ref rt) = engine.js_runtime {
+                let (js_executed, js_style_dirty) = rt.run_pending();
+                if js_executed || js_style_dirty {
+                    sync_ace_visuals(&ui, tm);
+                }
+            }
+
             let (mutated, style_dirty) = engine.check_mutations();
             
             if style_dirty {

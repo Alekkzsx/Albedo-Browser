@@ -48,6 +48,15 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::js::console::Console::register(rt)?;
     crate::js::bindings::timers::register(rt)?;
     crate::js::bindings::fetch::register(rt)?;
+    crate::js::bindings::websocket::register(rt)?;
+    crate::js::bindings::worker::register(rt)?;
+    crate::js::bindings::indexeddb::register(rt)?;
+    crate::js::bindings::file_api::register(rt)?;
+    crate::js::bindings::crypto::register(rt)?;
+    crate::js::bindings::notification::register(&rt.context.lock().unwrap())?;
+    crate::js::bindings::geolocation::register(&rt.context.lock().unwrap())?;
+    crate::js::bindings::url::register(rt)?;
+    crate::js::bindings::history::register(rt)?;
     crate::js::bindings::navigator::register(&rt.context.lock().unwrap())?;
     {
         let ctx = rt.context.lock().unwrap();
@@ -118,29 +127,23 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
             global.set("innerHeight", 720)?;
             global.set("devicePixelRatio", 1.0)?;
 
-            // History stub
-            let history = ctx.globals().get::<_, rquickjs::Object>("Object")?
-                .construct::<_, rquickjs::Object>(())?;
-            history.set("back", rquickjs::Function::new(ctx.clone(), || {}))?;
-            history.set("forward", rquickjs::Function::new(ctx.clone(), || {}))?;
-            history.set("pushState", rquickjs::Function::new(ctx.clone(), |_: Value, _: String, _: Option<String>| {}))?;
-            history.set("replaceState", rquickjs::Function::new(ctx.clone(), |_: Value, _: String, _: Option<String>| {}))?;
-            global.set("history", history)?;
+            global.set("devicePixelRatio", 1.0)?;
 
             // Animation Frame stubs
-            let raf = rquickjs::Function::new(ctx.clone(), |ctx: Ctx, cb: Function| -> rquickjs::Result<i32> {
-                // Simplified: just call it in the next "tick" (timeout 16ms)
+            let rt_clone = rt.clone();
+            let raf = rquickjs::Function::new(ctx.clone(), move |ctx: Ctx, cb: Function| -> rquickjs::Result<u32> {
                 let cb_static: Function<'static> = unsafe { std::mem::transmute(cb) };
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(16));
-                    // Note: This is an architectural shortcut. 
-                    // In a real engine, this would be queued in the main loop.
-                    let _ = cb_static.call::<_, ()>(());
-                });
-                Ok(1)
+                let mut el = rt_clone.event_loop.lock().unwrap();
+                let id = el.set_timer(Persistent::save(ctx, cb_static), 16, false);
+                Ok(id)
             })?;
             global.set("requestAnimationFrame", raf)?;
-            global.set("cancelAnimationFrame", rquickjs::Function::new(ctx.clone(), |_: i32| {}))?;
+            
+            let rt_clone = rt.clone();
+            global.set("cancelAnimationFrame", rquickjs::Function::new(ctx.clone(), move |id: u32| {
+                let mut el = rt_clone.event_loop.lock().unwrap();
+                el.clear_timer(id);
+            }))?;
 
             // Global Scroll & Viewport
             global.set("scrollX", 0.0)?;
@@ -148,12 +151,10 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
             global.set("pageXOffset", 0.0)?;
             global.set("pageYOffset", 0.0)?;
 
-            // Modern Observer stubs
-            let intersection_obs = ctx.globals().get::<_, rquickjs::Object>("Object")?
-                .construct::<_, rquickjs::Object>(())?;
-            intersection_obs.set("prototype", ctx.globals().get::<_, rquickjs::Object>("Object")?.construct::<_, rquickjs::Object>(())?)?;
-            global.set("IntersectionObserver", rquickjs::Function::new(ctx.clone(), |_: Function| {}))?;
-            global.set("ResizeObserver", rquickjs::Function::new(ctx.clone(), |_: Function| {}))?;
+            // Modern Observers
+            rquickjs::Class::<crate::js::bindings::mutation_observer::MutationObserver>::define(&global)?;
+            rquickjs::Class::<crate::js::bindings::resize_observer::ResizeObserver>::define(&global)?;
+            rquickjs::Class::<crate::js::bindings::intersection_observer::IntersectionObserver>::define(&global)?;
 
             // Modern Web APIs stubs
             global.set("matchMedia", rquickjs::Function::new(ctx.clone(), |ctx: Ctx, _: String| -> rquickjs::Result<rquickjs::Object> {

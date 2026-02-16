@@ -26,8 +26,6 @@ pub mod rect;
 pub mod shadow;
 
 pub(crate) use self::Element as ElementType;
-
-pub(crate) use self::Element as ElementType;
 pub(crate) fn mark_mutation(el: &ElementType) {
     el.mark_mutation();
 }
@@ -682,66 +680,6 @@ impl Element {
             dom.active_element = Some(self.index);
         }
         self.dispatch_event_internal("focus".to_string());
-    }
-
-    #[qjs(rename = "blur")]
-    pub fn blur(&self) {
-        if let Ok(mut dom) = self.dom.lock() {
-            if dom.active_element == Some(self.index) {
-                dom.active_element = None;
-            }
-        }
-        self.dispatch_event_internal("blur".to_string());
-    }
-    
-    #[qjs(rename = "appendChild")]
-    pub fn append_child<'js>(&self, ctx: Ctx<'js>, child: Value<'js>) -> Result<Value<'js>> {
-        self::hierarchy::append_child(self, ctx, child)
-    }
-
-    #[qjs(rename = "removeChild")]
-    pub fn remove_child<'js>(&self, ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
-        self::hierarchy::remove_child(self, ctx, child)
-    }
-
-    #[qjs(rename = "insertBefore")]
-    pub fn insert_before<'js>(&self, ctx: Ctx<'js>, child: Value<'js>, ref_child: Value<'js>) -> Result<Value<'js>> {
-        self::hierarchy::insert_before(self, ctx, child, ref_child)
-    }
-
-    #[qjs(rename = "querySelector")]
-    pub fn query_selector<'js>(&self, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
-        self::query::query_selector(self, ctx, selector)
-    }
-
-    #[qjs(rename = "querySelectorAll")]
-    pub fn query_selector_all<'js>(&self, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
-        self::query::query_selector_all(self, ctx, selector)
-    }
-
-    #[qjs(get, rename = "children")]
-    pub fn children<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::children(self, ctx)
-    }
-
-    #[qjs(get, rename = "childElementCount")]
-    pub fn child_element_count(&self) -> usize {
-        self::hierarchy::child_element_count(self)
-    }
-
-    #[qjs(get, rename = "parentElement")]
-    pub fn parent_element<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::parent_element(self, ctx)
-    }
-
-    #[qjs(get, rename = "firstElementChild")]
-    pub fn first_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::first_element_child(self, ctx)
-    }
-
-    #[qjs(get, rename = "lastElementChild")]
-    pub fn last_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::last_element_child(self, ctx)
     }
 
     #[qjs(get, rename = "nextElementSibling")]

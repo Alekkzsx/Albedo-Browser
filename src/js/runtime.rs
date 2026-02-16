@@ -1,10 +1,25 @@
 use rquickjs::{Context, Runtime, Ctx, Value, Exception};
 use rquickjs::function::IntoJsFunc;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::result::Result as StdResult;
 use crate::engine::dom::AceDOM;
 
 pub type JsResult<T> = StdResult<T, rquickjs::Error>;
+
+#[derive(Clone, Default)]
+pub struct HistoryEntry {
+    pub url: String,
+    pub state_json: Option<String>,
+}
+
+pub struct ResizeRegistry {
+    pub observers: HashMap<usize, Vec<rquickjs::Persistent<rquickjs::Function<'static>>>>,
+}
+
+pub struct IntersectionRegistry {
+    pub observers: HashMap<usize, Vec<(rquickjs::Persistent<rquickjs::Function<'static>>, f32)>>, // Simplified threshold
+}
 
 /// JavaScript runtime wrapper around QuickJS
 /// 
@@ -18,6 +33,14 @@ pub struct JsRuntime {
     pub mutations: Arc<Mutex<bool>>,
     pub stylesheet_dirty: Arc<Mutex<bool>>,
     pub pending_navigation: Arc<Mutex<Option<String>>>,
+    pub dom: Arc<Mutex<Option<Arc<Mutex<AceDOM>>>>>, // Link to Engine DOM
+    pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    pub observer_registry: Arc<Mutex<HashMap<usize, rquickjs::Persistent<rquickjs::Function<'static>>>>>,
+    pub history_stack: Arc<Mutex<Vec<HistoryEntry>>>,
+    pub history_index: Arc<Mutex<usize>>,
+    pub resize_registry: Arc<Mutex<HashMap<usize, Vec<rquickjs::Persistent<rquickjs::Function<'static>>>>>>,
+    pub intersection_registry: Arc<Mutex<HashMap<usize, Vec<(rquickjs::Persistent<rquickjs::Function<'static>>, f32)>>>>,
+    pub layout_states: Arc<Mutex<HashMap<usize, (f32, f32, f32, f32)>>>, // x, y, w, h
 }
 
 use crate::js::event_loop::EventLoop;
@@ -28,14 +51,27 @@ impl JsRuntime {
         let runtime = Runtime::new()?;
         let context = Context::full(&runtime)?;
         
-        Ok(Self {
+        let rt = Self {
             context: Arc::new(Mutex::new(context)),
             runtime: Arc::new(Mutex::new(runtime)),
             event_loop: Arc::new(Mutex::new(EventLoop::new())),
             mutations: Arc::new(Mutex::new(false)),
             stylesheet_dirty: Arc::new(Mutex::new(false)),
             pending_navigation: Arc::new(Mutex::new(None)),
-        })
+            dom: Arc::new(Mutex::new(None)),
+            primitives: Arc::new(Mutex::new(Vec::new())),
+            observer_registry: Arc::new(Mutex::new(HashMap::new())),
+            history_stack: Arc::new(Mutex::new(Vec::new())),
+            history_index: Arc::new(Mutex::new(0)),
+            resize_registry: Arc::new(Mutex::new(HashMap::new())),
+            intersection_registry: Arc::new(Mutex::new(HashMap::new())),
+            layout_states: Arc::new(Mutex::new(HashMap::new())),
+        };
+
+        // Store self in userdata for access from within JS callbacks
+        rt.context.lock().unwrap().set_userdata(rt.clone());
+
+        Ok(rt)
     }
     
     /// Execute a JavaScript code string
@@ -104,6 +140,7 @@ impl JsRuntime {
                     index, 
                     mutations: self.mutations.clone(),
                     stylesheet_dirty: self.stylesheet_dirty.clone(),
+                    primitives: self.primitives.clone(),
                 };
                 if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
                     let instance_val = instance.into_value();
@@ -146,6 +183,14 @@ impl Clone for JsRuntime {
             mutations: Arc::clone(&self.mutations),
             stylesheet_dirty: Arc::clone(&self.stylesheet_dirty),
             pending_navigation: Arc::clone(&self.pending_navigation),
+            dom: Arc::clone(&self.dom),
+            primitives: Arc::clone(&self.primitives),
+            observer_registry: Arc::clone(&self.observer_registry),
+            history_stack: Arc::clone(&self.history_stack),
+            history_index: Arc::clone(&self.history_index),
+            resize_registry: Arc::clone(&self.resize_registry),
+            intersection_registry: Arc::clone(&self.intersection_registry),
+            layout_states: Arc::clone(&self.layout_states),
         }
     }
 }

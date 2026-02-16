@@ -61,6 +61,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                 link_url: p.link_url.unwrap_or_default().into(),
                 node_id: p.node_idx.to_string().into(),
                 element_type: p.element_type.into(),
+                is_fixed: p.is_fixed,
             }
         }).collect();
 

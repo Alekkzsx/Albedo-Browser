@@ -44,6 +44,7 @@ pub struct ACEPrimitive {
     pub text_shadow: Option<String>, // CSS text-shadow string
     pub background_image: Option<String>, // CSS background (gradient or url)
     pub node_idx: usize, // Link back to DOM node
+    pub is_fixed: bool, // REAL CSS: Support for fixed positioning
 }
 
 pub struct AceEngine {
@@ -129,7 +130,14 @@ impl AceEngine {
         self.dom = Some(dom.clone()); 
         
         // Initialize JS Runtime
-        self.js_runtime = crate::js::init::init_js_for_url(&self.current_url, self);
+        let mut rt = crate::js::init::init_js_for_url(&self.current_url, self);
+        if let Some(ref mut rt_val) = rt {
+            if let Some(ref dom) = self.dom {
+                *rt_val.dom.lock().unwrap() = Some(dom.clone());
+            }
+            rt_val.primitives = self.primitives.clone();
+        }
+        self.js_runtime = rt;
         
         self.update_stylesheet();
         self.execute_scripts();
@@ -232,7 +240,7 @@ impl AceEngine {
                 h4, h5, h6 { color: #000000; display: block; margin: 10px 0; }
                 p { color: #333333; display: block; margin: 16px 0; }
                 a { color: #0000ff; text-decoration: underline; }
-                div { display: flex; flex-direction: column; }
+                div { display: block; }
                 span { display: inline; }
                 ul, ol { display: block; padding-left: 40px; margin: 16px 0; }
                 li { display: list-item; }
@@ -325,13 +333,15 @@ impl AceEngine {
             let stylesheet_ptr = self.stylesheet.clone();
             let stylesheet = stylesheet_ptr.lock().unwrap();
             
-            self.taffy = Taffy::new();
+            // Pass &mut self.taffy explicitly
+            let viewport_height = 1000.0; // Assume a default or get from self
             
             // First calculate root style (of <html> or body fallback)
-            let root_style = stylesheet.calculate_style(&dom, display_root, None, None, hovered_element, focused_element);
+            let root_style = stylesheet.calculate_style(&dom, display_root, None, None, hovered_element, focused_element, viewport_width, viewport_height);
             
             // Pass &mut self.taffy explicitly
-            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None, Some(&root_style), &text_measurer, hovered_element, focused_element);
+            let viewport_height = 1000.0; // Assume a default or get from self
+            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None, Some(&root_style), &text_measurer, hovered_element, focused_element, viewport_width, viewport_height);
             self.root_node = Some(root_node);
 
             let available_space = Size {
@@ -366,8 +376,13 @@ impl AceEngine {
                 Some(&root_style),
                 self.image_cache.clone(),
                 hovered_element,
-                focused_element
+                focused_element,
+                viewport_width,
+                viewport_height
             );
+            
+            // FASE 19 (REAL CSS): Sort by z-index for correct stacking
+            primitives.sort_by_key(|p| p.z_index);
         }
     }
 
@@ -475,7 +490,7 @@ fn format_gradient(g: &Gradient) -> String {
     }
 }
 
-fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, text_measurer: &text::TextMeasurer, hovered_element: Option<usize>, focused_element: Option<usize>) -> Node {
+fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, text_measurer: &text::TextMeasurer, hovered_element: Option<usize>, focused_element: Option<usize>, vw: f32, vh: f32) -> Node {
     let node = dom.get_node(node_idx).unwrap();
     
     let mut style = Style::default();
@@ -483,6 +498,13 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     // Now we use the passed parent_style for inheritance
     let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element);
     
+    let parent_font_size = parent_style.map(|s| s.font_size).unwrap_or(16.0);
+    let root_font_size = root_style.map(|s| s.font_size).unwrap_or(16.0);
+
+    if let Some(ratio) = computed.aspect_ratio {
+        style.aspect_ratio = Some(ratio);
+    }
+
     if computed.display == CssDisplay::None {
         style.display = Display::None;
     } else {
@@ -491,10 +513,19 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssDisplay::Flex => Display::Flex,
             CssDisplay::InlineFlex => Display::Flex,
             CssDisplay::Grid => Display::Grid,
-            CssDisplay::Block => Display::Flex,
+            CssDisplay::Block => Display::Flex, 
             CssDisplay::InlineBlock => Display::Flex, 
             CssDisplay::Inline => Display::Flex, 
         };
+
+        // REAL CSS: Se for Block, garantir largura total e direção de coluna
+        if computed.display == CssDisplay::Block {
+            style.flex_direction = FlexDirection::Column;
+            // Se a largura for Auto, forçar 100% (comportamento Block)
+            if let CssLength::Auto = computed.width {
+                style.size.width = Dimension::Percent(1.0);
+            }
+        }
     }
     
     if let AceNodeType::Element(el) = &node.node_type {
@@ -520,53 +551,61 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         CssPosition::Absolute | CssPosition::Fixed => Position::Absolute,
     };
 
-    // FASE 1: Apply position offsets (top/left/right/bottom)
-    style.inset = Rect {
-        left: to_taffy_lpa(&computed.left),
-        right: to_taffy_lpa(&computed.right),
-        top: to_taffy_lpa(&computed.top),
-        bottom: to_taffy_lpa(&computed.bottom),
-    };
-
-    // Helper to convert CssLength to Taffy LengthPercentageAuto or Dimension
-    fn to_taffy_lpa(l: &CssLength) -> LengthPercentageAuto {
+    // -- HELPERS --
+    // Convert CssLength to Taffy types, resolving math functions immediately
+    let to_taffy_lpa = |l: &CssLength| -> LengthPercentageAuto {
         match l {
             CssLength::Px(v) => LengthPercentageAuto::Points(*v),
             CssLength::Percent(v) => LengthPercentageAuto::Percent(*v / 100.0),
-            CssLength::Vw(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
-            CssLength::Vh(v) => LengthPercentageAuto::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) | CssLength::Em(v) | CssLength::Fr(v) => LengthPercentageAuto::Points(*v), // Fr fallback
+            CssLength::Vw(v) => LengthPercentageAuto::Points(*v / 100.0 * vw),
+            CssLength::Vh(v) => LengthPercentageAuto::Points(*v / 100.0 * vh),
+            CssLength::Rem(v) => LengthPercentageAuto::Points(*v * root_font_size),
+            CssLength::Em(v) => LengthPercentageAuto::Points(*v * parent_font_size),
             CssLength::Auto => LengthPercentageAuto::Auto,
             CssLength::Zero => LengthPercentageAuto::Points(0.0),
+            CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
+                LengthPercentageAuto::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+            },
+            _ => LengthPercentageAuto::Points(0.0),
         }
-    }
+    };
     
-    fn to_taffy_lp(l: &CssLength) -> LengthPercentage {
+    let to_taffy_lp = |l: &CssLength| -> LengthPercentage {
         match l {
             CssLength::Px(v) => LengthPercentage::Points(*v),
             CssLength::Percent(v) => LengthPercentage::Percent(*v / 100.0),
-            CssLength::Vw(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
-            CssLength::Vh(v) => LengthPercentage::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) | CssLength::Em(v) | CssLength::Fr(v) => LengthPercentage::Points(*v),
+            CssLength::Vw(v) => LengthPercentage::Points(*v / 100.0 * vw),
+            CssLength::Vh(v) => LengthPercentage::Points(*v / 100.0 * vh),
+            CssLength::Rem(v) => LengthPercentage::Points(*v * root_font_size),
+            CssLength::Em(v) => LengthPercentage::Points(*v * parent_font_size),
             CssLength::Zero => LengthPercentage::Points(0.0),
             CssLength::Auto => LengthPercentage::Points(0.0),
+            CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
+                LengthPercentage::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+            },
+            _ => LengthPercentage::Points(0.0),
         }
-    }
-
-    fn to_taffy_dim(l: &CssLength) -> Dimension {
+    };
+    
+    let to_taffy_dim = |l: &CssLength| -> Dimension {
         match l {
             CssLength::Px(v) => Dimension::Points(*v),
             CssLength::Percent(v) => Dimension::Percent(*v / 100.0),
-            CssLength::Vw(v) => Dimension::Percent(*v / 100.0), // Simplified
-            CssLength::Vh(v) => Dimension::Percent(*v / 100.0), // Simplified
-            CssLength::Rem(v) | CssLength::Em(v) => Dimension::Points(*v),
-            CssLength::Fr(v) => Dimension::Percent(*v), // Taffy uses percent for fr if not explicitly grid tracks, but in grid tracks it uses TrackSizingFunction
+            CssLength::Vw(v) => Dimension::Points(*v / 100.0 * vw),
+            CssLength::Vh(v) => Dimension::Points(*v / 100.0 * vh),
+            CssLength::Rem(v) => Dimension::Points(*v * root_font_size),
+            CssLength::Em(v) => Dimension::Points(*v * parent_font_size),
+            CssLength::Fr(v) => Dimension::Percent(*v), 
             CssLength::Auto => Dimension::Auto,
             CssLength::Zero => Dimension::Points(0.0),
+            CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
+                Dimension::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+            },
+            _ => Dimension::Points(0.0),
         }
-    }
+    };
     
-    fn to_taffy_track(l: &CssLength) -> TrackSizingFunction {
+    let to_taffy_track = |l: &CssLength| -> TrackSizingFunction {
         match l {
             CssLength::Px(v) => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Points(*v) }),
             CssLength::Percent(v) => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Percent(*v / 100.0) }),
@@ -575,15 +614,23 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Zero => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Points(0.0) }),
             _ => TrackSizingFunction::Single(GridTrack { kind: GridTrackKind::Auto }),
         }
-    }
+    };
     
-    fn to_taffy_grid_pos(l: &CssLength) -> GridPlacement {
+    let to_taffy_grid_pos = |l: &CssLength| -> GridPlacement {
         match l {
             CssLength::Px(v) => GridPlacement::from_line_index((*v as i16).max(1)),
             _ => GridPlacement::Auto,
         }
-    }
+    };
 
+    // FASE 1: Apply position offsets (top/left/right/bottom)
+    style.inset = Rect {
+        left: to_taffy_lpa(&computed.left),
+        right: to_taffy_lpa(&computed.right),
+        top: to_taffy_lpa(&computed.top),
+        bottom: to_taffy_lpa(&computed.bottom),
+    };
+    
     style.margin = Rect {
         left: to_taffy_lpa(&computed.margin_left),
         right: to_taffy_lpa(&computed.margin_right),
@@ -613,8 +660,26 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         height: to_taffy_lp(&computed.grid_row_gap),
     };
 
-    style.size.width = to_taffy_dim(&computed.width);
-    style.size.height = to_taffy_dim(&computed.height);
+    let mut base_width = to_taffy_dim(&computed.width);
+    let mut base_height = to_taffy_dim(&computed.height);
+
+    // RIGOROUS: Box-Sizing handle
+    if computed.box_sizing == CssBoxSizing::BorderBox {
+        // For BorderBox, the width/height property includes padding and border.
+        // Taffy's size property usually represents the content-box if we want consistent flex behavior.
+        // However, we can also pass it as is and Taffy might handle it if it follows standard Flexbox.
+        // But to be safe and precise:
+        let pad_h = crate::engine::css_values::resolve_length(&computed.padding_left, parent_font_size, root_font_size, vw, vh)
+                  + crate::engine::css_values::resolve_length(&computed.padding_right, parent_font_size, root_font_size, vw, vh);
+        let pad_v = crate::engine::css_values::resolve_length(&computed.padding_top, parent_font_size, root_font_size, vw, vh)
+                  + crate::engine::css_values::resolve_length(&computed.padding_bottom, parent_font_size, root_font_size, vw, vh);
+        
+        if let Dimension::Points(w) = base_width { base_width = Dimension::Points((w - pad_h).max(0.0)); }
+        if let Dimension::Points(h) = base_height { base_height = Dimension::Points((h - pad_v).max(0.0)); }
+    }
+
+    style.size.width = base_width;
+    style.size.height = base_height;
 
     if let AceNodeType::Text(text) = &node.node_type {
         let text_content = text.trim().to_string();
@@ -656,7 +721,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     
     // FASE 5: Shadow DOM support - if has shadow root, render it instead of children
     if let Some(shadow_idx) = node.shadow_root {
-         let shadow_root_node = build_layout_tree(taffy, shadow_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element);
+         let shadow_root_node = build_layout_tree(taffy, shadow_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh);
          taffy.add_child(taffy_node, shadow_root_node).unwrap();
          return taffy_node;
     }
@@ -678,7 +743,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             }
         
         // Pass current computed style as parent style for children
-        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element);
+        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh);
         taffy.add_child(taffy_node, child_node).unwrap();
     }
 
@@ -719,6 +784,7 @@ fn render_pseudo_element(
             text_shadow: None,
             background_image: None,
             node_idx,
+            is_fixed: computed.position == CssPosition::Fixed,
         });
     }
 }
@@ -736,21 +802,24 @@ fn generate_display_list(
     root_style: Option<&ComputedStyle>,
     image_cache: Arc<Mutex<HashMap<String, slint::Image>>>,
     hovered_element: Option<usize>,
-    focused_element: Option<usize>
+    vw: f32,
+    vh: f32,
 ) {
+    let node = dom.get_node(node_idx).unwrap();
+    // Use parent style for inheritance
+    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element, vw, vh);
+
     let layout = match taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };
     
-    let x = parent_x + layout.location.x;
-    let y = parent_y + layout.location.y;
+    let is_fixed = computed.position == CssPosition::Fixed;
+    
+    let x = if is_fixed { layout.location.x } else { parent_x + layout.location.x };
+    let y = if is_fixed { layout.location.y } else { parent_y + layout.location.y };
     let width = layout.size.width;
     let height = layout.size.height;
-
-    let node = dom.get_node(node_idx).unwrap();
-    // Use parent style for inheritance
-    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element);
     
     if computed.display == CssDisplay::None {
         return;
@@ -804,6 +873,7 @@ fn generate_display_list(
                     border_radius: 0.0,
                     box_shadow: None, text_shadow: None, background_image: None,
                     node_idx,
+                    is_fixed,
                 });
                 return; // Skip normal rendering for iframe
             }
@@ -1027,37 +1097,76 @@ fn generate_display_list(
         if let Some(shadow_node) = dom.get_node(shadow_idx) {
              let shadow_taffy = taffy.children(taffy_node).unwrap().first().copied();
              if let Some(shadow_taffy) = shadow_taffy {
-                generate_display_list(primitives, taffy, shadow_idx, dom, shadow_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element);
+                generate_display_list(primitives, taffy, shadow_idx, dom, shadow_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element, vw, vh);
                 return;
              }
         }
     }
 
     // Render ::before pseudo-element
-    let before_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::Before, hovered_element, focused_element);
+    let before_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::Before, hovered_element, focused_element, vw, vh);
     if before_style.content != CssContent::Normal && before_style.content != CssContent::None {
         render_pseudo_element(primitives, node_idx, "before", x, y, width, &before_style);
     }
 
-    let taffy_children = taffy.children(taffy_node).unwrap();
-    let mut relevant_children = Vec::new();
+    // -----------------------------------------------------------------------
+    // STACKING CONTEXT LOGIC
+    // -----------------------------------------------------------------------
+    
+    // 1. Collect children and pre-calculate styles
+    let taffy_children = taffy.children(taffy_node).unwrap_or_default();
+    let mut children_to_process = Vec::new();
+    
+    // Taffy children might not match DOM children 1:1 if we skip text nodes or display:none in construction
+    // But generate_display_list assumes strict correspondence for now in the loop structure.
+    
+    // Only map visible children that taffy knows about
+    // We need to match relevant children logic
+    let mut relevant_dom_indices = Vec::new();
     for &child_idx in &node.children {
         if let Some(child) = dom.get_node(child_idx) {
-                if let AceNodeType::Text(t) = &child.node_type {
-                    if t.trim().is_empty() {
-                        continue;
-                    }
-                }
-                relevant_children.push(child_idx);
+             if let AceNodeType::Text(t) = &child.node_type {
+                 if t.trim().is_empty() { continue; }
+             }
+             relevant_dom_indices.push(child_idx);
         }
     }
     
-    for (&child_dom_idx, &child_taffy) in relevant_children.iter().zip(taffy_children.iter()) {
-        generate_display_list(primitives, taffy, child_dom_idx, dom, child_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element);
+    for (i, (&child_dom_idx, &child_taffy)) in relevant_dom_indices.iter().zip(taffy_children.iter()).enumerate() {
+         let child_style = stylesheet.calculate_style(dom, child_dom_idx, Some(&computed), root_style, hovered_element, focused_element, vw, vh);
+         children_to_process.push((child_dom_idx, child_taffy, child_style, i));
+    }
+    
+    // 2. Determine if CURRENT element is a Stacking Context
+    let is_auto_z = computed.z_index == i32::MIN;
+    let is_positioned_and_indexed = computed.position != CssPosition::Static && !is_auto_z;
+    let has_opacity = computed.opacity < 1.0;
+    let has_transform = !computed.transform.is_empty();
+    
+    let is_stacking_context = is_positioned_and_indexed || has_opacity || has_transform || computed.position == CssPosition::Fixed || computed.position == CssPosition::Sticky;
+
+    // 3. Sort children if Stacking Context
+    if is_stacking_context {
+        children_to_process.sort_by(|a, b| {
+            let z_a = if a.2.position != CssPosition::Static { if a.2.z_index == i32::MIN { 0 } else { a.2.z_index } } else { 0 };
+            let z_b = if b.2.position != CssPosition::Static { if b.2.z_index == i32::MIN { 0 } else { b.2.z_index } } else { 0 };
+            
+            // Primary: Z-Index
+            if z_a != z_b {
+                return z_a.cmp(&z_b);
+            }
+            // Secondary: DOM Order (stable)
+            a.3.cmp(&b.3)
+        });
+    }
+
+    // 4. Render Children
+    for (child_dom_idx, child_taffy, child_computed, _) in children_to_process {
+        generate_display_list(primitives, taffy, child_dom_idx, dom, child_taffy, x, y, stylesheet, Some(&child_computed), root_style, image_cache.clone(), hovered_element, focused_element, vw, vh);
     }
     
     // Render ::after pseudo-element
-    let after_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::After, hovered_element, focused_element);
+    let after_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::After, hovered_element, focused_element, vw, vh);
     if after_style.content != CssContent::Normal && after_style.content != CssContent::None {
         // Calculate Y position for ::after (defaults to bottom of element for now)
         // In a real layout engine, this would be part of the flow

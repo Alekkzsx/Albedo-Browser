@@ -131,12 +131,6 @@ impl Response {
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
-            let global = ctx.globals();
-            Class::<Response>::define(&global)?;
-            Class::<Headers>::define(&global)?;
-            Class::<Request>::define(&global)?;
-            Class::<AbortController>::define(&global)?;
-            Class::<AbortSignal>::define(&global)?;
             
             // Set globals
             global.set("Headers", Class::<Headers>::register(ctx.clone())?)?;

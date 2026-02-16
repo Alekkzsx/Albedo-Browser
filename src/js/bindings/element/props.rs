@@ -138,25 +138,7 @@ fn collect_text(dom: &AceDOM, node: &AceNode) -> String {
 
 pub fn set_text_content(el: &Element, text: String) {
     if let Ok(mut dom) = el.dom.lock() {
-        // Clear children
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-            node.children.clear();
-        }
-        
-        // Add new text node
-        let new_node_idx = dom.nodes.len();
-        dom.nodes.push(AceNode {
-            node_type: AceNodeType::Text(text),
-            parent: Some(el.index),
-            children: Vec::new(),
-            prev_sibling: None,
-            next_sibling: None,
-            shadow_root: None,
-        });
-        
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-            node.children.push(new_node_idx);
-        }
+        dom.set_text_content_notify(el.index, text);
     }
     mark_mutation(el);
 }
@@ -203,25 +185,7 @@ pub fn has_attribute(el: &Element, name: String) -> bool {
 
 pub fn remove_attribute(el: &Element, name: String) {
     if let Ok(mut dom) = el.dom.lock() {
-        // Need a remove_attribute_notify in AceDOM?
-        // For simplicity, let's just implement it here or call a notify
-        let mut old_value = None;
-        if let Some(node) = dom.nodes.get_mut(el.index) {
-             if let AceNodeType::Element(element) = &mut node.node_type {
-                 old_value = element.attributes.remove(&name);
-             }
-        }
-        
-        dom.notify_mutation(el.index, crate::engine::dom::MutationRecord {
-            type_: "attributes".to_string(),
-            target: el.index,
-            added_nodes: vec![],
-            removed_nodes: vec![],
-            previous_sibling: None,
-            next_sibling: None,
-            attribute_name: Some(name),
-            old_value,
-        });
+        dom.remove_attribute_notify(el.index, name);
     }
     mark_mutation(el);
 }
@@ -367,19 +331,6 @@ pub fn client_width(el: &Element) -> f32 {
 pub fn client_height(el: &Element) -> f32 {
     offset_height(el)
 }
-            let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
-            let mut items_to_insert = Vec::new();
-            
-            // Helper to convert kuchiki nodes to indices
-            // We need a temporary buffer or use a modified version of convert_recursive on the live DOM
-            // Since convert_recursive pushes to dom.nodes, we can just use it.
-            
-            // This is a bit tricky with current API. Let's simplify and just use a placeholder or 
-            // refactor convert_recursive to be a method of AceDOM.
-            // Actually AceDOM has set_inner_html_from_kuchiki. We can adapt it.
-        }
-    }
-}
 pub fn scroll_top(_el: &Element) -> f32 {
     0.0 // Stub: Albedo uses global scroll for now
 }
@@ -416,6 +367,7 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
             index: shadow_idx,
             mutations: el.mutations.clone(),
             stylesheet_dirty: el.stylesheet_dirty.clone(),
+            primitives: el.primitives.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         return Ok(instance.into_value());
