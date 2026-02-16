@@ -1,15 +1,56 @@
 use crate::js::JsRuntime;
 use rquickjs::{Value, Ctx};
+use std::collections::HashMap;
 
 pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     let mut executed = false;
     
     // 0. Check for DOM mutations that happened since last pulse
     {
-        let mut muts = rt.mutations.lock().unwrap();
-        if *muts {
-            executed = true;
-            *muts = false;
+        let mut mutated_flag = rt.mutations.lock().unwrap();
+        if *mutated_flag {
+            if let Some(dom_arc) = rt.dom.lock().unwrap().as_ref() {
+                let mut dom = dom_arc.lock().unwrap();
+                let pending = dom.take_pending_mutations();
+                if !pending.is_empty() {
+                    rt.with_context(|ctx| {
+                        ctx.with(|ctx| {
+                            let registry = rt.observer_registry.lock().unwrap();
+                            for (callback_id, records) in pending {
+                                if let Some(cb_persistent) = registry.get(&callback_id) {
+                                    if let Ok(callback) = cb_persistent.restore(&ctx) {
+                                        // Convert records to JS array
+                                        let arr = rquickjs::Array::new(ctx.clone()).unwrap();
+                                        for (i, rec) in records.into_iter().enumerate() {
+                                            let obj = rquickjs::Object::new(ctx.clone()).unwrap();
+                                            let _ = obj.set("type", rec.type_);
+                                            let _ = obj.set("attributeName", rec.attribute_name);
+                                            let _ = obj.set("oldValue", rec.old_value);
+                                            
+                                            // Wrap target as Element
+                                            use crate::js::bindings::element::Element;
+                                            let target_el = Element {
+                                                dom: dom_arc.clone(),
+                                                index: rec.target,
+                                                mutations: rt.mutations.clone(),
+                                                stylesheet_dirty: rt.stylesheet_dirty.clone(),
+                                                primitives: rt.primitives.clone(),
+                                            };
+                                            if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), target_el) {
+                                                let _ = obj.set("target", instance);
+                                            }
+                                            let _ = arr.set(i, obj);
+                                        }
+                                        let _: rquickjs::Result<Value> = callback.call((arr,));
+                                        executed = true;
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+            }
+            *mutated_flag = false;
         }
     }
 
@@ -17,7 +58,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     {
         let ctx = rt.context.lock().unwrap();
         ctx.with(|ctx| {
-            if ctx.execute_pending_job() {
+            while ctx.execute_pending_job() {
                 println!("[JS] Microtask/Promise executed.");
                 executed = true;
             }
@@ -57,7 +98,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                     }
                 }
                 // Run jobs again as resolutions might trigger then() callbacks
-                if ctx.execute_pending_job() {
+                while ctx.execute_pending_job() {
                     executed = true;
                 }
             })
@@ -81,7 +122,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                 }
                 
                 // Run pending jobs AGAIN after timers might have resolved promises
-                if ctx.execute_pending_job() {
+                while ctx.execute_pending_job() {
                     executed = true;
                 }
             })
@@ -101,6 +142,120 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
             *sd = false;
         }
     }
+
+    // 5. Layout Observers (Resize & Intersection)
+    check_layout_observers(rt);
     
     (executed, stylesheet_dirty)
+}
+
+fn check_layout_observers(rt: &JsRuntime) {
+    let mut resize_notifications = Vec::new();
+    let mut intersection_notifications = Vec::new();
+
+    {
+        let primitives = rt.primitives.lock().unwrap();
+        let mut layout_states = rt.layout_states.lock().unwrap();
+        let resize_registry = rt.resize_registry.lock().unwrap();
+        let intersection_registry = rt.intersection_registry.lock().unwrap();
+
+        // Create a map from node_idx to actual primitive for quick lookup
+        let mut current_rects = HashMap::new();
+        for p in primitives.iter() {
+            current_rects.insert(p.node_idx, (p.x, p.y, p.width, p.height));
+        }
+
+        // Check ResizeObservers
+        for (&node_idx, callbacks) in resize_registry.iter() {
+            if let Some(&(cx, cy, cw, ch)) = current_rects.get(&node_idx) {
+                let prev = layout_states.get(&node_idx).cloned();
+                if prev.is_none() || (prev.unwrap().2 != cw || prev.unwrap().3 != ch) {
+                    for cb in callbacks {
+                        resize_notifications.push((cb.clone(), node_idx, cw, ch));
+                    }
+                }
+            }
+        }
+
+        // Check IntersectionObservers
+        let viewport = (0.0, 0.0, 1024.0, 768.0); // Default viewport, should be dynamic later
+        for (&node_idx, observers) in intersection_registry.iter() {
+            if let Some(&(cx, cy, cw, ch)) = current_rects.get(&node_idx) {
+                // Calculate intersection area
+                let x_overlap = (cx.max(viewport.0)).min(cx + cw).min(viewport.0 + viewport.2) - (cx.max(viewport.0));
+                let y_overlap = (cy.max(viewport.1)).min(cy + ch).min(viewport.1 + viewport.3) - (cy.max(viewport.1));
+                let intersection_area = (x_overlap * y_overlap).max(0.0);
+                let total_area = cw * ch;
+                let ratio = if total_area > 0.0 { intersection_area / total_area } else { 0.0 };
+
+                for (cb, threshold) in observers {
+                    if ratio >= *threshold {
+                        intersection_notifications.push((cb.clone(), node_idx, ratio));
+                    }
+                }
+            }
+        }
+
+        // Update layout states for next check
+        for (&node_idx, rect) in current_rects.iter() {
+            layout_states.insert(node_idx, *rect);
+        }
+    }
+
+    // Trigger callbacks
+    if !resize_notifications.is_empty() || !intersection_notifications.is_empty() {
+        rt.with_context(|ctx| {
+            ctx.with(|ctx| {
+                // Handle Resize Notifications
+                for (cb_persistent, node_idx, w, h) in resize_notifications {
+                    if let Ok(cb) = cb_persistent.restore(&ctx) {
+                        let entry = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let rect = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = rect.set("width", w);
+                        let _ = rect.set("height", h);
+                        let _ = entry.set("contentRect", rect);
+                        
+                        let target = wrap_element(rt, node_idx, &ctx);
+                        let _ = entry.set("target", target);
+                        
+                        let arr = rquickjs::Array::new(ctx.clone()).unwrap();
+                        let _ = arr.set(0, entry);
+                        let _: rquickjs::Result<Value> = cb.call((arr,));
+                    }
+                }
+
+                // Handle Intersection Notifications
+                for (cb_persistent, node_idx, ratio) in intersection_notifications {
+                    if let Ok(cb) = cb_persistent.restore(&ctx) {
+                        let entry = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = entry.set("intersectionRatio", ratio);
+                        let _ = entry.set("isIntersecting", ratio > 0.0);
+                        
+                        let target = wrap_element(rt, node_idx, &ctx);
+                        let _ = entry.set("target", target);
+
+                        let arr = rquickjs::Array::new(ctx.clone()).unwrap();
+                        let _ = arr.set(0, entry);
+                        let _: rquickjs::Result<Value> = cb.call((arr,));
+                    }
+                }
+            });
+        });
+    }
+}
+
+fn wrap_element<'js>(rt: &JsRuntime, node_idx: usize, ctx: &Ctx<'js>) -> Value<'js> {
+    use crate::js::bindings::element::Element;
+    let element = Element {
+        dom: rt.dom.lock().unwrap().as_ref().unwrap().clone(),
+        index: node_idx,
+        mutations: rt.mutations.clone(),
+        stylesheet_dirty: rt.stylesheet_dirty.clone(),
+        primitives: rt.primitives.clone(),
+    };
+    if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
+        instance.into_value()
+    } else {
+        Value::new_null(ctx.clone())
+    }
 }

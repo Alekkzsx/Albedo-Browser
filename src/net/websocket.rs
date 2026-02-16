@@ -122,6 +122,13 @@ impl WebSocketClient {
         });
     }
 
+    pub fn send_binary(&self, bin: Vec<u8>) {
+        let sender = self.command_sender.clone();
+        tokio::spawn(async move {
+            let _ = sender.send(WsCommand::SendBinary(bin)).await;
+        });
+    }
+
     pub fn close(&self) {
         let sender = self.command_sender.clone();
         tokio::spawn(async move {

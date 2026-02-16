@@ -310,9 +310,21 @@ impl AceDOM {
                 child_node.next_sibling = next;
             }
         }
+
+        self.notify_mutation(parent_idx, MutationRecord {
+            type_: "childList".to_string(),
+            target: parent_idx,
+            added_nodes: vec![child_idx],
+            removed_nodes: vec![],
+            previous_sibling: if let Some(p) = self.get_node(child_idx) { p.prev_sibling } else { None },
+            next_sibling: ref_idx,
+            attribute_name: None,
+            old_value: None,
+        });
     }
 
     pub fn set_inner_html_from_kuchiki(&mut self, parent_idx: usize, kuchiki_nodes: kuchiki::iter::Siblings) {
+        let old_children = self.get_node(parent_idx).map(|n| n.children.clone()).unwrap_or_default();
         if let Some(node) = self.nodes.get_mut(parent_idx) {
             node.children.clear();
         }
@@ -339,6 +351,50 @@ impl AceDOM {
         if let Some(node) = self.nodes.get_mut(parent_idx) {
             node.children = new_children;
         }
+
+        self.notify_mutation(parent_idx, MutationRecord {
+            type_: "childList".to_string(),
+            target: parent_idx,
+            added_nodes: self.get_node(parent_idx).map(|n| n.children.clone()).unwrap_or_default(),
+            removed_nodes: old_children,
+            previous_sibling: None,
+            next_sibling: None,
+            attribute_name: None,
+            old_value: None,
+        });
+    }
+
+    pub fn set_text_content_notify(&mut self, node_idx: usize, text: String) {
+        let old_children = self.get_node(node_idx).map(|n| n.children.clone()).unwrap_or_default();
+        
+        if let Some(node) = self.nodes.get_mut(node_idx) {
+            node.children.clear();
+        }
+
+        let text_idx = self.nodes.len();
+        self.nodes.push(AceNode {
+            node_type: AceNodeType::Text(text),
+            parent: Some(node_idx),
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+            shadow_root: None,
+        });
+
+        if let Some(node) = self.nodes.get_mut(node_idx) {
+            node.children.push(text_idx);
+        }
+
+        self.notify_mutation(node_idx, MutationRecord {
+            type_: "childList".to_string(),
+            target: node_idx,
+            added_nodes: vec![text_idx],
+            removed_nodes: old_children,
+            previous_sibling: None,
+            next_sibling: None,
+            attribute_name: None,
+            old_value: None,
+        });
     }
 
     pub fn serialize_subtree_text(&self, node_idx: usize) -> String {
@@ -380,7 +436,27 @@ impl AceDOM {
         entry.push(DomObserver { callback_id, options });
     }
 
-    fn notify_mutation(&self, target: usize, record: MutationRecord) {
+    pub fn remove_attribute_notify(&mut self, node_idx: usize, name: String) {
+        let mut old_value = None;
+        if let Some(node) = self.nodes.get_mut(node_idx) {
+             if let AceNodeType::Element(element) = &mut node.node_type {
+                 old_value = element.attributes.remove(&name);
+             }
+        }
+        
+        self.notify_mutation(node_idx, MutationRecord {
+            type_: "attributes".to_string(),
+            target: node_idx,
+            added_nodes: vec![],
+            removed_nodes: vec![],
+            previous_sibling: None,
+            next_sibling: None,
+            attribute_name: Some(name),
+            old_value,
+        });
+    }
+
+    pub fn notify_mutation(&self, target: usize, record: MutationRecord) {
         // Collect observers that need to be notified
         // Logic: 
         // 1. Check observers on target

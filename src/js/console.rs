@@ -30,22 +30,26 @@ impl Console {
     pub fn register(runtime: &JsRuntime) -> Result<(), rquickjs::Error> {
         runtime.with_context(|ctx| {
             ctx.with(|ctx: Ctx| {
-                let console = Object::new(ctx.clone())?;
-                
-                // Register functions
-                console.set("log", Function::new(ctx.clone(), console_log)?)?;
-                console.set("error", Function::new(ctx.clone(), console_error)?)?;
-                console.set("warn", Function::new(ctx.clone(), console_warn)?)?;
-                console.set("info", Function::new(ctx.clone(), console_info)?)?;
-                console.set("debug", Function::new(ctx.clone(), console_debug)?)?;
-                
-                // Register in global scope
-                let globals = ctx.globals();
-                globals.set("console", console)?;
-                
-                Ok(())
+                Self::register_in_ctx(&ctx)
             })
         })
+    }
+
+    pub fn register_in_ctx(ctx: &Ctx<'_>) -> Result<(), rquickjs::Error> {
+        let console = Object::new(ctx.clone())?;
+        
+        // Register functions
+        console.set("log", Function::new(ctx.clone(), console_log)?)?;
+        console.set("error", Function::new(ctx.clone(), console_error)?)?;
+        console.set("warn", Function::new(ctx.clone(), console_warn)?)?;
+        console.set("info", Function::new(ctx.clone(), console_info)?)?;
+        console.set("debug", Function::new(ctx.clone(), console_debug)?)?;
+        
+        // Register in global scope
+        let globals = ctx.globals();
+        globals.set("console", console)?;
+        
+        Ok(())
     }
 }
 

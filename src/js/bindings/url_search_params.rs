@@ -36,6 +36,15 @@ impl URLSearchParams {
     pub fn set(&mut self, name: String, value: String) {
         if let Some(pos) = self.params.iter().position(|(k, _)| k == &name) {
             self.params[pos].1 = value;
+            // Remove subsequent params with same name
+            let mut i = pos + 1;
+            while i < self.params.len() {
+                if self.params[i].0 == name {
+                    self.params.remove(i);
+                } else {
+                    i += 1;
+                }
+            }
         } else {
             self.params.push((name, value));
         }
@@ -53,13 +62,62 @@ impl URLSearchParams {
         self.params.iter().any(|(k, _)| k == &name)
     }
 
+    #[qjs(rename = "getAll")]
+    pub fn get_all(&self, name: String) -> Vec<String> {
+        self.params.iter()
+            .filter(|(k, _)| k == &name)
+            .map(|(_, v)| v.clone())
+            .collect()
+    }
+
+    pub fn sort(&mut self) {
+        self.params.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+
+    pub fn entries<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let arr = Array::new(ctx.clone())?;
+        for (i, (k, v)) in self.params.iter().enumerate() {
+            let pair = Array::new(ctx.clone())?;
+            pair.set(0, k.clone())?;
+            pair.set(1, v.clone())?;
+            arr.set(i, pair)?;
+        }
+        // In a real browser this returns an iterator, but returning an array 
+        // that's iterable is a common and functional shortcut for simple engines.
+        // We could implement a real iterator class if needed by the user.
+        Ok(arr.into_value())
+    }
+
+    pub fn keys<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let arr = Array::new(ctx.clone())?;
+        for (i, (k, _)) in self.params.iter().enumerate() {
+            arr.set(i, k.clone())?;
+        }
+        Ok(arr.into_value())
+    }
+
+    pub fn values<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let arr = Array::new(ctx.clone())?;
+        for (i, (_, v)) in self.params.iter().enumerate() {
+            arr.set(i, v.clone())?;
+        }
+        Ok(arr.into_value())
+    }
+
     pub fn to_string(&self) -> String {
         self.params.iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| {
+                let encoded_k = urlencoding::encode(k);
+                let encoded_v = urlencoding::encode(v);
+                format!("{}={}", encoded_k, encoded_v)
+            })
             .collect::<Vec<_>>()
             .join("&")
     }
 }
+
+// Ensure the class is iterable in JS
+// rquickjs usually allows defining [Symbol.iterator]
 
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let globals = ctx.globals();

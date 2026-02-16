@@ -11,6 +11,10 @@ pub enum CssLength {
     Fr(f32),
     Auto,
     Zero,
+    Clamp(Box<CssLength>, Box<CssLength>, Box<CssLength>),
+    Min(Vec<CssLength>),
+    Max(Vec<CssLength>),
+    Calc(String),
 }
 
 impl Default for CssLength {
@@ -31,6 +35,16 @@ impl fmt::Display for CssLength {
             CssLength::Fr(v) => write!(f, "{}fr", v),
             CssLength::Auto => write!(f, "auto"),
             CssLength::Zero => write!(f, "0"),
+            CssLength::Clamp(min, val, max) => write!(f, "clamp({}, {}, {})", min, val, max),
+            CssLength::Min(vals) => {
+                let s: Vec<String> = vals.iter().map(|v| v.to_string()).collect();
+                write!(f, "min({})", s.join(", "))
+            },
+            CssLength::Max(vals) => {
+                let s: Vec<String> = vals.iter().map(|v| v.to_string()).collect();
+                write!(f, "max({})", s.join(", "))
+            },
+            CssLength::Calc(s) => write!(f, "calc({})", s),
         }
     }
 }
@@ -44,9 +58,26 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
         CssLength::Vh(v) => *v / 100.0 * viewport_height,
         CssLength::Rem(v) => *v * root_font_size,
         CssLength::Em(v) => *v * parent_font_size,
-        CssLength::Fr(v) => *v, // Fr is handled specifically by Grid engine, but resolve to v as value
+        CssLength::Fr(v) => *v, 
         CssLength::Zero => 0.0,
         CssLength::Auto => 0.0,
+        CssLength::Clamp(min, val, max) => {
+            let min_v = resolve_length(min, parent_font_size, root_font_size, viewport_width, viewport_height);
+            let val_v = resolve_length(val, parent_font_size, root_font_size, viewport_width, viewport_height);
+            let max_v = resolve_length(max, parent_font_size, root_font_size, viewport_width, viewport_height);
+            val_v.max(min_v).min(max_v)
+        },
+        CssLength::Min(vals) => {
+            vals.iter()
+                .map(|v| resolve_length(v, parent_font_size, root_font_size, viewport_width, viewport_height))
+                .fold(f32::INFINITY, f32::min)
+        },
+        CssLength::Max(vals) => {
+            vals.iter()
+                .map(|v| resolve_length(v, parent_font_size, root_font_size, viewport_width, viewport_height))
+                .fold(f32::NEG_INFINITY, f32::max)
+        },
+        CssLength::Calc(_) => 0.0, // Needs complex parser
     }
 }
 
@@ -309,6 +340,71 @@ impl Default for CssFlexWrap {
         Self::NoWrap
     }
 }
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssBoxSizing {
+    ContentBox,
+    BorderBox,
+}
+
+impl Default for CssBoxSizing {
+    fn default() -> Self {
+        Self::ContentBox
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssVisibility {
+    Visible,
+    Hidden,
+    Collapse,
+}
+
+impl Default for CssVisibility {
+    fn default() -> Self {
+        Self::Visible
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssCursor {
+    Auto,
+    Default,
+    Pointer,
+    Text,
+    Wait,
+    Help,
+    NotAllowed,
+    Grab,
+    Grabbing,
+}
+
+impl Default for CssCursor {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssPointerEvents {
+    Auto,
+    None,
+}
+
+impl Default for CssPointerEvents {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransformFunction {
+    Translate(CssLength, CssLength),
+    TranslateX(CssLength),
+    TranslateY(CssLength),
+    Scale(f32, f32),
+    Rotate(f32), // degrees
+    Skew(f32, f32),
+}
 
 #[derive(Debug, Clone)]
 pub struct BoxShadow {
@@ -434,6 +530,14 @@ pub struct ComputedStyle {
     // Pseudo-element content
     pub content: CssContent,
     
+    // Modern CSS
+    pub aspect_ratio: Option<f32>,
+    pub box_sizing: CssBoxSizing,
+    pub visibility: CssVisibility,
+    pub cursor: CssCursor,
+    pub pointer_events: CssPointerEvents,
+    pub transform: Vec<TransformFunction>,
+    
     // Custom properties (CSS Variables)
     pub custom_properties: std::collections::HashMap<String, String>,
 }
@@ -524,6 +628,13 @@ impl Default for ComputedStyle {
             
             // Pseudo-element content
             content: CssContent::Normal,
+            
+            aspect_ratio: None,
+            box_sizing: CssBoxSizing::ContentBox,
+            visibility: CssVisibility::Visible,
+            cursor: CssCursor::Auto,
+            pointer_events: CssPointerEvents::Auto,
+            transform: Vec::new(),
             
             // Custom properties
             custom_properties: std::collections::HashMap::new(),

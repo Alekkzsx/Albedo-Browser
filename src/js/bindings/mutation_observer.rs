@@ -1,53 +1,48 @@
-use rquickjs::{Class, Ctx, Object, Result, Value, atom::PredefinedAtom, IntoJs, FromJs};
+use rquickjs::{Class, Ctx, Object, Result, Value, Function, Persistent};
 use std::sync::{Arc, Mutex};
 use crate::engine::dom::{AceDOM, MutationObserverInit};
+use crate::js::JsRuntime;
+use crate::js::bindings::element::Element;
 
-#[derive(Clone)]
+#[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct MutationObserver {
-    callback: rquickjs::Persistent<rquickjs::Function<'static>>,
-    dom: Arc<Mutex<AceDOM>>,
+    #[qjs(skip_trace)]
     id: usize,
+    #[qjs(skip_trace)]
+    rt: JsRuntime,
 }
 
 #[rquickjs::methods]
 impl MutationObserver {
     #[qjs(constructor)]
-    pub fn new(ctx: Ctx<'_>, callback: Value<'_>) -> Result<Self> {
-        let dom = ctx.userdata::<Arc<Mutex<AceDOM>>>().unwrap().clone();
-        // Generate a simple unique ID for this observer instance (could be improved)
+    pub fn new(ctx: Ctx<'_>, callback: Function<'_>) -> Result<Self> {
+        let rt = ctx.userdata::<JsRuntime>().expect("JsRuntime required").clone();
+        
+        // Use a simple incrementing ID for observers
         let id = {
-            let d = dom.lock().unwrap();
-            d.observers.len() + 1000 // Offset to avoid collision with node IDs if any
+            let registry = rt.observer_registry.lock().unwrap();
+            registry.len() + 1
         };
         
-        let func = callback.into_function().ok_or(rquickjs::Error::new_from_js("Callback must be a function", "TypeError"))?;
-        let persistent_callback = rquickjs::Persistent::save(ctx, func);
+        // Save callback in registry
+        {
+            let mut registry = rt.observer_registry.lock().unwrap();
+            registry.insert(id, Persistent::save(ctx, callback));
+        }
 
         Ok(MutationObserver {
-            callback: persistent_callback,
-            dom,
             id,
+            rt,
         })
     }
 
-    pub fn observe(&mut self, target: Value<'_>, options: Object<'_>) -> Result<()> {
-        // Extract node ID from target (assuming target is an Element wrapper with node_idx)
-        // This part needs to align with how Elements are exposed. 
-        // For now, let's assume target has a node_idx property or we can get it from userdata if it's a Class.
-        // But since we don't have the Element class definition here, we might need to assume it's passed as an object with node_idx.
-        // Or better, we should accept the Element class if possible.
+    pub fn observe(&self, target: Value<'_>, options: Object<'_>) -> Result<()> {
+        let element = Class::<Element>::from_value(&target)
+            .map_err(|_| rquickjs::Error::new_from_js("Target must be an Element", "TypeError"))?;
         
-        // Simplified: expect target to have "nodeId" property
-        let target_id: usize = if let Some(obj) = target.as_object() {
-             // In a real implementation this would unwrap the Element class
-             // For now let's hope it has a property we can read, or we need a way to unwrap Class<Element>
-             // Let's assume we can get it from a property "node_idx" which we should expose on Element
-             obj.get("node_idx").unwrap_or(0)
-        } else {
-            0
-        };
-
+        let node_idx = element.borrow().index;
+        
         let init = MutationObserverInit {
             child_list: options.get("childList").unwrap_or(false),
             attributes: options.get("attributes").unwrap_or(false),
@@ -57,33 +52,55 @@ impl MutationObserver {
             character_data_old_value: options.get("characterDataOldValue").unwrap_or(false),
         };
 
-        let mut dom = self.dom.lock().unwrap();
-        dom.observe(target_id, init, self.id);
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
+            let mut dom = dom_arc.lock().unwrap();
+            dom.observe(node_idx, init, self.id);
+        }
 
         Ok(())
     }
 
-    pub fn disconnect(&mut self) {
-        let mut dom = self.dom.lock().unwrap();
-        // Remove from all target lists
-        for observers in dom.observers.values_mut() {
-            observers.retain(|o| o.callback_id != self.id);
+    pub fn disconnect(&self) {
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
+            let mut dom = dom_arc.lock().unwrap();
+            for observers in dom.observers.values_mut() {
+                observers.retain(|o| o.callback_id != self.id);
+            }
         }
+        
+        // Remove from registry
+        let mut registry = self.rt.observer_registry.lock().unwrap();
+        registry.remove(&self.id);
     }
 
+    #[qjs(rename = "takeRecords")]
     pub fn take_records<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let mut dom = self.dom.lock().unwrap();
-        let records = dom.pending_mutations.remove(&self.id).unwrap_or_default();
-        
-        let arr = rquickjs::Array::new(ctx.clone())?;
-        for (i, rec) in records.into_iter().enumerate() {
-            let obj = rquickjs::Object::new(ctx.clone())?;
-            obj.set("type", rec.type_)?;
-            obj.set("attributeName", rec.attribute_name)?;
-            obj.set("oldValue", rec.old_value)?;
-            // Todo: target as Element
-            arr.set(i, obj)?;
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
+            let mut dom = dom_arc.lock().unwrap();
+            let records = dom.pending_mutations.remove(&self.id).unwrap_or_default();
+            
+            let arr = rquickjs::Array::new(ctx.clone())?;
+            for (i, rec) in records.into_iter().enumerate() {
+                let obj = rquickjs::Object::new(ctx.clone())?;
+                obj.set("type", rec.type_)?;
+                obj.set("attributeName", rec.attribute_name)?;
+                obj.set("oldValue", rec.old_value)?;
+                
+                // Wrap target as Element
+                let target_el = Element {
+                    dom: dom_arc.clone(),
+                    index: rec.target,
+                    mutations: self.rt.mutations.clone(),
+                    stylesheet_dirty: self.rt.stylesheet_dirty.clone(),
+                    primitives: self.rt.primitives.clone(),
+                };
+                let instance = Class::instance(ctx.clone(), target_el)?;
+                obj.set("target", instance)?;
+                
+                arr.set(i, obj)?;
+            }
+            return Ok(arr.into_value());
         }
-        Ok(arr.into_value())
+        Ok(rquickjs::Array::new(ctx)?.into_value())
     }
 }

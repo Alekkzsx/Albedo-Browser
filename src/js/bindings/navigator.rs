@@ -1,4 +1,6 @@
-use rquickjs::{Context, Result, Class, Ctx};
+use rquickjs::{Context, Result, Class, Ctx, Value};
+use crate::js::bindings::clipboard::Clipboard;
+use crate::js::bindings::geolocation::Geolocation;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -32,11 +34,30 @@ impl Navigator {
     pub fn onLine(&self) -> bool {
         true
     }
+
+    #[qjs(get)]
+    pub fn clipboard<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let clipboard = Clipboard::new();
+        let instance = Class::instance(ctx, clipboard)?;
+        Ok(instance.into_value())
+    }
+
+    #[qjs(get)]
+    pub fn geolocation<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        let geo = Geolocation::new();
+        let instance = Class::instance(ctx, geo)?;
+        Ok(instance.into_value())
+    }
 }
 
 pub fn register(ctx: &Context) -> Result<()> {
     ctx.with(|ctx| {
         let global = ctx.globals();
+        
+        // Register classes first
+        Class::<Clipboard>::register(ctx.clone())?;
+        Class::<Geolocation>::register(ctx.clone())?;
+        
         let navigator = Class::instance(ctx.clone(), Navigator {})?;
         global.set("navigator", navigator)?;
         Ok(())

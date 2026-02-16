@@ -3,7 +3,7 @@
 
 [![Built with Rust](https://img.shields.io/badge/Built_with-Rust-orange?logo=rust)](https://www.rust-lang.org)
 
-**Albedo** é uma reação contra o inchaço da web moderna. Um navegador desenhado para a filosofia *minimalista* e *brutalista*, focado em eficiência térmica e baixo uso de memória RAM. Ao contrário de outros navegadores "leves" que usam WebViews do sistema, o Albedo utiliza sua própria engine: a **ACE (Albedo Core Engine)**.
+**Albedo** é uma reação contra o inchaço da web moderna. Um navegador real desenhado para a filosofia *minimalista* e *brutalista*, focado em eficiência térmica e baixo uso de memória RAM. Ao contrário de outros navegadores "leves" que usam WebViews do sistema, o Albedo utiliza sua própria engine: a **ACE (Albedo Core Engine)**.
 
 ## ⚡ Por que Albedo?
 A maioria dos navegadores hoje são Sistemas Operacionais disfarçados. Eles consomem 1GB de RAM apenas para exibir texto. O Albedo é diferente:
