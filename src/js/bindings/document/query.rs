@@ -14,6 +14,7 @@ pub fn get_element_by_id<'js>(doc: &Document, ctx: Ctx<'js>, id: String) -> Resu
                             index: i,
                             mutations: doc.mutations.clone(),
                             stylesheet_dirty: doc.stylesheet_dirty.clone(),
+                            primitives: doc.primitives.clone(),
                         };
                         let instance = Class::instance(ctx, element)?;
                         return Ok(instance.into_value());
@@ -34,6 +35,7 @@ pub fn query_selector<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) -> R
                             index: i,
                             mutations: doc.mutations.clone(),
                             stylesheet_dirty: doc.stylesheet_dirty.clone(),
+                            primitives: doc.primitives.clone(),
                         };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());

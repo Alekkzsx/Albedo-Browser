@@ -1,6 +1,70 @@
-use rquickjs::{Ctx, Result, Persistent, Class, Function, Value};
-use crate::js::JsRuntime;
-use crate::js::event_loop::AsyncResult;
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct AbortSignal {
+    pub aborted: bool,
+}
+
+#[rquickjs::methods]
+impl AbortSignal {
+    #[qjs(constructor)]
+    pub fn new() -> Self { Self { aborted: false } }
+}
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct AbortController {
+    pub signal: AbortSignal,
+}
+
+#[rquickjs::methods]
+impl AbortController {
+    #[qjs(constructor)]
+    pub fn new() -> Self { Self { signal: AbortSignal::new() } }
+    pub fn abort(&mut self) { self.signal.aborted = true; }
+}
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct Request {
+    pub url: String,
+    pub method: String,
+    pub headers: Headers,
+}
+
+#[rquickjs::methods]
+impl Request {
+    #[qjs(constructor)]
+    pub fn new(url: String, options: Option<Object<'_>>) -> Self {
+        let mut method = "GET".to_string();
+        if let Some(opts) = options {
+            method = opts.get("method").unwrap_or("GET".to_string());
+        }
+        Self { url, method, headers: Headers::new() }
+    }
+}
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct Headers {
+    #[qjs(skip_trace)]
+    pub map: HashMap<String, String>,
+}
+
+#[rquickjs::methods]
+impl Headers {
+    #[qjs(constructor)]
+    pub fn new() -> Self {
+        Self { map: HashMap::new() }
+    }
+
+    pub fn get(&self, name: String) -> Option<String> {
+        self.map.get(&name.to_lowercase()).cloned()
+    }
+
+    pub fn set(&mut self, name: String, value: String) {
+        self.map.insert(name.to_lowercase(), value);
+    }
+}
 
 #[derive(rquickjs::class::Trace, Clone)]
 #[rquickjs::class(rename = "Response")]
@@ -8,6 +72,7 @@ pub struct Response {
     pub status: u16,
     #[qjs(skip_trace)]
     pub body: String,
+    pub headers: Headers,
 }
 
 #[rquickjs::methods]
@@ -42,6 +107,25 @@ impl Response {
     pub fn ok(&self) -> bool {
         self.status >= 200 && self.status < 300
     }
+
+    #[qjs(get, rename = "statusText")]
+    pub fn status_text(&self) -> String {
+        match self.status {
+            200 => "OK".to_string(),
+            201 => "Created".to_string(),
+            400 => "Bad Request".to_string(),
+            401 => "Unauthorized".to_string(),
+            403 => "Forbidden".to_string(),
+            404 => "Not Found".to_string(),
+            500 => "Internal Server Error".to_string(),
+            _ => "Unknown".to_string(),
+        }
+    }
+
+    #[qjs(get)]
+    pub fn headers<'js>(&self, ctx: Ctx<'js>) -> Result<Class<'js, Headers>> {
+        Class::instance(ctx, self.headers.clone())
+    }
 }
 
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
@@ -49,6 +133,16 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
         ctx.with(|ctx| {
             let global = ctx.globals();
             Class::<Response>::define(&global)?;
+            Class::<Headers>::define(&global)?;
+            Class::<Request>::define(&global)?;
+            Class::<AbortController>::define(&global)?;
+            Class::<AbortSignal>::define(&global)?;
+            
+            // Set globals
+            global.set("Headers", Class::<Headers>::register(ctx.clone())?)?;
+            global.set("Request", Class::<Request>::register(ctx.clone())?)?;
+            global.set("AbortController", Class::<AbortController>::register(ctx.clone())?)?;
+            global.set("AbortSignal", Class::<AbortSignal>::register(ctx.clone())?)?;
             
             let rt_clone = rt.clone();
             let internal_fetch = rquickjs::Function::new(ctx.clone(), move |url: String, options: rquickjs::Object, resolvers: rquickjs::Array| -> Result<()> {

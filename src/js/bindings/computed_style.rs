@@ -28,20 +28,23 @@ impl ComputedCSSStyleDeclaration {
         let style = stylesheet_lock.calculate_style(&dom_lock, self.node_idx, None, Some(&root_style), None, None);
         
         match property.as_str() {
-            "color" => format!("{:?}", style.color), // Todo: Implement proper Display or to_string for CssColor
+            "color" => format!("{:?}", style.color), 
             "background-color" | "background" => format!("{:?}", style.background_color),
-            "font-size" => style.font_size.to_string(),
-            "display" => format!("{:?}", style.display), // Todo: to_lowercase()
-            "width" => style.width.to_string(),
-            "height" => style.height.to_string(),
-            "margin-top" => style.margin_top.to_string(),
-            "margin-right" => style.margin_right.to_string(),
-            "margin-bottom" => style.margin_bottom.to_string(),
-            "margin-left" => style.margin_left.to_string(),
-            "padding-top" => style.padding_top.to_string(),
-            "padding-right" => style.padding_right.to_string(),
-            "padding-bottom" => style.padding_bottom.to_string(),
-            "padding-left" => style.padding_left.to_string(),
+            "font-size" => format!("{}px", style.font_size),
+            "display" => format!("{:?}", style.display).to_lowercase(),
+            "width" => format!("{}px", style.width),
+            "height" => format!("{}px", style.height),
+            "margin-top" => format!("{}px", style.margin_top),
+            "margin-right" => format!("{}px", style.margin_right),
+            "margin-bottom" => format!("{}px", style.margin_bottom),
+            "margin-left" => format!("{}px", style.margin_left),
+            "padding-top" => format!("{}px", style.padding_top),
+            "padding-right" => format!("{}px", style.padding_right),
+            "padding-bottom" => format!("{}px", style.padding_bottom),
+            "padding-left" => format!("{}px", style.padding_left),
+            "position" => "static".to_string(), // Default
+            "opacity" => "1".to_string(),
+            "visibility" => "visible".to_string(),
             _ => String::new(),
         }
     }
