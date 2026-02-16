@@ -1,21 +1,22 @@
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use url::Url;
-use crate::services::resource_manager::{ResourceManager, ResourceType, ResourceResponse};
+use crate::network::resources::{ResourceManager, ResourceType, ResourceResponse};
+use crate::network::security::Origin;
 use tokio::sync::mpsc;
 use kuchiki::traits::TendrilSink;
 
 pub mod dom;
 pub mod style;
-pub mod css_values;
 pub mod text;
 pub mod svg;
+pub mod graphics;
 #[cfg(test)]
 mod dom_tests;
 
 use self::dom::{AceDOM, AceNodeType};
 use self::style::Stylesheet;
-use self::css_values::CssFontWeight;
+use self::style::css_values::CssFontWeight;
 use taffy::prelude::*;
 use taffy::Taffy;
 use taffy::node::{MeasureFunc, Node};
@@ -45,6 +46,10 @@ pub struct ACEPrimitive {
     pub background_image: Option<String>, // CSS background (gradient or url)
     pub node_idx: usize, // Link back to DOM node
     pub is_fixed: bool, // REAL CSS: Support for fixed positioning
+    pub filters: Vec<String>, // FASE 2: String representations of filters
+    pub backdrop_filters: Vec<String>,
+    pub mix_blend_mode: String,
+    pub transform_str: Option<String>,
 }
 
 pub struct AceEngine {
@@ -56,11 +61,12 @@ pub struct AceEngine {
     taffy: Taffy,
     root_node: Option<Node>,
     pub viewport_width: f32, // Dynamic viewport width
-    pub js_runtime: Option<crate::js::JsRuntime>,
+    pub js_runtime: Option<crate::runtime::core::runtime::JsRuntime>,
     pub image_cache: Arc<Mutex<HashMap<String, slint::Image>>>,
     pub font_system: Arc<Mutex<cosmic_text::FontSystem>>,
     pub hovered_element: Option<usize>,
     pub focused_element: Option<usize>,
+    pub color_scheme: String, // "light" or "dark"
 }
 
 impl Clone for AceEngine {
@@ -79,6 +85,7 @@ impl Clone for AceEngine {
             font_system: self.font_system.clone(),
             hovered_element: self.hovered_element,
             focused_element: self.focused_element,
+            color_scheme: self.color_scheme.clone(),
         }
     }
 }
@@ -99,6 +106,7 @@ impl AceEngine {
             font_system: Arc::new(Mutex::new(cosmic_text::FontSystem::new())),
             hovered_element: None,
             focused_element: None,
+            color_scheme: "light".to_string(),
         }
     }
 
@@ -119,7 +127,7 @@ impl AceEngine {
         }
 
         if let Some(ref rm) = self.resource_manager {
-            rm.fetch(url.to_string(), ResourceType::Html);
+            rm.fetch(url.to_string(), ResourceType::Html, None);
         } else {
             self.render_error("Resource Manager não inicializado.");
         }
@@ -130,7 +138,7 @@ impl AceEngine {
         self.dom = Some(dom.clone()); 
         
         // Initialize JS Runtime
-        let mut rt = crate::js::init::init_js_for_url(&self.current_url, self);
+        let mut rt = crate::runtime::core::init::init_js_for_url(&self.current_url, self);
         if let Some(ref mut rt_val) = rt {
             if let Some(ref dom) = self.dom {
                 *rt_val.dom.lock().unwrap() = Some(dom.clone());
@@ -193,7 +201,7 @@ impl AceEngine {
                 ResourceType::Css => {
                     if let Ok(css_text) = String::from_utf8(res.data) {
                         println!("ENGINE: Aplicando CSS externo recebido ({} bytes)", css_text.len());
-                        let parsed = style::parse(&css_text);
+                        let parsed = style_mod::parse(&css_text);
                         self.stylesheet.lock().unwrap().rules.extend(parsed.rules);
                         self.recompute_layout();
                         needs_sync = true;
@@ -229,7 +237,7 @@ impl AceEngine {
 
         {
             let dom = dom_ptr.lock().unwrap();
-            let mut new_style = style::Stylesheet { user_agent_rules: Vec::new(), rules: Vec::new(), media_rules: Vec::new() };
+            let mut new_style = style_mod::Stylesheet { user_agent_rules: Vec::new(), rules: Vec::new(), media_rules: Vec::new() };
             
             // FASE 6: Default CSS - User agent stylesheet with semantic elements
             let default_css = r#"
@@ -263,7 +271,7 @@ impl AceEngine {
                 textarea { display: inline-block; margin: 4px; padding: 4px 8px; border: 1px solid #ccc; }
                 select { display: inline-block; margin: 4px; padding: 4px 8px; border: 1px solid #ccc; }
             "#;
-            new_style.rules.extend(style::parse(default_css).rules);
+            new_style.rules.extend(style_mod::parse(default_css).rules);
 
             // Extract all <style> tags
             for node in &dom.nodes {
@@ -277,7 +285,7 @@ impl AceEngine {
                                  }
                              }
                          }
-                         new_style.rules.extend(style::parse(&css_text).rules);
+                         new_style.rules.extend(style_mod::parse(&css_text).rules);
                     }
                 }
             }
@@ -300,7 +308,8 @@ impl AceEngine {
                             if let Some(css_url) = css_url {
                                 if let Some(ref rm) = self.resource_manager {
                                     println!("ENGINE: Solicitando CSS externo: {}", css_url);
-                                    rm.fetch(css_url.to_string(), ResourceType::Css);
+                                    let parent_origin = Origin::from_url(&self.current_url);
+                                    rm.fetch(css_url.to_string(), ResourceType::Css, parent_origin);
                                 }
                             }
                         }
@@ -337,11 +346,11 @@ impl AceEngine {
             let viewport_height = 1000.0; // Assume a default or get from self
             
             // First calculate root style (of <html> or body fallback)
-            let root_style = stylesheet.calculate_style(&dom, display_root, None, None, hovered_element, focused_element, viewport_width, viewport_height);
+            let root_style = stylesheet.calculate_style(&dom, display_root, None, None, hovered_element, focused_element, viewport_width, viewport_height, &self.color_scheme);
             
             // Pass &mut self.taffy explicitly
             let viewport_height = 1000.0; // Assume a default or get from self
-            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None, Some(&root_style), &text_measurer, hovered_element, focused_element, viewport_width, viewport_height);
+            let root_node = build_layout_tree(&mut self.taffy, display_root, &dom, &stylesheet, None, Some(&root_style), &text_measurer, hovered_element, focused_element, viewport_width, viewport_height, &self.color_scheme);
             self.root_node = Some(root_node);
 
             let available_space = Size {
@@ -378,7 +387,8 @@ impl AceEngine {
                 hovered_element,
                 focused_element,
                 viewport_width,
-                viewport_height
+                viewport_height,
+                &self.color_scheme
             );
             
             // FASE 19 (REAL CSS): Sort by z-index for correct stacking
@@ -457,7 +467,10 @@ impl AceEngine {
 
 
 // Helper functions (standalone to avoid borrow checker issues)
-use crate::engine::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle, BackgroundImage, Gradient, CssContent};
+use crate::engine::style::css_values::{CssLength, CssColor, CssDisplay, CssFlexDirection, CssPosition, CssOverflow, ComputedStyle, BackgroundImage, Gradient, CssContent};
+use crate::engine::style as style_mod;
+use crate::engine::style::css_values::CssFilter;
+use crate::engine::style::css_values::TransformFunction;
 
 fn format_gradient(g: &Gradient) -> String {
     match g {
@@ -490,13 +503,45 @@ fn format_gradient(g: &Gradient) -> String {
     }
 }
 
-fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, text_measurer: &text::TextMeasurer, hovered_element: Option<usize>, focused_element: Option<usize>, vw: f32, vh: f32) -> Node {
+fn format_filter(f: &CssFilter) -> String {
+    match f {
+        CssFilter::Blur(l) => format!("blur({}px)", match l { CssLength::Px(v) => *v, _ => 0.0 }),
+        CssFilter::Brightness(v) => format!("brightness({})", v),
+        CssFilter::Contrast(v) => format!("contrast({})", v),
+        CssFilter::Grayscale(v) => format!("grayscale({})", v),
+        CssFilter::HueRotate(v) => format!("hue-rotate({}deg)", v),
+        CssFilter::Invert(v) => format!("invert({})", v),
+        CssFilter::Opacity(v) => format!("opacity({})", v),
+        CssFilter::Saturate(v) => format!("saturate({})", v),
+        CssFilter::Sepia(v) => format!("sepia({})", v),
+        CssFilter::DropShadow(s) => {
+            let color = s.color.to_rgba_string();
+            format!("drop-shadow({}px {}px {}px {})", s.offset_x, s.offset_y, s.blur, color)
+        }
+    }
+}
+
+fn format_transform(t: &TransformFunction) -> String {
+    match t {
+        TransformFunction::Translate(x, y) => format!("translate({}px, {}px)", match x { CssLength::Px(v) => *v, _ => 0.0 }, match y { CssLength::Px(v) => *v, _ => 0.0 }),
+        TransformFunction::TranslateX(x) => format!("translateX({}px)", match x { CssLength::Px(v) => *v, _ => 0.0 }),
+        TransformFunction::TranslateY(y) => format!("translateY({}px)", match y { CssLength::Px(v) => *v, _ => 0.0 }),
+        TransformFunction::Scale(x, y) => format!("scale({}, {})", x, y),
+        TransformFunction::Rotate(d) => format!("rotate({}deg)", d),
+        TransformFunction::RotateX(d) => format!("rotateX({}deg)", d),
+        TransformFunction::RotateY(d) => format!("rotateY({}deg)", d),
+        TransformFunction::RotateZ(d) => format!("rotateZ({}deg)", d),
+        TransformFunction::Skew(x, y) => format!("skew({}deg, {}deg)", x, y),
+    }
+}
+
+fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, stylesheet: &Stylesheet, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, text_measurer: &text::TextMeasurer, hovered_element: Option<usize>, focused_element: Option<usize>, vw: f32, vh: f32, color_scheme: &str) -> Node {
     let node = dom.get_node(node_idx).unwrap();
     
     let mut style = Style::default();
     
     // Now we use the passed parent_style for inheritance
-    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element);
+    let computed = stylesheet.calculate_style(dom, node_idx, parent_style, root_style, hovered_element, focused_element, vw, vh, color_scheme);
     
     let parent_font_size = parent_style.map(|s| s.font_size).unwrap_or(16.0);
     let root_font_size = root_style.map(|s| s.font_size).unwrap_or(16.0);
@@ -564,7 +609,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Auto => LengthPercentageAuto::Auto,
             CssLength::Zero => LengthPercentageAuto::Points(0.0),
             CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
-                LengthPercentageAuto::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+                LengthPercentageAuto::Points(crate::engine::style::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
             },
             _ => LengthPercentageAuto::Points(0.0),
         }
@@ -581,7 +626,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Zero => LengthPercentage::Points(0.0),
             CssLength::Auto => LengthPercentage::Points(0.0),
             CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
-                LengthPercentage::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+                LengthPercentage::Points(crate::engine::style::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
             },
             _ => LengthPercentage::Points(0.0),
         }
@@ -599,7 +644,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             CssLength::Auto => Dimension::Auto,
             CssLength::Zero => Dimension::Points(0.0),
             CssLength::Clamp(_, _, _) | CssLength::Min(_) | CssLength::Max(_) | CssLength::Calc(_) => {
-                Dimension::Points(crate::engine::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
+                Dimension::Points(crate::engine::style::css_values::resolve_length(l, parent_font_size, root_font_size, vw, vh))
             },
             _ => Dimension::Points(0.0),
         }
@@ -669,10 +714,10 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
         // Taffy's size property usually represents the content-box if we want consistent flex behavior.
         // However, we can also pass it as is and Taffy might handle it if it follows standard Flexbox.
         // But to be safe and precise:
-        let pad_h = crate::engine::css_values::resolve_length(&computed.padding_left, parent_font_size, root_font_size, vw, vh)
-                  + crate::engine::css_values::resolve_length(&computed.padding_right, parent_font_size, root_font_size, vw, vh);
-        let pad_v = crate::engine::css_values::resolve_length(&computed.padding_top, parent_font_size, root_font_size, vw, vh)
-                  + crate::engine::css_values::resolve_length(&computed.padding_bottom, parent_font_size, root_font_size, vw, vh);
+        let pad_h = crate::engine::style::css_values::resolve_length(&computed.padding_left, parent_font_size, root_font_size, vw, vh)
+                  + crate::engine::style::css_values::resolve_length(&computed.padding_right, parent_font_size, root_font_size, vw, vh);
+        let pad_v = crate::engine::style::css_values::resolve_length(&computed.padding_top, parent_font_size, root_font_size, vw, vh)
+                  + crate::engine::style::css_values::resolve_length(&computed.padding_bottom, parent_font_size, root_font_size, vw, vh);
         
         if let Dimension::Points(w) = base_width { base_width = Dimension::Points((w - pad_h).max(0.0)); }
         if let Dimension::Points(h) = base_height { base_height = Dimension::Points((h - pad_v).max(0.0)); }
@@ -721,7 +766,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
     
     // FASE 5: Shadow DOM support - if has shadow root, render it instead of children
     if let Some(shadow_idx) = node.shadow_root {
-         let shadow_root_node = build_layout_tree(taffy, shadow_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh);
+         let shadow_root_node = build_layout_tree(taffy, shadow_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh, color_scheme);
          taffy.add_child(taffy_node, shadow_root_node).unwrap();
          return taffy_node;
     }
@@ -743,7 +788,7 @@ fn build_layout_tree(taffy: &mut Taffy, node_idx: usize, dom: &AceDOM, styleshee
             }
         
         // Pass current computed style as parent style for children
-        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh);
+        let child_node = build_layout_tree(taffy, child_idx, dom, stylesheet, Some(&computed), root_style, text_measurer, hovered_element, focused_element, vw, vh, color_scheme);
         taffy.add_child(taffy_node, child_node).unwrap();
     }
 
@@ -802,8 +847,10 @@ fn generate_display_list(
     root_style: Option<&ComputedStyle>,
     image_cache: Arc<Mutex<HashMap<String, slint::Image>>>,
     hovered_element: Option<usize>,
+    focused_element: Option<usize>,
     vw: f32,
     vh: f32,
+    color_scheme: &str,
 ) {
     let node = dom.get_node(node_idx).unwrap();
     // Use parent style for inheritance
@@ -874,6 +921,10 @@ fn generate_display_list(
                     box_shadow: None, text_shadow: None, background_image: None,
                     node_idx,
                     is_fixed,
+                    filters: computed.filters.iter().map(format_filter).collect(),
+                    backdrop_filters: computed.backdrop_filters.iter().map(format_filter).collect(),
+                    mix_blend_mode: format!("{:?}", computed.mix_blend_mode).to_lowercase(),
+                    transform_str: if computed.transform.is_empty() { None } else { Some(computed.transform.iter().map(format_transform).collect::<Vec<String>>().join(" ")) },
                 });
                 return; // Skip normal rendering for iframe
             }
@@ -907,6 +958,11 @@ fn generate_display_list(
                         border_radius: 2.0,
                         box_shadow: None, text_shadow: None, background_image: None,
                         node_idx,
+                        is_fixed,
+                        filters: computed.filters.iter().map(format_filter).collect(),
+                        backdrop_filters: computed.backdrop_filters.iter().map(format_filter).collect(),
+                        mix_blend_mode: format!("{:?}", computed.mix_blend_mode).to_lowercase(),
+                        transform_str: if computed.transform.is_empty() { None } else { Some(computed.transform.iter().map(format_transform).collect::<Vec<String>>().join(" ")) },
                     });
                     return;
                 } else if input_type == "checkbox" || input_type == "radio" {
@@ -927,6 +983,11 @@ fn generate_display_list(
                         border_radius: if input_type == "radio" { 7.0 } else { 2.0 },
                         box_shadow: None, text_shadow: None, background_image: None,
                         node_idx,
+                        is_fixed,
+                        filters: computed.filters.iter().map(format_filter).collect(),
+                        backdrop_filters: computed.backdrop_filters.iter().map(format_filter).collect(),
+                        mix_blend_mode: format!("{:?}", computed.mix_blend_mode).to_lowercase(),
+                        transform_str: if computed.transform.is_empty() { None } else { Some(computed.transform.iter().map(format_transform).collect::<Vec<String>>().join(" ")) },
                     });
                     return;
                 }
@@ -951,6 +1012,10 @@ fn generate_display_list(
                             border_radius: 3.0,
                             box_shadow: None, text_shadow: None, background_image: None,
                             node_idx,
+                            filters: Vec::new(),
+                            backdrop_filters: Vec::new(),
+                            mix_blend_mode: "normal".to_string(),
+                            transform_str: None,
                         });
                         return;
                     }
@@ -1061,6 +1126,11 @@ fn generate_display_list(
                     text_shadow: None,
                     background_image: bg_image_str,
                     node_idx,
+                    is_fixed,
+                    filters: computed.filters.iter().map(format_filter).collect(),
+                    backdrop_filters: computed.backdrop_filters.iter().map(format_filter).collect(),
+                    mix_blend_mode: format!("{:?}", computed.mix_blend_mode).to_lowercase(),
+                    transform_str: if computed.transform.is_empty() { None } else { Some(computed.transform.iter().map(format_transform).collect::<Vec<String>>().join(" ")) },
                 });
         }
     }
@@ -1088,6 +1158,11 @@ fn generate_display_list(
                 z_index: computed.z_index, overflow_hidden: false, opacity: computed.opacity, border_radius: 0.0,
                 box_shadow: None, text_shadow: text_shadow_str, background_image: None,
                 node_idx,
+                is_fixed,
+                filters: computed.filters.iter().map(format_filter).collect(),
+                backdrop_filters: computed.backdrop_filters.iter().map(format_filter).collect(),
+                mix_blend_mode: format!("{:?}", computed.mix_blend_mode).to_lowercase(),
+                transform_str: if computed.transform.is_empty() { None } else { Some(computed.transform.iter().map(format_transform).collect::<Vec<String>>().join(" ")) },
                 });
             }
     }
@@ -1097,14 +1172,14 @@ fn generate_display_list(
         if let Some(shadow_node) = dom.get_node(shadow_idx) {
              let shadow_taffy = taffy.children(taffy_node).unwrap().first().copied();
              if let Some(shadow_taffy) = shadow_taffy {
-                generate_display_list(primitives, taffy, shadow_idx, dom, shadow_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element, vw, vh);
+                generate_display_list(primitives, taffy, shadow_idx, dom, shadow_taffy, x, y, stylesheet, Some(&computed), root_style, image_cache.clone(), hovered_element, focused_element, vw, vh, color_scheme);
                 return;
              }
         }
     }
 
     // Render ::before pseudo-element
-    let before_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::Before, hovered_element, focused_element, vw, vh);
+    let before_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style_mod::AcePseudoElement::Before, hovered_element, focused_element, vw, vh);
     if before_style.content != CssContent::Normal && before_style.content != CssContent::None {
         render_pseudo_element(primitives, node_idx, "before", x, y, width, &before_style);
     }
@@ -1166,7 +1241,7 @@ fn generate_display_list(
     }
     
     // Render ::after pseudo-element
-    let after_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style::AcePseudoElement::After, hovered_element, focused_element, vw, vh);
+    let after_style = stylesheet.calculate_pseudo_style(dom, node_idx, &style_mod::AcePseudoElement::After, hovered_element, focused_element, vw, vh);
     if after_style.content != CssContent::Normal && after_style.content != CssContent::None {
         // Calculate Y position for ::after (defaults to bottom of element for now)
         // In a real layout engine, this would be part of the flow
