@@ -20,12 +20,12 @@ impl Range {
     }
 
     #[qjs(rename = "setStart")]
-    pub fn set_start(&mut self, _node: Value, offset: usize) {
+    pub fn set_start(&mut self, _node: Value<'_>, offset: usize) {
         self.start_offset = offset;
     }
 
     #[qjs(rename = "setEnd")]
-    pub fn set_end(&mut self, _node: Value, offset: usize) {
+    pub fn set_end(&mut self, _node: Value<'_>, offset: usize) {
         self.end_offset = offset;
     }
 
@@ -35,7 +35,7 @@ impl Range {
     }
 
     #[qjs(rename = "selectNode")]
-    pub fn select_node(&mut self, _node: Value) {
+    pub fn select_node(&mut self, _node: Value<'_>) {
         // Stub
     }
 

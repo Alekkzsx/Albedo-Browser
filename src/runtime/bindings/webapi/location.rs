@@ -98,14 +98,20 @@ impl Location {
     #[qjs(get)]
     pub fn hash(&self) -> String {
         if let Some(pos) = self.url.find('#') {
-        let url = self.url.lock().unwrap();
-        url.fragment().map(|f| format!("#{}", f)).unwrap_or_default()
+            return self.url[pos..].to_string();
+        }
+        "".to_string()
     }
 
     #[qjs(get)]
     pub fn origin(&self) -> String {
-        let url = self.url.lock().unwrap();
-        url.origin().ascii_serialization()
+        if let Some(pos) = self.url.find("://") {
+            if let Some(end) = self.url[pos + 3..].find('/') {
+                return self.url[..pos + 3 + end].to_string();
+            }
+            return self.url.clone();
+        }
+        "".to_string()
     }
 
     pub fn reload(&self) {

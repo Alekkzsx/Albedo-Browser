@@ -23,7 +23,7 @@ impl Selection {
     }
 
     #[qjs(rename = "addRange")]
-    pub fn add_range(&self, _range: Value) {
+    pub fn add_range(&self, _range: Value<'_>) {
         // Stub
     }
 

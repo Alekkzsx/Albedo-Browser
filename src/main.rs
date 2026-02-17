@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 mod browser;
 mod engine;
 mod runtime;
@@ -95,6 +97,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_move = ui_handle.clone();
     ui.on_pointer_move(move |x, y| {
         browser::events::handle_hover(&ui_move, &tm_move, x, y);
+    });
+
+    let tm_down = tab_manager.clone();
+    let ui_down = ui_handle.clone();
+    ui.on_pointer_down(move |x, y| {
+        browser::events::handle_pointer_down(&ui_down, &tm_down, x, y);
+    });
+
+    let tm_up = tab_manager.clone();
+    let ui_up = ui_handle.clone();
+    ui.on_pointer_up(move |x, y| {
+        browser::events::handle_pointer_up(&ui_up, &tm_up, x, y);
     });
 
     ui.run()?;

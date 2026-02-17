@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use rquickjs::{Ctx, Class, Result, Value, Object, Function, Persistent, prelude::*};
+
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct AbortSignal {
@@ -82,25 +85,25 @@ impl Response {
         Self {
             status: 200,
             body: String::new(),
+            headers: Headers::new(),
         }
     }
 
     pub fn text<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
-        let _ = resolve.call::<(String,), ()>((self.body.clone(),));
-        Ok(promise.into_value())
+        let p = rquickjs::Promise::new(&ctx)?;
+        let _ = p.1.call::<(String,), ()>((self.body.clone(),));
+        Ok(p.0.into_value())
     }
 
     pub fn json<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let (promise, resolve, reject) = rquickjs::Promise::new(&ctx)?;
+        let p = rquickjs::Promise::new(&ctx)?;
         let json: rquickjs::Object = ctx.globals().get("JSON")?;
         let parse: rquickjs::Function = json.get("parse")?;
-        // Specify return type for call explicitly
         match parse.call::<(String,), Value<'js>>((self.body.clone(),)) {
-            Ok(val) => { let _ = resolve.call::<(Value<'js>,), ()>((val,)); }
-            Err(e) => { let _ = reject.call::<(String,), ()>((e.to_string(),)); }
+            Ok(val) => { let _ = p.1.call::<(Value<'js>,), ()>((val,)); }
+            Err(e) => { let _ = p.2.call::<(String,), ()>((e.to_string(),)); }
         }
-        Ok(promise.into_value())
+        Ok(p.0.into_value())
     }
 
     #[qjs(get)]
@@ -130,17 +133,18 @@ impl Response {
 
 use crate::network::security::Origin;
 use crate::runtime::core::runtime::JsRuntime;
-use crate::network::resources::AsyncResult;
+use crate::runtime::core::event_loop::AsyncResult;
+use crate::runtime::core::event_loop::UnsafeSendVal;
 
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
+            let global = ctx.globals();
             
-            // Set globals
-            global.set("Headers", Class::<Headers>::register(ctx.clone())?)?;
-            global.set("Request", Class::<Request>::register(ctx.clone())?)?;
-            global.set("AbortController", Class::<AbortController>::register(ctx.clone())?)?;
-            global.set("AbortSignal", Class::<AbortSignal>::register(ctx.clone())?)?;
+            global.set("Headers", Class::<Headers>::register(&ctx)?)?;
+            global.set("Request", Class::<Request>::register(&ctx)?)?;
+            global.set("AbortController", Class::<AbortController>::register(&ctx)?)?;
+            global.set("AbortSignal", Class::<AbortSignal>::register(&ctx)?)?;
             
             let rt_clone = rt.clone();
             let internal_fetch = rquickjs::Function::new(ctx.clone(), move |url: String, options: rquickjs::Object, resolvers: rquickjs::Array| -> Result<()> {
@@ -148,7 +152,6 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                 let resolve: Function = resolvers.get(0)?;
                 let reject: Function = resolvers.get(1)?;
                 
-                // Extract options
                 let method = options.get::<_, String>("method").unwrap_or_else(|_| "GET".to_string()).to_uppercase();
                 let body = options.get::<_, Option<String>>("body").unwrap_or(None);
                 let headers_obj = options.get::<_, Option<rquickjs::Object>>("headers").unwrap_or(None);
@@ -167,23 +170,27 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                 let (id, sender) = {
                     let mut el = rt_clone.event_loop.lock().unwrap();
                     let id = el.register_promise(
-                        Persistent::save(ctx, resolve),
-                        Persistent::save(ctx, reject)
+                        Persistent::save(&ctx, resolve),
+                        Persistent::save(&ctx, reject)
                     );
                     (id, el.async_sender.clone())
                 };
 
                 let origin = rt_clone.origin.clone();
                 let resource_manager = rt_clone.resource_manager.clone();
+                
+                let rm_send = UnsafeSendVal(resource_manager);
+                let origin_send = UnsafeSendVal(origin);
 
                 tokio::spawn(async move {
+                    let resource_manager = rm_send.0;
+                    let origin = origin_send.0;
                     let client = if let Some(ref rm) = resource_manager {
-                        rm.client.clone() // Need to make client public in ResourceManager or use a getter
+                        rm.client.clone()
                     } else {
                         reqwest::Client::new()
                     };
 
-                    // 1. SOP Check (Simplified: Check if target is same origin)
                     let target_origin = Origin::from_url(&url);
                     let is_cross_origin = match (&origin, &target_origin) {
                         (Some(o), Some(t)) => !o.is_same_origin(t),
@@ -198,7 +205,6 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                         _ => client.get(&url),
                     };
 
-                    // 2. Cookie Management
                     if let Some(ref rm) = resource_manager {
                         let cookies = rm.cookie_jar.lock().unwrap().get_cookies_for_url(&url);
                         if !cookies.is_empty() {
@@ -224,7 +230,6 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                                 resp_headers.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
                             }
 
-                            // 3. CORS Validation
                             if is_cross_origin {
                                 let allowed = if let Some(ref rm) = resource_manager {
                                     if let Some(ref org) = origin {
@@ -241,7 +246,6 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                                 }
                             }
 
-                            // 4. Update Cookies
                             if let Some(ref rm) = resource_manager {
                                 if let Some(cookie_header) = resp.headers().get("set-cookie") {
                                     if let Ok(c_str) = cookie_header.to_str() {

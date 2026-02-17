@@ -27,3 +27,19 @@ impl DOMRect {
         }
     }
 }
+
+use rquickjs::{Ctx, Class, Result, Value};
+use super::Element;
+
+pub fn get_bounding_client_rect<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let primitives = el.primitives.lock().unwrap();
+    if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
+        let rect = DOMRect::new(prim.x, prim.y, prim.width, prim.height);
+        let instance = Class::instance(ctx, rect)?;
+        return Ok(instance.into_value());
+    }
+    // Default zero rect
+    let rect = DOMRect::new(0.0, 0.0, 0.0, 0.0);
+    let instance = Class::instance(ctx, rect)?;
+    Ok(instance.into_value())
+}

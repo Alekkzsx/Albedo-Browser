@@ -32,6 +32,8 @@ export component AppWindow inherits Window {
     callback request_switch_tab(int);
     callback pointer_click(length, length);
     callback pointer_move(length, length);
+    callback pointer_down(length, length);
+    callback pointer_up(length, length);
 
     VerticalLayout {
         padding: 0px;
@@ -74,6 +76,8 @@ export component AppWindow inherits Window {
             navigate(url) => { root.navigate(url); }
             pointer_click(x, y) => { root.pointer_click(x, y); }
             pointer_move(x, y) => { root.pointer_move(x, y); }
+            pointer_down(x, y) => { root.pointer_down(x, y); }
+            pointer_up(x, y) => { root.pointer_up(x, y); }
         }
     }
 }

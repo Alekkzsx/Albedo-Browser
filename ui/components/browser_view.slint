@@ -25,6 +25,8 @@ export component BrowserView inherits Rectangle {
     callback navigate(string);
     callback pointer_click(length, length);
     callback pointer_move(length, length);
+    callback pointer_down(length, length);
+    callback pointer_up(length, length);
 
     in-out property <bool> show-start-page;
     in property <[ACEBox]> ace_model;
@@ -55,6 +57,14 @@ export component BrowserView inherits Rectangle {
                     
                     clicked => {
                         root.pointer_click(self.mouse-x, self.mouse-y);
+                    }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down) {
+                            root.pointer_down(self.mouse-x, self.mouse-y);
+                        }
+                        if (event.kind == PointerEventKind.up) {
+                             root.pointer_up(self.mouse-x, self.mouse-y);
+                        }
                     }
                 }
 

@@ -136,6 +136,11 @@ fn collect_text(dom: &AceDOM, node: &AceNode) -> String {
     s
 }
 
+pub fn inner_text(el: &Element) -> String {
+    // textContent is a good approximation for innerText in this engine
+    text_content(el)
+}
+
 pub fn set_text_content(el: &Element, text: String) {
     if let Ok(mut dom) = el.dom.lock() {
         dom.set_text_content_notify(el.index, text);
@@ -248,7 +253,7 @@ pub fn set_inner_html(el: &Element, html: String) {
 
 pub fn outer_html(el: &Element) -> String {
     if let Ok(dom) = el.dom.lock() {
-        return dom.serialize_subtree(el.index);
+        return dom.serialize_subtree_text(el.index);
     }
     "".to_string()
 }
@@ -270,7 +275,7 @@ pub fn set_outer_html(el: &Element, html: String) {
             // Insert new nodes from fragment
             if let Ok(body_match) = kuchiki_root.select_first("body") {
                 for child in body_match.as_node().children() {
-                    let child_idx = crate::engine::dom::AceDOM::convert_recursive_static(&child, &mut dom.nodes, Some(p_idx));
+                    let child_idx = crate::engine::dom::AceDOM::convert_recursive(&child, &mut dom.nodes, Some(p_idx));
                     dom.insert_before(p_idx, child_idx, ref_idx);
                 }
             }

@@ -1,13 +1,11 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, Function};
+use rquickjs::{Class, Ctx, Function, Object, Result, Value};
 use crate::runtime::core::runtime::JsRuntime;
-use std::sync::{Arc, Mutex};
-use serde_json;
 
-#[rquickjs::class]
 #[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
 pub struct History {
     #[qjs(skip_trace)]
-    rt: JsRuntime,
+    pub rt: JsRuntime,
 }
 
 #[rquickjs::methods]
@@ -17,72 +15,33 @@ impl History {
         self.rt.history_stack.lock().unwrap().len()
     }
 
-    #[qjs(get)]
-    pub fn state<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let stack = self.rt.history_stack.lock().unwrap();
-        let index = self.rt.history_index.lock().unwrap();
-        
-        if *index < stack.len() {
-            if let Some(json) = &stack[*index].state_json {
-                // In a real app we'd use a better way than JSON parsing every time
-                // but for stability it's okay here.
-                return ctx.eval(format!("({})", json));
-            }
-        }
-        Ok(Value::new_null(ctx))
-    }
-
     #[qjs(rename = "pushState")]
     pub fn push_state(&self, ctx: Ctx<'_>, state: Value<'_>, _title: String, url: Option<String>) -> Result<()> {
-        let state_json = if !state.is_null() && !state.is_undefined() {
-            // Simple serialization
-            let json = ctx.eval::<String, _>(&format!("JSON.stringify({:?})", state)).unwrap_or_else(|_| "null".to_string());
-            Some(json)
-        } else {
-            None
-        };
-
+        let json: String = ctx.eval(format!("JSON.stringify(arguments[0])").as_bytes()).unwrap_or_else(|_| "null".to_string());
         let mut stack = self.rt.history_stack.lock().unwrap();
         let mut index = self.rt.history_index.lock().unwrap();
-
-        // Remove forward entries
-        if !stack.is_empty() {
-            stack.truncate(*index + 1);
-        }
-
-        let new_url = url.unwrap_or_else(|| "".to_string()); // Real impl would use current URL if None
+        
+        stack.truncate(*index + 1);
         stack.push(crate::runtime::core::runtime::HistoryEntry {
-            url: new_url,
-            state_json,
+            url: url.unwrap_or_default(),
+            state_json: Some(json),
         });
         *index = stack.len() - 1;
-
-        println!("[History] pushState: current index {}", *index);
+        
         Ok(())
     }
 
     #[qjs(rename = "replaceState")]
     pub fn replace_state(&self, ctx: Ctx<'_>, state: Value<'_>, _title: String, url: Option<String>) -> Result<()> {
-        let state_json = if !state.is_null() && !state.is_undefined() {
-            let json = ctx.eval::<String, _>(&format!("JSON.stringify({:?})", state)).unwrap_or_else(|_| "null".to_string());
-            Some(json)
-        } else {
-            None
-        };
-
+        let json: String = ctx.eval(format!("JSON.stringify(arguments[0])").as_bytes()).unwrap_or_else(|_| "null".to_string());
         let mut stack = self.rt.history_stack.lock().unwrap();
         let index = self.rt.history_index.lock().unwrap();
-
-        if !stack.is_empty() && *index < stack.len() {
-            let entry = &mut stack[*index];
-            if let Some(u) = url { entry.url = u; }
-            entry.state_json = state_json;
-        } else {
-            stack.push(crate::runtime::core::runtime::HistoryEntry {
-                url: url.unwrap_or_default(),
-                state_json,
-            });
+        
+        if let Some(entry) = stack.get_mut(*index) {
+            entry.url = url.unwrap_or(entry.url.clone());
+            entry.state_json = Some(json);
         }
+        
         Ok(())
     }
 
@@ -95,45 +54,79 @@ impl History {
     }
 
     pub fn go(&self, ctx: Ctx<'_>, delta: i32) -> Result<()> {
-        let stack = self.rt.history_stack.lock().unwrap();
         let mut index = self.rt.history_index.lock().unwrap();
+        let stack = self.rt.history_stack.lock().unwrap();
         
-        let new_index = (*index as i32) + delta;
-        if new_index >= 0 && new_index < (stack.len() as i32) {
-            *index = new_index as usize;
-            
-            // Fire popstate event
-            let state_val = if let Some(json) = &stack[*index].state_json {
-                ctx.eval::<Value, _>(format!("({})", json)).unwrap_or(Value::new_null(ctx.clone()))
-            } else {
-                Value::new_null(ctx.clone())
-            };
-            
-            self.dispatch_popstate(ctx, state_val)?;
+        let new_index = (*index as i32 + delta).max(0).min(stack.len() as i32 - 1) as usize;
+        if new_index != *index {
+            *index = new_index;
+            let entry = &stack[new_index];
+            if let Some(ref json) = entry.state_json {
+                let state: Value = ctx.eval(format!("({})", json).as_bytes()).unwrap_or(Value::new_null(ctx.clone()));
+                dispatch_popstate(&ctx, state)?;
+            }
         }
         Ok(())
     }
+}
 
-    fn dispatch_popstate(&self, ctx: Ctx<'_>, state: Value<'_>) -> Result<()> {
-        let global = ctx.globals();
-        let event_init = rquickjs::Object::new(ctx.clone())?;
-        event_init.set("state", state)?;
-        
-        // We'll use a script to construct and dispatch for simplicity 
-        // given our partial Event API
-        let code = "window.dispatchEvent(new PopStateEvent('popstate', { state: arguments[0] }))";
-        let _: Value = ctx.eval_with_scope(&global, code)?;
-        
-        Ok(())
+fn dispatch_popstate<'js>(ctx: &Ctx<'js>, state: Value<'js>) -> Result<()> {
+    let global = ctx.globals();
+    if let Ok(window) = global.get::<_, Object>("window") {
+        if let Ok(dispatch) = window.get::<_, Function>("dispatchEvent") {
+            if let Ok(popstate_event_obj) = global.get::<_, Object>("PopStateEvent") {
+                let event_init = rquickjs::Object::new(ctx.clone())?;
+                event_init.set("state", state.clone())?;
+                
+                // Get constructor as function
+                if let Some(ctor) = popstate_event_obj.as_function() {
+                let script = format!(
+                    "new PopStateEvent('popstate', {{ state: {} }})", 
+                    state.as_string().unwrap_or(&rquickjs::String::from_str(ctx.clone(), "null").unwrap()).to_string().unwrap_or("null".to_string())
+                );
+                if let Ok(event) = ctx.eval::<Value, _>(script) {
+                    let _ = dispatch.call::<(Value,), ()>((event,));
+                }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct PopStateEvent {
+    #[qjs(skip_trace)]
+    pub state: rquickjs::Persistent<Value<'static>>,
+}
+
+#[rquickjs::methods]
+impl PopStateEvent {
+    #[qjs(constructor)]
+    pub fn new<'js>(ctx: Ctx<'js>, _type: String, init: Option<Object<'js>>) -> Result<Self> {
+        let state = if let Some(init_obj) = init {
+            init_obj.get("state").unwrap_or(Value::new_null(ctx.clone()))
+        } else {
+            Value::new_null(ctx.clone())
+        };
+        Ok(Self { state: rquickjs::Persistent::save(&ctx, state) })
+    }
+
+    #[qjs(get)]
+    pub fn state<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self.state.clone().restore(&ctx)
     }
 }
 
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
-            // Register PopStateEvent if not exists (stub for now)
-            ctx.globals().set("PopStateEvent", ctx.globals().get::<_, Function>("Event")?)?;
-
+            if !ctx.globals().contains_key("PopStateEvent")? {
+                Class::<PopStateEvent>::register(&ctx)?;
+                ctx.globals().set("PopStateEvent", Class::<PopStateEvent>::register(&ctx)?)?;
+            }
+            
             let history = History { rt: rt.clone() };
             let instance = Class::instance(ctx.clone(), history)?;
             ctx.globals().set("history", instance)?;

@@ -51,7 +51,7 @@ impl Notification {
 pub fn register(ctx: &rquickjs::Context) -> Result<()> {
     ctx.with(|ctx| {
         let globals = ctx.globals();
-        globals.set("Notification", Class::<Notification>::register(ctx.clone())?)?;
+        globals.set("Notification", Class::<Notification>::register(&ctx)?)?;
         Ok(())
     })
 }

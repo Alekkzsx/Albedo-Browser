@@ -1,27 +1,37 @@
 use super::Element;
 use crate::engine::dom::{AceNodeType};
-use rquickjs::{Class, Ctx, Result, Value};
+use rquickjs::{Class, Ctx, Result, Value, prelude::Rest};
 use super::mark_mutation;
+use std::sync::{Arc, Mutex};
 
 pub fn append_child<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>) -> Result<Value<'js>> {
-    if let Some(child_el) = Class::<Element>::from_value(&child) {
+    append_child_generic(&el.dom, el.index, &el.mutations, ctx, child)
+}
+
+pub fn append_child_generic<'js>(
+    dom_mutex: &Arc<Mutex<crate::engine::dom::AceDOM>>,
+    parent_idx: usize,
+    mutations: &Arc<Mutex<bool>>,
+    _ctx: Ctx<'js>,
+    child: Value<'js>
+) -> Result<Value<'js>> {
+    if let Ok(child_el) = Class::<Element>::from_value(&child) {
         let child_borrow = child_el.borrow();
         let child_idx = child_borrow.index;
-        let parent_idx = el.index;
 
-        if let Ok(mut dom) = el.dom.lock() {
+        if let Ok(mut dom) = dom_mutex.lock() {
             dom.append_child(parent_idx, child_idx);
         }
 
-        mark_mutation(el);
+        if let Ok(mut m) = mutations.lock() {
+            *m = true;
+        }
         return Ok(child);
-    } else if let Some(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
+    } else if let Ok(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
         let fragment_borrow = fragment.borrow();
         let fragment_idx = fragment_borrow.index;
-        let parent_idx = el.index;
 
-        if let Ok(mut dom) = el.dom.lock() {
-            // Move all children from fragment to parent
+        if let Ok(mut dom) = dom_mutex.lock() {
             let children_to_move = if let Some(frag_node) = dom.get_node(fragment_idx) {
                 frag_node.children.clone()
             } else {
@@ -33,7 +43,9 @@ pub fn append_child<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>) -> Resu
             }
         }
 
-        mark_mutation(el);
+        if let Ok(mut m) = mutations.lock() {
+            *m = true;
+        }
         return Ok(child);
     }
 
@@ -154,14 +166,14 @@ pub fn previous_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> 
     Ok(Value::new_null(ctx))
 }
 
-pub fn append<'js>(el: &Element, ctx: Ctx<'js>, nodes: rquickjs::Rest<Value<'js>>) -> Result<()> {
+pub fn append<'js>(el: &Element, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Result<()> {
     for val in nodes.0 {
         append_child(el, ctx.clone(), val)?;
     }
     Ok(())
 }
 
-pub fn prepend<'js>(el: &Element, ctx: Ctx<'js>, nodes: rquickjs::Rest<Value<'js>>) -> Result<()> {
+pub fn prepend<'js>(el: &Element, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Result<()> {
     let mut ref_idx = None;
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
@@ -368,14 +380,14 @@ pub fn insert_before<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>, ref_ch
         Some(idx)
     };
 
-    if let Some(child_el) = Class::<Element>::from_value(&child) {
+    if let Ok(child_el) = Class::<Element>::from_value(&child) {
         let child_idx = child_el.borrow().index;
         if let Ok(mut dom) = el.dom.lock() {
             dom.insert_before(parent_idx, child_idx, ref_idx);
         }
         mark_mutation(el);
         return Ok(child);
-    } else if let Some(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
+    } else if let Ok(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
         let fragment_borrow = fragment.borrow();
         let fragment_idx = fragment_borrow.index;
 
@@ -407,7 +419,7 @@ pub fn remove(el: &Element) {
 }
 
 pub fn contains(el: &Element, other: Value) -> bool {
-    let other_idx = if let Some(other_el) = Class::<Element>::from_value(&other) {
+    let other_idx = if let Ok(other_el) = Class::<Element>::from_value(&other) {
         other_el.borrow().index
     } else {
         return false;
@@ -434,7 +446,7 @@ pub fn contains(el: &Element, other: Value) -> bool {
 }
 
 pub fn is_same_node(el: &Element, other: Value) -> bool {
-    if let Some(other_el) = Class::<Element>::from_value(&other) {
+    if let Ok(other_el) = Class::<Element>::from_value(&other) {
         return el.index == other_el.borrow().index;
     }
     false

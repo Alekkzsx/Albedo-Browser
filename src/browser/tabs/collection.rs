@@ -1,4 +1,4 @@
-use crate::tab::Tab;
+use super::tab::Tab;
 use uuid::Uuid;
 
 pub struct TabCollection {

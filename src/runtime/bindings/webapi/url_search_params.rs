@@ -1,4 +1,4 @@
-use rquickjs::{Ctx, Result, Value, Object, Array};
+use rquickjs::{Ctx, Result, Value, Object, Array, prelude::*};
 use std::collections::HashMap;
 
 #[rquickjs::class]
@@ -15,7 +15,7 @@ impl URLSearchParams {
         let mut params = Vec::new();
         if let Some(val) = init {
             if let Some(s) = val.as_string() {
-                let query = s.to_string();
+                let query = s.to_string()?;
                 let query = query.trim_start_matches('?');
                 for pair in query.split('&') {
                     if let Some((k, v)) = pair.split_once('=') {
@@ -121,15 +121,20 @@ impl URLSearchParams {
 
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let globals = ctx.globals();
-    globals.set("URLSearchParams", rquickjs::Class::<URLSearchParams>::register(ctx.clone())?)?;
+    globals.set("URLSearchParams", rquickjs::Class::<URLSearchParams>::register(&ctx.clone())?)?;
     
-    // Base64
-    globals.set("btoa", rquickjs::Function::new(ctx.clone(), |s: String| -> String {
-        base64::encode(s)
+    // Base64 (using engine::base64 or similar if available, but for now fixed base64 crate usage)
+    use base64::Engine;
+    let b64_engine = base64::engine::general_purpose::STANDARD;
+    
+    let engine_clone = b64_engine.clone();
+    globals.set("btoa", rquickjs::Function::new(ctx.clone(), move |s: String| -> String {
+        engine_clone.encode(s)
     }))?;
     
-    globals.set("atob", rquickjs::Function::new(ctx.clone(), |s: String| -> Result<String> {
-        base64::decode(s)
+    let engine_clone = b64_engine.clone();
+    globals.set("atob", rquickjs::Function::new(ctx.clone(), move |s: String| -> Result<String> {
+        engine_clone.decode(s)
             .map(|b| String::from_utf8_lossy(&b).to_string())
             .map_err(|_| rquickjs::Error::new_from_js("Invalid base64", "Error"))
     }))?;

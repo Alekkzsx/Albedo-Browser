@@ -104,10 +104,31 @@ pub fn handle_hover(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32
     }
 }
 
+pub fn handle_pointer_down(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
+    if let Some(ui) = ui_handle.upgrade() {
+         if tm.handle_pointer_down(x, y) {
+             sync_ace_visuals(&ui, tm);
+         }
+    }
+}
+
+pub fn handle_pointer_up(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
+    if let Some(ui) = ui_handle.upgrade() {
+         if tm.handle_pointer_up(x, y) {
+             sync_ace_visuals(&ui, tm);
+         }
+    }
+}
+
 pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
     if let Some(ui) = ui_handle.upgrade() {
         // Processar recursos assíncronos primeiro
         if tm.process_active_tab_resources() {
+            sync_ace_visuals(&ui, tm);
+        }
+
+        // Animações
+        if tm.process_animations() {
             sync_ace_visuals(&ui, tm);
         }
 
