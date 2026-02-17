@@ -1,5 +1,6 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, Persistent, Function, ArrayBuffer};
+use rquickjs::{Class, Ctx, Result, Value, Object, Persistent, Function, ArrayBuffer, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
+// No UnsafeSendVal needed here after synchronous refactor
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
@@ -21,8 +22,10 @@ impl Blob {
                     let part: Value = arr.get(i)?;
                     if let Some(s) = part.as_string() {
                         data.extend_from_slice(s.to_string()?.as_bytes());
-                    } else if let Some(blob) = part.as_object().and_then(|obj| Class::<Blob>::from_object(obj).ok()) {
-                        data.extend_from_slice(&blob.borrow().data);
+                    } else if let Some(blob_obj) = part.as_object() {
+                        if let Some(blob) = Class::<Blob>::from_object(&blob_obj) {
+                            data.extend_from_slice(&blob.borrow().data);
+                        }
                     } else if let Some(ab) = part.as_object().and_then(|obj| obj.as_array_buffer()) {
                         data.extend_from_slice(ab.as_ref());
                     }
@@ -131,10 +134,12 @@ impl File {
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct FileReader {
+    #[qjs(skip_trace)]
     onload: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
+    #[qjs(skip_trace)]
     onerror: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
     #[qjs(skip_trace)]
-    result: Arc<Mutex<Option<Value<'static>>>>,
+    result: Arc<Mutex<Option<Persistent<Value<'static>>>>>,
 }
 
 #[rquickjs::methods]
@@ -150,56 +155,55 @@ impl FileReader {
 
     #[qjs(rename = "readAsText")]
     pub fn read_as_text(&self, ctx: Ctx<'_>, blob_val: Value<'_>) -> Result<()> {
-        let blob = Class::<Blob>::from_object(blob_val.as_object().ok_or(rquickjs::Error::new_from_js("Blob", "Expected Object"))?)?.borrow().clone();
-        let rt = ctx.userdata::<JsRuntime>().expect("JsRuntime").clone();
-        let loader = self.clone();
+        let blob_obj = blob_val.as_object().ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
+        let blob = Class::<Blob>::from_object(blob_obj).ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?.borrow().clone();
+        let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
+        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap()).unwrap().borrow().clone();
+        
+        let blob_data = blob.data.clone();
 
-        tokio::spawn(async move {
-            let text = String::from_utf8_lossy(&blob.data).to_string();
-            let mut el = rt.event_loop.lock().unwrap();
-            el.queue_macro_task(move || {
-                rt.with_context(|ctx| {
-                    ctx.with(|ctx| {
-                        let val = text.into_js(&ctx).unwrap();
-                        *loader.result.lock().unwrap() = Some(Persistent::save(ctx.clone(), val));
-                        if let Some(ref cb) = *loader.onload.lock().unwrap() {
-                            if let Ok(func) = cb.restore(&ctx) {
-                                let event = rquickjs::Object::new(ctx.clone()).unwrap();
-                                let _ = func.call::<(Object,), ()>((event,));
-                            }
-                        }
-                    });
-                });
-            });
+        // Perform read synchronously (data is already in memory)
+        let val = String::from_utf8_lossy(&blob_data).to_string();
+        rt.with_context(|ctx| {
+            ctx.with(|ctx| {
+                let js_val = val.clone().into_js(&ctx).unwrap();
+                *self.result.lock().unwrap() = Some(Persistent::save(&ctx, js_val));
+                if let Some(ref cb) = *self.onload.lock().unwrap() {
+                    if let Ok(func) = cb.clone().restore(&ctx) {
+                        let event = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = func.call::<(Object,), ()>((event,));
+                    }
+                }
+            })
         });
         Ok(())
     }
 
     #[qjs(rename = "readAsDataURL")]
     pub fn read_as_data_url(&self, ctx: Ctx<'_>, blob_val: Value<'_>) -> Result<()> {
-        let blob = Class::<Blob>::from_object(blob_val.as_object().ok_or(rquickjs::Error::new_from_js("Blob", "Expected Object"))?)?.borrow().clone();
-        let rt = ctx.userdata::<JsRuntime>().expect("JsRuntime").clone();
-        let loader = self.clone();
+        let blob_obj = blob_val.as_object().ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
+        let blob = Class::<Blob>::from_object(blob_obj).ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?.borrow().clone();
+        let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
+        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap()).unwrap().borrow().clone();
+        
+        let blob_data = blob.data.clone();
+        let mime_type = blob.mime_type.clone();
 
-        tokio::spawn(async move {
-            use base64::{Engine as _, engine::general_purpose};
-            let base64_str = general_purpose::STANDARD.encode(&blob.data);
-            let result = format!("data:{};base64,{}", blob.mime_type, base64_str);
-            let mut el = rt.event_loop.lock().unwrap();
-            el.queue_macro_task(move || {
-                rt.with_context(|ctx| {
-                    ctx.with(|ctx| {
-                        let val = result.into_js(&ctx).unwrap();
-                        *loader.result.lock().unwrap() = Some(Persistent::save(ctx.clone(), val));
-                        if let Some(ref cb) = *loader.onload.lock().unwrap() {
-                            if let Ok(func) = cb.restore(&ctx) {
-                                let event = rquickjs::Object::new(ctx.clone()).unwrap();
-                                let _ = func.call::<(Object,), ()>((event,));
-                            }
-                        }
-                    });
-                });
-            });
+        // Perform conversion synchronously (data in memory)
+        use base64::{Engine as _, engine::general_purpose};
+        let base64_str = general_purpose::STANDARD.encode(&blob_data);
+        let result_str = format!("data:{};base64,{}", mime_type, base64_str);
+        rt.with_context(|ctx| {
+            ctx.with(|ctx| {
+                let js_val = result_str.clone().into_js(&ctx).unwrap();
+                *self.result.lock().unwrap() = Some(Persistent::save(&ctx, js_val));
+                if let Some(ref cb) = *self.onload.lock().unwrap() {
+                    if let Ok(func) = cb.clone().restore(&ctx) {
+                        let event = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = func.call::<(Object,), ()>((event,));
+                    }
+                }
+            })
         });
         Ok(())
     }
@@ -207,39 +211,39 @@ impl FileReader {
     #[qjs(get)]
     pub fn result<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         if let Some(ref res) = *self.result.lock().unwrap() {
-            res.restore(&ctx)
+            res.clone().restore(&ctx)
         } else {
             Ok(Value::new_null(ctx))
         }
     }
 
-    #[qjs(get)]
-    pub fn onload<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    #[qjs(get, rename = "onload")]
+    pub fn onload_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         if let Some(ref cb) = *self.onload.lock().unwrap() {
-            cb.restore(&ctx).map(|f| f.into_value())
+            cb.clone().restore(&ctx).map(|f| f.into_value())
         } else {
             Ok(Value::new_null(ctx))
         }
     }
 
-    #[qjs(set)]
-    pub fn set_onload(&self, ctx: Ctx<'_>, func: Function<'_>) -> Result<()> {
-        *self.onload.lock().unwrap() = Some(Persistent::save(ctx, func));
+    #[qjs(set, rename = "onload")]
+    pub fn onload_setter<'js>(&self, ctx: Ctx<'js>, func: Function<'js>) -> Result<()> {
+        *self.onload.lock().unwrap() = Some(Persistent::save(&ctx, func));
         Ok(())
     }
 
-    #[qjs(get)]
-    pub fn onerror<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    #[qjs(get, rename = "onerror")]
+    pub fn onerror_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         if let Some(ref cb) = *self.onerror.lock().unwrap() {
-            cb.restore(&ctx).map(|f| f.into_value())
+            cb.clone().restore(&ctx).map(|f| f.into_value())
         } else {
             Ok(Value::new_null(ctx))
         }
     }
 
-    #[qjs(set)]
-    pub fn set_onerror(&self, ctx: Ctx<'_>, func: Function<'_>) -> Result<()> {
-        *self.onerror.lock().unwrap() = Some(Persistent::save(ctx, func));
+    #[qjs(set, rename = "onerror")]
+    pub fn onerror_setter<'js>(&self, ctx: Ctx<'js>, func: Function<'js>) -> Result<()> {
+        *self.onerror.lock().unwrap() = Some(Persistent::save(&ctx, func));
         Ok(())
     }
 }
@@ -248,9 +252,9 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
             let globals = ctx.globals();
-            globals.set("Blob", Class::<Blob>::register(ctx.clone())?)?;
-            globals.set("File", Class::<File>::register(ctx.clone())?)?;
-            globals.set("FileReader", Class::<FileReader>::register(ctx.clone())?)?;
+            globals.set("Blob", Class::<Blob>::register(&ctx)?)?;
+            globals.set("File", Class::<File>::register(&ctx)?)?;
+            globals.set("FileReader", Class::<FileReader>::register(&ctx)?)?;
             Ok(())
         })
     })

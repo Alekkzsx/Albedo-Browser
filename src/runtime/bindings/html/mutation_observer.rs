@@ -4,20 +4,18 @@ use crate::engine::dom::{AceDOM, MutationObserverInit};
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::bindings::html::element::Element;
 
-#[derive(Clone, rquickjs::class::Trace)]
+#[derive(Clone)]
 #[rquickjs::class]
 pub struct MutationObserver {
-    #[qjs(skip_trace)]
     id: usize,
-    #[qjs(skip_trace)]
     rt: JsRuntime,
 }
 
 #[rquickjs::methods]
 impl MutationObserver {
     #[qjs(constructor)]
-    pub fn new(ctx: Ctx<'_>, callback: Function<'_>) -> Result<Self> {
-        let rt = ctx.userdata::<JsRuntime>().expect("JsRuntime required").clone();
+    pub fn new<'js>(ctx: Ctx<'js>, callback: Function<'js>) -> Result<Self> {
+        let rt = ctx.globals().get::<_, JsRuntime>("__albedo_rt__").expect("JsRuntime required");
         
         // Use a simple incrementing ID for observers
         let id = {
@@ -25,10 +23,12 @@ impl MutationObserver {
             registry.len() + 1
         };
         
-        // Save callback in registry
+        // Save callback in registry (transmute to 'static Persistent for storage)
         {
             let mut registry = rt.observer_registry.lock().unwrap();
-            registry.insert(id, Persistent::save(ctx, callback));
+            let cb_persist = Persistent::save(&ctx, callback);
+            let cb_static: Persistent<rquickjs::Function<'static>> = unsafe { std::mem::transmute(cb_persist) };
+            registry.insert(id, cb_static);
         }
 
         Ok(MutationObserver {
@@ -77,7 +77,7 @@ impl MutationObserver {
     pub fn take_records<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
             let mut dom = dom_arc.lock().unwrap();
-            let records = dom.pending_mutations.remove(&self.id).unwrap_or_default();
+            let records = dom.pending_mutations.borrow_mut().remove(&self.id).unwrap_or_default();
             
             let arr = rquickjs::Array::new(ctx.clone())?;
             for (i, rec) in records.into_iter().enumerate() {
@@ -103,4 +103,8 @@ impl MutationObserver {
         }
         Ok(rquickjs::Array::new(ctx)?.into_value())
     }
+}
+
+impl rquickjs::class::Trace<'_> for MutationObserver {
+    fn trace<'a>(&self, _tracer: rquickjs::class::Tracer<'a, '_>) {}
 }

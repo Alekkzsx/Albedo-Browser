@@ -28,22 +28,40 @@ pub struct IntersectionRegistry {
 ///
 /// Provides a safe, ergonomic interface for executing JavaScript code
 /// and interacting with the JS environment.
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
 pub struct JsRuntime {
+    #[qjs(skip_trace)]
     pub(crate) context: Arc<Mutex<Context>>,
+    #[qjs(skip_trace)]
     pub(crate) runtime: Arc<Mutex<Runtime>>,
+    #[qjs(skip_trace)]
     pub event_loop: Arc<Mutex<EventLoop>>,
+    #[qjs(skip_trace)]
     pub mutations: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
     pub stylesheet_dirty: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
     pub pending_navigation: Arc<Mutex<Option<String>>>,
+    #[qjs(skip_trace)]
     pub dom: Arc<Mutex<Option<Arc<Mutex<AceDOM>>>>>, // Link to Engine DOM
+    #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    #[qjs(skip_trace)]
     pub observer_registry: Arc<Mutex<HashMap<usize, rquickjs::Persistent<rquickjs::Function<'static>>>>>,
+    #[qjs(skip_trace)]
     pub history_stack: Arc<Mutex<Vec<HistoryEntry>>>,
+    #[qjs(skip_trace)]
     pub history_index: Arc<Mutex<usize>>,
+    #[qjs(skip_trace)]
     pub resize_registry: Arc<Mutex<HashMap<usize, Vec<rquickjs::Persistent<rquickjs::Function<'static>>>>>>,
+    #[qjs(skip_trace)]
     pub intersection_registry: Arc<Mutex<HashMap<usize, Vec<(rquickjs::Persistent<rquickjs::Function<'static>>, f32)>>>>,
+    #[qjs(skip_trace)]
     pub layout_states: Arc<Mutex<HashMap<usize, (f32, f32, f32, f32)>>>, // x, y, w, h
+    #[qjs(skip_trace)]
     pub resource_manager: Option<ResourceManager>,
+    #[qjs(skip_trace)]
     pub origin: Option<Origin>,
 }
 
@@ -75,7 +93,8 @@ impl JsRuntime {
         };
 
         // Store self in userdata for access from within JS callbacks
-        rt.context.lock().unwrap().set_userdata(rt.clone());
+        // Note: set_userdata was removed from rquickjs API
+        // rt.context.lock().unwrap().set_userdata(rt.clone());
 
         Ok(rt)
     }
@@ -180,28 +199,10 @@ impl JsRuntime {
     }
 }
 
-impl Clone for JsRuntime {
-    fn clone(&self) -> Self {
-        Self {
-            context: Arc::clone(&self.context),
-            runtime: Arc::clone(&self.runtime),
-            event_loop: Arc::clone(&self.event_loop),
-            mutations: Arc::clone(&self.mutations),
-            stylesheet_dirty: Arc::clone(&self.stylesheet_dirty),
-            pending_navigation: Arc::clone(&self.pending_navigation),
-            dom: Arc::clone(&self.dom),
-            primitives: Arc::clone(&self.primitives),
-            observer_registry: Arc::clone(&self.observer_registry),
-            history_stack: Arc::clone(&self.history_stack),
-            history_index: Arc::clone(&self.history_index),
-            resize_registry: Arc::clone(&self.resize_registry),
-            intersection_registry: Arc::clone(&self.intersection_registry),
-            layout_states: Arc::clone(&self.layout_states),
-            resource_manager: self.resource_manager.clone(),
-            origin: self.origin.clone(),
-        }
-    }
-}
+unsafe impl Send for JsRuntime {}
+unsafe impl Sync for JsRuntime {}
+
+
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

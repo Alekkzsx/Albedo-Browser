@@ -1,8 +1,7 @@
-use rquickjs::{Ctx, Result, Value, Function};
+use rquickjs::{Ctx, Result, Value, Function, Persistent};
 use std::collections::HashMap;
 use std::cell::RefCell;
 
-// Thread-local event registry to avoid Send/Sync issues with QuickJS values
 type ListenerRegistry = HashMap<usize, HashMap<String, Vec<Listener>>>;
 
 thread_local! {
@@ -11,10 +10,8 @@ thread_local! {
 
 struct Listener {
     callback: Function<'static>, 
-    // options: ...
 }
 
-// Helper to manage listeners
 pub struct EventTargetImpl;
 
 impl EventTargetImpl {
@@ -36,9 +33,6 @@ impl EventTargetImpl {
         });
     }
     
-    // Dispatch helper - returns callbacks to execute
-    // We return Vec<Function> so the caller (Element method) can call them 
-    // while holding the context, avoiding borrowing issues with REGISTRY
     pub fn get_listeners(target_ptr: usize, type_: &str) -> Vec<Function<'static>> {
         REGISTRY.with(|registry| {
             let map = registry.borrow();
@@ -57,14 +51,11 @@ impl EventTargetImpl {
         });
     }
 
-    // New helper for full dispatch flow (capture -> target -> bubble)
-    // Returns true if event was not cancelled
     pub fn dispatch_event_with_bubbling(
         target_ptr: usize, 
-        event_obj: &Event, // Rust Event struct
+        event_obj: &Event, 
         get_parent_fn: impl Fn(usize) -> Option<usize>
     ) -> Vec<(usize, Function<'static>)> {
-        // Collect propagation path
         let mut path = Vec::new();
         let mut curr = target_ptr;
         path.push(curr);
@@ -77,25 +68,17 @@ impl EventTargetImpl {
         }
         
         let mut listeners_to_call = Vec::new();
-        
-        // Bubbling Phase (Target -> Root)
-        // For now MVP: Just bubbling phase + target
-        // Standard is: Capture (Root->Target), Target, Bubble (Target->Root)
-        // But we store listeners in a simple map. 
-        // Let's implement bubbling order: Target -> Root
-        
         for ptr in path.iter() {
              let listeners = Self::get_listeners(*ptr, &event_obj.type_);
              for l in listeners {
                  listeners_to_call.push((*ptr, l));
              }
         }
-        
         listeners_to_call
     }
 }
 
-#[derive(Clone, rquickjs::class::Trace)]
+#[derive(Clone)]
 #[rquickjs::class]
 pub struct Event {
     #[qjs(get, enumerable, rename = "type")]
@@ -105,16 +88,17 @@ pub struct Event {
     #[qjs(get, enumerable)]
     pub cancelable: bool,
     
-    // We can't easily store Element here because it contains NodeRef which is not Trace?
-    // Actually Element is Trace. 
-    // But we need to set these during dispatch.
-    // Making them mutable generic Option<Value<'js>>
-    #[qjs(skip_trace)] // managing manually or just ref references?
-    pub target: Option<Value<'static>>, 
-    #[qjs(skip_trace)]
-    pub current_target: Option<Value<'static>>,
+    pub target: Option<Persistent<Value<'static>>>, 
+    pub current_target: Option<Persistent<Value<'static>>>,
     #[qjs(get, rename = "cancelBubble")]
     pub cancel_bubble: bool,
+}
+
+// Implement Trace for Event (skip tracing Persistent fields)
+impl<'js> rquickjs::class::Trace<'js> for Event {
+    fn trace<'a>(&self, _marker: rquickjs::class::Tracer<'a, 'js>) {
+        // Persistent fields handle their own tracing, skip for now
+    }
 }
 
 #[rquickjs::methods]
@@ -137,6 +121,7 @@ impl Event {
             cancelable,
             target: None,
             current_target: None,
+            cancel_bubble: false,
         }
     }
     
@@ -148,11 +133,12 @@ impl Event {
     }
 
     #[qjs(get)]
-    pub fn target<'js>(&self, ctx: Ctx<'js>) -> Value<'js> {
-        // This is tricky. We are storing static values or need to resurrect?
-        // Let's simlify: dispatch passes the element to the callback? 
-        // Or we set a property on the JS object before calling the callback.
-        Value::new_null(ctx) 
+    pub fn target<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        if let Some(ref t) = self.target {
+            t.clone().restore(&ctx)
+        } else {
+            Ok(Value::new_null(ctx))
+        }
     }
 
     #[qjs(rename = "stopPropagation")]
@@ -167,11 +153,10 @@ impl Event {
     }
 
     #[qjs(rename = "composedPath")]
-    pub fn composed_path<'js>(&self, ctx: Ctx<'js>, this: rquickjs::Object<'js>) -> Result<Value<'js>> {
+    pub fn composed_path<'js>(&self, ctx: Ctx<'js>, _this: rquickjs::Object<'js>) -> Result<Value<'js>> {
         let array = rquickjs::Array::new(ctx.clone())?;
-        // For simplicity, just return target as the only path element for now
-        if let Some(target) = self.target.as_ref() {
-            array.set(0, target.clone())?;
+        if let Some(ref target) = self.target {
+            array.set(0, target.clone().restore(&ctx)?)?;
         }
         Ok(array.into_value())
     }

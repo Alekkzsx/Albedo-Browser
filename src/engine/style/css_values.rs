@@ -14,6 +14,10 @@ pub enum CssLength {
     Clamp(Box<CssLength>, Box<CssLength>, Box<CssLength>),
     Min(Vec<CssLength>),
     Max(Vec<CssLength>),
+    MinMax(Box<CssLength>, Box<CssLength>),
+    Repeat(String, Vec<CssLength>),
+    MinContent,
+    MaxContent,
     Calc(String),
 }
 
@@ -45,6 +49,13 @@ impl fmt::Display for CssLength {
                 write!(f, "max({})", s.join(", "))
             },
             CssLength::Calc(s) => write!(f, "calc({})", s),
+            CssLength::MinMax(min, max) => write!(f, "minmax({}, {})", min, max),
+            CssLength::Repeat(count, sub) => {
+                let s: Vec<String> = sub.iter().map(|v| v.to_string()).collect();
+                write!(f, "repeat({}, {})", count, s.join(", "))
+            },
+            CssLength::MinContent => write!(f, "min-content"),
+            CssLength::MaxContent => write!(f, "max-content"),
         }
     }
 }
@@ -77,6 +88,21 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
                 .map(|v| resolve_length(v, parent_font_size, root_font_size, viewport_width, viewport_height))
                 .fold(f32::NEG_INFINITY, f32::max)
         },
+        CssLength::MinMax(min, max) => {
+            let min_v = resolve_length(min, parent_font_size, root_font_size, viewport_width, viewport_height);
+            let max_v = resolve_length(max, parent_font_size, root_font_size, viewport_width, viewport_height);
+            // Rough approximation: use max for now
+            max_v
+        },
+        CssLength::Repeat(_count, sub) => {
+            // Rough approximation: resolve first element * 3 (arbitrary)
+            if let Some(first) = sub.first() {
+                resolve_length(first, parent_font_size, root_font_size, viewport_width, viewport_height) * 3.0
+            } else {
+                0.0
+            }
+        },
+        CssLength::MinContent | CssLength::MaxContent => 0.0, // Needs layout context
         CssLength::Calc(_) => 0.0, // Needs complex parser
     }
 }
@@ -320,9 +346,27 @@ pub enum CssAlignItems {
     Center,
     Baseline,
     Stretch,
+    Auto, // For align-self
 }
 
 impl Default for CssAlignItems {
+    fn default() -> Self {
+        Self::Stretch
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssAlignContent {
+    FlexStart,
+    FlexEnd,
+    Center,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+    Stretch,
+}
+
+impl Default for CssAlignContent {
     fn default() -> Self {
         Self::Stretch
     }
@@ -464,7 +508,7 @@ pub struct CssKeyframe {
     pub declarations: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BoxShadow {
     pub offset_x: f32,
     pub offset_y: f32,
@@ -611,6 +655,12 @@ pub struct ComputedStyle {
     pub grid_row_end: CssLength,
     pub grid_column_gap: CssLength,
     pub grid_row_gap: CssLength,
+    pub grid_template_areas: Vec<String>,
+    
+    // Flexbox/Grid alignment
+    pub order: i32,
+    pub align_self: CssAlignItems,
+    pub align_content: CssAlignContent,
     
     // Pseudo-element content
     pub content: CssContent,
@@ -739,6 +789,12 @@ impl Default for ComputedStyle {
             
             // Custom properties
             custom_properties: std::collections::HashMap::new(),
+            
+            // New Flexbox/Grid properties
+            order: 0,
+            align_self: CssAlignItems::Auto, // Default is auto, which computes to parent's align-items
+            align_content: CssAlignContent::Stretch,
+            grid_template_areas: Vec::new(),
         }
     }
 }

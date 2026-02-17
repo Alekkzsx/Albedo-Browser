@@ -15,7 +15,11 @@ pub fn remove_event_listener<'js>(el: &Element, type_: String, _listener: Functi
     EventTargetImpl::remove_listener(ptr, type_);
 }
 
-pub fn dispatch_event<'js>(el: &Element, _ctx: Ctx<'js>, event: Value<'js>) -> bool {
+pub fn dispatch_event_internal<'js>(el: &Element, ctx: &Ctx<'js>, event: Value<'js>) -> bool {
+    dispatch_event(el, ctx, event)
+}
+
+pub fn dispatch_event<'js>(el: &Element, _ctx: &Ctx<'js>, event: Value<'js>) -> bool {
     let ptr = el.index;
     let dom = el.dom.clone();
     
@@ -39,6 +43,7 @@ pub fn dispatch_event<'js>(el: &Element, _ctx: Ctx<'js>, event: Value<'js>) -> b
                     cancelable: false, 
                     target: None,
                     current_target: None,
+                    cancel_bubble: false,
                 };
                 
                 // We should set target to the element, but we can't easily pass Element object here 

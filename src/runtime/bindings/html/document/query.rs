@@ -57,6 +57,7 @@ pub fn query_selector_all<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) 
                             index: i,
                             mutations: doc.mutations.clone(),
                             stylesheet_dirty: doc.stylesheet_dirty.clone(),
+                            primitives: doc.primitives.clone(),
                         };
                 let instance = Class::instance(ctx.clone(), element)?;
                 array.set(idx, instance)?;

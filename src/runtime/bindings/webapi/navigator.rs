@@ -55,8 +55,8 @@ pub fn register(ctx: &Context) -> Result<()> {
         let global = ctx.globals();
         
         // Register classes first
-        Class::<Clipboard>::register(ctx.clone())?;
-        Class::<Geolocation>::register(ctx.clone())?;
+        Class::<Clipboard>::register(&ctx)?;
+        Class::<Geolocation>::register(&ctx)?;
         
         let navigator = Class::instance(ctx.clone(), Navigator {})?;
         global.set("navigator", navigator)?;

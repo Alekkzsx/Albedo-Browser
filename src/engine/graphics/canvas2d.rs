@@ -252,5 +252,5 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
         _ => return None,
     };
 
-    Color::from_rgba8(r, g, b, a)
+    Some(Color::from_rgba8(r, g, b, a))
 }

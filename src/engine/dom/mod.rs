@@ -1,5 +1,6 @@
 use kuchiki::NodeRef;
 use std::collections::HashMap;
+use std::cell::RefCell;
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
@@ -8,7 +9,7 @@ pub struct AceDOM {
     pub head: Option<usize>,
     pub body: Option<usize>,
     pub observers: HashMap<usize, Vec<DomObserver>>, // Map target_node_id -> Observers
-    pub pending_mutations: HashMap<usize, Vec<MutationRecord>>, // Map callback_id -> Records
+    pub pending_mutations: RefCell<HashMap<usize, Vec<MutationRecord>>>, // Map callback_id -> Records
     pub active_element: Option<usize>,
 }
 
@@ -67,8 +68,35 @@ pub struct AceElement {
     pub attributes: HashMap<String, String>,
 }
 
+impl AceElement {
+    pub fn tag_name(&self) -> &str {
+        &self.tag
+    }
+}
+
 impl AceDOM {
-    pub fn new(kuchiki_root: NodeRef) -> Self {
+    /// Construtor padrão para testes
+    pub fn new() -> Self {
+        Self {
+            nodes: vec![AceNode {
+                node_type: AceNodeType::Document,
+                parent: None,
+                children: Vec::new(),
+                prev_sibling: None,
+                next_sibling: None,
+                shadow_root: None,
+            }],
+            root: 0,
+            head: None,
+            body: None,
+            observers: HashMap::new(),
+            pending_mutations: RefCell::new(HashMap::new()),
+            active_element: None,
+        }
+    }
+
+    /// Construtor a partir de kuchiki NodeRef
+    pub fn from_kuchiki(kuchiki_root: NodeRef) -> Self {
         let mut nodes = Vec::new();
         
         let root_idx = Self::convert_recursive(&kuchiki_root, &mut nodes, None);
@@ -79,19 +107,18 @@ impl AceDOM {
             head: None,
             body: None,
             observers: HashMap::new(),
-            pending_mutations: HashMap::new(),
+            pending_mutations: RefCell::new(HashMap::new()),
             active_element: None,
         };
 
         dom.find_head_body();
         dom
     }
-
     pub fn get_node(&self, id: usize) -> Option<&AceNode> {
         self.nodes.get(id)
     }
 
-    fn convert_recursive(
+    pub fn convert_recursive(
         kuchiki_node: &NodeRef,
         nodes: &mut Vec<AceNode>,
         parent_idx: Option<usize>,
@@ -480,7 +507,8 @@ impl AceDOM {
                            _ => {},
                        }
                        
-                       let entry = self.pending_mutations_mut().entry(obs.callback_id).or_insert(Vec::new());
+                       let mut pending = self.pending_mutations_mut();
+                       let entry = pending.entry(obs.callback_id).or_insert(Vec::new());
                        entry.push(record.clone());
                     }
                 }
@@ -494,22 +522,14 @@ impl AceDOM {
         }
     }
     
-    // Helper to workaround borrow checker for pending_mutations
-    fn pending_mutations_mut(&self) -> &mut HashMap<usize, Vec<MutationRecord>> {
-        // This is unsafe but necessary because notify_mutation is called from methods that have &mut self borrow
-        // and we need to mutate pending_mutations.
-        // In a real implementation we would use RefCell or internal mutability for observers/pending_mutations
-        // to avoid polluting the whole DOM API with RefCell.
-        // For now, let's use a RefCell wrapper approach on the fields if possible, or...
-        // Actually, let's change notify_mutation to take &mut self.
-        unsafe {
-            &mut *(&self.pending_mutations as *const _ as *mut _)
-        }
+    // Helper to access pending_mutations mutably
+    fn pending_mutations_mut(&self) -> std::cell::RefMut<HashMap<usize, Vec<MutationRecord>>> {
+        self.pending_mutations.borrow_mut()
     }
 
     pub fn take_pending_mutations(&mut self) -> HashMap<usize, Vec<MutationRecord>> {
         let mut pending = HashMap::new();
-        std::mem::swap(&mut pending, &mut self.pending_mutations);
+        std::mem::swap(&mut pending, &mut *self.pending_mutations.borrow_mut());
         pending
     }
 
@@ -608,7 +628,7 @@ impl AceDOM {
         let mut body = None;
         for node in dom.inclusive_descendants() {
             if let Some(el) = node.as_element() {
-                if el.name.local == "body" {
+                if el.name.local.as_ref() == "body" {
                     body = Some(node);
                     break;
                 }

@@ -64,3 +64,12 @@ impl NamedNodeMap {
         Ok(obj.into_value())
     }
 }
+
+pub fn attributes<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let attrs = NamedNodeMap {
+        dom: el.dom.clone(),
+        index: el.index,
+    };
+    let instance = Class::instance(ctx, attrs)?;
+    Ok(instance.into_value())
+}

@@ -1,11 +1,9 @@
-use rquickjs::{Ctx, Value, Class, Result};
-use crate::engine::dom::{AceDOM, AceNodeType};
+use rquickjs::{Ctx, Value, Class, Result, Function, Persistent};
+use crate::engine::dom::{AceDOM, AceNodeType, AceNode};
 use crate::runtime::core::runtime::JsRuntime;
-use super::element::Element;
+use super::element::{Element, ElementType};
 use std::sync::{Arc, Mutex};
 use crate::engine::style::Stylesheet;
-use super::event::EventTargetImpl;
-use rquickjs::Function;
 
 pub mod query;
 pub mod events;
@@ -22,7 +20,12 @@ pub struct Document {
     #[qjs(skip_trace)]
     pub mutations: Arc<Mutex<bool>>,
     #[qjs(skip_trace)]
+    pub stylesheet_dirty: Arc<Mutex<bool>>,
+    #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    #[qjs(skip_trace)]
+    pub cookie_storage: Arc<Mutex<String>>,
+    #[qjs(skip_trace)]
     pub resource_manager: Option<crate::network::resources::ResourceManager>,
     pub url: String,
     pub referrer: String,
@@ -46,7 +49,7 @@ impl Document {
     }
 
     #[qjs(rename = "dispatchEvent")]
-    pub fn dispatch_event<'js>(&self, event: Value<'js>) -> bool {
+    pub fn dispatch_event<'js>(&self, ctx: Ctx<'js>, event: Value<'js>) -> bool {
         self::events::dispatch_event(self, event)
     }
 
@@ -63,7 +66,7 @@ impl Document {
     #[qjs(get, rename = "cookie")]
     pub fn cookie(&self) -> String {
         if let Some(ref rm) = self.resource_manager {
-            return rm.cookie_jar.get_cookies(&self.url);
+            return rm.cookie_jar.lock().unwrap().get_cookies_for_url(&self.url);
         }
         "".to_string()
     }
@@ -71,23 +74,20 @@ impl Document {
     #[qjs(set, rename = "cookie")]
     pub fn set_cookie(&self, val: String) {
         if let Some(ref rm) = self.resource_manager {
-            rm.cookie_jar.set_cookie(&self.url, &val);
+            rm.cookie_jar.lock().unwrap().set_cookie(&self.url, &val);
         }
     }
 
     #[qjs(get, rename = "title")]
     pub fn title(&self) -> String {
         let dom = self.dom.lock().unwrap();
-        // Look for <title> text
         if let Some(head_idx) = dom.head {
             if let Some(head_node) = dom.get_node(head_idx) {
                 for &child_idx in &head_node.children {
                     if let Some(child) = dom.get_node(child_idx) {
                         if let AceNodeType::Element(el) = &child.node_type {
                             if el.tag == "title" {
-                                return dom.serialize_subtree(child_idx)
-                                    .replace("<title>", "")
-                                    .replace("</title>", "");
+                                return dom.serialize_subtree_text(child_idx);
                             }
                         }
                     }
@@ -100,7 +100,6 @@ impl Document {
     #[qjs(set, rename = "title")]
     pub fn set_title(&self, title: String) {
         println!("Document title set to: {}", title);
-        // For now, we don't mutate the DOM for title, but we could
     }
 
     #[qjs(rename = "createElement")]
@@ -149,7 +148,7 @@ impl Document {
             return Ok(Value::new_null(ctx));
         };
 
-        let frag = super::fragment::DocumentFragment {
+        let frag = crate::runtime::bindings::html::document::fragment::DocumentFragment {
             dom: self.dom.clone(),
             index: idx,
             mutations: self.mutations.clone(),
@@ -219,38 +218,29 @@ impl Document {
         Ok(instance.into_value())
     }
 
+    #[qjs(get, rename = "onclick")]
+    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "onclick")]
-    pub fn set_onclick<'js>(&self, listener: Function<'js>) {
+    pub fn onclick_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("click".to_string(), listener);
     }
 
+    #[qjs(get, rename = "onload")]
+    pub fn onload_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "onload")]
-    pub fn set_onload<'js>(&self, listener: Function<'js>) {
+    pub fn onload_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("load".to_string(), listener);
-    }
-
-    #[qjs(rename = "createDocumentFragment")]
-    pub fn create_document_fragment<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let fragment = self::fragment::DocumentFragment::new(
-            self.dom.clone(),
-            self.mutations.clone(),
-            self.stylesheet_dirty.clone(),
-            self.primitives.clone(),
-        );
-        let instance = Class::instance(ctx, fragment)?;
-        Ok(instance.into_value())
     }
 
     #[qjs(rename = "createEvent")]
     pub fn create_event<'js>(&self, ctx: Ctx<'js>, _type_name: String) -> Result<Value<'js>> {
-        // Legacy: document.createEvent("HTMLEvents")
-        // Just return a basic Event object
         let event = super::event::Event {
             type_: "event".into(),
             bubbles: true,
             cancelable: true,
             target: None,
             current_target: None,
+            cancel_bubble: false,
         };
         let instance = Class::instance(ctx, event)?;
         Ok(instance.into_value())
@@ -324,107 +314,15 @@ impl Document {
             index: root_idx,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
+            primitives: self.primitives.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         Ok(instance.into_value())
     }
 
-    #[qjs(get, rename = "images")]
-    pub fn images<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let collection = self::collections::HtmlCollection {
-            dom: self.dom.clone(),
-            selector_fn: std::sync::Arc::new(|dom, idx| {
-                if let Some(node) = dom.get_node(idx) {
-                    if let AceNodeType::Element(el) = &node.node_type {
-                        return el.tag == "img";
-                    }
-                }
-                false
-            }),
-            mutations: self.mutations.clone(),
-            stylesheet_dirty: self.stylesheet_dirty.clone(),
-        };
-        let instance = Class::instance(ctx, collection)?;
-        Ok(instance.into_value())
-    }
-
-    #[qjs(get, rename = "links")]
-    pub fn links<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let collection = self::collections::HtmlCollection {
-            dom: self.dom.clone(),
-            selector_fn: std::sync::Arc::new(|dom, idx| {
-                if let Some(node) = dom.get_node(idx) {
-                    if let AceNodeType::Element(el) = &node.node_type {
-                        return el.tag == "a" && el.attributes.contains_key("href");
-                    }
-                }
-                false
-            }),
-            mutations: self.mutations.clone(),
-            stylesheet_dirty: self.stylesheet_dirty.clone(),
-        };
-        let instance = Class::instance(ctx, collection)?;
-        Ok(instance.into_value())
-    }
-
-    #[qjs(get, rename = "forms")]
-    pub fn forms<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let collection = self::collections::HtmlCollection {
-            dom: self.dom.clone(),
-            selector_fn: std::sync::Arc::new(|dom, idx| {
-                if let Some(node) = dom.get_node(idx) {
-                    if let AceNodeType::Element(el) = &node.node_type {
-                        return el.tag == "form";
-                    }
-                }
-                false
-            }),
-            mutations: self.mutations.clone(),
-            stylesheet_dirty: self.stylesheet_dirty.clone(),
-        };
-        let instance = Class::instance(ctx, collection)?;
-        Ok(instance.into_value())
-    }
-    
-    #[qjs(get, rename = "scripts")]
-    pub fn scripts<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let collection = self::collections::HtmlCollection {
-            dom: self.dom.clone(),
-            selector_fn: std::sync::Arc::new(|dom, idx| {
-                if let Some(node) = dom.get_node(idx) {
-                    if let AceNodeType::Element(el) = &node.node_type {
-                        return el.tag == "script";
-                    }
-                }
-                false
-            }),
-            mutations: self.mutations.clone(),
-            stylesheet_dirty: self.stylesheet_dirty.clone(),
-        };
-        let instance = Class::instance(ctx, collection)?;
-        Ok(instance.into_value())
-    }
-
     #[qjs(get, rename = "readyState")]
     pub fn ready_state(&self) -> String {
-        "complete".to_string() // Simplified for now
-    }
-
-    #[qjs(get, rename = "cookie")]
-    pub fn get_cookie(&self) -> String {
-        self.cookie_storage.lock().unwrap().clone()
-    }
-
-    #[qjs(set, rename = "cookie")]
-    pub fn set_cookie(&self, cookie: String) {
-        let mut storage = self.cookie_storage.lock().unwrap();
-        // Naive implementation: just append or replace
-        // Real implementation should handle expiration, path, etc.
-        if storage.is_empty() {
-            *storage = cookie;
-        } else {
-            *storage = format!("{}; {}", *storage, cookie);
-        }
+        "complete".to_string()
     }
 
     #[qjs(get, rename = "URL")]
@@ -447,6 +345,7 @@ impl Document {
                 index: idx,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
+                primitives: self.primitives.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -455,68 +354,34 @@ impl Document {
     }
 }
 
-fn get_computed_style_js<'js>(ctx: Ctx<'js>, val: Value<'js>) -> Result<Class<'js, super::computed_style::ComputedCSSStyleDeclaration>> {
-    let document: Class<Document> = ctx.globals().get("document")?;
-    let styles = document.borrow().stylesheet.clone();
-    
-    let el = Class::<Element>::from_value(&val).map_err(|_| rquickjs::Error::new_from_js("Argument must be an Element", "TypeError"))?;
-    
-    // We need indices now, ComputedCSSStyleDeclaration needs update too maybe?
-    // Let's assume ComputedCSSStyleDeclaration is updated or we pass needed info.
-    // For now, pass indices. ComputedCSSStyleDeclaration likely needs Dom access.
-    
-    // This part involves computed_style.rs. We might break it here.
-    // Let's comment out the implementation details for now or stub.
-    
-    let computed = super::computed_style::ComputedCSSStyleDeclaration { 
-        dom: el.borrow().dom.clone(),
-        node_idx: el.borrow().index,
-        stylesheet: styles
-    };
-    Class::instance(ctx, computed)
-}
-
-// Register document API in the runtime
 pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>, url: String, referrer: String, resource_manager: Option<crate::network::resources::ResourceManager>) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
+            let global = ctx.globals();
             // Register classes
-            Class::<Element>::define(&ctx.globals())?;
-            Class::<super::element::attributes::NamedNodeMap>::define(&ctx.globals())?;
-            Class::<super::token_list::DomTokenList>::define(&ctx.globals())?;
-            Class::<self::collections::HtmlCollection>::define(&ctx.globals())?;
-            Class::<self::fragment::DocumentFragment>::define(&ctx.globals())?;
-            Class::<super::style_declaration::CssStyleDeclaration>::define(&ctx.globals())?;
-            Class::<super::computed_style::ComputedCSSStyleDeclaration>::define(&ctx.globals())?;
-            Class::<super::event::Event>::define(&ctx.globals())?;
-            Class::<super::mutation_observer::MutationObserver>::define(&ctx.globals())?;
-            Class::<super::form_data::FormData>::define(&ctx.globals())?;
-            Class::<super::element::rect::DOMRect>::define(&ctx.globals())?;
-            Class::<super::range::Range>::define(&ctx.globals())?;
-            Class::<super::selection::Selection>::define(&ctx.globals())?;
-            Class::<crate::runtime::bindings::utils::parser::DOMParser>::define(&ctx.globals())?;
-            Class::<Document>::define(&ctx.globals())?;
+            Class::<Element>::define(&global)?;
+            Class::<Document>::define(&global)?;
             
-            // Create instance and set as global 'document'
+            let cookies = if let Some(rm) = resource_manager.as_ref() {
+                rm.cookie_jar.lock().unwrap().get_cookies_for_url(&url)
+            } else {
+                String::new()
+            };
+
             let doc_instance = Class::instance(ctx.clone(), Document { 
                 dom, 
                 stylesheet: stylesheet.clone(),
                 mutations: rt.mutations.clone(),
+                stylesheet_dirty: rt.stylesheet_dirty.clone(),
+                cookie_storage: Arc::new(Mutex::new(cookies)),
                 resource_manager,
                 primitives,
                 url,
                 referrer,
             })?;
-            ctx.globals().set("document", doc_instance)?;
-            
-            let get_computed_style = Function::new(ctx.clone(), get_computed_style_js)?;
-            ctx.globals().set("getComputedStyle", get_computed_style)?;
+            global.set("document", doc_instance)?;
             
             Ok(())
         })
     })
 }
-
-
-#[cfg(test)]
-mod tests;

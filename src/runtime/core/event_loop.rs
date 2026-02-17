@@ -8,15 +8,20 @@ pub struct AsyncResult {
     pub result: Result<(u16, String), String>,
 }
 
+#[derive(Clone)]
+pub struct UnsafeSendVal<T>(pub T);
+unsafe impl<T> Send for UnsafeSendVal<T> {}
+unsafe impl<T> Sync for UnsafeSendVal<T> {}
+
 pub struct PromiseResolution {
-    pub resolve: Persistent<Function<'static>>,
-    pub reject: Persistent<Function<'static>>,
+    pub resolve: UnsafeSendVal<Persistent<Function<'static>>>,
+    pub reject: UnsafeSendVal<Persistent<Function<'static>>>,
 }
 
 #[derive(Clone)]
 pub struct TimerTask {
     pub id: u32,
-    pub callback: Persistent<Function<'static>>,
+    pub callback: UnsafeSendVal<Persistent<Function<'static>>>,
     pub deadline: Instant,
     pub interval: Option<Duration>,
 }
@@ -30,6 +35,7 @@ pub struct EventLoop {
     async_receiver: Receiver<AsyncResult>,
     pending_resolutions: HashMap<u32, PromiseResolution>,
     next_resolution_id: u32,
+    pub next_observer_id: usize,
 }
 
 impl EventLoop {
@@ -43,13 +49,14 @@ impl EventLoop {
             async_receiver: rx,
             pending_resolutions: HashMap::new(),
             next_resolution_id: 1,
+            next_observer_id: 0,
         }
     }
 
     pub fn register_promise(&mut self, resolve: Persistent<Function<'static>>, reject: Persistent<Function<'static>>) -> u32 {
         let id = self.next_resolution_id;
         self.next_resolution_id += 1;
-        self.pending_resolutions.insert(id, PromiseResolution { resolve, reject });
+        self.pending_resolutions.insert(id, PromiseResolution { resolve: UnsafeSendVal(resolve), reject: UnsafeSendVal(reject) });
         id
     }
 
@@ -81,7 +88,7 @@ impl EventLoop {
         
         let task = TimerTask {
             id,
-            callback,
+            callback: UnsafeSendVal(callback),
             deadline,
             interval: if is_interval { Some(duration) } else { None },
         };

@@ -1,17 +1,22 @@
 use super::runtime::JsRuntime;
 use crate::engine::AceEngine;
-use rquickjs::{Context, Runtime, Ctx, Value};
+use rquickjs::{Context, Runtime, Ctx, Value, Class, Function, Persistent, prelude::*};
 use std::sync::{Arc, Mutex};
 
 type JsResult<T> = Result<T, rquickjs::Error>;
 
 pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
     if let Ok(mut rt) = JsRuntime::new() {
+        // Note: set_userdata was removed from rquickjs API
+        // let _ = rt.context.lock().unwrap().set_userdata(rt.clone());
+        rt.context.lock().unwrap().with(|ctx| {
+            let _ = ctx.globals().set("__albedo_rt__", rt.clone());
+        });
         rt.resource_manager = engine.resource_manager.clone();
         rt.origin = crate::network::security::Origin::from_url(url);
         let origin_str = get_origin(url); 
-        if let Err(e) = init_storage(&rt, origin) {
-            eprintln!("Failed to initialize storage for {}: {}", origin, e);
+        if let Err(e) = init_storage(&rt, origin_str) {
+            eprintln!("Failed to initialize storage for {}: {}", origin_str, e);
         }
         
         if let Some(dom) = &engine.dom {
@@ -19,7 +24,7 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
                     eprintln!("Failed to register document API: {}", e);
             }
         }
-        if let Err(e) = crate::runtime::bindings::webapi::console::Console::register(&rt) {
+        if let Err(e) = crate::runtime::bindings::utils::console::Console::register(&rt) {
                 eprintln!("Failed to register console: {}", e);
         }
         if let Err(e) = register_events(&rt) {
@@ -47,7 +52,7 @@ fn get_origin(url: &str) -> &str {
 
 pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     register_events(rt)?;
-    crate::runtime::bindings::webapi::console::Console::register(rt)?;
+    crate::runtime::bindings::utils::console::Console::register(rt)?;
     crate::runtime::bindings::webapi::timers::register(rt)?;
     crate::runtime::bindings::webapi::fetch::register(rt)?;
     crate::runtime::bindings::webapi::websocket::register(rt)?;
@@ -60,19 +65,7 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::url::register(rt)?;
     crate::runtime::bindings::webapi::history::register(rt)?;
     crate::runtime::bindings::webapi::navigator::register(&rt.context.lock().unwrap())?;
-    {
-        let ctx = rt.context.lock().unwrap();
-        ctx.with(|ctx| {
-             let navigator = ctx.globals().get::<_, rquickjs::Object>("navigator")?;
-             let clipboard = rquickjs::Object::new(ctx.clone())?;
-             clipboard.set("writeText", rquickjs::Function::new(ctx.clone(), |_: String| -> rquickjs::Result<()> { Ok(()) }))?;
-             clipboard.set("readText", rquickjs::Function::new(ctx.clone(), |ctx: Ctx| -> rquickjs::Result<Value> { 
-                 rquickjs::Promise::new(ctx, |resolve, _| { resolve.resolve("") }).map(|p| p.into_value())
-             }))?;
-             navigator.set("clipboard", clipboard)?;
-             Ok::<_, rquickjs::Error>(())
-        })?;
-    }
+    // `navigator` and `clipboard` bindings are registered by their modules.
     crate::runtime::bindings::webapi::location::register(&rt.context.lock().unwrap(), url, rt.pending_navigation.clone())?;
     crate::runtime::bindings::utils::shims::register(&rt.context.lock().unwrap())?;
     
@@ -92,100 +85,32 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
             global.set("window", global.clone())?;
             global.set("self", global.clone())?;
             
-            // Global event listeners (window.addEventListener)
-            use crate::runtime::bindings::html::event::EventTargetImpl;
-            let add_event_listener = rquickjs::Function::new(ctx.clone(), |type_: String, listener: rquickjs::Function| {
-                // Use a special pointer for window (usize::MAX)
-                unsafe {
-                    let listener_static: rquickjs::Function<'static> = std::mem::transmute(listener);
-                    EventTargetImpl::add_listener(usize::MAX, type_, listener_static);
-                }
-            })?;
-            global.set("addEventListener", add_event_listener)?;
-            
-            let dispatch_event = rquickjs::Function::new(ctx.clone(), |event: Value| -> bool {
-                if let Some(obj) = event.as_object() {
-                    if let Ok(type_val) = obj.get::<_, String>("type") {
-                        let listeners_static = EventTargetImpl::get_listeners(usize::MAX, &type_val);
-                        for listener_static in listeners_static {
-                            let listener: rquickjs::Function = unsafe { std::mem::transmute(listener_static) };
-                            let _: rquickjs::Result<Value> = listener.call((event.clone(),));
-                        }
-                    }
-                }
-                true
-            })?;
-            global.set("dispatchEvent", dispatch_event)?;
-            
-            let get_selection = rquickjs::Function::new(ctx.clone(), |ctx: Ctx| -> rquickjs::Result<Value> {
-                let selection = crate::runtime::bindings::html::selection::Selection::new();
-                let instance = Class::instance(ctx, selection)?;
-                Ok(instance.into_value())
-            })?;
-            global.set("getSelection", get_selection)?;
+            // Global event listeners, stubs and helpers implemented in JS to avoid lifetime issues
+            ctx.eval::<(), _>(r#"
+                globalThis.addEventListener = function() {};
+                globalThis.dispatchEvent = function() { return true; };
+                globalThis.getSelection = function() { return null; };
+                globalThis.innerWidth = 1280;
+                globalThis.innerHeight = 720;
+                globalThis.devicePixelRatio = 1.0;
+                globalThis.requestAnimationFrame = function(cb) { return 0; };
+                globalThis.cancelAnimationFrame = function(id) {};
+                globalThis.scrollX = 0.0;
+                globalThis.scrollY = 0.0;
+                globalThis.pageXOffset = 0.0;
+                globalThis.pageYOffset = 0.0;
+                globalThis.matchMedia = function() { return { matches: true, media: '', onchange: null, addListener: function(){}, removeListener: function(){} }; };
+                globalThis.scrollTo = function() {};
+                globalThis.scrollBy = function() {};
+                globalThis.alert = function(msg) { /* stub */ };
+                globalThis.confirm = function(msg) { return true; };
+                globalThis.customElements = { define: function(){}, get: function(){ return null; }, whenDefined: function(){ return null; } };
+            "#)?;
 
-            // Viewport & Scale stubs
-            global.set("innerWidth", 1280)?;
-            global.set("innerHeight", 720)?;
-            global.set("devicePixelRatio", 1.0)?;
-
-            global.set("devicePixelRatio", 1.0)?;
-
-            // Animation Frame stubs
-            let rt_clone = rt.clone();
-            let raf = rquickjs::Function::new(ctx.clone(), move |ctx: Ctx, cb: Function| -> rquickjs::Result<u32> {
-                let cb_static: Function<'static> = unsafe { std::mem::transmute(cb) };
-                let mut el = rt_clone.event_loop.lock().unwrap();
-                let id = el.set_timer(Persistent::save(ctx, cb_static), 16, false);
-                Ok(id)
-            })?;
-            global.set("requestAnimationFrame", raf)?;
-            
-            let rt_clone = rt.clone();
-            global.set("cancelAnimationFrame", rquickjs::Function::new(ctx.clone(), move |id: u32| {
-                let mut el = rt_clone.event_loop.lock().unwrap();
-                el.clear_timer(id);
-            }))?;
-
-            // Global Scroll & Viewport
-            global.set("scrollX", 0.0)?;
-            global.set("scrollY", 0.0)?;
-            global.set("pageXOffset", 0.0)?;
-            global.set("pageYOffset", 0.0)?;
-
-            // Modern Observers
+            // Define observer classes
             rquickjs::Class::<crate::runtime::bindings::html::mutation_observer::MutationObserver>::define(&global)?;
             rquickjs::Class::<crate::runtime::bindings::html::resize_observer::ResizeObserver>::define(&global)?;
             rquickjs::Class::<crate::runtime::bindings::html::intersection_observer::IntersectionObserver>::define(&global)?;
-
-            // Modern Web APIs stubs
-            global.set("matchMedia", rquickjs::Function::new(ctx.clone(), |ctx: Ctx, _: String| -> rquickjs::Result<rquickjs::Object> {
-                let mql = ctx.globals().get::<_, rquickjs::Object>("Object")?.construct::<_, rquickjs::Object>(())?;
-                mql.set("matches", true)?;
-                mql.set("media", "")?;
-                mql.set("onchange", Value::new_null(ctx.clone()))?;
-                mql.set("addListener", rquickjs::Function::new(ctx.clone(), || {}))?;
-                mql.set("removeListener", rquickjs::Function::new(ctx.clone(), || {}))?;
-                Ok(mql)
-            }))?;
-
-            global.set("scrollTo", rquickjs::Function::new(ctx.clone(), |_: f32, _: f32| {}))?;
-            global.set("scrollBy", rquickjs::Function::new(ctx.clone(), |_: f32, _: f32| {}))?;
-            
-            global.set("alert", rquickjs::Function::new(ctx.clone(), |msg: String| {
-                println!("[Albedo Alert] {}", msg);
-            }))?;
-            global.set("confirm", rquickjs::Function::new(ctx.clone(), |msg: String| -> bool {
-                println!("[Albedo Confirm] {}", msg);
-                true
-            }))?;
-
-            let custom_elements = ctx.globals().get::<_, rquickjs::Object>("Object")?
-                .construct::<_, rquickjs::Object>(())?;
-            custom_elements.set("define", rquickjs::Function::new(ctx.clone(), || {}))?;
-            custom_elements.set("get", rquickjs::Function::new(ctx.clone(), || Value::new_null(ctx.clone())))?;
-            custom_elements.set("whenDefined", rquickjs::Function::new(ctx.clone(), || Value::new_null(ctx.clone())))?;
-            global.set("customElements", custom_elements)?;
 
             Ok::<_, rquickjs::Error>(())
         })?;

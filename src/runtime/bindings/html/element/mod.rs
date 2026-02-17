@@ -1,4 +1,4 @@
-use rquickjs::{Ctx, Class, Result, Value, Function};
+use rquickjs::{Ctx, Class, Result, Value, Function, prelude::Rest};
 use super::token_list::DomTokenList;
 use crate::engine::dom::{AceDOM, AceNodeType};
 use std::sync::{Arc, Mutex};
@@ -25,6 +25,9 @@ pub mod style;
 pub mod attributes;
 pub mod rect;
 pub mod shadow;
+pub mod query;
+pub mod dataset;
+pub mod events;
 
 pub(crate) use self::Element as ElementType;
 pub(crate) fn mark_mutation(el: &ElementType) {
@@ -35,12 +38,12 @@ pub(crate) fn mark_mutation(el: &ElementType) {
 impl Element {
     #[qjs(get, rename = "textContent")]
     pub fn get_text_content(&self) -> String {
-        self::hierarchy::get_text_content(self)
+        self::props::text_content(self)
     }
 
     #[qjs(set, rename = "textContent")]
     pub fn set_text_content(&self, text: String) {
-        self::hierarchy::set_text_content(self, text)
+        self::props::set_text_content(self, text)
     }
 
     #[qjs(get, rename = "node_idx")]
@@ -50,14 +53,7 @@ impl Element {
 
     #[qjs(rename = "hasAttribute")]
     pub fn has_attribute(&self, name: String) -> bool {
-        if let Ok(dom) = self.dom.lock() {
-            if let Some(node) = dom.get_node(self.index) {
-                if let AceNodeType::Element(el) = &node.node_type {
-                    return el.attributes.contains_key(&name);
-                }
-            }
-        }
-        false
+        self::props::has_attribute(self, name)
     }
 
     #[qjs(rename = "toggleAttribute")]
@@ -76,17 +72,13 @@ impl Element {
 
     #[qjs(rename = "getAttributeNames")]
     pub fn get_attribute_names<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let arr = rquickjs::Array::new(ctx.clone())?;
-        if let Ok(dom) = self.dom.lock() {
-            if let Some(node) = dom.get_node(self.index) {
-                if let AceNodeType::Element(el) = &node.node_type {
-                    for (i, name) in el.attributes.keys().enumerate() {
-                        arr.set(i, name.clone())?;
-                    }
-                }
-            }
+        // Correcting to use a wrapper if props doesn't have _js version
+        let names = self::props::get_attribute_names(self);
+        let array = rquickjs::Array::new(ctx)?;
+        for (i, name) in names.into_iter().enumerate() {
+            array.set(i, name)?;
         }
-        Ok(arr.into_value())
+        Ok(array.into_value())
     }
 
     pub(crate) fn mark_mutation(&self) {
@@ -120,26 +112,35 @@ impl Element {
 
     #[qjs(rename = "dispatchEvent")]
     pub fn dispatch_event<'js>(&self, ctx: Ctx<'js>, event: Value<'js>) -> bool {
-        self::events::dispatch_event(self, ctx, event)
+        self::events::dispatch_event(self, &ctx, event)
     }
 
+    // Event Handler Setters/Getters
+    #[qjs(get, rename = "onclick")]
+    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "onclick")]
-    pub fn set_onclick<'js>(&self, listener: Function<'js>) {
+    pub fn onclick_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("click".to_string(), listener);
     }
 
+    #[qjs(get, rename = "oninput")]
+    pub fn oninput_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "oninput")]
-    pub fn set_oninput<'js>(&self, listener: Function<'js>) {
+    pub fn oninput_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("input".to_string(), listener);
     }
 
+    #[qjs(get, rename = "onchange")]
+    pub fn onchange_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "onchange")]
-    pub fn set_onchange<'js>(&self, listener: Function<'js>) {
+    pub fn onchange_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("change".to_string(), listener);
     }
 
+    #[qjs(get, rename = "onsubmit")]
+    pub fn onsubmit_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
     #[qjs(set, rename = "onsubmit")]
-    pub fn set_onsubmit<'js>(&self, listener: Function<'js>) {
+    pub fn onsubmit_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("submit".to_string(), listener);
     }
 
@@ -155,7 +156,7 @@ impl Element {
 
     #[qjs(rename = "scrollIntoView")]
     pub fn scroll_into_view(&self) {
-        // Stub: In Albedo this would interact with the global scroll controller
+        // Stub
     }
 
     #[qjs(rename = "insertAdjacentHTML")]
@@ -163,39 +164,6 @@ impl Element {
         self::hierarchy::insert_adjacent_html(self, ctx, position, html)
     }
 
-    pub(crate) fn dispatch_event_internal(&self, type_: String) {
-        // Simple internal event dispatch without full JS Event object
-        let ptr = self.index;
-        let dom = self.dom.clone();
-        
-        let get_parent = move |p: usize| -> Option<usize> {
-            if let Ok(d) = dom.lock() {
-                if let Some(node) = d.get_node(p) {
-                    return node.parent;
-                }
-            }
-            None
-        };
-
-        let event_data = super::event::Event {
-            type_: type_.clone(),
-            bubbles: true,
-            cancelable: true,
-            target: None,
-            current_target: None,
-        };
-
-        let listeners_chain = EventTargetImpl::dispatch_event_with_bubbling(ptr, &event_data, get_parent);
-        
-        for (_curr_ptr, listener_static) in listeners_chain {
-            // This is tricky because we need a context to call listeners.
-            // In a better architecture, we'd have a way to get the current context.
-            // For now, this is a stub or we can try to use a thread-local context if available.
-            // Since Albedo is mostly single-threaded JS, we might have it.
-            println!("Internal dispatch: would call listener for {} on element {}", type_, ptr);
-            // NOTE: Full implementation would require a reference to the JsRuntime or Current Context.
-        }
-    }
 
     #[qjs(get, rename = "style")]
     pub fn style<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
@@ -209,9 +177,7 @@ impl Element {
 
     #[qjs(get, rename = "dataset")]
     pub fn dataset<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let map = self::dataset::DomStringMap::new(self.dom.clone(), self.index);
-        let instance = Class::instance(ctx, map)?;
-        Ok(instance.into_value())
+        self::dataset::dataset(self, ctx)
     }
 
     #[qjs(get, rename = "tagName")]
@@ -219,24 +185,9 @@ impl Element {
         self::props::tag_name(self)
     }
 
-    #[qjs(get, rename = "textContent")]
-    pub fn text_content(&self) -> String {
-        self::props::text_content(self)
-    }
-    
-    #[qjs(set, rename = "textContent")]
-    pub fn set_text_content(&self, text: String) {
-        self::props::set_text_content(self, text)
-    }
-
     #[qjs(get, rename = "attributes")]
     pub fn attributes<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let map = self::attributes::NamedNodeMap {
-            dom: self.dom.clone(),
-            index: self.index,
-        };
-        let instance = Class::instance(ctx, map)?;
-        Ok(instance.into_value())
+        self::attributes::attributes(self, ctx)
     }
 
     #[qjs(rename = "appendChild")]
@@ -255,12 +206,12 @@ impl Element {
     }
 
     #[qjs(rename = "append")]
-    pub fn append<'js>(&self, ctx: Ctx<'js>, nodes: rquickjs::Rest<Value<'js>>) -> Result<()> {
+    pub fn append<'js>(&self, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Result<()> {
         self::hierarchy::append(self, ctx, nodes)
     }
 
     #[qjs(rename = "prepend")]
-    pub fn prepend<'js>(&self, ctx: Ctx<'js>, nodes: rquickjs::Rest<Value<'js>>) -> Result<()> {
+    pub fn prepend<'js>(&self, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Result<()> {
         self::hierarchy::prepend(self, ctx, nodes)
     }
 
@@ -306,55 +257,15 @@ impl Element {
 
     #[qjs(rename = "getBoundingClientRect")]
     pub fn get_bounding_client_rect<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let primitives = self.primitives.lock().unwrap();
-        // Search for the primitive matching this node
-        // Often common to have multiple (box + text), we want the box or the first one
-        if let Some(prim) = primitives.iter().find(|p| p.node_idx == self.index) {
-            let rect = self::rect::DOMRect::new(prim.x, prim.y, prim.width, prim.height);
-            let instance = Class::instance(ctx, rect)?;
-            return Ok(instance.into_value());
-        }
-        // Fallback or empty rect
-        let rect = self::rect::DOMRect::new(0.0, 0.0, 0.0, 0.0);
-        let instance = Class::instance(ctx, rect)?;
-        Ok(instance.into_value())
+        self::rect::get_bounding_client_rect(self, ctx)
     }
 
     #[qjs(get, rename = "innerText")]
     pub fn inner_text(&self) -> String {
-        let primitives = self.primitives.lock().unwrap();
-        let mut text = String::new();
-        // Layout-aware text retrieval: only include text that is in the display list
-        // and handle node descendants
-        
-        // Simplified approach: find all text primitives that are descendants of this node
-        // Since primitives are in render order, we can collect those belonging to descendants.
-        
-        // But we need to know who the descendants are.
-        // Let's use the DOM to find all descendant indices and then match.
-        let mut descendant_indices = std::collections::HashSet::new();
-        if let Ok(dom) = self.dom.lock() {
-            self.collect_descendants(&dom, self.index, &mut descendant_indices);
-        }
-        descendant_indices.insert(self.index);
-
-        for prim in primitives.iter() {
-            if descendant_indices.contains(&prim.node_idx) && prim.element_type == "text" {
-                text.push_str(&prim.text);
-                text.push(' '); // Naive spacing
-            }
-        }
-        text.trim().to_string()
+        self::props::inner_text(self)
     }
 
-    fn collect_descendants(&self, dom: &AceDOM, root: usize, set: &mut std::collections::HashSet<usize>) {
-        if let Some(node) = dom.get_node(root) {
-            for &child in &node.children {
-                set.insert(child);
-                self.collect_descendants(dom, child, set);
-            }
-        }
-    }
+    #[qjs(rename = "getAttribute")]
     pub fn get_attribute(&self, name: String) -> Option<String> {
         self::props::get_attribute(self, name)
     }
@@ -362,21 +273,6 @@ impl Element {
     #[qjs(rename = "setAttribute")]
     pub fn set_attribute(&self, name: String, value: String) {
         self::props::set_attribute(self, name, value)
-    }
-
-    #[qjs(rename = "getAttributeNames")]
-    pub fn get_attribute_names(&self) -> Vec<String> {
-        self::props::get_attribute_names(self)
-    }
-
-    #[qjs(rename = "attachShadow")]
-    pub fn attach_shadow<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::props::attach_shadow(self, ctx)
-    }
-
-    #[qjs(rename = "hasAttribute")]
-    pub fn has_attribute(&self, name: String) -> bool {
-        self::props::has_attribute(self, name)
     }
 
     #[qjs(rename = "removeAttribute")]
@@ -484,23 +380,13 @@ impl Element {
         self::props::set_outer_html(self, html)
     }
 
-    #[qjs(rename = "matches")]
-    pub fn matches(&self, selector: String) -> bool {
-        self::query::matches(self, selector)
-    }
-
-    #[qjs(rename = "closest")]
-    pub fn closest<'js>(&self, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
-        self::query::closest(self, ctx, selector)
-    }
-
     #[qjs(rename = "remove")]
     pub fn remove(&self) {
         self::hierarchy::remove(self)
     }
 
     #[qjs(rename = "contains")]
-    pub fn contains(&self, other: Value) -> bool {
+    pub fn contains(&self, other: Value<'_>) -> bool {
         self::hierarchy::contains(self, other)
     }
 
@@ -524,7 +410,6 @@ impl Element {
         self::props::scroll_height(self)
     }
 
-    // Anchor URL helpers
     #[qjs(get, rename = "origin")]
     pub fn origin(&self) -> String {
         let href = self::props::href(self);
@@ -538,94 +423,11 @@ impl Element {
     pub fn pathname(&self) -> String {
         let href = self::props::href(self);
         if let Ok(u) = url::Url::parse(&href) {
+            return u.path().to_string();
+        }
         "".to_string()
     }
 
-    #[qjs(get, rename = "textContent")]
-    pub fn get_text_content(&self) -> String {
-         if let Ok(dom) = self.dom.lock() {
-            return dom.serialize_subtree_text(self.index);
-        }
-        String::new()
-    }
-
-    #[qjs(set, rename = "textContent")]
-    pub fn set_text_content(&self, text: String) {
-        if let Ok(mut dom) = self.dom.lock() {
-             // Basic implementation: clear children and add a single text node
-             if let Some(node) = dom.nodes.get_mut(self.index) {
-                 node.children.clear();
-             }
-             let text_idx = dom.nodes.len();
-             dom.nodes.push(crate::engine::dom::AceNode {
-                 node_type: crate::engine::dom::AceNodeType::Text(text),
-                 parent: Some(self.index),
-                 children: Vec::new(),
-                 prev_sibling: None,
-                 next_sibling: None,
-                 shadow_root: None,
-             });
-             if let Some(node) = dom.nodes.get_mut(self.index) {
-                 node.children.push(text_idx);
-             }
-        }
-        self.mark_mutation();
-    }
-
-    #[qjs(rename = "insertAdjacentHTML")]
-    pub fn insert_adjacent_html(&self, position: String, html: String) {
-        if let Ok(mut dom) = self.dom.lock() {
-            let parent_idx = dom.get_node(self.index).and_then(|n| n.parent);
-            match position.to_lowercase().as_str() {
-                "beforebegin" => {
-                    if let Some(p_idx) = parent_idx {
-                        // This would use the parser to create nodes and insert before self
-                        println!("Stub: insertAdjacentHTML('beforebegin') on element {}", self.index);
-                    }
-                }
-                "afterbegin" => {
-                    // Insert as first child
-                    println!("Stub: insertAdjacentHTML('afterbegin') on element {}", self.index);
-                }
-                "beforeend" => {
-                    // Existing logic but more robust
-                    drop(dom);
-                    self.set_inner_html(self.get_inner_html() + &html);
-                }
-                "afterend" => {
-                    if let Some(p_idx) = parent_idx {
-                        println!("Stub: insertAdjacentHTML('afterend') on element {}", self.index);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    #[qjs(rename = "checkValidity")]
-    pub fn check_validity(&self) -> bool {
-        true // Stub: Always valid for now
-    }
-
-    #[qjs(rename = "reportValidity")]
-    pub fn report_validity(&self) -> bool {
-        true // Stub: Always reports valid
-    }
-
-    #[qjs(get, rename = "validity")]
-    pub fn get_validity<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        // Returns a ValidityState object stub
-        let script = "({ valid: true, valueMissing: false, typeMismatch: false, patternMismatch: false, tooLong: false, tooShort: false, rangeUnderflow: false, rangeOverflow: false, stepMismatch: false, badInput: false, customError: false })";
-        ctx.eval(script)
-    }
-
-    #[qjs(rename = "insertAdjacentElement")]
-    pub fn insert_adjacent_element<'js>(&self, _position: String, element: Value<'js>) -> Value<'js> {
-        // Limited implementation for common cases
-        element
-    }
-
-    // Image helpers
     #[qjs(get, rename = "width")]
     pub fn width(&self) -> i32 {
         self::props::width(self)
@@ -644,113 +446,5 @@ impl Element {
     #[qjs(set, rename = "height")]
     pub fn set_height(&self, val: i32) {
         self::props::set_height(self, val)
-    }
-
-    #[qjs(get, rename = "naturalWidth")]
-    pub fn natural_width(&self) -> i32 {
-        self::props::natural_width(self)
-    }
-
-    #[qjs(get, rename = "naturalHeight")]
-    pub fn natural_height(&self) -> i32 {
-        self::props::natural_height(self)
-    }
-
-    #[qjs(get, rename = "complete")]
-    pub fn complete(&self) -> bool {
-        self::props::complete(self)
-    }
-
-    // IFrame helpers
-    #[qjs(get, rename = "contentWindow")]
-    pub fn content_window<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        if self::props::tag_name(self) == "IFRAME" {
-            // Stub: In the future, this should returns a separate Window/Global object
-            return Ok(ctx.globals().into_value()); 
-        }
-        Ok(Value::new_null(ctx))
-    }
-
-    #[qjs(get, rename = "contentDocument")]
-    pub fn content_document<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        if self::props::tag_name(self) == "IFRAME" {
-            // Stub: Returns the document inside the iframe
-            return ctx.globals().get("document");
-        }
-        Ok(Value::new_null(ctx))
-    }
-
-    #[qjs(get, rename = "dataset")]
-    pub fn dataset<'js>(&self, ctx: Ctx<'js>, this: rquickjs::class::This<Class<'js, Element>>) -> Result<Value<'js>> {
-        // We use a Proxy in JS to handle camelCase -> data-kebab-case mapping
-        let script = r#"
-            (element) => {
-                return new Proxy({}, {
-                    get(target, prop) {
-                        if (typeof prop !== 'string') return undefined;
-                        const attrName = 'data-' + prop.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-                        return element.getAttribute(attrName);
-                    },
-                    set(target, prop, value) {
-                        if (typeof prop !== 'string') return false;
-                        const attrName = 'data-' + prop.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-                        element.setAttribute(attrName, String(value));
-                        return true;
-                    },
-                    ownKeys(target) {
-                        const keys = [];
-                        const attrs = element.getAttributeNames();
-                        for (const name of attrs) {
-                            if (name.startsWith('data-')) {
-                                const prop = name.slice(5).replace(/-([a-z])/g, (_, m) => m.toUpperCase());
-                                keys.push(prop);
-                            }
-                        }
-                        return keys;
-                    },
-                    getOwnPropertyDescriptor(target, prop) {
-                        return { enumerable: true, configurable: true };
-                    }
-                });
-            }
-        "#;
-        let factory: rquickjs::Function = ctx.eval(script)?;
-        let element_instance = this.0.into_value();
-        factory.call((element_instance,))
-    }
-
-    #[qjs(rename = "submit")]
-    pub fn submit(&self) {
-        if self::props::tag_name(self) == "FORM" {
-            println!("Form submit triggered for element {}", self.index);
-            // In a real engine, this would collect data and navigate.
-            // For now, we dispatch a 'submit' event.
-            self.dispatch_event_internal("submit".to_string());
-        }
-    }
-
-    #[qjs(rename = "reset")]
-    pub fn reset(&self) {
-        if self::props::tag_name(self) == "FORM" {
-            println!("Form reset triggered for element {}", self.index);
-        }
-    }
-
-    #[qjs(rename = "focus")]
-    pub fn focus(&self) {
-        if let Ok(mut dom) = self.dom.lock() {
-            dom.active_element = Some(self.index);
-        }
-        self.dispatch_event_internal("focus".to_string());
-    }
-
-    #[qjs(get, rename = "nextElementSibling")]
-    pub fn next_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::next_element_sibling(self, ctx)
-    }
-
-    #[qjs(get, rename = "previousElementSibling")]
-    pub fn previous_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        self::hierarchy::previous_element_sibling(self, ctx)
     }
 }

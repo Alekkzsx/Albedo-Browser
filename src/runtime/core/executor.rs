@@ -18,7 +18,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                             let registry = rt.observer_registry.lock().unwrap();
                             for (callback_id, records) in pending {
                                 if let Some(cb_persistent) = registry.get(&callback_id) {
-                                    if let Ok(callback) = cb_persistent.restore(&ctx) {
+                                    if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
                                         // Convert records to JS array
                                         let arr = rquickjs::Array::new(ctx.clone()).unwrap();
                                         for (i, rec) in records.into_iter().enumerate() {
@@ -79,9 +79,9 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                     if let Some(resolution) = el.take_resolution(res.id) {
                         match res.result {
                             Ok((status, body)) => {
-                                if let Ok(resolve) = resolution.resolve.restore(&ctx) {
+                                if let Ok(resolve) = resolution.resolve.0.clone().restore(&ctx) {
                                     use crate::runtime::bindings::webapi::fetch::Response;
-                                    let response = Response { status, body };
+                                    let response = Response { status, body, headers: crate::runtime::bindings::webapi::fetch::Headers::new() };
                                     if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), response) {
                                         let _: rquickjs::Result<()> = resolve.call((instance,));
                                         executed = true;
@@ -89,7 +89,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                 }
                             }
                             Err(err) => {
-                                if let Ok(reject) = resolution.reject.restore(&ctx) {
+                                if let Ok(reject) = resolution.reject.0.clone().restore(&ctx) {
                                     let _: rquickjs::Result<()> = reject.call((err,));
                                     executed = true;
                                 }
@@ -115,7 +115,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
             rt.with_context(|ctx| {
             ctx.with(|ctx| {
                 for timer in timers {
-                        if let Ok(func) = timer.callback.restore(&ctx) {
+                    if let Ok(func) = timer.callback.0.clone().restore(&ctx) {
                         let _: rquickjs::Result<Value> = func.call(());
                         executed = true;
                     }
@@ -208,7 +208,7 @@ fn check_layout_observers(rt: &JsRuntime) {
             ctx.with(|ctx| {
                 // Handle Resize Notifications
                 for (cb_persistent, node_idx, w, h) in resize_notifications {
-                    if let Ok(cb) = cb_persistent.restore(&ctx) {
+                    if let Ok(cb) = cb_persistent.clone().restore(&ctx) {
                         let entry = rquickjs::Object::new(ctx.clone()).unwrap();
                         let rect = rquickjs::Object::new(ctx.clone()).unwrap();
                         let _ = rect.set("width", w);
@@ -226,7 +226,7 @@ fn check_layout_observers(rt: &JsRuntime) {
 
                 // Handle Intersection Notifications
                 for (cb_persistent, node_idx, ratio) in intersection_notifications {
-                    if let Ok(cb) = cb_persistent.restore(&ctx) {
+                    if let Ok(cb) = cb_persistent.clone().restore(&ctx) {
                         let entry = rquickjs::Object::new(ctx.clone()).unwrap();
                         let _ = entry.set("intersectionRatio", ratio);
                         let _ = entry.set("isIntersecting", ratio > 0.0);

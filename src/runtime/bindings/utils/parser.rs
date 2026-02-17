@@ -1,5 +1,6 @@
 use rquickjs::{Ctx, Class, Result, Value};
 use crate::runtime::bindings::html::document::Document;
+use kuchiki::traits::TendrilSink;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -26,14 +27,15 @@ impl DOMParser {
         let doc_borrow = global_doc.borrow();
         
         let kuchiki_root = kuchiki::parse_html().from_utf8().one(source.as_bytes());
-        let new_dom = std::sync::Arc::new(std::sync::Mutex::new(crate::engine::dom::AceDOM::new(kuchiki_root)));
+        let new_dom = std::sync::Arc::new(std::sync::Mutex::new(crate::engine::dom::AceDOM::from_kuchiki(kuchiki_root)));
         
         let new_doc = Document {
             dom: new_dom,
             stylesheet: doc_borrow.stylesheet.clone(),
             mutations: doc_borrow.mutations.clone(),
             stylesheet_dirty: doc_borrow.stylesheet_dirty.clone(),
-            cookie_storage: std::sync::Arc::new(std::sync::Mutex::new(String::new())),
+            cookie_storage: doc_borrow.cookie_storage.clone(),
+            resource_manager: doc_borrow.resource_manager.clone(),
             primitives: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             url: "about:blank".into(),
             referrer: "".into(),

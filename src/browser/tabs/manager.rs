@@ -100,7 +100,7 @@ impl TabManager {
         let mut col = self.collection.borrow_mut();
         if let Some(tab) = col.get_active_mut() {
             if let Some(mut rx) = tab.resource_rx.take() {
-                let needs_sync = tab.engine.process_resource_responses(&mut rx);
+                let needs_sync = tab.engine.process_resource_responses();
                 tab.resource_rx = Some(rx);
                 return needs_sync;
             }
@@ -135,6 +135,80 @@ impl TabManager {
                     }
                 }
             }
+        }
+        false
+    }
+
+    pub fn handle_hover(&self, x: f32, y: f32) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+             let node_id = tab.engine.find_element_at_position(x, y);
+             let old_hover = tab.engine.hovered_element;
+             
+             if old_hover != node_id {
+                 tab.engine.set_hover(node_id);
+                 return true;
+             }
+        }
+        false
+    }
+
+    pub fn handle_pointer_down(&self, x: f32, y: f32) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+             let node_id = tab.engine.find_element_at_position(x, y);
+             // Set active only if clicked on something
+             // Standard behavior: clicking on empty space usually clears active state of others?
+             // Actually, active state is usually per-element. If I click empty active becomes None.
+             if node_id != tab.engine.active_element {
+                tab.engine.set_active(node_id);
+                
+                if let Some(idx) = node_id {
+                    // Need to access runtime while holding mutable borrow of collection?
+                    // tab is &mut Tab. engine is inside tab.
+                    // We can access fields.
+                    if let Some(ref rt) = tab.engine.js_runtime {
+                        if let Some(ref dom) = tab.engine.dom {
+                            rt.dispatch_event(dom.clone(), idx, "mousedown");
+                        }
+                    }
+                }
+                return true;
+             }
+        }
+        false
+    }
+
+    pub fn handle_pointer_up(&self, x: f32, y: f32) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+             // On mouse up, we generally clear active state of the current active element
+             if tab.engine.active_element.is_some() {
+                 let old_active = tab.engine.active_element;
+                 tab.engine.set_active(None);
+                 
+                 // Dispatch mouseup. Usually to the element under cursor OR the active element.
+                 // For CSS :active, it clears when mouse is released.
+                 if let Some(idx) = old_active {
+                     if let Some(ref rt) = tab.engine.js_runtime {
+                         if let Some(ref dom) = tab.engine.dom {
+                             rt.dispatch_event(dom.clone(), idx, "mouseup");
+                         }
+                     }
+                 }
+                 return true;
+             }
+        }
+        false
+    }
+
+    pub fn process_animations(&self) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
+             if tab.engine.tick(now) {
+                 return true;
+             }
         }
         false
     }

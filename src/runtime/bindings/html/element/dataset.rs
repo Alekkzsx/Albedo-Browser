@@ -38,3 +38,10 @@ impl DomStringMap {
         Self { dom, node_idx }
     }
 }
+
+use super::Element;
+pub fn dataset<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    let ds = DomStringMap::new(el.dom.clone(), el.index);
+    let instance = Class::instance(ctx, ds)?;
+    Ok(instance.into_value())
+}
