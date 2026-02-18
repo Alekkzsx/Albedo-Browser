@@ -83,7 +83,9 @@ fn test_dom_sync_with_timers() {
 
     let rt = JsRuntime::new().unwrap();
     // rt.init_stdlib("http://test.com").unwrap();
-    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+    let primitives = Arc::new(Mutex::new(Vec::new()));
+    let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
 
     // Verify initial state via JS
     let initial = rt.execute_script("document.getElementById('target').textContent").unwrap();
@@ -118,7 +120,9 @@ fn test_computed_style() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+    let primitives = Arc::new(Mutex::new(Vec::new()));
+    let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
 
     let result = rt.execute_script(r#"
         var el = document.getElementById("target");
@@ -145,7 +149,9 @@ fn test_dom_traversal() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+    let primitives = Arc::new(Mutex::new(Vec::new()));
+    let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
 
     let result = rt.execute_script(r#"
         var parent = document.getElementById("parent");
@@ -173,7 +179,9 @@ fn test_dom_attribute_manipulation() {
     let dom = engine.dom.as_ref().unwrap().clone();
 
     let rt = JsRuntime::new().unwrap();
-    document::register(&rt, dom.clone(), engine.stylesheet.clone()).unwrap();
+    let primitives = Arc::new(Mutex::new(Vec::new()));
+    let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
 
     let result = rt.execute_script(r#"
         const el = document.getElementById("target");

@@ -27,18 +27,39 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                             let _ = obj.set("attributeName", rec.attribute_name);
                                             let _ = obj.set("oldValue", rec.old_value);
                                             
-                                            // Wrap target as Element
-                                            use crate::runtime::bindings::html::element::Element;
-                                            let target_el = Element {
-                                                dom: dom_arc.clone(),
-                                                index: rec.target,
-                                                mutations: rt.mutations.clone(),
-                                                stylesheet_dirty: rt.stylesheet_dirty.clone(),
-                                                primitives: rt.primitives.clone(),
-                                            };
-                                            if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), target_el) {
-                                                let _ = obj.set("target", instance);
+                                            // Wrap target
+                                            let target = wrap_element(rt, rec.target, &ctx);
+                                            let _ = obj.set("target", target);
+
+                                            // addedNodes
+                                            let added_arr = rquickjs::Array::new(ctx.clone()).unwrap();
+                                            for (idx, &node_idx) in rec.added_nodes.iter().enumerate() {
+                                                let node = wrap_element(rt, node_idx, &ctx);
+                                                let _ = added_arr.set(idx, node);
                                             }
+                                            let _ = obj.set("addedNodes", added_arr);
+
+                                            // removedNodes
+                                            let removed_arr = rquickjs::Array::new(ctx.clone()).unwrap();
+                                            for (idx, &node_idx) in rec.removed_nodes.iter().enumerate() {
+                                                let node = wrap_element(rt, node_idx, &ctx);
+                                                let _ = removed_arr.set(idx, node);
+                                            }
+                                            let _ = obj.set("removedNodes", removed_arr);
+
+                                            // Siblings
+                                            if let Some(prev) = rec.previous_sibling {
+                                                let _ = obj.set("previousSibling", wrap_element(rt, prev, &ctx));
+                                            } else {
+                                                let _ = obj.set("previousSibling", rquickjs::Value::new_null(ctx.clone()));
+                                            }
+
+                                            if let Some(next) = rec.next_sibling {
+                                                let _ = obj.set("nextSibling", wrap_element(rt, next, &ctx));
+                                            } else {
+                                                let _ = obj.set("nextSibling", rquickjs::Value::new_null(ctx.clone()));
+                                            }
+
                                             let _ = arr.set(i, obj);
                                         }
                                         let _: rquickjs::Result<Value> = callback.call((arr,));
@@ -252,6 +273,8 @@ fn wrap_element<'js>(rt: &JsRuntime, node_idx: usize, ctx: &Ctx<'js>) -> Value<'
         mutations: rt.mutations.clone(),
         stylesheet_dirty: rt.stylesheet_dirty.clone(),
         primitives: rt.primitives.clone(),
+        canvas_contexts: rt.canvas_contexts.clone(),
+        pending_scroll: rt.pending_scroll.clone(),
     };
     if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
         instance.into_value()

@@ -8,13 +8,22 @@ use kuchiki::traits::TendrilSink;
 
 fn create_test_env(html: &str) -> (JsRuntime, Arc<Mutex<AceDOM>>) {
     let document = kuchiki::parse_html().one(html);
-    let dom = Arc::new(Mutex::new(AceDOM::new(document)));
+    let dom = Arc::new(Mutex::new(AceDOM::from_kuchiki(document)));
     let rt = JsRuntime::new().unwrap();
     
     let stylesheet = Arc::new(Mutex::new(style::parse(""))); // Empty stylesheet
     
-    // register expects dom and stylesheet
-    register(&rt, dom.clone(), stylesheet).unwrap();
+    // register expects 8 arguments
+    register(
+        &rt, 
+        dom.clone(), 
+        stylesheet, 
+        Arc::new(Mutex::new(Vec::new())), 
+        Arc::new(Mutex::new(std::collections::HashMap::new())), 
+        "http://test.com".to_string(), 
+        "".to_string(), 
+        None
+    ).unwrap();
     
     (rt, dom)
 }

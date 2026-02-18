@@ -18,7 +18,14 @@ pub enum CssLength {
     Repeat(String, Vec<CssLength>),
     MinContent,
     MaxContent,
+    AutoFill,
+    AutoFit,
     Calc(String),
+    LineNames(Vec<String>),
+    Name(String),
+    Number(f32),
+    Subgrid,
+    Span(u16),
 }
 
 impl Default for CssLength {
@@ -56,6 +63,13 @@ impl fmt::Display for CssLength {
             },
             CssLength::MinContent => write!(f, "min-content"),
             CssLength::MaxContent => write!(f, "max-content"),
+            CssLength::AutoFill => write!(f, "auto-fill"),
+            CssLength::AutoFit => write!(f, "auto-fit"),
+            CssLength::LineNames(names) => write!(f, "[{}]", names.join(" ")),
+            CssLength::Name(name) => write!(f, "{}", name),
+            CssLength::Number(v) => write!(f, "{}", v),
+            CssLength::Subgrid => write!(f, "subgrid"),
+            CssLength::Span(v) => write!(f, "span {}", v),
         }
     }
 }
@@ -72,6 +86,10 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
         CssLength::Fr(v) => *v, 
         CssLength::Zero => 0.0,
         CssLength::Auto => 0.0,
+        CssLength::Number(v) => *v,
+        CssLength::Subgrid => 0.0,
+        CssLength::Span(v) => *v as f32,
+        CssLength::Name(_) | CssLength::LineNames(_) => 0.0,
         CssLength::Clamp(min, val, max) => {
             let min_v = resolve_length(min, parent_font_size, root_font_size, viewport_width, viewport_height);
             let val_v = resolve_length(val, parent_font_size, root_font_size, viewport_width, viewport_height);
@@ -102,7 +120,7 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
                 0.0
             }
         },
-        CssLength::MinContent | CssLength::MaxContent => 0.0, // Needs layout context
+        CssLength::MinContent | CssLength::MaxContent | CssLength::AutoFill | CssLength::AutoFit => 0.0, // Needs layout context
         CssLength::Calc(_) => 0.0, // Needs complex parser
     }
 }
@@ -216,6 +234,11 @@ pub enum CssDisplay {
     Flex,
     InlineFlex,
     Grid,
+    Contents,
+    Table,
+    TableRow,
+    TableCell,
+    TableHeader,
 }
 
 impl Default for CssDisplay {
@@ -519,6 +542,14 @@ pub struct BoxShadow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Outline {
+    pub width: f32,
+    pub color: CssColor,
+    pub style: String, // "solid", "dashed", "dotted", etc.
+    pub offset: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CssFilter {
     Blur(CssLength),
     Brightness(f32),
@@ -629,6 +660,7 @@ pub struct ComputedStyle {
     pub opacity: f32,
     pub box_shadow: Vec<BoxShadow>,
     pub text_shadow: Vec<TextShadow>,
+    pub outline: Option<Outline>,
     pub line_height: CssLength,
     
     // Typography
@@ -742,6 +774,7 @@ impl Default for ComputedStyle {
             opacity: 1.0,
             box_shadow: Vec::new(),
             text_shadow: Vec::new(),
+            outline: None,
             line_height: CssLength::Px(1.2), // Default line-height
             
             // Typography

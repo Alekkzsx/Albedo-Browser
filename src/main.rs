@@ -13,6 +13,10 @@ use browser::tabs::manager::TabManager;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     browser::setup::set_panic_hook();
 
+    // Initialize Tokio Runtime
+    let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
+
     println!("[Main] Starting Albedo Browser...");
     let ui = browser::setup::create_window()?;
     let ui_handle = ui.as_weak();
@@ -109,6 +113,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui_up = ui_handle.clone();
     ui.on_pointer_up(move |x, y| {
         browser::events::handle_pointer_up(&ui_up, &tm_up, x, y);
+    });
+
+    let tm_key = tab_manager.clone();
+    ui.on_key_down(move |key, code, ctrl, shift, alt, meta| {
+        browser::events::handle_key_down(&tm_key, key, code, ctrl, shift, alt, meta);
+    });
+
+    let tm_key_up = tab_manager.clone();
+    ui.on_key_up(move |key, code, ctrl, shift, alt, meta| {
+        browser::events::handle_key_up(&tm_key_up, key, code, ctrl, shift, alt, meta);
+    });
+
+    let tm_scroll = tab_manager.clone();
+    let ui_scroll = ui_handle.clone();
+    ui.on_scroll(move |x, y, delta| {
+        browser::events::handle_scroll(&ui_scroll, &tm_scroll, x, y, delta);
     });
 
     ui.run()?;

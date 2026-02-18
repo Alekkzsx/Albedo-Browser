@@ -16,6 +16,10 @@ pub struct DocumentFragment {
     pub stylesheet_dirty: Arc<Mutex<bool>>,
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    #[qjs(skip_trace)]
+    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    #[qjs(skip_trace)]
+    pub pending_scroll: Arc<Mutex<Option<usize>>>,
 }
 
 #[rquickjs::methods]
@@ -38,7 +42,14 @@ impl DocumentFragment {
 }
 
 impl DocumentFragment {
-    pub fn new(dom: Arc<Mutex<AceDOM>>, mutations: Arc<Mutex<bool>>, stylesheet_dirty: Arc<Mutex<bool>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>) -> Self {
+    pub fn new(
+        dom: Arc<Mutex<AceDOM>>,
+        mutations: Arc<Mutex<bool>>,
+        stylesheet_dirty: Arc<Mutex<bool>>,
+        primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+        canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+        pending_scroll: Arc<Mutex<Option<usize>>>,
+    ) -> Self {
         let mut d = dom.lock().unwrap();
         let index = d.nodes.len();
         d.nodes.push(AceNode {
@@ -49,7 +60,7 @@ impl DocumentFragment {
             next_sibling: None,
             shadow_root: None,
         });
-        Self { dom: dom.clone(), index, mutations, stylesheet_dirty, primitives }
+        Self { dom: dom.clone(), index, mutations, stylesheet_dirty, primitives, canvas_contexts, pending_scroll }
     }
 
     // Helper to reuse element logic
@@ -60,6 +71,8 @@ impl DocumentFragment {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         }
     }
 }

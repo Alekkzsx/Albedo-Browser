@@ -25,6 +25,7 @@ impl History {
         stack.push(crate::runtime::core::runtime::HistoryEntry {
             url: url.unwrap_or_default(),
             state_json: Some(json),
+            referrer: "".into(),
         });
         *index = stack.len() - 1;
         

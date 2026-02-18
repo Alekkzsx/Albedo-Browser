@@ -52,6 +52,15 @@ pub struct AceNode {
     pub shadow_root: Option<usize>, // FASE 5: Shadow DOM support
 }
 
+impl AceNode {
+    pub fn get_text_content(&self) -> String {
+        match &self.node_type {
+            AceNodeType::Text(text) => text.clone(),
+            _ => String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AceNodeType {
     Element(AceElement),
@@ -440,6 +449,50 @@ impl AceDOM {
         "".to_string()
     }
 
+    pub fn serialize_subtree_html(&self, node_idx: usize) -> String {
+        if let Some(node) = self.get_node(node_idx) {
+            match &node.node_type {
+                AceNodeType::Element(el) => {
+                    let mut s = format!("<{}", el.tag);
+                    
+                    // Ordenar atributos para serialização estável (opcional mas bom para SVG)
+                    let mut attrs: Vec<_> = el.attributes.iter().collect();
+                    attrs.sort_by_key(|(k, _)| *k);
+                    
+                    for (name, value) in attrs {
+                        s.push_str(&format!(" {}=\"{}\"", name, value.replace("\"", "&quot;")));
+                    }
+                    
+                    if node.children.is_empty() {
+                         s.push_str(" />");
+                    } else {
+                         s.push('>');
+                         for &child_idx in &node.children {
+                             s.push_str(&self.serialize_subtree_html(child_idx));
+                         }
+                         s.push_str(&format!("</{}>", el.tag));
+                    }
+                    return s;
+                },
+                AceNodeType::Text(t) => {
+                    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                },
+                AceNodeType::Comment(c) => {
+                    return format!("<!--{}-->", c);
+                },
+                AceNodeType::Document => {
+                    let mut s = String::new();
+                    for &child_idx in &node.children {
+                        s.push_str(&self.serialize_subtree_html(child_idx));
+                    }
+                    return s;
+                },
+                _ => return String::new(),
+            }
+        }
+        "".to_string()
+    }
+
     pub fn attach_shadow(&mut self, element_idx: usize) -> usize {
         let shadow_idx = self.nodes.len();
         self.nodes.push(AceNode {
@@ -624,7 +677,7 @@ impl AceDOM {
         let parser = kuchiki::parse_html().from_utf8();
         let dom = parser.one(html.as_bytes());
         
-        // Encontrar o <body> para extrair os nós parseados
+        // Always look for <body> because kuchiki always creates one for HTML
         let mut body = None;
         for node in dom.inclusive_descendants() {
             if let Some(el) = node.as_element() {
@@ -641,6 +694,8 @@ impl AceDOM {
             let idx = Self::convert_recursive(&child, &mut self.nodes, None);
             imported_indices.push(idx);
         }
+
+        if imported_indices.is_empty() { return; }
 
         // Determinar onde inserir baseado na posição
         match position.to_lowercase().as_str() {

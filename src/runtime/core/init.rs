@@ -20,7 +20,7 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         }
         
         if let Some(dom) = &engine.dom {
-            if let Err(e) = crate::runtime::bindings::html::document::register(&rt, dom.clone(), engine.stylesheet.clone(), engine.primitives.clone(), url.to_string(), "".to_string(), engine.resource_manager.clone()) {
+            if let Err(e) = crate::runtime::bindings::html::document::register(&rt, dom.clone(), engine.stylesheet.clone(), engine.primitives.clone(), engine.canvas_contexts.clone(), url.to_string(), "".to_string(), engine.resource_manager.clone()) {
                     eprintln!("Failed to register document API: {}", e);
             }
         }
@@ -93,8 +93,7 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
                 globalThis.innerWidth = 1280;
                 globalThis.innerHeight = 720;
                 globalThis.devicePixelRatio = 1.0;
-                globalThis.requestAnimationFrame = function(cb) { return 0; };
-                globalThis.cancelAnimationFrame = function(id) {};
+                globalThis.devicePixelRatio = 1.0;
                 globalThis.scrollX = 0.0;
                 globalThis.scrollY = 0.0;
                 globalThis.pageXOffset = 0.0;

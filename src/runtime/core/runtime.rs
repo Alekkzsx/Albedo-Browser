@@ -12,6 +12,7 @@ pub type JsResult<T> = StdResult<T, rquickjs::Error>;
 #[derive(Clone, Default)]
 pub struct HistoryEntry {
     pub url: String,
+    pub referrer: String,
     pub state_json: Option<String>,
 }
 
@@ -60,6 +61,10 @@ pub struct JsRuntime {
     #[qjs(skip_trace)]
     pub layout_states: Arc<Mutex<HashMap<usize, (f32, f32, f32, f32)>>>, // x, y, w, h
     #[qjs(skip_trace)]
+    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    #[qjs(skip_trace)]
+    pub pending_scroll: Arc<Mutex<Option<usize>>>,
+    #[qjs(skip_trace)]
     pub resource_manager: Option<ResourceManager>,
     #[qjs(skip_trace)]
     pub origin: Option<Origin>,
@@ -88,6 +93,8 @@ impl JsRuntime {
             resize_registry: Arc::new(Mutex::new(HashMap::new())),
             intersection_registry: Arc::new(Mutex::new(HashMap::new())),
             layout_states: Arc::new(Mutex::new(HashMap::new())),
+            canvas_contexts: Arc::new(Mutex::new(HashMap::new())),
+            pending_scroll: Arc::new(Mutex::new(None)),
             resource_manager: None,
             origin: None,
         };
@@ -166,6 +173,8 @@ impl JsRuntime {
                     mutations: self.mutations.clone(),
                     stylesheet_dirty: self.stylesheet_dirty.clone(),
                     primitives: self.primitives.clone(),
+                    canvas_contexts: self.canvas_contexts.clone(),
+                    pending_scroll: self.pending_scroll.clone(),
                 };
                 if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
                     let instance_val = instance.into_value();
@@ -182,6 +191,50 @@ impl JsRuntime {
         });
     }
 
+    pub fn dispatch_keyboard_event(&self, index: usize, type_: &str, key: &str, code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool) {
+        if let Some(ref dom_arc) = *self.dom.lock().unwrap() {
+            let dom = dom_arc.clone();
+            self.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    use crate::runtime::bindings::html::element::Element;
+                    use crate::runtime::bindings::html::event_subclasses::KeyboardEvent;
+                    
+                    let element = Element { 
+                        dom,
+                        index, 
+                        mutations: self.mutations.clone(),
+                        stylesheet_dirty: self.stylesheet_dirty.clone(),
+                        primitives: self.primitives.clone(),
+                        canvas_contexts: self.canvas_contexts.clone(),
+                        pending_scroll: self.pending_scroll.clone(),
+                    };
+                    
+                    if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
+                        let instance_val = instance.into_value();
+                        
+                        // Create KeyboardEvent options object
+                        let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = opts.set("key", key);
+                        let _ = opts.set("code", code);
+                        let _ = opts.set("ctrlKey", ctrl);
+                        let _ = opts.set("shiftKey", shift);
+                        let _ = opts.set("altKey", alt);
+                        let _ = opts.set("metaKey", meta);
+                        let _ = opts.set("bubbles", true);
+                        
+                        if let Ok(kb_event) = rquickjs::Class::instance(ctx.clone(), KeyboardEvent::new(type_.to_string(), Some(opts.into_value()))) {
+                             if let Some(obj) = instance_val.as_object() {
+                                 if let Ok(dispatch) = obj.get::<_, rquickjs::Function>("dispatchEvent") {
+                                     let _: rquickjs::Result<rquickjs::Value> = dispatch.call((kb_event,));
+                                 }
+                             }
+                        }
+                    }
+                })
+            });
+        }
+    }
+
 
     pub fn get_pending_navigation(&self) -> Option<String> {
         let mut pending = self.pending_navigation.lock().unwrap();
@@ -196,6 +249,29 @@ impl JsRuntime {
 
     pub fn run_pending(&self) -> (bool, bool) {
         super::executor::run_pending(self)
+    }
+
+    pub fn run_raf_callbacks(&self, timestamp: f64) -> bool {
+        let callbacks = {
+            let mut event_loop = self.event_loop.lock().unwrap();
+            event_loop.take_raf_callbacks()
+        };
+
+        if callbacks.is_empty() {
+            return false;
+        }
+
+        self.with_context(|ctx| {
+            ctx.with(|ctx| {
+                for callback in callbacks {
+                    if let Ok(func) = callback.0.restore(&ctx) {
+                        let _: rquickjs::Result<rquickjs::Value> = func.call((timestamp,));
+                    }
+                }
+            });
+        });
+
+        true
     }
 }
 

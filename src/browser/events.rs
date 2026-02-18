@@ -33,7 +33,11 @@ pub fn sync_tabs(tm: &TabManager, tabs_model: &Rc<VecModel<TabData>>) {
 
 pub fn handle_navigate(ui_handle: &Weak<AppWindow>, tm: &TabManager, url: SharedString, tabs_model: &Rc<VecModel<TabData>>) {
     let url_str = url.as_str();
-    let final_url = if url_str.contains(' ') || !url_str.contains('.') {
+    let final_url = if url_str.starts_with("file://") {
+        url_str.to_string()
+    } else if url_str.starts_with("/") {
+        format!("file:///{}", url_str.trim_start_matches('/'))
+    } else if url_str.contains(' ') || !url_str.contains('.') {
         if !url_str.starts_with("albedo://") {
             format!("https://www.google.com/search?q={}", url_str)
         } else {
@@ -54,11 +58,7 @@ pub fn handle_navigate(ui_handle: &Weak<AppWindow>, tm: &TabManager, url: Shared
                 return;
             }
 
-            if let Some((url, _show_start, _is_loading, _status)) = tm.navigate(ui.window(), &final_url) {
-            ui.set_current_url(url.into());
-            ui.set_show_start_page(false); // FORCE VISIBILITY
-            sync_ace_visuals(&ui, tm);
-            }
+            tm.request_navigate(final_url);
             sync_tabs(tm, tabs_model);
     }
 }
@@ -120,8 +120,37 @@ pub fn handle_pointer_up(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y
     }
 }
 
+pub fn handle_key_down(tm: &TabManager, key: SharedString, code: SharedString, ctrl: bool, shift: bool, alt: bool, meta: bool) {
+    if tm.handle_key_down(key.as_str(), code.as_str(), ctrl, shift, alt, meta) {
+        // Se a engine mudou algo (ex: focus), poderíamos sincronizar aqui,
+        // mas o pulse timer cuidará disso se houver mudanças de estilo/mutação.
+        println!("[Events] KeyDown handled: {}", key);
+    }
+}
+
+pub fn handle_key_up(tm: &TabManager, key: SharedString, code: SharedString, ctrl: bool, shift: bool, alt: bool, meta: bool) {
+    tm.handle_key_up(key.as_str(), code.as_str(), ctrl, shift, alt, meta);
+}
+
+pub fn handle_scroll(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32, delta: f32) {
+    if let Some(ui) = ui_handle.upgrade() {
+        if tm.handle_scroll(x, y, delta) {
+            sync_ace_visuals(&ui, tm);
+        }
+    }
+}
+
 pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
     if let Some(ui) = ui_handle.upgrade() {
+        // Processar navegação pendente
+        if let Some(pending_url) = tm.take_pending_nav() {
+             if let Some((url, show_start, _loading, _status)) = tm.navigate(ui.window(), &pending_url) {
+                 ui.set_current_url(url.into());
+                 ui.set_show_start_page(show_start);
+                 sync_ace_visuals(&ui, tm);
+             }
+        }
+
         // Processar recursos assíncronos primeiro
         if tm.process_active_tab_resources() {
             sync_ace_visuals(&ui, tm);
@@ -133,10 +162,23 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
         }
 
         if let Some((_, Some(mut engine))) = tm.get_active_tab_native_data() {
+            // Recompilar estilos se hover/focus mudou
+            if engine.styles_dirty {
+                engine.recompute_dirty_styles();
+                sync_ace_visuals(&ui, tm);
+            }
+
             // Pulse JS Runtime
             if let Some(ref rt) = engine.js_runtime {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs_f64() * 1000.0;
+                
+                let raf_executed = rt.run_raf_callbacks(now_ms);
                 let (js_executed, js_style_dirty) = rt.run_pending();
-                if js_executed || js_style_dirty {
+                
+                if raf_executed || js_executed || js_style_dirty {
                     sync_ace_visuals(&ui, tm);
                 }
             }

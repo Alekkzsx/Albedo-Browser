@@ -9,6 +9,10 @@ pub mod query;
 pub mod events;
 pub mod collections;
 pub mod fragment;
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod observer_tests;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -23,6 +27,10 @@ pub struct Document {
     pub stylesheet_dirty: Arc<Mutex<bool>>,
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    #[qjs(skip_trace)]
+    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    #[qjs(skip_trace)]
+    pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
     pub cookie_storage: Arc<Mutex<String>>,
     #[qjs(skip_trace)]
@@ -125,6 +133,8 @@ impl Document {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -154,6 +164,8 @@ impl Document {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, frag)?;
@@ -183,6 +195,8 @@ impl Document {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -212,6 +226,8 @@ impl Document {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -276,6 +292,8 @@ impl Document {
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
+                canvas_contexts: self.canvas_contexts.clone(),
+                pending_scroll: self.pending_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -296,6 +314,8 @@ impl Document {
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
+                canvas_contexts: self.canvas_contexts.clone(),
+                pending_scroll: self.pending_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -315,6 +335,8 @@ impl Document {
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
+            canvas_contexts: self.canvas_contexts.clone(),
+            pending_scroll: self.pending_scroll.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         Ok(instance.into_value())
@@ -346,6 +368,8 @@ impl Document {
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
+                canvas_contexts: self.canvas_contexts.clone(),
+                pending_scroll: self.pending_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -354,7 +378,7 @@ impl Document {
     }
 }
 
-pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>, url: String, referrer: String, resource_manager: Option<crate::network::resources::ResourceManager>) -> Result<()> {
+pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>, canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>, url: String, referrer: String, resource_manager: Option<crate::network::resources::ResourceManager>) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             let global = ctx.globals();
@@ -376,6 +400,8 @@ pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::
                 cookie_storage: Arc::new(Mutex::new(cookies)),
                 resource_manager,
                 primitives,
+                canvas_contexts,
+                pending_scroll: rt.pending_scroll.clone(),
                 url,
                 referrer,
             })?;
