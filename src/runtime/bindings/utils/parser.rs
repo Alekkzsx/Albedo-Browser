@@ -37,6 +37,8 @@ impl DOMParser {
             cookie_storage: doc_borrow.cookie_storage.clone(),
             resource_manager: doc_borrow.resource_manager.clone(),
             primitives: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            canvas_contexts: doc_borrow.canvas_contexts.clone(),
+            pending_scroll: doc_borrow.pending_scroll.clone(),
             url: "about:blank".into(),
             referrer: "".into(),
         };

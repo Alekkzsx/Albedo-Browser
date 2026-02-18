@@ -5,13 +5,15 @@ use rquickjs::{Class, Ctx, Result, Value};
 pub fn query_selector<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(found_idx) = find_element(&dom, el.index, &selector, true) {
-             let element = Element { 
-                dom: el.dom.clone(),
-                index: found_idx,
-                mutations: el.mutations.clone(),
-                stylesheet_dirty: el.stylesheet_dirty.clone(),
-                primitives: el.primitives.clone(),
-            };
+                let element = Element { 
+                    dom: el.dom.clone(),
+                    index: found_idx,
+                    mutations: el.mutations.clone(),
+                    stylesheet_dirty: el.stylesheet_dirty.clone(),
+                    primitives: el.primitives.clone(),
+                    canvas_contexts: el.canvas_contexts.clone(),
+                    pending_scroll: el.pending_scroll.clone(),
+                };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
         }
@@ -30,6 +32,8 @@ pub fn query_selector_all<'js>(el: &Element, ctx: Ctx<'js>, selector: String) ->
                 mutations: el.mutations.clone(),
                 stylesheet_dirty: el.stylesheet_dirty.clone(),
                 primitives: el.primitives.clone(),
+                canvas_contexts: el.canvas_contexts.clone(),
+                pending_scroll: el.pending_scroll.clone(),
             };
             let instance = Class::instance(ctx.clone(), element)?;
             array.set(i, instance)?;
@@ -56,6 +60,8 @@ pub fn closest<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Val
                     mutations: el.mutations.clone(),
                     stylesheet_dirty: el.stylesheet_dirty.clone(),
                     primitives: el.primitives.clone(),
+                    canvas_contexts: el.canvas_contexts.clone(),
+                    pending_scroll: el.pending_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());

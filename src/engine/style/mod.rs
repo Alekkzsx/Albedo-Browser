@@ -636,9 +636,35 @@ pub fn get_user_agent_stylesheet() -> Stylesheet {
             display: inline-block; 
             margin: 0; 
             font: inherit; 
+            box-sizing: border-box;
         }
         button { background-color: #efefef; border: 1px solid #767676; padding: 1px 6px; }
-        input[type=\"text\"] { background-color: white; border: 1px solid #767676; padding: 1px 2px; }
+        input[type=\"text\"], input[type=\"password\"], input[type=\"email\"], input[type=\"number\"] { 
+            background-color: white; 
+            border: 1px solid #767676; 
+            padding: 1px 2px; 
+            min-height: 1.2em;
+        }
+        textarea {
+            background-color: white; 
+            border: 1px solid #767676; 
+            padding: 2px;
+            min-height: 2em;
+        }
+        select {
+            background-color: white; 
+            border: 1px solid #767676; 
+            padding: 1px 2px;
+        }
+
+        /* Table Default Styles */
+        table { display: table; border-collapse: separate; border-spacing: 2px; border-color: gray; }
+        thead { display: table-header-group; vertical-align: middle; border-color: inherit; }
+        tbody { display: table-row-group; vertical-align: middle; border-color: inherit; }
+        tfoot { display: table-footer-group; vertical-align: middle; border-color: inherit; }
+        tr { display: table-row; vertical-align: inherit; border-color: inherit; }
+        td, th { display: table-cell; vertical-align: inherit; }
+        th { font-weight: bold; text-align: center; }
     ";
     
     let mut ss = parse_simple(ua_css);
@@ -649,6 +675,10 @@ pub fn get_user_agent_stylesheet() -> Stylesheet {
     ss.supports_rules = Vec::new();
     ss.container_rules = Vec::new();
     ss.font_faces = Vec::new();
+    
+    // Build optimization maps
+    ss.build_rule_maps();
+    
     ss
 }
 
@@ -1075,7 +1105,25 @@ pub struct MatchedRule<'a> {
 
 impl Stylesheet {
     // Calculate style with inheritance
-    pub fn calculate_style(&self, dom: &AceDOM, node_id: usize, parent_style: Option<&ComputedStyle>, root_style: Option<&ComputedStyle>, hovered_element: Option<usize>, focused_element: Option<usize>, active_element: Option<usize>, vw: f32, vh: f32, color_scheme: &str) -> ComputedStyle {
+    pub fn calculate_style(&self, 
+        dom: &AceDOM, 
+        node_id: usize, 
+        parent_style: Option<&ComputedStyle>, 
+        root_style: Option<&ComputedStyle>, 
+        hovered_element: Option<usize>, 
+        focused_element: Option<usize>, 
+        active_element: Option<usize>,
+        animation_manager: Option<&self::animation::AnimationManager>,
+        current_time: f64,
+        vw: f32, 
+        vh: f32, 
+        color_scheme: &str) -> ComputedStyle {
+        
+        let node = dom.get_node(node_id).unwrap();
+        let element_data = match &node.node_type {
+            AceNodeType::Element(e) => e,
+            _ => return ComputedStyle::default(), 
+        };
         let mut style = if let Some(parent) = parent_style {
             let mut s = ComputedStyle::default();
             // Inherited properties
@@ -1239,6 +1287,15 @@ impl Stylesheet {
                       }
                   }
                   
+                  // Aplicar outline padrão para :focus se nenhum outline foi explicitamente definido
+                  if focused_element == Some(node_id) && style.outline.is_none() {
+                      style.outline = Some(crate::engine::style::css_values::Outline {
+                          width: 2.0,
+                          color: crate::engine::style::css_values::CssColor::Named("#0066ff".to_string()),
+                          style: "solid".to_string(),
+                          offset: 2.0,
+                      });
+                  }
                      }
                     }
 
@@ -1428,7 +1485,26 @@ fn parse_length(val: &str) -> CssLength {
     
     if val == "min-content" { return CssLength::MinContent; }
     if val == "max-content" { return CssLength::MaxContent; }
+    if val == "auto-fill" { return CssLength::AutoFill; }
+    if val == "auto-fit" { return CssLength::AutoFit; }
     
+    CssLength::Auto
+}
+
+fn parse_grid_placement(val: &str) -> CssLength {
+    let val = val.trim();
+    if let Ok(num) = val.parse::<f32>() {
+        return CssLength::Number(num);
+    }
+    if val.starts_with("span ") {
+        if let Ok(num) = val[5..].trim().parse::<u16>() {
+            return CssLength::Span(num);
+        }
+    }
+    // Default to Name for identifiers
+    if !val.is_empty() && val != "auto" {
+        return CssLength::Name(val.to_string());
+    }
     CssLength::Auto
 }
 
@@ -1459,11 +1535,14 @@ fn split_spaces_top_level(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
     let mut depth = 0;
+    let mut brace_depth = 0;
     for (i, c) in s.chars().enumerate() {
         match c {
             '(' => depth += 1,
             ')' => depth -= 1,
-            ' ' | '\t' | '\n' | '\r' if depth == 0 => {
+            '[' => brace_depth += 1,
+            ']' => brace_depth -= 1,
+            ' ' | '\t' | '\n' | '\r' if depth == 0 && brace_depth == 0 => {
                 if i > start {
                     parts.push(s[start..i].trim());
                 }
@@ -1473,7 +1552,10 @@ fn split_spaces_top_level(s: &str) -> Vec<&str> {
         }
     }
     if start < s.len() {
-        parts.push(s[start..].trim());
+        let final_part = s[start..].trim();
+        if !final_part.is_empty() {
+            parts.push(final_part);
+        }
     }
     parts
 }
@@ -1485,7 +1567,18 @@ fn parse_grid_track_list(val: &str) -> Vec<CssLength> {
     for part in parts {
         let part = part.trim();
         if part.is_empty() { continue; }
+
+        if part == "subgrid" {
+            tracks.push(CssLength::Subgrid);
+            continue;
+        }
         
+        if part.starts_with('[') && part.ends_with(']') {
+            let names = part[1..part.len()-1].split_whitespace().map(|s| s.to_string()).collect();
+            tracks.push(CssLength::LineNames(names));
+            continue;
+        }
+
         if part.starts_with("repeat(") && part.ends_with(")") {
              let inner = &part[7..part.len()-1];
              let args = split_comma_top_level(inner);
@@ -1610,9 +1703,11 @@ fn parse_display(val: &str) -> CssDisplay {
         "flex" => CssDisplay::Flex,
         "inline-flex" => CssDisplay::InlineFlex,
         "grid" => CssDisplay::Grid,
-        "table" => CssDisplay::Grid, // Fallback
-        "table-row" => CssDisplay::Block,
-        "table-cell" => CssDisplay::Block,
+        "contents" => CssDisplay::Contents,
+        "table" => CssDisplay::Table,
+        "table-row" => CssDisplay::TableRow,
+        "table-cell" => CssDisplay::TableCell,
+        "table-header-group" | "table-header" => CssDisplay::TableHeader,
         _ => CssDisplay::Inline,
     }
 }
@@ -2682,6 +2777,49 @@ pub fn apply_single_declaration(
             } else if parts.len() >= 2 {
                 style.grid_row_gap = parse_length(parts[0]);
                 style.grid_column_gap = parse_length(parts[1]);
+            }
+        },
+
+        // Grid Item Properties
+        "grid-column-start" | "gridColumnStart" => style.grid_column_start = parse_grid_placement(val),
+        "grid-column-end" | "gridColumnEnd" => style.grid_column_end = parse_grid_placement(val),
+        "grid-row-start" | "gridRowStart" => style.grid_row_start = parse_grid_placement(val),
+        "grid-row-end" | "gridRowEnd" => style.grid_row_end = parse_grid_placement(val),
+        
+        "grid-column" | "gridColumn" => {
+            let parts: Vec<&str> = val.split('/').collect();
+            if parts.len() == 1 {
+                style.grid_column_start = parse_grid_placement(parts[0]);
+                style.grid_column_end = CssLength::Auto;
+            } else if parts.len() >= 2 {
+                style.grid_column_start = parse_grid_placement(parts[0]);
+                style.grid_column_end = parse_grid_placement(parts[1]);
+            }
+        },
+        "grid-row" | "gridRow" => {
+            let parts: Vec<&str> = val.split('/').collect();
+            if parts.len() == 1 {
+                style.grid_row_start = parse_grid_placement(parts[0]);
+                style.grid_row_end = CssLength::Auto;
+            } else if parts.len() >= 2 {
+                style.grid_row_start = parse_grid_placement(parts[0]);
+                style.grid_row_end = parse_grid_placement(parts[1]);
+            }
+        },
+        "grid-area" | "gridArea" => {
+            let parts: Vec<&str> = val.split('/').collect();
+            if parts.len() == 1 {
+                // Could be an area name
+                let name = parse_grid_placement(parts[0]);
+                style.grid_row_start = name.clone();
+                style.grid_column_start = name.clone();
+                style.grid_row_end = name.clone();
+                style.grid_column_end = name;
+            } else if parts.len() >= 4 {
+                style.grid_row_start = parse_grid_placement(parts[0]);
+                style.grid_column_start = parse_grid_placement(parts[1]);
+                style.grid_row_end = parse_grid_placement(parts[2]);
+                style.grid_column_end = parse_grid_placement(parts[3]);
             }
         },
         

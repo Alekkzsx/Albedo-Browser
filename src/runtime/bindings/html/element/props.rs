@@ -373,6 +373,8 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
             mutations: el.mutations.clone(),
             stylesheet_dirty: el.stylesheet_dirty.clone(),
             primitives: el.primitives.clone(),
+            canvas_contexts: el.canvas_contexts.clone(),
+            pending_scroll: el.pending_scroll.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         return Ok(instance.into_value());

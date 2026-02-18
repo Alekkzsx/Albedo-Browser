@@ -24,7 +24,8 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                 let cb_ctx = callback.ctx().clone();
                 let callback_persistent = Persistent::save(&cb_ctx, callback);
                 let mut event_loop = rt_clone.event_loop.lock().unwrap();
-                Ok(event_loop.set_timer(callback_persistent, 16, false))
+                event_loop.push_raf_callback(callback_persistent);
+                Ok(0) // rAF doesn't strictly need a unique ID for MVP if cancel isn't implemented yet, but we could add one
             })?;
             global.set("requestAnimationFrame", raf)?;
 

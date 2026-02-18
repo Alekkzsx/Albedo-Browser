@@ -86,16 +86,48 @@ impl MutationObserver {
                 obj.set("attributeName", rec.attribute_name)?;
                 obj.set("oldValue", rec.old_value)?;
                 
-                // Wrap target as Element
-                let target_el = Element {
-                    dom: dom_arc.clone(),
-                    index: rec.target,
-                    mutations: self.rt.mutations.clone(),
-                    stylesheet_dirty: self.rt.stylesheet_dirty.clone(),
-                    primitives: self.rt.primitives.clone(),
+                let wrap_el = |idx: usize, ctx: &Ctx<'js>| -> Result<Value<'js>> {
+                    let el = Element {
+                        dom: dom_arc.clone(),
+                        index: idx,
+                        mutations: self.rt.mutations.clone(),
+                        stylesheet_dirty: self.rt.stylesheet_dirty.clone(),
+                        primitives: self.rt.primitives.clone(),
+                        canvas_contexts: self.rt.canvas_contexts.clone(),
+                        pending_scroll: self.rt.pending_scroll.clone(),
+                    };
+                    Ok(Class::instance(ctx.clone(), el)?.into_value())
                 };
-                let instance = Class::instance(ctx.clone(), target_el)?;
-                obj.set("target", instance)?;
+
+                // Wrap target
+                obj.set("target", wrap_el(rec.target, &ctx)?)?;
+
+                // addedNodes
+                let added_arr = rquickjs::Array::new(ctx.clone())?;
+                for (idx, &node_idx) in rec.added_nodes.iter().enumerate() {
+                    added_arr.set(idx, wrap_el(node_idx, &ctx)?)?;
+                }
+                obj.set("addedNodes", added_arr)?;
+
+                // removedNodes
+                let removed_arr = rquickjs::Array::new(ctx.clone())?;
+                for (idx, &node_idx) in rec.removed_nodes.iter().enumerate() {
+                    removed_arr.set(idx, wrap_el(node_idx, &ctx)?)?;
+                }
+                obj.set("removedNodes", removed_arr)?;
+
+                // Siblings
+                if let Some(prev) = rec.previous_sibling {
+                    obj.set("previousSibling", wrap_el(prev, &ctx)?)?;
+                } else {
+                    obj.set("previousSibling", rquickjs::Value::new_null(ctx.clone()))?;
+                }
+
+                if let Some(next) = rec.next_sibling {
+                    obj.set("nextSibling", wrap_el(next, &ctx)?)?;
+                } else {
+                    obj.set("nextSibling", rquickjs::Value::new_null(ctx.clone()))?;
+                }
                 
                 arr.set(i, obj)?;
             }

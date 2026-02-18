@@ -99,10 +99,22 @@ impl TabManager {
     pub fn process_active_tab_resources(&self) -> bool {
         let mut col = self.collection.borrow_mut();
         if let Some(tab) = col.get_active_mut() {
+            // Se tivermos um receiver, tentar ler mensagens sem bloquear
             if let Some(mut rx) = tab.resource_rx.take() {
-                let needs_sync = tab.engine.process_resource_responses();
+                let mut did_update = false;
+                
+                // Ler até o canal estar vazio ou limite de mensagens
+                let mut count = 0;
+                while let Ok(response) = rx.try_recv() {
+                    if tab.engine.handle_resource_response(response) {
+                        did_update = true;
+                    }
+                    count += 1;
+                    if count > 50 { break; } // Limite por frame
+                }
+                
                 tab.resource_rx = Some(rx);
-                return needs_sync;
+                return did_update;
             }
         }
         false
@@ -146,6 +158,24 @@ impl TabManager {
              let old_hover = tab.engine.hovered_element;
              
              if old_hover != node_id {
+                 // Disparar mouseout no elemento anterior
+                 if let Some(old_idx) = old_hover {
+                     if let Some(ref rt) = tab.engine.js_runtime {
+                         if let Some(ref dom) = tab.engine.dom {
+                             rt.dispatch_event(dom.clone(), old_idx, "mouseout");
+                         }
+                     }
+                 }
+                 
+                 // Disparar mouseover no novo elemento
+                 if let Some(new_idx) = node_id {
+                     if let Some(ref rt) = tab.engine.js_runtime {
+                         if let Some(ref dom) = tab.engine.dom {
+                             rt.dispatch_event(dom.clone(), new_idx, "mouseover");
+                         }
+                     }
+                 }
+                 
                  tab.engine.set_hover(node_id);
                  return true;
              }
@@ -163,10 +193,29 @@ impl TabManager {
              if node_id != tab.engine.active_element {
                 tab.engine.set_active(node_id);
                 
+                // Atualizar foco também quando clica em um elemento
+                let old_focused = tab.engine.focused_element;
+                tab.engine.set_focused(node_id);
+                
+                // Disparar eventos blur/focus se o foco mudou
+                if old_focused != node_id {
+                    if let Some(old_idx) = old_focused {
+                        if let Some(ref rt) = tab.engine.js_runtime {
+                            if let Some(ref dom) = tab.engine.dom {
+                                rt.dispatch_event(dom.clone(), old_idx, "blur");
+                            }
+                        }
+                    }
+                    if let Some(new_idx) = node_id {
+                        if let Some(ref rt) = tab.engine.js_runtime {
+                            if let Some(ref dom) = tab.engine.dom {
+                                rt.dispatch_event(dom.clone(), new_idx, "focus");
+                            }
+                        }
+                    }
+                }
+                
                 if let Some(idx) = node_id {
-                    // Need to access runtime while holding mutable borrow of collection?
-                    // tab is &mut Tab. engine is inside tab.
-                    // We can access fields.
                     if let Some(ref rt) = tab.engine.js_runtime {
                         if let Some(ref dom) = tab.engine.dom {
                             rt.dispatch_event(dom.clone(), idx, "mousedown");
@@ -202,6 +251,50 @@ impl TabManager {
         false
     }
 
+    pub fn handle_key_down(&self, key: &str, code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool) -> bool {
+        let col = self.collection.borrow();
+        if let Some(tab) = col.get_active() {
+            if let Some(ref rt) = tab.engine.js_runtime {
+                if let Some(focused_idx) = tab.engine.focused_element {
+                    rt.dispatch_keyboard_event(focused_idx, "keydown", key, code, ctrl, shift, alt, meta);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn handle_key_up(&self, key: &str, code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool) -> bool {
+        let col = self.collection.borrow();
+        if let Some(tab) = col.get_active() {
+            if let Some(ref rt) = tab.engine.js_runtime {
+                if let Some(focused_idx) = tab.engine.focused_element {
+                    rt.dispatch_keyboard_event(focused_idx, "keyup", key, code, ctrl, shift, alt, meta);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn handle_scroll(&self, _x: f32, _y: f32, delta: f32) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+            // No Slint, viewport-y costuma ser negativo para scroll down
+            // delta vindo do mouse wheel (positiva para cima, negativa para baixo)
+            // Se delta > 0 (scroll up), queremos incrementar viewport_y (em direção a 0)
+            // Se delta < 0 (scroll down), queremos decrementar viewport_y (mais negativo)
+            
+            let new_y = tab.engine.viewport_y + delta;
+            
+            // Limit scroll (0 to -content_height + window_height)
+            // Para simplificar agora, vamos apenas impedir que suba acima de 0
+            tab.engine.viewport_y = new_y.min(0.0);
+            return true;
+        }
+        false
+    }
+
     pub fn process_animations(&self) -> bool {
         let mut col = self.collection.borrow_mut();
         if let Some(tab) = col.get_active_mut() {
@@ -211,5 +304,15 @@ impl TabManager {
              }
         }
         false
+    }
+
+    pub fn request_navigate(&self, url: String) {
+        let mut col = self.collection.borrow_mut();
+        col.pending_nav = Some(url);
+    }
+
+    pub fn take_pending_nav(&self) -> Option<String> {
+        let mut col = self.collection.borrow_mut();
+        col.pending_nav.take()
     }
 }

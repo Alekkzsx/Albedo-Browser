@@ -36,6 +36,7 @@ pub struct EventLoop {
     pending_resolutions: HashMap<u32, PromiseResolution>,
     next_resolution_id: u32,
     pub next_observer_id: usize,
+    raf_callbacks: Vec<UnsafeSendVal<Persistent<Function<'static>>>>,
 }
 
 impl EventLoop {
@@ -50,6 +51,7 @@ impl EventLoop {
             pending_resolutions: HashMap::new(),
             next_resolution_id: 1,
             next_observer_id: 0,
+            raf_callbacks: Vec::new(),
         }
     }
 
@@ -132,8 +134,14 @@ impl EventLoop {
             }
         }
 
-        let ready_macros = std::mem::take(&mut self.macro_tasks);
-        
-        (ready_timers, ready_macros)
+        (ready_timers, std::collections::VecDeque::new())
+    }
+
+    pub fn push_raf_callback(&mut self, callback: Persistent<Function<'static>>) {
+        self.raf_callbacks.push(UnsafeSendVal(callback));
+    }
+
+    pub fn take_raf_callbacks(&mut self) -> Vec<UnsafeSendVal<Persistent<Function<'static>>>> {
+        std::mem::take(&mut self.raf_callbacks)
     }
 }

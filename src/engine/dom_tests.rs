@@ -19,8 +19,8 @@ fn test_acedom_parsing() {
         </html>
     "#;
 
-    let document = kuchiki::parse_html().one(html);
-    let dom = AceDOM::new(document);
+    let _document = kuchiki::parse_html().one(html);
+    let dom = AceDOM::new();
 
     // Verify Metadata
     // assert_eq!(dom.metadata.title, "Test Page".to_string());

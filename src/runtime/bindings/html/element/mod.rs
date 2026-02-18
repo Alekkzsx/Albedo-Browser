@@ -17,6 +17,10 @@ pub struct Element {
     pub stylesheet_dirty: Arc<Mutex<bool>>,
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    #[qjs(skip_trace)]
+    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    #[qjs(skip_trace)]
+    pub pending_scroll: Arc<Mutex<Option<usize>>>,
 }
 
 pub mod hierarchy;
@@ -28,6 +32,8 @@ pub mod shadow;
 pub mod query;
 pub mod dataset;
 pub mod events;
+pub mod canvas;
+pub mod canvas_context;
 
 pub(crate) use self::Element as ElementType;
 pub(crate) fn mark_mutation(el: &ElementType) {
@@ -156,7 +162,9 @@ impl Element {
 
     #[qjs(rename = "scrollIntoView")]
     pub fn scroll_into_view(&self) {
-        // Stub
+        if let Ok(mut ps) = self.pending_scroll.lock() {
+            *ps = Some(self.index);
+        }
     }
 
     #[qjs(rename = "insertAdjacentHTML")]
@@ -446,5 +454,10 @@ impl Element {
     #[qjs(set, rename = "height")]
     pub fn set_height(&self, val: i32) {
         self::props::set_height(self, val)
+    }
+
+    #[qjs(rename = "getContext")]
+    pub fn get_context<'js>(&self, ctx: Ctx<'js>, type_: String) -> Result<Value<'js>> {
+        self::canvas::get_context(self, ctx, type_)
     }
 }

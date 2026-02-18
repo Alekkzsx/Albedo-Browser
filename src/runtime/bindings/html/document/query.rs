@@ -15,6 +15,8 @@ pub fn get_element_by_id<'js>(doc: &Document, ctx: Ctx<'js>, id: String) -> Resu
                             mutations: doc.mutations.clone(),
                             stylesheet_dirty: doc.stylesheet_dirty.clone(),
                             primitives: doc.primitives.clone(),
+                            canvas_contexts: doc.canvas_contexts.clone(),
+                            pending_scroll: doc.pending_scroll.clone(),
                         };
                         let instance = Class::instance(ctx, element)?;
                         return Ok(instance.into_value());
@@ -31,12 +33,14 @@ pub fn query_selector<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) -> R
         for (i, node) in dom.nodes.iter().enumerate() {
             if matches_node_selector(&node.node_type, &selector) {
                 let element = Element { 
-                            dom: doc.dom.clone(),
-                            index: i,
-                            mutations: doc.mutations.clone(),
-                            stylesheet_dirty: doc.stylesheet_dirty.clone(),
-                            primitives: doc.primitives.clone(),
-                        };
+                    dom: doc.dom.clone(),
+                    index: i,
+                    mutations: doc.mutations.clone(),
+                    stylesheet_dirty: doc.stylesheet_dirty.clone(),
+                    primitives: doc.primitives.clone(),
+                    canvas_contexts: doc.canvas_contexts.clone(),
+                    pending_scroll: doc.pending_scroll.clone(),
+                };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
             }
@@ -53,12 +57,14 @@ pub fn query_selector_all<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) 
         for (i, node) in dom.nodes.iter().enumerate() {
             if matches_node_selector(&node.node_type, &selector) {
                 let element = Element { 
-                            dom: doc.dom.clone(),
-                            index: i,
-                            mutations: doc.mutations.clone(),
-                            stylesheet_dirty: doc.stylesheet_dirty.clone(),
-                            primitives: doc.primitives.clone(),
-                        };
+                    dom: doc.dom.clone(),
+                    index: i,
+                    mutations: doc.mutations.clone(),
+                    stylesheet_dirty: doc.stylesheet_dirty.clone(),
+                    primitives: doc.primitives.clone(),
+                    canvas_contexts: doc.canvas_contexts.clone(),
+                    pending_scroll: doc.pending_scroll.clone(),
+                };
                 let instance = Class::instance(ctx.clone(), element)?;
                 array.set(idx, instance)?;
                 idx += 1;

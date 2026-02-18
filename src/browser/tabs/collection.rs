@@ -4,6 +4,7 @@ use uuid::Uuid;
 pub struct TabCollection {
     pub tabs: Vec<Tab>,
     pub active_index: Option<usize>,
+    pub pending_nav: Option<String>,
 }
 
 impl TabCollection {
@@ -11,6 +12,7 @@ impl TabCollection {
         Self {
             tabs: Vec::new(),
             active_index: None,
+            pending_nav: None,
         }
     }
 
