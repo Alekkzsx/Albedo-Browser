@@ -11,6 +11,83 @@ use self::style::css_values::{CssAlignItems, CssAlignContent, CssBoxSizing, CssF
 use taffy::prelude::*;
 use taffy::geometry::MinMax;
 
+/// Complete element geometry information including scroll and content dimensions
+#[derive(Clone, Debug)]
+pub struct ElementGeometry {
+    // Layout position and size (from Taffy)
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    
+    // Border and padding (from computed style)
+    pub border_top: f32,
+    pub border_right: f32,
+    pub border_bottom: f32,
+    pub border_left: f32,
+    pub padding_top: f32,
+    pub padding_right: f32,
+    pub padding_bottom: f32,
+    pub padding_left: f32,
+    
+    // Scroll offset for this element
+    pub scroll_x: f32,
+    pub scroll_y: f32,
+    
+    // Content dimensions (min/max bounds of children)
+    pub content_width: f32,
+    pub content_height: f32,
+    
+    // Overflow style
+    pub overflow_x: String,
+    pub overflow_y: String,
+}
+
+impl ElementGeometry {
+    pub fn new() -> Self {
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            border_top: 0.0,
+            border_right: 0.0,
+            border_bottom: 0.0,
+            border_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            padding_left: 0.0,
+            scroll_x: 0.0,
+            scroll_y: 0.0,
+            content_width: 0.0,
+            content_height: 0.0,
+            overflow_x: "visible".to_string(),
+            overflow_y: "visible".to_string(),
+        }
+    }
+    
+    /// Client width: content width + padding (no border)
+    pub fn client_width(&self) -> f32 {
+        (self.width - self.border_left - self.border_right).max(0.0)
+    }
+    
+    /// Client height: content height + padding (no border)
+    pub fn client_height(&self) -> f32 {
+        (self.height - self.border_top - self.border_bottom).max(0.0)
+    }
+    
+    /// Scroll width: max of client width and content width
+    pub fn scroll_width(&self) -> f32 {
+        self.content_width.max(self.client_width())
+    }
+    
+    /// Scroll height: max of client height and content height
+    pub fn scroll_height(&self) -> f32 {
+        self.content_height.max(self.client_height())
+    }
+}
+
 #[derive(Clone)]
 pub struct GridContext {
     pub column_names: std::collections::HashMap<String, Vec<i16>>,

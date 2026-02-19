@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inline Layout & Text Wrapping Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        h1 {
+            color: #333;
+        }
+        
+        .container {
+            background-color: white;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-width: 600px;
+        }
+        
+        .inline-test {
+            background-color: #e8f4f8;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        
+        span.highlight {
+            background-color: #ffeb3b;
+            padding: 2px 4px;
+        }
+        
+        .inline-block-demo {
+            display: inline-block;
+            background-color: #dcedc1;
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #558b2f;
+            border-radius: 3px;
+        }
+        
+        .text-wrap {
+            background-color: #fff3e0;
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #ff6f00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Inline Layout & Text Wrapping Tests</h1>
+    
+    <div class="container">
+        <h2>Test 1: Basic Inline Text</h2>
+        <p class="inline-test">
+            This is a paragraph with <span class="highlight">highlighted text</span> to test inline layout.
+        </p>
+    </div>
+    
+    <div class="container">
+        <h2>Test 2: Inline-Block Elements</h2>
+        <div class="inline-test">
+            <div class="inline-block-demo">Box 1</div>
+            <div class="inline-block-demo">Box 2</div>
+            <div class="inline-block-demo">Box 3</div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Test 3: Text Wrapping</h2>
+        <p class="text-wrap">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
+            Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. 
+            Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+        </p>
+    </div>
+    
+    <div class="container">
+        <h2>Test 4: Mixed Inline & Block</h2>
+        <p class="inline-test">
+            Normal text with <strong>bold</strong> and <em>italic</em> styles.
+            And also <span class="inline-block-demo">an inline-block element</span> in the middle.
+        </p>
+    </div>
+    
+    <div class="container">
+        <h2>Test 5: Baseline Alignment</h2>
+        <p class="inline-test">
+            Text with <span style="font-size: 20px;">larger text</span> and normal text should align properly on the baseline.
+        </p>
+    </div>
+</body>
+</html>

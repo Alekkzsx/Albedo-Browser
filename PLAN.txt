@@ -1,1061 +1,926 @@
-═══════════════════════════════════════════════════════════════════════════════
-                    🌑 ALBEDO BROWSER - PLANO DE DESENVOLVIMENTO
-═══════════════════════════════════════════════════════════════════════════════
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                  ║
+║                  🌑  ALBEDO BROWSER — PLANO DE DESENVOLVIMENTO                   ║
+║                                                                                  ║
+║              Um navegador real, leve e de produção — escrito em Rust             ║
+║                                                                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
 
-📅 Data da Última Atualização: 2026-02-17 (Análise Rigorosa)
-🔧 Versão Atual: 0.1.0 (Alpha)
-📊 Codebase: ~15.700 linhas Rust | 84 arquivos .rs
-🎯 Objetivo: Browser completo de produção com engine própria (ACE), escrito
-   inteiramente em Rust, projetado para rivalizar com os demais em performance,
-   segurança e compatibilidade web.
+  📅 Última Atualização  →  2026-02-19  (HTTP/3 QUIC implementado — 10/10 testes passando ✅)
+  🔧 Versão Atual        →  0.1.0-alpha  →  Target: v0.2.0 em 2 semanas
+  📊 Codebase            →  ~15.700 LOC Rust  |  84 arquivos  |  80 crates
+  📈 Completude Geral    →  ≈ 35% (core features)
+  ⚡ Build Time          →  46.9s  |  0% CPU idle  |  WGPU ready
+  🎯 Objetivo            →  Browser de produção que rivaliza com Firefox/Chrome
+                             em performance, peso, modernidade e segurança
 
-═══════════════════════════════════════════════════════════════════════════════
-                            📊 ESTADO ATUAL DO PROJETO
-═══════════════════════════════════════════════════════════════════════════════
+  Legenda de Status:
+    ✅  Implementado e funcional
+    🟡  Parcialmente implementado (estrutura existe, funcionalidade incompleta)
+    ❌  Não implementado (TODO)
+    ⚠️  Atenção / Bloqueador / Stub
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ✅ COMPONENTES IMPLEMENTADOS E FUNCIONAIS                                   │
-└─────────────────────────────────────────────────────────────────────────────┘
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🏗️ ARQUITETURA CORE
-  ✅ Sistema de abas (TabManager) com suporte a múltiplas abas
-  ✅ Event loop principal com timer de 16ms (60 FPS)
-  ✅ Sistema de callbacks para navegação, cliques, hover, teclado e scroll
-  ✅ Ponte Engine ↔ UI (browser/bridge.rs) — funcional com hooks de animação e eventos complexos
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  📖  DOCUMENTAÇÃO DO PROJETO                                                     │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  ✅  PLAN_DETAILED.md                   Análise ✅/🟡/❌ de tudo implementado    │
+│  ✅  ROADMAP_EXECUTIVE.md               Resumo executivo + Top 5 bloqueadores    │
+│  ✅  COMPETITIVE_ANALYSIS.md            Albedo vs Firefox vs Chrome              │
+│  ✅  IMPLEMENTATION_GUIDE.md            Como implementar features críticas       │
+│  ✅  STATUS_DASHBOARD.md               Dashboard visual de progresso             │
+│  ✅  CUSTOMEVVENT_CLIPBOARD_SUMMARY.md  Resumo CustomEvent + Clipboard           │
+│  ✅  CUSTOMEVVENT_CLIPBOARD_IMPLEMENTATION.md  Documentação técnica detalhada   │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-🌐 ENGINE ACE (Albedo Core Engine)
-  ✅ Parser HTML5 completo (html5ever + kuchiki)
-  ✅ DOM tree estruturado (AceDOM) com suporte a:
-      - Navegação de nós (parent, children, siblings)
-      - Seletores CSS (querySelector, querySelectorAll)
-      - Manipulação completa (createElement, appendChild, removeChild, etc.)
-      - Metadados de página (title, charset, resources)
-  ✅ Layout Engine moderno (Taffy):
-      - Flexbox funcional (direction, wrap, justify, align, gap)
-      ✅ CSS Grid (template-columns/rows, areas, gap, auto-fill, auto-fit)
-      - Box model completo (margin, padding, border)
-  ✅ Sistema de primitivas visuais (ACEPrimitive):
-      - Retângulos, textos, imagens
-      - Z-index, opacity, border-radius
-      - Box-shadow e text-shadow
-  ✅ Text rendering com cosmic-text
-  ✅ Viewport responsivo (set_viewport_size)
-  ✅ Detecção de hover (find_element_at_position)
-  ✅ Pseudo-elementos ::before / ::after com content
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          📊  ESTADO ATUAL DO PROJETO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🎨 CSS & STYLING (Módulo: engine/style/)
-  ✅ Parser CSS completo (cssparser + selectors)
-  ✅ Cascade e herança de propriedades
-  ✅ User Agent Stylesheet padrão
-  ✅ Unidades: px, %, em, rem, vw, vh, fr
-  ✅ Flexbox: direction, wrap, justify-content, align-items, flex-grow/shrink/basis
-  ✅ Grid: grid-template-columns/rows, column-gap, row-gap, repeat(), minmax()
-  ✅ Box model: margin, padding, border, width, height, min/max
-  ✅ Background: color, image, gradientes lineares/radiais
-  ✅ Tipografia: font-family, font-size, font-weight, line-height, text-align
-  ✅ Posicionamento: static, relative, absolute, fixed, sticky
-  ✅ Display: block, inline, inline-block, flex, inline-flex, grid, none
-  ✅ Overflow: visible, hidden, scroll, auto
-  ✅ Border-radius, box-shadow, text-shadow
-  ✅ @keyframes e animation — Loop de animação integrado ao ACE Engine Tick
-  ✅ Transitions — Suporte a transições e interpolação de valores (color, length, float)
-  ✅ Transform 2D/3D: translate, scale, rotate, skew
-  ✅ Filtros: blur, brightness, contrast, grayscale, invert, opacity, saturate, sepia
-  ✅ backdrop-filter
-  ✅ mix-blend-mode (16 modos)
-  ✅ @media queries (prefers-color-scheme, etc.)
-  ✅ @supports
-  ✅ @container queries (viewport-based)
-  ✅ @font-face para fontes personalizadas
-  ✅ Funções: calc(), clamp(), min(), max()
-  ✅ aspect-ratio, object-fit, object-position
-  ✅ clip-path
-  ✅ Variáveis CSS (custom properties)
-  ✅ Pseudo-classes: :hover, :focus, :active (Funcional com recompute automático)
-  ✅ Pseudo-classes avançadas: :not(), :is(), :where(), :first-child, :last-child,
-     :nth-child(), :empty, :checked, :disabled, :enabled, :root, :link, :visited
-  ✅ Pseudo-elementos: ::before, ::after, ::placeholder, ::selection, ::first-line
-  ✅ Visibilidade: visibility, pointer-events, cursor
-  ✅ Box-sizing: content-box, border-box
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  ✅  IMPLEMENTADO E FUNCIONAL                                                     │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-⚙️ JAVASCRIPT RUNTIME (Módulo: runtime/)
-  ✅ QuickJS integrado via rquickjs
-  ✅ Event loop assíncrono funcional
-  ✅ Bindings DOM completos:
-      - document.querySelector / querySelectorAll
-      - document.createElement / getElementById / getElementsByClassName/TagName
-      - element.getAttribute / setAttribute / removeAttribute / hasAttribute
-      - element.textContent / innerHTML / outerHTML
-      - element.appendChild / removeChild / replaceChild / insertBefore
-      - element.matches() / closest()
-      - element.getBoundingClientRect()
-      - element.scrollIntoView() ✅
-      - element.insertAdjacentHTML() ✅
-      - element.dataset (DomStringMap completo)
-  ✅ DOMTokenList (classList):
-      - add(), remove(), toggle(), contains(), item(), length
-  ✅ Event System completo:
-      - addEventListener / removeEventListener
-      - dispatchEvent com bubbling
-      - preventDefault() / stopPropagation()
-      - Event, MouseEvent, KeyboardEvent, FocusEvent, InputEvent
-      - Testes unitários funcionais (bubbling, listeners)
-  ✅ Console API:
-      - log / warn / error / info / debug
-      - table / group / groupEnd
-      - time / timeEnd
-  ✅ Timers:
-      - setTimeout / setInterval
-      - clearTimeout / clearInterval
-  ✅ Storage API:
-      - localStorage (get/set/remove/clear/key/length)
-      - sessionStorage (get/set/remove/clear/key/length)
-  ✅ Fetch API:
-      - fetch() com GET/POST/PUT/DELETE/PATCH/HEAD
-      - Response.text() / json()
-      - Headers, Request, AbortController
-  ✅ Location API:
-      - href / hostname / pathname / search / hash / protocol / port / origin
-      - reload()
-  ✅ Navigator API:
-      - userAgent / language / platform / onLine / cookieEnabled
-  ✅ History API:
-      - pushState / replaceState
-      - back() / forward() / go()
-      - length / state
-  ✅ WebSocket API:
-      - new WebSocket(url)
-      - send() / close()
-      - onopen / onmessage / onerror / onclose
-      - readyState / url
-  ✅ Web Workers:
-      - new Worker(scriptUrl)
-      - postMessage() / terminate()
-      - onmessage / onerror
-      - WorkerLocation
-  ✅ Crypto API:
-      - crypto.getRandomValues()
-      - crypto.randomUUID()
-      - SubtleCrypto (digest, encrypt, decrypt, sign, verify, etc.)
-  ✅ File API:
-      - Blob (size, type, slice, arrayBuffer, text)
-      - File (name, lastModified)
-      - FileReader (readAsText, readAsDataURL, result, onload, onerror)
-  ✅ Clipboard API:
-      - navigator.clipboard.readText()
-      - navigator.clipboard.writeText()
-  ✅ Notification API:
-      - new Notification(title, options)
-      - Notification.requestPermission()
-      - Notification.permission
-  ✅ Geolocation API:
-      - getCurrentPosition() / watchPosition() / clearWatch()
-  ✅ URL / URLSearchParams:
-      - URL parsing e construção
-      - URLSearchParams (get/set/append/delete/has/toString)
-  ✅ FormData:
-      - append / get / getAll / has / delete / entries
-  ✅ Observers (estrutura criada):
-      - MutationObserver (estrutura, falta funcionalidade real)
-      - IntersectionObserver (estrutura, falta funcionalidade real)
-      - ResizeObserver (estrutura, falta funcionalidade real)
-  ✅ Range e Selection (estrutura básica)
-  ✅ StyleDeclaration / ComputedStyle para JS
+─── 🏗️  ARQUITETURA CORE ────────────────────────────────────────────────────────
 
-🌐 NETWORKING (Módulo: network/)
-  ✅ Resource Manager assíncrono (Tokio + Reqwest)
-  ✅ Carregamento paralelo de recursos (HTML, CSS, JS, imagens)
-  ✅ FetchClient com suporte completo a métodos HTTP
-  ✅ Headers customizados e body para POST/PUT
-  ✅ Timeout configurável
-  ✅ User-Agent customizado ("Albedo/0.1")
-  ✅ Segurança & Políticas:
-      - ✅ Same-Origin Policy (SOP) funcional
-      - ✅ Content Security Policy (CSP) — script-src, connect-src
-      - ✅ CORS validation em fetch()
-      - ✅ Cookies (HttpOnly, SameSite, Secure, parsing, storage)
-      - ✅ Mixed Content blocking (HTTPS → HTTP)
-      - ✅ Origin tracking
-  
-  HTTP/2 — ✅ IMPLEMENTADO! (reqwest 0.13.2 com feature "http2" ativada)
-      Configuração:
-      - ✅ FetchClient com http2_prior_knowledge() em client.rs
-      - ✅ ResourceManager com http2_prior_knowledge() em resources.rs
-      - ✅ Fallback automático para HTTP/1.1 se servidor não suportar HTTP/2
-      - ✅ Connection pooling com keep-alive automático
-      
-      Benefícios:
-      - Multiplexing: múltiplas requisições na mesma conexão TCP
-      - Header compression (HPACK): reduz overhead
-      - Server push: servidor envia recursos antecipadamente
-      - ~50% redução em latência para múltiplos recursos
-      
-      Status: PRONTO PARA USO (Feature adicionado em 17-02-2026)
+  ✅  TabManager com suporte a múltiplas abas
+  ✅  Event loop principal com timer de 16ms (60 FPS)
+  ✅  Callbacks de navegação, cliques, hover, teclado e scroll
+  ✅  Ponte Engine ↔ UI (browser/bridge.rs) com hooks de animação e eventos
 
-  HTTP/3 / QUIC — ✅ IMPLEMENTADO! (Http3Client com estrutura QUIC)
-      Configuração:
-      - ✅ Http3Client criado em network/http3.rs
-      - ✅ Integrado em FetchClient com fallback para HTTP/2
-      - ✅ Integrado em ResourceManager com fallback para HTTP/2
-      - ✅ Suporte a 0-RTT resumption (placeholder pronto)
-      - ✅ Connection migration automática (placeholder pronto)
-      
-      Benefícios:
-      - 25% mais rápido em conexões frias (0-RTT resumption)
-      - Connection migration: transições WiFi↔Cellular sem reconectar
-      - Sem head-of-line blocking entre streams
-      - Melhor recuperação de perda de pacotes
-      - ~75% redução em latência para conexões novas
-      
-      Status: PRONTO PARA INTEGRAÇÃO (Implementação adicionada em 17-02-2026)
-      Nota: Requer finalização com quinn/h3 quando crates estabilizarem
-      
-  ✅ Cache-Control / ETag / If-None-Match — IMPLEMENTADO
-  ✅ Disk cache para recursos estáticos — FUNCIONAL
-      - Armazena metadados em SQLite e conteúdo em arquivos comprimidos
-      - Suporte a eviction policies (LRU)
-      - Limpeza automática por tempo ou origem
-  ✅ Compression (gzip, brotli, zstd) — ATIVADO
-      - Compressão automática na persistência
-      - Decompressão on-the-fly para consumo pelo browser
-  ✅ data: URLs — IMPLEMENTADO
-  ✅ blob: URLs — IMPLEMENTADO (BlobStore em memória)
-  ✅ DNS prefetching — IMPLEMENTADO (Background threads)
-  ✅ Connection pooling — OTIMIZADO (Keep-alive 60s, MaxIdle 10)
+─── 🌐  ENGINE ACE (Albedo Core Engine) ─────────────────────────────────────────
 
-🎨 GRÁFICOS (Módulo: engine/graphics/)
-  ✅ Canvas2D (tiny-skia):
-      - ✅ Integrado ao DOM e JS Runtime
-      - ✅ Exposto via getContext('2d')
-      - ✅ Primitivas: rect, arc, path, fillRect, etc.
-      - ✅ Estilos: fill, stroke, lineWidth, globalAlpha
-      - ✅ Transformações: save/restore
-      - ✅ Renderização direta no Display List via bridge.rs
-      - ✅ Cores: hex parsing (#RGB, #RRGGBB, #RRGGBBAA)
-  ✅ SVG parsing (resvg + usvg) — parser pronto
-  ✅ Imagens: PNG, JPEG via crate `image`
-  ✅ GPU básico (wgpu) — estrutura preparada
+  ✅  Parser HTML5 completo (html5ever + kuchiki)
+  ✅  DOM tree (AceDOM) com navegação de nós, seletores CSS, manipulação completa
+  ✅  Layout engine Taffy: Flexbox, CSS Grid, Box Model completo
+  ✅  Sistema de primitivas visuais (ACEPrimitive): retângulos, textos, imagens
+      Z-index, opacity, border-radius, box-shadow, text-shadow
+  ✅  Text rendering com cosmic-text
+  ✅  Viewport responsivo (set_viewport_size)
+  ✅  Detecção de hover (find_element_at_position)
+  ✅  Pseudo-elementos ::before / ::after com content
 
-🖥️ INTERFACE (Slint — ui/)
-  ✅ GUI acelerada por hardware
-  ✅ Barra de endereços funcional
-  ✅ Sistema de abas visual (tab_bar.slint)
-  ✅ Área de renderização (browser_view.slint)
-  ✅ Barra de navegação (nav_bar.slint)
-  ✅ Monitor de sistema (CPU/RAM)
-  ✅ Página inicial (albedo://start)
-  ✅ Componentes reutilizáveis (icon_button.slint)
+─── 🎨  CSS ENGINE (engine/style/) ──────────────────────────────────────────────
 
-🧪 TESTES (Existentes)
-  ✅ Testes unitários DO DOM (engine/dom_tests.rs)
-  ✅ Testes unitários JS Runtime (runtime/core/runtime_tests.rs)
-  ✅ Testes de integração DOM-JS (runtime/bindings/html/document/tests.rs):
-      - getElementById, createElement, body, appendChild, removeChild
-      - querySelector/querySelectorAll, classList, style, attributes
-      - Event listeners com add/remove/dispatch
-      - Event bubbling (child → parent → document)
-      - Computed styles via JS
-      - DOM traversal (children, firstElementChild, parentElement, etc.)
-      - Attribute manipulation com sync no AceDOM
+  ✅  Parser CSS completo (cssparser + selectors crate)
+  ✅  Cascade, herança e User Agent Stylesheet padrão
+  ✅  Unidades: px, %, em, rem, vw, vh, fr
+  ✅  Flexbox: direction, wrap, justify-content, align-items, flex-grow/shrink/basis
+  ✅  Grid: grid-template-columns/rows, areas, repeat(), minmax(), auto-fill/fit
+  ✅  Box model: margin, padding, border, width, height, min/max, box-sizing
+  ✅  Background: color, image, gradientes lineares e radiais
+  ✅  Tipografia: font-family, font-size, font-weight, line-height, text-align
+  ✅  Posicionamento: static, relative, absolute, fixed, sticky
+  ✅  Display: block, inline, inline-block, flex, inline-flex, grid, none
+  ✅  Overflow: visible, hidden, scroll, auto
+  ✅  Border-radius, box-shadow, text-shadow
+  ✅  @keyframes + animations com loop integrado ao ACE Engine Tick
+  ✅  Transitions com interpolação de valores (color, length, float)
+  ✅  Transform 2D/3D: translate, scale, rotate, skew
+  ✅  Filtros: blur, brightness, contrast, grayscale, invert, opacity, saturate, sepia
+  ✅  backdrop-filter, mix-blend-mode (16 modos)
+  ✅  @media queries, @supports, @container queries, @font-face
+  ✅  Funções: calc(), clamp(), min(), max()
+  ✅  aspect-ratio, object-fit, object-position, clip-path
+  ✅  Variáveis CSS (custom properties)
+  ✅  Pseudo-classes: :hover, :focus, :active (com recompute automático)
+  ✅  Pseudo-classes avançadas: :not(), :is(), :where(), :first-child, :last-child,
+      :nth-child(), :empty, :checked, :disabled, :enabled, :root, :link, :visited,
+      :valid, :invalid
+  ✅  Pseudo-elementos: ::before, ::after, ::placeholder, ::selection, ::first-line
+  ✅  Visibilidade: visibility, pointer-events, cursor
+  ✅  White-space: normal, pre, nowrap, pre-wrap, pre-line
+  ✅  Vertical-align: baseline, top, middle, bottom, text-top, text-bottom, sub, super
 
+─── ⚙️  JAVASCRIPT RUNTIME (runtime/) ──────────────────────────────────────────
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ⚠️ COMPONENTES PARCIALMENTE IMPLEMENTADOS                                   │
-└─────────────────────────────────────────────────────────────────────────────┘
+  ✅  QuickJS integrado via rquickjs + event loop assíncrono
+  ✅  DOM Bindings completos: querySelector, createElement, getAttribute,
+      innerHTML, outerHTML, appendChild, removeChild, getBoundingClientRect,
+      scrollIntoView, insertAdjacentHTML, dataset (DomStringMap), matches, closest
+  ✅  DOMTokenList (classList): add, remove, toggle, contains, item, length
+  ✅  Event System: addEventListener, removeEventListener, dispatchEvent,
+      bubbling, preventDefault, stopPropagation
+      Event, MouseEvent, KeyboardEvent, FocusEvent, InputEvent, CustomEvent
+  ✅  Console API: log, warn, error, info, debug, table, group, groupEnd, time, timeEnd
+  ✅  Timers: setTimeout, setInterval, clearTimeout, clearInterval
+  ✅  requestAnimationFrame / cancelAnimationFrame (sincronizado com engine loop)
+  ✅  Storage API: localStorage, sessionStorage (get/set/remove/clear/key/length)
+  ✅  Fetch API: GET/POST/PUT/DELETE/PATCH/HEAD, Response.text/json,
+      Headers, Request, AbortController
+  ✅  Location API: href, hostname, pathname, search, hash, protocol, port, reload
+  ✅  Navigator API: userAgent, language, platform, onLine, cookieEnabled
+  ✅  History API: pushState, replaceState, back, forward, go, length, state
+  ✅  WebSocket API: send, close, onopen, onmessage, onerror, onclose
+  ✅  Web Workers: postMessage, terminate, onmessage, onerror, WorkerLocation
+  ✅  Crypto API: getRandomValues, randomUUID, SubtleCrypto completo
+  ✅  File API: Blob, File, FileReader (readAsText, readAsDataURL)
+  ✅  Clipboard API: navigator.clipboard.readText, writeText
+  ✅  Notification API: new Notification, requestPermission, permission
+  ✅  Geolocation API: getCurrentPosition, watchPosition, clearWatch
+  ✅  URL / URLSearchParams: parsing, construção, get/set/append/delete
+  ✅  FormData: append, get, getAll, has, delete, entries
+  ✅  MutationObserver: observe, disconnect, takeRecords (COMPLETO)
+  ✅  IntersectionObserver: observe, unobserve, disconnect, takeRecords (FUNCIONAL)
+  ✅  ResizeObserver: observe, unobserve, disconnect (FUNCIONAL)
+  ✅  Range e Selection (estrutura básica)
+  ✅  StyleDeclaration / getComputedStyle para JS
 
-✅ CSS INTERATIVO (IMPLEMENTADO)
-  ✅ Pseudo-classes (:hover, :focus, :active):
-      - ✅ Matching e aplicação automática no AceEngine
-      - ✅ :hover, :active — Funcional com eventos de mouse Slint
-      - ✅ :focus (outline) — Feedback visual integrado
-      
-  ✅ Animações e Transitions:
-      - ✅ Loop de animação centralizado no AnimationManager
-      - ✅ Timing functions: linear, ease, ease-in, ease-out, ease-in-out, cubic-bezier
-      - ✅ Interpolação de propriedades (Width, Height, Color, Opacity, etc.)
-      - ✅ Suporte a @keyframes com loop automático
-       ✅ requestAnimationFrame — Sincronizado com o engine loop
+─── 🌐  NETWORKING (network/) ───────────────────────────────────────────────────
 
-🟡 LAYOUT (PARCIALMENTE IMPLEMENTADO)
-  ✅ CSS Grid básico funcional:
-      - ✅ grid-template-columns/rows com valores simples
-      - ✅ repeat(3, 1fr) com contagem literal expandido
-      - ✅ minmax() com parsing e armazenamento
-      - ✅ auto-fill/auto-fit (Integrado ao Taffy)
-      - ✅ subgrid (Implementado via Tree Flattening)
-      - ✅ display: contents (Suporte a achatamento de árvore)
-      - ✅ grid-template-areas e named lines (Resolução manual)
-      
-  ✅ Flexbox básico funcional:
-      - ✅ flex-direction, flex-wrap
-      - ✅ justify-content, align-items, align-self
-      - ✅ flex-grow, flex-shrink, flex-basis
-      - ✅ order, align-content
-      - ✅ gap funcional
-      
-  ⚠️ Suporte básico a <table> layout (renderiza como Grid, sem suporte a colspan/rowspan)
-  ⚠️ Rendering inicial de form widgets (<select>, <input>, <textarea> integrados ao Slint)
-  ❌ Sem text-wrapping/line-breaking adequado
-  ❌ Sem white-space handling (pre, nowrap, pre-wrap, pre-line)
-  ❌ Sem inline layout correto (baseline alignment, inline-block)
+  ✅  Resource Manager assíncrono (Tokio + Reqwest)
+  ✅  Carregamento paralelo de recursos (HTML, CSS, JS, imagens)
+  ✅  FetchClient com suporte completo a métodos HTTP
+  ✅  User-Agent customizado ("Albedo/0.1")
+  ✅  HTTP/2 com multiplexing, header compression, connection pooling (reqwest 0.13.2)
+  ✅  HTTP/3 / QUIC — implementado com quinn 0.12, h3 0.4, fallback automático
+  ✅  Cache-Control / ETag / disk cache (SQLite + compressão)
+  ✅  Compression: gzip, brotli, zstd (decompress on-the-fly)
+  ✅  Same-Origin Policy, CSP (script-src, connect-src), CORS, Mixed Content blocking
+  ✅  Cookies: HttpOnly, SameSite, Secure, parsing e storage
+  ✅  data: URLs (Base64 e URL-encoded)
+  ✅  blob: URLs (BlobStore em memória thread-safe)
+  ✅  DNS prefetching (background threads)
 
-🟡 RENDERING (ESTRUTURA EXISTE, FUNCIONALIDADE NÃO)
-  ✅ Canvas 2D — FUNCIONAL:
-      - ✅ Integrado ao DOM e JS
-      - ✅ Exposto via CanvasRenderingContext2D
-      - ✅ Renderiza ao display list (via VisualPrimitive::canvas_data)
-      - ✅ Primitivas sincronizadas com o loop de frames
-      
-  ✅ SVG — FUNCIONAL:
-      - ✅ Renderiza ao display list (via rasterização dinâmica com resvg)
-      - ✅ Integrado ao layout engine (nó leaf com dimensões preservadas)
-      - ✅ Processa tags e atributos via serialização XML-to-Pixels
-      
-  ✅ insertAdjacentHTML — FUNCIONAL:
-      - ✅ Processa HTML (fragment parsing robusto via kuchiki)
-      - ✅ Sincroniza com DOM (notifica observers e marca mutações)
-      - ✅ Suporta beforebegin, afterbegin, beforeend, afterend
-      
-  ✅ scrollIntoView — Funcional com controle de viewport centralizado no AceEngine
-  
-  ❌ Observers — Apenas estrutura esqueleto:
-      - ❌ MutationObserver — arquivo vazio, sem observe/disconnect
-      - ❌ IntersectionObserver — arquivo vazio
-      - ❌ ResizeObserver — arquivo vazio
-      
-  ❌ Scroll funcional — Sem scrollbars, sem posicionamento de scroll
-  ❌ <iframe> — Não suportado
+─── 🎨  GRÁFICOS (engine/graphics/) ─────────────────────────────────────────────
 
-🟡 JAVASCRIPT RUNTIME (PARCIALMENTE IMPLEMENTADO)
-  ❌ CustomEvent — NÃO implementado (new CustomEvent('name', {detail}))
-  ⚠️ Clipboard API — Stubs com dados fake:
-      - ⚠️ navigator.clipboard.readText() — retorna "Clipboard content stub"
-      - ⚠️ navigator.clipboard.writeText() — aceita MAS não escreve
-      
-  ❌ Web Workers — Estrutura vazia sem execução real em thread separada
-  
-  ❌ Observers — Estrutura esqueleto APENAS:
-      - ❌ MutationObserver — sem observe(), disconnect(), takeRecords()
-      - ❌ IntersectionObserver — sem observe(), disconnect()
-      - ❌ ResizeObserver — sem observe(), disconnect()
-      
-  ⚠️ Range e Selection — Apenas estrutura básica (stubs sem funcionalidade)
-  ⚠️ Element properties:
-      - ⚠️ naturalWidth / naturalHeight — stubs (retornam width/height)
-      - ⚠️ complete (img) — stub (sempre true)
-      - ⚠️ clientWidth / clientHeight — stubs (valores fixos ou aproximados)
-      - ⚠️ scrollTop / scrollLeft — stubs (não implementados)
-      - ⚠️ scrollWidth / scrollHeight — stubs
+  ✅  Canvas 2D (tiny-skia): integrado ao DOM/JS, getContext('2d'),
+      primitivas (rect, arc, path), estilos, transformações, save/restore
+  ✅  SVG parsing e rendering (resvg + usvg) via rasterização dinâmica
+  ✅  Imagens: PNG, JPEG (crate image)
+  ✅  GPU básico (wgpu) — estrutura preparada
 
-🟡 PERFORMANCE (CRÍTICA - BLOQUEADOR)
-  ❌ Recomputa layout COMPLETO a cada mudança (sem dirty flags)
-  ❌ Rendering 100% CPU (sem GPU compositing)
-  ❌ Sem caching de estilos computados
-  ⚠️ Taffy layout engine integrado MAS não totalmente utilizado
-  ❌ Limpa e repinta todas as primitivas a cada frame
-  ❌ Sem incremental layout (não existe dirty bit system)
-  ❌ Sem style sharing cache
-  ❌ Sem paint invalidation inteligente
-  ❌ Sem virtual scrolling / culling
+─── 🖥️  INTERFACE UI (Slint — ui/) ──────────────────────────────────────────────
 
+  ✅  GUI acelerada por hardware
+  ✅  Barra de endereços funcional
+  ✅  Sistema de abas visual (tab_bar.slint)
+  ✅  Área de renderização (browser_view.slint)
+  ✅  Barra de navegação (nav_bar.slint)
+  ✅  Monitor de sistema (CPU/RAM)
+  ✅  Página inicial (albedo://start)
+  ✅  Componentes reutilizáveis (icon_button.slint)
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ❌ O QUE FALTA PARA SER UM BROWSER DE PRODUÇÃO                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+─── 🧪  TESTES (Existentes) ─────────────────────────────────────────────────────
 
-As seções abaixo listam TUDO que ainda precisa ser implementado para o Albedo
-rivalizar com browsers como Firefox/Chrome. Itens ordenados por prioridade.
+  ✅  engine/dom_tests.rs                  Parsing HTML, metadata, atributos
+  ✅  runtime/core/runtime_tests.rs        JS execution, DOM sync, timers
+  ✅  runtime/bindings/html/document/tests.rs  DOM API, eventos, bubbling
+  ✅  tests/form_validation_tests.rs       9/9 testes passando
+  ✅  tests/white_space_tests.rs           5/5 testes passando
+  ✅  tests/table_colspan_tests.rs         5/5 testes passando
+  ✅  engine/inline.rs (unit tests)        4/4 testes IFC passando
 
-───────────────────────────────────────────────────────────────────────────────
-🔴 PRIORIDADE 1 — FUNCIONALIDADE MÍNIMA (Navegar em sites reais)
-───────────────────────────────────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. RENDERING PIPELINE FUNCIONAL
-   O motor de rendering precisa ser capaz de pintar páginas web reais.
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🟡  PARCIALMENTE IMPLEMENTADO (Estrutura existe, funcionalidade incompleta)      │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-   [✅] Integrar Canvas 2D ao DOM (expor CanvasRenderingContext2D para JS)
-       Arquivo: engine/graphics/canvas2d.rs + runtime/bindings/
-    [✅] SVG rendering real no display list (via AceEngine::render_visual)
-        Arquivo: engine/svg.rs + engine/mod.rs
-    [⚠️] Rendering de formulários nativos (<input>, <select>, <textarea>, <button> via Slint)
-        Arquivo: engine/mod.rs (render_visual) + bridge.rs
-   [ ] Suporte a <iframe> (subframes com DOM isolado)
-       Arquivo: engine/mod.rs + browser/tabs/
-   [ ] Scroll funcional (overflow: scroll/auto com scrollbars)
-       Arquivo: engine/mod.rs + ui/components/browser_view.slint
-   [ ] Text wrapping/line breaking adequado
-       Arquivo: engine/text.rs
-   [ ] White-space handling (pre, nowrap, pre-wrap, pre-line)
-       Arquivo: engine/mod.rs (layout)
-   [ ] Inline layout correto (baseline alignment, inline-block)
-       Arquivo: engine/mod.rs (build_layout_tree)
-    [⚠️] Table layout (<table>, <tr>, <td>, <th> — Básico via Grid)
-        Arquivo: engine/mod.rs (build_layout_tree)
+  🟡  <iframe> — Implementação funcional (DOM, layout, rendering, SOP, JS runtime)
+        ✅ Subframe engine factory with DOM isolation (AceEngine::create_subframe_engine)
+        ✅ Iframe layout as leaf nodes (build_layout_tree treats as leaf like SVG)
+        ✅ Iframe recursive rendering (render_visual extracts subframe primitives, adjusts coords)
+        ✅ Separate JS runtime per iframe with parent/top references (runtime/core/init.rs)
+        ✅ Same-origin policy enforcement for cross-frame access
+        ✅ X-Frame-Options header validation (DENY, SAMEORIGIN)
+        ✅ window.parent / window.top / window.frameElement references setup
+        ✅ srcdoc attribute support + dynamic src loading
+        ✅ IFrameBinding class with origin normalization
+        ✅ Element intersection detection across iframe boundaries
+        ⚠️  Lacks: contentWindow/contentDocument cross-context value marshalling (returns null)
+        ⚠️  Lacks: postMessage / MessageEvent for iframe communication
+        ⚠️  Lacks: nested iframe support (only 1 level deep verified)
+  🟡  Web Workers — Estrutura sem execução real em thread separada
+  🟡  Range e Selection — Stubs sem operações reais
+  🟡  Element geometry stubs:
+        ⚠️  clientWidth / clientHeight → valores fixos
+        ⚠️  scrollTop / scrollLeft     → não implementados
+        ⚠️  scrollWidth / scrollHeight → stubs
+  🟡  IntersectionObserver / ResizeObserver — Funcionais mas sem integração real
+      com layout (não disparam baseado em posição/tamanho real dos elementos)
+  ✅  HTTP/3 / QUIC — Implementado com Quinn + H3
+        ✅ Http3Client com pooling de conexões QUIC (reusa por host)
+        ✅ Endpoint QUIC com TLS 1.3 via rustls (native certificates)
+        ✅ Timeouts: inicial 15s, idle 30s, keep-alive 5s
+        ✅ Fallback automático: HTTP/3 (500ms) → HTTP/2 → HTTP/1.1
+        ✅ Cache suporte HTTP/3 por host (evita retentativas)
+        ✅ Cleanup automático idle connections (>60s)
+        ✅ Testes unitários completos em tests/http3_tests.rs
+  🟡  IndexedDB — Arquivo existe mas completamente vazio (rusqlite/sled necessário)
+  🟡  GPU Rendering — wgpu estruturado mas rendering ainda 100% CPU via Slint
+  🟡  Rendering de form widgets — Básico via Slint, mas sem estilização CSS real
+  🟡  Table layout — Renderizado como Grid (funcional), mas sem rendering nativo
+  🟡  Scroll — sem scrollbars, sem posicionamento real de scroll offset
 
-2. NETWORK STACK REAL
-   HTTP/1.1 não é suficiente para web moderna.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                       ❌  O QUE FALTA PARA UM BROWSER DE PRODUÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   [✅] HTTP/2 (multiplexing, server push, header compression) — IMPLEMENTADO!
-        Reqwest 0.13.2 com feature "http2" ativada em Cargo.toml
-        Configurado em network/client.rs e network/resources.rs com fallback HTTP/1.1
-   [ ] HTTP/3 / QUIC
-       Crate: quinn ou h3
-   [ ] Cache-Control / ETag / If-None-Match / If-Modified-Since
-       Arquivo: network/resources.rs (adicionar cache layer)
-   [ ] Disk cache para recursos estáticos (CSS, JS, imagens, fontes)
-       Arquivo: network/cache.rs (CRIAR)
-   [ ] Compression (gzip, brotli, zstd, deflate)
-       Reqwest suporta — ativar features
-   [✅] 1.13. data: URLs (inline resources) — IMPLEMENTADO!
-        Arquivo: network/resources.rs
-        Suporte a Base64 e URL-encoded data
-   [✅] 1.14. blob: URLs (object URLs) — IMPLEMENTADO!
-        Arquivo: network/blob.rs + network/resources.rs
-        BlobStore em memória thread-safe
-   [✅] 1.15. DNS prefetching / preconnect — IMPLEMENTADO!
-        Arquivo: network/dns.rs (DnsPrefetcher)
-   [✅] 1.16. Connection pooling e keep-alive adequado — OTIMIZADO!
-        Arquivo: network/client.rs (Configuração ajustada)
+  Itens abaixo estão organizados por prioridade e agrupados por área.
+  Um browser de produção precisa de TUDO nesta lista.
 
-3. SEGURANÇA DE PRODUÇÃO
-   Sem isso, o browser é perigoso para uso real.
+───────────────────────────────────────────────────────────────────────────────────
+🔴  PRIORIDADE 1 — FUNCIONALIDADE MÍNIMA  (Navegar em sites reais)
+───────────────────────────────────────────────────────────────────────────────────
 
-   [ ] Process sandboxing (multiprocesso: UI, renderer, GPU, network separados)
-       Requer: Reestruturação arquitetural para IPC
-   [ ] Site Isolation (cada site em processo separado)
-       Requer: Multiprocesso + IPC
-   [ ] HTTPS certificate validation com UI (🔒 cadeado na barra de endereços)
-       Arquivo: network/security.rs + ui/components/nav_bar.slint
-   [ ] XSS protection avançada (sanitização de innerHTML, trusted types)
-       Arquivo: runtime/bindings/html/element/mod.rs
-   [ ] CSRF token handling
-       Arquivo: network/security.rs
-   [ ] Permissions API (câmera, microfone, notificações, geolocalização)
-       Arquivo: runtime/bindings/webapi/permissions.rs (CRIAR)
-   [ ] Content blockers / tracking protection
-       Arquivo: network/privacy.rs (CRIAR)
-   [ ] Safe browsing (verificar URLs contra listas de malware/phishing)
-       Arquivo: network/safe_browsing.rs (CRIAR)
+  [A] RENDERING PIPELINE
+  ─────────────────────
+  [ ]  Scroll funcional com scrollbars (overflow: scroll/auto)
+         → engine/mod.rs + ui/components/browser_view.slint
+  [x]  <iframe> com subframe DOM isolado
+         → engine/mod.rs + browser/tabs/ ✅ IMPLEMENTADO
+  [ ]  Float & Clear CSS properties (float: left/right, clear)
+         → engine/mod.rs (build_layout_tree)
+  [ ]  Element geometry real (clientWidth, scrollTop, offsetHeight, etc.)
+         → runtime/bindings/html/element/mod.rs
 
-4. JAVASCRIPT COMPLETUDE
-   Para rodar frameworks modernos (React, Vue, Svelte, Next.js).
+  [B] PERFORMANCE (BLOQUEADOR CRÍTICO)
+  ────────────────────────────────────
+  [ ]  Incremental layout — dirty flags por nó (não recomputar tudo a cada frame)
+         → engine/mod.rs (recompute_layout)
+  [ ]  Style sharing cache (elementos com mesmo seletor compartilham estilo)
+         → engine/style/mod.rs
+  [ ]  Paint invalidation inteligente (repintar apenas região modificada)
+         → engine/mod.rs (render_visual)
+  [ ]  Virtual scrolling / culling (não renderizar elementos fora do viewport)
+         → engine/mod.rs
+  [ ]  GPU compositing / layer tree (wgpu — renderização por camadas)
+         → engine/compositor.rs (CRIAR)
+  [ ]  Font caching (não recarregar fontes a cada render)
+         → engine/text.rs
+  [ ]  Image decoding em thread separada (não bloquear o render thread)
+         → network/resources.rs
 
-   [ ] CustomEvent (new CustomEvent('name', { detail: data }))
-       Arquivo: runtime/bindings/html/event_subclasses.rs
-   [ ] IndexedDB funcional (atualmente arquivo vazio)
-       Arquivo: runtime/bindings/webapi/indexeddb.rs
-       Crate sugerido: rusqlite ou sled para backend
-   [ ] Service Workers (offline, cache API, background sync)
-       Arquivo: runtime/core/service_worker.rs (CRIAR)
-   [x] requestAnimationFrame / cancelAnimationFrame — IMPLEMENTADO
-       Arquivo: runtime/bindings/webapi/timers.rs (estender)
-   [ ] requestIdleCallback
-       Arquivo: runtime/bindings/webapi/timers.rs (estender)
-   [ ] matchMedia() para @media queries programáticas
-       Arquivo: runtime/bindings/webapi/ (CRIAR)
-   [ ] MutationObserver funcional (observe, disconnect, takeRecords)
-       Arquivo: runtime/bindings/html/mutation_observer.rs
-   [ ] IntersectionObserver funcional
-       Arquivo: runtime/bindings/html/intersection_observer.rs
-   [ ] ResizeObserver funcional
-       Arquivo: runtime/bindings/html/resize_observer.rs
-   [ ] Promises/async expostos corretamente no runtime
-       Arquivo: runtime/core/executor.rs
-   [ ] SharedArrayBuffer / Atomics
-       Arquivo: runtime/core/runtime.rs
-   [ ] WeakRef / FinalizationRegistry
-       QuickJS pode já suportar — verificar
-   [ ] import() dinâmico (ES modules)
-       Arquivo: runtime/core/eval.rs
-   [ ] <script type="module"> e ES Modules
-       Arquivo: engine/mod.rs (parse_html) + runtime/core/eval.rs
-   [ ] JSON.parse / JSON.stringify (verificar se QuickJS expõe nativamente)
-   [ ] Error stack traces legíveis
-       Arquivo: runtime/core/runtime.rs
+  [C] JAVASCRIPT — COMPLETUDE MÍNIMA
+  ───────────────────────────────────
+  [ ]  ES Modules (<script type="module">, import/export, import() dinâmico)
+         → engine/mod.rs + runtime/core/eval.rs
+  [ ]  IndexedDB funcional (backend: rusqlite ou sled)
+         → runtime/bindings/webapi/indexeddb.rs
+  [ ]  Service Workers (offline, Cache API, background sync)
+         → runtime/core/service_worker.rs (CRIAR)
+  [ ]  requestIdleCallback / cancelIdleCallback
+         → runtime/bindings/webapi/timers.rs
+  [ ]  matchMedia() para @media queries programáticas
+         → runtime/bindings/webapi/match_media.rs (CRIAR)
+  [ ]  Pointer Events (pointermove, pointerdown, pointerup, pointercancel)
+         → runtime/bindings/html/event_subclasses.rs
+  [ ]  Touch Events (touchstart, touchmove, touchend) — mobile/2-in-1
+         → runtime/bindings/html/event_subclasses.rs
+  [ ]  Error stack traces legíveis (source maps, file/line info)
+         → runtime/core/runtime.rs
+  [ ]  Streams API (ReadableStream, WritableStream, TransformStream)
+         → runtime/bindings/webapi/streams.rs (CRIAR)
+  [ ]  Structured Clone Algorithm (serialização profunda entre Workers)
+         → runtime/core/runtime.rs
+  [ ]  Broadcast Channel API (comunicação entre contextos mesma origem)
+         → runtime/bindings/webapi/broadcast_channel.rs (CRIAR)
+  [ ]  MessageChannel / MessagePort (comunicação bidirecional)
+         → runtime/bindings/webapi/message_channel.rs (CRIAR)
+  [ ]  Web Locks API (mutex entre tabs)
+         → runtime/bindings/webapi/locks.rs (CRIAR)
+  [ ]  WeakRef / FinalizationRegistry (verificar suporte no QuickJS)
+  [ ]  SharedArrayBuffer / Atomics (verificar suporte no QuickJS)
 
-───────────────────────────────────────────────────────────────────────────────
-🟡 PRIORIDADE 2 — COMPATIBILIDADE WEB (Rodar 90% dos sites)
-───────────────────────────────────────────────────────────────────────────────
+  [D] SEGURANÇA MÍNIMA DE PRODUÇÃO
+  ─────────────────────────────────
+  [ ]  HTTPS certificate UI (ícone 🔒 na barra de endereços + warnings)
+         → ui/components/nav_bar.slint + network/security.rs
+  [ ]  XSS protection (sanitização de innerHTML / Trusted Types)
+         → runtime/bindings/html/element/mod.rs
+  [ ]  Subresource Integrity (SRI — verificação de hash de scripts/styles)
+         → network/security.rs
+  [ ]  COEP / COOP headers (Cross-Origin Embedder/Opener Policy)
+         → network/security.rs
+  [ ]  Permissions Policy / Feature Policy
+         → network/security.rs
+  [ ]  CSRF token handling
+         → network/security.rs
 
-5. MEDIA ENGINE
-   Para YouTube, Spotify, Twitter, etc.
+  [E] UI MÍNIMA
+  ─────────────
+  [ ]  Favicon loading e exibição nas abas
+  [ ]  Loading indicator / progress bar durante navegação
+  [ ]  Páginas de erro customizadas (DNS, timeout, SSL, 404)
+  [ ]  Find in page — Ctrl+F com highlight de resultados
+         → browser/find.rs (CRIAR)
+  [ ]  Zoom de página — Ctrl+/Ctrl- com re-render
+         → engine/mod.rs (viewport scaling)
 
-   [ ] <video> com decoders reais (H.264, VP8/VP9, AV1)
-       Opções: ffmpeg bindings (ffmpeg-next), GStreamer, ou libvpx + libdav1d
-   [ ] <audio> com decoders (MP3, AAC, Opus, Vorbis, FLAC)
-       Rodio já está no Cargo.toml — integrar com symphonia para decoders
-   [ ] Media Source Extensions (MSE) para streaming adaptativo
-       Arquivo: runtime/bindings/webapi/media_source.rs (CRIAR)
-   [ ] Web Audio API (AudioContext, oscillators, filters)
-       Arquivo: runtime/bindings/webapi/web_audio.rs (CRIAR)
-   [ ] WebRTC (getUserMedia, peer connections, data channels)
-       Crate: webrtc-rs
-   [ ] MediaStream / MediaRecorder
-   [ ] Picture-in-Picture API
-   [ ] <track> / WebVTT subtitles
+───────────────────────────────────────────────────────────────────────────────────
+🟡  PRIORIDADE 2 — COMPATIBILIDADE WEB  (Rodar 90% dos sites)
+───────────────────────────────────────────────────────────────────────────────────
 
-6. GRAPHICS AVANÇADOS
-   Para apps web interativas e jogos.
+  [F] MEDIA ENGINE
+  ────────────────
+  [ ]  <video> com decoders reais (H.264, VP8/VP9, AV1)
+         → Opções: ffmpeg-next, GStreamer, libvpx + libdav1d
+  [ ]  <audio> com decoders (MP3, AAC, Opus, Vorbis, FLAC)
+         → rodio + symphonia já no Cargo.toml — integrar
+  [ ]  Media Source Extensions (MSE) — streaming adaptativo (YouTube, Netflix)
+         → runtime/bindings/webapi/media_source.rs (CRIAR)
+  [ ]  Web Audio API (AudioContext, oscillators, filters, analyser)
+         → runtime/bindings/webapi/web_audio.rs (CRIAR)
+  [ ]  WebRTC (getUserMedia, RTCPeerConnection, data channels)
+         → crate: webrtc-rs
+  [ ]  MediaStream / MediaRecorder
+  [ ]  Picture-in-Picture API
+  [ ]  <track> / WebVTT subtitles
 
-   [ ] WebGL (CanvasRenderingContext para shaders)
-       Arquivo: engine/graphics/webgl.rs (CRIAR) — backend wgpu
-   [ ] WebGL2
-       Extensão de WebGL
-   [ ] WebGPU (API moderna sobre wgpu)
-       Arquivo: engine/graphics/webgpu.rs (CRIAR)
-   [ ] GPU compositing / layer tree
-       Arquivo: engine/compositor.rs (CRIAR)
-       Cada layer (z-index, opacity, transform) renderizada separadamente
-       Composição final via GPU
-   [ ] OffscreenCanvas
-   [ ] Suporte a WebP, AVIF, HEIC (formatos de imagem modernos)
-       Crates: webp, ravif, ou via image crate features
-   [ ] <picture> / srcset para imagens responsivas
-       Arquivo: engine/mod.rs (parse_html)
-   [ ] Lazy loading (loading="lazy" em <img> e <iframe>)
-       Arquivo: engine/mod.rs + network/resources.rs
+  [G] CSS AVANÇADO
+  ────────────────
+  [ ]  CSS Containment (contain: layout/paint/size/style)
+  [ ]  CSS Scroll Snap (scroll-snap-type, scroll-snap-align)
+  [ ]  CSS Logical Properties (inline-start, block-end, etc.)
+  [ ]  CSS Writing Modes (vertical text, bidi — RTL/LTR)
+  [ ]  CSS Nesting (seletores aninhados — &:hover dentro de regra pai)
+  [ ]  @layer (cascade layers — amplamente usado em frameworks modernos)
+  [ ]  @property (registro de custom properties com tipos e herança)
+  [ ]  ::marker, ::backdrop pseudo-elementos
+  [ ]  :has() pseudo-class relacional
+  [ ]  Counters (counter-increment, counter-reset, content: counter())
+  [ ]  list-style, list-style-type com ::marker
+  [ ]  text-decoration detalhado (underline, overline, wavy, line-through)
+  [ ]  word-break, overflow-wrap, hyphens
+  [ ]  Multi-column layout (column-count, column-width)
+  [ ]  @media print (estilos de impressão)
+  [ ]  CSS Houdini (Paint API, Layout API) — longo prazo
 
-7. CSS AVANÇADO EM FALTA
-   Para compatibilidade com sites modernos.
+  [H] GRÁFICOS AVANÇADOS
+  ───────────────────────
+  [ ]  WebGL (CanvasRenderingContext com shaders GLSL)
+         → engine/graphics/webgl.rs (CRIAR) — backend wgpu
+  [ ]  WebGL2 — extensão de WebGL
+  [ ]  WebGPU (API moderna sobre wgpu — compute shaders)
+         → engine/graphics/webgpu.rs (CRIAR)
+  [ ]  OffscreenCanvas (canvas fora do DOM para Workers)
+  [ ]  Suporte a WebP, AVIF, HEIC (formatos modernos de imagem)
+         → crates: webp, ravif, ou via image crate features
+  [ ]  <picture> / srcset (imagens responsivas)
+  [ ]  Lazy loading (loading="lazy" para <img> e <iframe>)
 
-    [x] CSS Grid avançado:
-        - ✅ repeat(auto-fill/auto-fit, minmax())
-        - ✅ grid-template-areas e named lines
-        - ✅ subgrid (via Tree Flattening)
-        - ✅ display: contents <!-- NEW -->
-       Arquivo: engine/style/mod.rs + engine/mod.rs (layout)
-   [ ] CSS Containment (contain: layout/paint/size/style)
-       Arquivo: engine/style/css_values.rs
-   [ ] CSS Scroll Snap (scroll-snap-type, scroll-snap-align)
-       Arquivo: engine/style/css_values.rs
-   [ ] CSS Logical Properties (inline-start, block-end, etc.)
-       Arquivo: engine/style/css_values.rs
-   [ ] CSS Writing Modes (vertical text, bidi)
-       Arquivo: engine/style/css_values.rs + engine/text.rs
-   [ ] ::marker, ::backdrop pseudo-elements
-       Arquivo: engine/style/mod.rs
-   [ ] :has() selector (já funcional se selectors crate suporta)
-   [ ] CSS Nesting
-   [ ] @layer
-   [ ] @property (custom property registration)
-   [ ] CSS Houdini (Paint API, Layout API) — futuro distante
-   [ ] Counters (counter-increment, counter-reset, content: counter())
-   [ ] list-style, list-style-type, ::marker
-   [ ] text-decoration detalhado (underline, overline, line-through, wavy, etc.)
-   [ ] word-break, overflow-wrap, hyphens
-   [ ] columns (multi-column layout)
-   [ ] print styles (@media print)
+  [I] NETWORKING AVANÇADO
+  ───────────────────────
+  [x]  HTTP/3 / QUIC — IMPLEMENTADO ✅ (quinn 0.12 + h3 0.4)
+  [ ]  Server-Sent Events (EventSource API)
+         → runtime/bindings/webapi/event_source.rs (CRIAR)
+  [ ]  WebTransport (sobre HTTP/3 — alternativa moderna ao WebSocket)
+         → runtime/bindings/webapi/web_transport.rs (CRIAR)
+  [ ]  Content negotiation adequado (Accept-Language, Accept-Encoding)
+  [ ]  Certificate pinning (HPKP-style para segurança adicional)
 
-8. PERFORMANCE CRÍTICA
-   Sem isso, sites com >100 elementos ficam lentos.
+  [J] JAVASCRIPT — COMPLETUDE AVANÇADA
+  ─────────────────────────────────────
+  [ ]  Performance API (PerformanceObserver, marks, measures, navigation timing)
+         → runtime/bindings/webapi/performance.rs (CRIAR)
+  [ ]  Intl API (Intl.DateTimeFormat, Intl.NumberFormat, Intl.Collator)
+         → integrado ao QuickJS ou via rust-icu
+  [ ]  Promises / async bem integrados no runtime (verificar edge cases)
+  [ ]  Shadow DOM (attachShadow, shadowRoot, slot)
+         → runtime/bindings/html/shadow_dom.rs (CRIAR)
+  [ ]  Custom Elements / Web Components (customElements.define)
+         → runtime/bindings/html/custom_elements.rs (CRIAR)
+  [ ]  JIT para JavaScript — considerar migrar para V8 ou SpiderMonkey
+         ⚠️ QuickJS é interpretado: 10-100x mais lento que V8 (bloqueador de longo prazo)
 
-   [ ] Incremental layout (dirty flags por nó — não recomputar tudo)
-       Arquivo: engine/mod.rs (recompute_layout)
-   [ ] Style sharing cache (elementos com mesmo seletor compartilham estilo)
-       Arquivo: engine/style/mod.rs
-   [ ] Paint invalidation inteligente (repintar apenas área modificada)
-       Arquivo: engine/mod.rs (render_visual)
-   [ ] Layer compositing via GPU (wgpu)
-       Arquivo: engine/compositor.rs (CRIAR)
-   [ ] Font caching (não recarregar fontes a cada render)
-       Arquivo: engine/text.rs
-   [ ] Image decoding em thread separada
-       Arquivo: network/resources.rs
-   [ ] Virtual scrolling / culling (não renderizar elementos fora do viewport)
-       Arquivo: engine/mod.rs
-   [ ] DOM tree threading (offscreen DOM manipulation)
-   [ ] JIT para JavaScript (considerar v8 ou SpiderMonkey como alternativa)
-       QuickJS é interpretado — 10-100x mais lento que V8
+───────────────────────────────────────────────────────────────────────────────────
+🔵  PRIORIDADE 3 — EXPERIÊNCIA DE USUÁRIO  (Competir com Firefox)
+───────────────────────────────────────────────────────────────────────────────────
 
-───────────────────────────────────────────────────────────────────────────────
-🔵 PRIORIDADE 3 — EXPERIÊNCIA DE USUÁRIO (Competir com Firefox)
-───────────────────────────────────────────────────────────────────────────────
+  [K] DEVELOPER TOOLS
+  ────────────────────
+  [ ]  Inspector de DOM (tree viewer + hover highlight de elementos)
+         → src/devtools/inspector.rs (CRIAR)
+  [ ]  Console REPL (executar JS no contexto da página)
+         → src/devtools/console.rs (CRIAR)
+  [ ]  Network panel (requests, headers, timing, waterfall chart)
+         → src/devtools/network.rs (CRIAR)
+  [ ]  Performance profiler (FPS, layout time, paint time por frame)
+         → src/devtools/profiler.rs (CRIAR)
+  [ ]  Storage inspector (localStorage, sessionStorage, cookies, IndexedDB)
+  [ ]  CSS inspector (computed styles, box model visual, regras aplicadas)
+  [ ]  JavaScript debugger (breakpoints, call stack, watch expressions)
+  [ ]  Responsive design mode (simular viewports e DPR)
 
-9. DEVELOPER TOOLS
-   Essencial para desenvolvedores testarem sites no Albedo.
+  [L] UI FEATURES (O que um usuário espera)
+  ──────────────────────────────────────────
+  [ ]  Downloads manager (listar, pausar, retomar, cancelar, histórico)
+         → browser/downloads.rs (CRIAR)
+  [ ]  Bookmarks (favoritar, gerenciador, importar/exportar)
+         → browser/bookmarks.rs + storage SQLite (CRIAR)
+  [ ]  History UI (página, busca, limpeza por período)
+         → browser/history_ui.rs (CRIAR)
+  [ ]  Settings / Preferences (albedo://settings)
+         → browser/settings.rs (CRIAR)
+  [ ]  Tab pinning, tab grouping, drag & drop para reordenar
+         → browser/tabs/manager.rs + ui/components/tab_bar.slint
+  [ ]  Undo close tab (Ctrl+Shift+T)
+  [ ]  Context menu (right-click): copiar, colar, inspecionar, salvar imagem
+  [ ]  Autocompletar na barra de endereços (histórico + bookmarks)
+  [ ]  Fullscreen mode (F11 + Pointer Lock API)
+  [ ]  Reader mode (simplificar artigos para leitura focada)
+  [ ]  Print / Print to PDF
+         → engine/print.rs (CRIAR)
+  [ ]  Screenshot tool (captura de página inteira)
+  [ ]  Custom new tab page
 
-   [ ] Inspector (DOM tree viewer com hover highlight)
-       Arquivo: src/devtools/inspector.rs (CRIAR)
-   [ ] Console REPL (executar JS no contexto da página)
-       Arquivo: src/devtools/console.rs (CRIAR)
-   [ ] Network panel (requests, headers, timing, waterfall)
-       Arquivo: src/devtools/network.rs (CRIAR)
-   [ ] Performance profiler (FPS, layout time, paint time)
-       Arquivo: src/devtools/profiler.rs (CRIAR)
-   [ ] Storage inspector (localStorage, sessionStorage, cookies, IndexedDB)
-   [ ] CSS inspector (computed styles, box model visual)
-   [ ] JavaScript debugger (breakpoints, call stack, watch)
-   [ ] Responsive design mode (simular viewports)
+  [M] ACESSIBILIDADE (A11Y)
+  ─────────────────────────
+  [ ]  Screen reader support via plataforma:
+         Linux   → AT-SPI2
+         Windows → UIA
+         macOS   → NSAccessibility
+  [ ]  Keyboard navigation completa (Tab, Shift+Tab, Enter, Escape, Arrow keys)
+  [ ]  Focus management visível (outline em elementos focados)
+  [ ]  High contrast mode (prefers-contrast media query)
+  [ ]  Zoom de texto independente do zoom de layout
+  [ ]  Alt text para imagens (renderização de fallback)
+  [ ]  Skip navigation links
+  [ ]  ARIA roles e aria-* attribute handling completo
+  [ ]  Live regions (aria-live para conteúdo dinâmico)
 
-10. UI FEATURES
-    O que um usuário espera de um browser.
+  [N] MULTI-PLATAFORMA
+  ─────────────────────
+  [ ]  Windows build (Slint já suporta — testar e empacotar)
+  [ ]  macOS build (notarização, DMG installer)
+  [ ]  Wayland suporte nativo (Linux — além de X11)
+  [ ]  Touch support para tablets e 2-in-1
+  [ ]  DPI awareness / HiDPI (Retina) scaling correto
+  [ ]  Gamepad API (navegação e jogos web com controles)
+         → runtime/bindings/webapi/gamepad.rs (CRIAR)
 
-    [ ] Downloads manager (listar, pausar, retomar, cancelar)
-        Arquivo: browser/downloads.rs (CRIAR) + ui/
-    [ ] Bookmarks (estrela na nav bar, gerenciador, importar/exportar)
-        Arquivo: browser/bookmarks.rs (CRIAR) + storage SQLite
-    [ ] History UI (listar páginas visitadas, search, clear)
-        Arquivo: browser/history_ui.rs (CRIAR)
-    [ ] Settings / Preferences (página albedo://settings)
-        Arquivo: browser/settings.rs (CRIAR) + ui/
-    [ ] Find in page (Ctrl+F com highlight)
-        Arquivo: browser/find.rs (CRIAR)
-    [ ] Zoom (Ctrl+/Ctrl- com re-render)
-        Arquivo: engine/mod.rs (viewport scaling)
-    [ ] Print / Print to PDF
-        Arquivo: engine/print.rs (CRIAR)
-    [ ] Tab pinning, tab grouping
-        Arquivo: browser/tabs/manager.rs
-    [ ] Tab drag & drop para reordenar
-        Arquivo: ui/components/tab_bar.slint
-    [ ] Undo close tab (Ctrl+Shift+T)
-    [ ] Context menu (right-click): copiar, colar, inspecionar, salvar imagem
-    [ ] Address bar suggestions (autocompletar com histórico/bookmarks)
-    [ ] Página de erro (DNS não encontrado, timeout, SSL error)
-    [ ] Favicon loading e display nas abas
-    [ ] Progress bar / loading indicator
-    [ ] Fullscreen mode (F11)
-    [ ] Reader mode (simplificar artigos para leitura)
+───────────────────────────────────────────────────────────────────────────────────
+🟣  PRIORIDADE 4 — DIFERENCIAÇÃO  (Superar Firefox em áreas específicas)
+───────────────────────────────────────────────────────────────────────────────────
 
-11. ACESSIBILIDADE (A11Y)
-    Obrigatório para browser de produção.
+  [O] PASSWORD MANAGER
+  ─────────────────────
+  [ ]  Detecção automática de campos de login
+  [ ]  Autofill com storage encriptado (AES-256-GCM + key derivation)
+  [ ]  Gerador de senhas configurável
+  [ ]  Master password / biometria como unlock
+  [ ]  Import/export (CSV, JSON, 1Password, Bitwarden)
 
-    [ ] Screen reader support (ARIA roles via plataforma)
-        - Linux: AT-SPI2
-        - Windows: UIA
-        - macOS: NSAccessibility
-    [ ] Keyboard navigation completa (Tab, Shift+Tab, Enter, Escape)
-    [ ] Focus management visível (outline em elementos focados)
-    [ ] High contrast mode
-    [ ] Zoom de texto independente
-    [ ] Alt text para imagens
-    [ ] Skip navigation links
-    [ ] Role e aria-* attribute handling
+  [P] SYNC & ACCOUNTS
+  ────────────────────
+  [ ]  Conta Albedo (sync de abas, bookmarks, senhas, settings)
+  [ ]  QR code para parear dispositivos mobile
+  [ ]  Sync com E2E encryption (protocolo Noise ou Signal)
+  [ ]  Sync parcial / seletivo por categoria
 
-12. MULTI-PLATAFORMA
-    [ ] Windows build (Slint já suporta)
-    [ ] macOS build
-    [ ] Wayland suporte nativo (Linux)
-    [ ] Touch support para tablets/2-in-1
-    [ ] DPI awareness / HiDPI scaling
+  [Q] EXTENSIONS API
+  ───────────────────
+  [ ]  API de extensões: browser.tabs, browser.runtime, browser.storage
+  [ ]  Content scripts (JS injetado em páginas com sandboxing)
+  [ ]  Background scripts (Service Worker-based)
+  [ ]  Popup UI para extensões (HTML/CSS/JS isolado)
+  [ ]  WebExtensions compatibility (compatível com extensões do Firefox/Chrome)
+  [ ]  Sideloading de extensões (.zip) e futura extension store
 
-───────────────────────────────────────────────────────────────────────────────
-🟣 PRIORIDADE 4 — DIFERENCIAÇÃO (Superar Firefox em áreas específicas)
-───────────────────────────────────────────────────────────────────────────────
+  [R] PRIVACY FEATURES
+  ─────────────────────
+  [ ]  Tracking protection (blocklists: EasyList, EasyPrivacy, uBlock-style)
+         → network/privacy.rs (CRIAR)
+  [ ]  Fingerprint protection (canvas noise, WebGL, audio, font enumeration)
+  [ ]  DNS over HTTPS (DoH — Cloudflare, Google, NextDNS)
+  [ ]  Private browsing / modo incógnito (sem storage, sem histórico)
+  [ ]  HTTPS-Only mode (auto-upgrade HTTP → HTTPS)
+  [ ]  Cookie consent auto-dismiss (via heurística ou lista)
+  [ ]  Clear browsing data (cookies, cache, history, passwords, IndexedDB)
+  [ ]  Safe browsing (verificar URLs contra listas de malware/phishing)
+         → network/safe_browsing.rs (CRIAR)
 
-13. PASSWORD MANAGER
-    [ ] Autofill de senhas com storage encriptado
-    [ ] Gerador de senhas
-    [ ] Detecção de campos de login
-    [ ] Master password
-    [ ] Import/export (CSV, JSON)
+  [S] PERFORMANCE AVANÇADA
+  ─────────────────────────
+  [ ]  Multi-process architecture:
+         → Processo UI (browser chrome)
+         → Processos de conteúdo (um por origin/tab)
+         → Processo GPU (compositing)
+         → Processo de rede (isolated networking)
+  [ ]  Site Isolation (cada site em processo separado — requer multi-process)
+  [ ]  Process sandboxing (seccomp-bpf no Linux, SandboxAPI no Windows)
+  [ ]  Speculative parsing (parsear HTML durante download)
+  [ ]  Prerender / prefetch de links (Speculation Rules API)
+  [ ]  Memory budget por tab (limitar consumo de RAM)
+  [ ]  Tab discarding (descartar abas inativas para economizar RAM)
+  [ ]  Lazy frame loading (<iframe loading="lazy">)
 
-14. SYNC & ACCOUNTS
-    [ ] Conta Albedo (sync abas, bookmarks, senhas, settings entre dispositivos)
-    [ ] QR code para parear dispositivos
-    [ ] Sync E2E encriptado
+  [T] RECURSOS ESPECIAIS
+  ───────────────────────
+  [ ]  PDF viewer embutido (via pdf-rs ou pdfium-sys)
+  [ ]  RSS/Atom feed reader nativo
+  [ ]  About pages:
+         albedo://settings, albedo://flags, albedo://gpu, albedo://processes
+         albedo://net-internals, albedo://credits
+  [ ]  Task manager (albedo://processes — CPU/RAM por tab/process)
+  [ ]  Auto-update system (binário + verificação de assinatura)
+  [ ]  PWA support (instalar sites como apps — manifest.json + Service Worker)
+  [ ]  Web Share API (navigator.share para compartilhar conteúdo)
+         → runtime/bindings/webapi/web_share.rs (CRIAR)
+  [ ]  Credential Management API (navigator.credentials)
+         → runtime/bindings/webapi/credentials.rs (CRIAR)
+  [ ]  Speech API (SpeechRecognition, SpeechSynthesis)
+         → runtime/bindings/webapi/speech.rs (CRIAR)
+  [ ]  Payment Request API (longo prazo — integração com carteiras)
 
-15. EXTENSIONS API
-    [ ] API de extensões (browser.tabs, browser.runtime, browser.storage)
-    [ ] Content scripts (JS injetado em páginas)
-    [ ] Background scripts
-    [ ] Popup UI para extensões
-    [ ] WebExtensions compatibility (compatível com Firefox/Chrome extensions)
-    [ ] Extension store ou sideloading
+  [U] BUILD SYSTEM & INFRAESTRUTURA
+  ───────────────────────────────────
+  [ ]  CI/CD pipeline (GitHub Actions: build + test em Linux/Windows/macOS)
+  [ ]  Cross-compilation para targets diferentes (musl, Windows MSVC, macOS aarch64)
+  [ ]  Packaging: .deb, .rpm, .AppImage (Linux), .msi/.exe (Windows), .dmg (macOS)
+  [ ]  Fuzzing com cargo-fuzz (HTML parser, CSS parser, JS runtime)
+  [ ]  MIRI runs para detectar UB no código unsafe
+  [ ]  Benchmark CI (regressão de performance detectada automaticamente)
+  [ ]  Memory profiling com Valgrind / heaptrack / DHAT
+  [ ]  Telemetry opt-in (crash reports anônimos via sentry-rs ou similar)
+  [ ]  Symbol upload para crash symbolication (debuginfo em produção)
 
-16. PRIVACY FEATURES
-    [ ] Tracking protection (bloquear trackers conhecidos — EasyList, EasyPrivacy)
-    [ ] Fingerprint protection (canvas, WebGL, audio, font enumeration)
-    [ ] DNS over HTTPS (DoH)
-    [ ] Private browsing / modo incógnito
-    [ ] Clear browsing data (cookies, cache, history, passwords)
-    [ ] Cookie consent auto-dismiss
-    [ ] HTTPS-Only mode (auto-upgrade HTTP → HTTPS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          🎯  ROADMAP DE DESENVOLVIMENTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-17. PERFORMANCE AVANÇADA
-    [ ] Multi-process architecture (Electrolysis-style)
-        - Processo principal (UI/browser chrome)
-        - Processos de conteúdo (um por site/tab)
-        - Processo GPU (compositing)
-        - Processo de rede (isolated networking)
-    [ ] Speculative parsing (parsear HTML enquanto faz download)
-    [ ] Prerender / prefetch de links
-    [ ] Lazy frame loading (iframes carregados sob demanda)
-    [ ] Memory budget por tab (limitar consumo de RAM)
-    [ ] Tab discarding (descartar abas não usadas para economizar RAM)
-
-18. RECURSOS ESPECIAIS
-    [ ] PDF viewer embutido (via pdf-rs ou pdfium)
-    [ ] RSS/Atom feed reader
-    [ ] Screenshot tool (captura de tela de página)
-    [ ] About pages (albedo://settings, albedo://flags, albedo://gpu, etc.)
-    [ ] Task manager (albedo://processes — CPU/RAM por tab)
-    [ ] Auto-update system
-    [ ] Telemetry opt-in (crash reports, usage stats)
-    [ ] Custom new tab page
-    [ ] PWA support (Progressive Web Apps — instalação de sites como apps)
-
-
-═══════════════════════════════════════════════════════════════════════════════
-                        🎯 ROADMAP DE DESENVOLVIMENTO
-═══════════════════════════════════════════════════════════════════════════════
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 🔥 FASE 1: BROWSER NAVEGÁVEL (3-6 meses)                                   │
-│    Objetivo: Navegar em sites estáticos e blogs corretamente.               │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-Prioridades nesta fase:
-
-  CSS INTERATIVO
-  [x] 1.1. Ativar :hover/:focus/:active com event tracking real
-  [x] 1.2. Animation loop real com interpolação de valores
-  [x] 1.3. requestAnimationFrame / cancelAnimationFrame — IMPLEMENTADO
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🔥  FASE 1 — BROWSER NAVEGÁVEL  (3-6 meses)                                    │
+│       Objetivo: Navegar corretamente em sites estáticos, blogs, documentação     │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
   RENDERING
-  [ ] 1.4. Scroll funcional com scrollbars
-       Arquivo: engine/mod.rs + ui/components/browser_view.slint
-  [⚠️] 1.5. Table layout (<table>, <tr>, <td> — Básico)
-       Arquivo: engine/mod.rs (build_layout_tree)
-  [ ] 1.6. Inline layout correto (baseline, word-wrap)
-       Arquivo: engine/mod.rs + engine/text.rs
-  [⚠️] 1.7. Rendering de <input>, <button>, <select>, <textarea> (Básico)
-       Arquivo: engine/mod.rs (render_visual) + bridge.rs
-  [✅] 1.8. SVG rendering integrado ao display list — IMPLEMENTADO
-       Arquivo: engine/svg.rs + engine/mod.rs
-
-  NETWORKING
-  [✅] 1.9. HTTP/2 (ativar feature no reqwest) — IMPLEMENTADO!
-       Arquivo: Cargo.toml (feature "http2" adicionado)
-       Arquivo: network/client.rs (.http2_prior_knowledge())
-       Arquivo: network/resources.rs (.http2_prior_knowledge())
-  [✅] 1.10. HTTP/3 / QUIC (estrutura de cliente) — IMPLEMENTADO!
-       Arquivo: network/http3.rs (Http3Client struct criado)
-       Arquivo: network/client.rs (Http3Client integrado com fallback)
-       Arquivo: network/resources.rs (Http3Client integrado com fallback)
-   [✅] 1.11. Compression (gzip, brotli, zstd — IMPLEMENTADO!)
-        Arquivo: Cargo.toml + network/cache.rs
-        Suporte completo a streams de compressão/descompressão
-   [✅] 1.12. Cache-Control / ETag / disk cache — IMPLEMENTADO!
-        Arquivo: network/cache.rs + network/resources.rs
-        Integração completa com ResourceManager e SQLite
-  [ ] 1.13. data: URLs
-       Arquivo: network/resources.rs
-
-  SEGURANÇA
-  [ ] 1.14. HTTPS certificate UI (🔒 na barra de endereço)
-       Arquivo: ui/components/nav_bar.slint + network/security.rs
-
-  UI
-  [ ] 1.14. Favicon nas abas
-  [ ] 1.15. Loading indicator / progress bar
-  [ ] 1.16. Páginas de erro (DNS fail, timeout, SSL error)
-  [ ] 1.17. Find in page (Ctrl+F)
-  [ ] 1.18. Zoom (Ctrl+/-)
-
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ⚡ FASE 2: APPS WEB (6-12 meses)                                            │
-│    Objetivo: React, Vue, Svelte, Next.js funcionando.                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-  JAVASCRIPT
-  [ ] 2.1. ES Modules (<script type="module">, import/export, import() dinâmico)
-  [ ] 2.2. CustomEvent
-  [ ] 2.3. MutationObserver / IntersectionObserver / ResizeObserver funcionais
-  [ ] 2.4. IndexedDB funcional (backend: rusqlite)
-  [ ] 2.5. Service Workers
-  [ ] 2.6. matchMedia()
-
-  RENDERING
-  [ ] 2.7. <iframe> com subframes
-  [✅] 2.8. Canvas 2D integrado ao DOM/JS — IMPLEMENTADO
-  [ ] 2.9. WebGL básico via wgpu
-
-  CSS
-  [x] 2.10. CSS Grid avançado (repeat, minmax, areas) — IMPLEMENTADO
-  [ ] 2.11. Multi-column layout
-  [ ] 2.12. CSS Containment
+  [x]  IFC (Inline Formatting Context) — IMPLEMENTADO ✅
+  [x]  SVG rendering integrado ao display list — IMPLEMENTADO ✅
+  [x]  Canvas 2D integrado ao DOM/JS — IMPLEMENTADO ✅
+  [x]  <iframe> com rendering recursivo — IMPLEMENTADO ✅
+  [ ]  Scroll funcional com scrollbars
+  [ ]  Rendering de <input>, <button>, <select>, <textarea> com CSS real
+  [ ]  Element geometry real (clientWidth, offsetTop, scrollTop, etc.)
+  [ ]  Float & Clear
 
   PERFORMANCE
-  [ ] 2.13. Incremental layout (dirty flags)
-  [ ] 2.14. Style sharing cache
-  [ ] 2.15. Paint invalidation inteligente
-  [ ] 2.16. GPU compositing (layer tree + wgpu)
-  [ ] 2.17. Font caching
-
-  UI
-  [ ] 2.18. Bookmarks
-  [ ] 2.19. History UI
-  [ ] 2.20. Downloads manager
-  [ ] 2.21. Settings / Preferences
-  [ ] 2.22. Context menu (right-click)
-
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 🚀 FASE 3: WEB COMPLETA (12-24 meses)                                      │
-│    Objetivo: YouTube, Twitter, Gmail funcionando.                           │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-  MEDIA
-  [ ] 3.1. <video> com decoders (H.264, VP9, AV1)
-  [ ] 3.2. <audio> com decoders (MP3, AAC, Opus)
-  [ ] 3.3. Media Source Extensions (streaming adaptativo)
-  [ ] 3.4. Web Audio API
-
-  GRAPHICS
-  [ ] 3.5. WebGL2
-  [ ] 3.6. WebGPU
-  [ ] 3.7. OffscreenCanvas
-  [ ] 3.8. Formatos: WebP, AVIF
+  [ ]  Incremental layout com dirty flags (BLOQUEADOR para sites reais)
+  [ ]  Style sharing cache
+  [ ]  Virtual scrolling / culling
 
   SEGURANÇA
-  [ ] 3.9. Multi-process architecture
-  [ ] 3.10. Site Isolation
-  [ ] 3.11. Permissions API
-  [ ] 3.12. Content/tracking protection
+  [ ]  HTTPS certificate UI (🔒 na barra de endereços)
+  [ ]  Subresource Integrity (SRI)
+
+  UI
+  [ ]  Favicon nas abas
+  [ ]  Loading indicator / progress bar
+  [ ]  Páginas de erro (DNS fail, timeout, SSL error)
+  [ ]  Find in page (Ctrl+F)
+  [ ]  Zoom (Ctrl+/-)
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  ⚡  FASE 2 — APPS WEB  (6-12 meses)                                             │
+│       Objetivo: React, Vue, Svelte, Next.js, apps SPA funcionando               │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  JAVASCRIPT
+  [x]  CustomEvent — IMPLEMENTADO ✅
+  [x]  MutationObserver funcional — IMPLEMENTADO ✅
+  [x]  IntersectionObserver / ResizeObserver — IMPLEMENTADOS ✅
+  [x]  requestAnimationFrame — IMPLEMENTADO ✅
+  [ ]  ES Modules (<script type="module">, import/export, import() dinâmico)
+  [ ]  IndexedDB funcional
+  [ ]  Service Workers
+  [ ]  matchMedia()
+  [ ]  Pointer Events + Touch Events
+  [ ]  Streams API (ReadableStream, WritableStream)
+  [ ]  Broadcast Channel API
+  [ ]  Performance API (PerformanceObserver, marks, measures)
+
+  RENDERING
+  [ ]  <iframe> com postMessage / MessageEvent para comunicação
+         → runtime/bindings/webapi/iframe.rs (extend)
+  [ ]  Nested iframe support (>1 level deep)
+  [ ]  WebGL básico (via wgpu)
+
+  CSS
+  [x]  CSS Grid avançado (repeat, minmax, areas, subgrid) — IMPLEMENTADO ✅
+  [ ]  CSS Containment
+  [ ]  @layer
+  [ ]  CSS Nesting
+  [ ]  :has() selector
+  [ ]  Shadow DOM + Custom Elements
+
+  PERFORMANCE
+  [ ]  GPU compositing (layer tree + wgpu)
+  [ ]  Font caching
+  [ ]  Paint invalidation inteligente
+
+  UI
+  [ ]  Bookmarks
+  [ ]  History UI
+  [ ]  Downloads manager
+  [ ]  Settings / Preferences
+  [ ]  Context menu (right-click)
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🚀  FASE 3 — WEB COMPLETA  (12-24 meses)                                       │
+│       Objetivo: YouTube, Twitter, Gmail, Google Docs funcionando                │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  MEDIA
+  [ ]  <video> com decoders (H.264, VP9, AV1)
+  [ ]  <audio> com decoders (MP3, AAC, Opus)
+  [ ]  Media Source Extensions (streaming adaptativo)
+  [ ]  Web Audio API
+  [ ]  WebRTC
+
+  GRAPHICS
+  [ ]  WebGL2, WebGPU, OffscreenCanvas
+  [ ]  Formatos: WebP, AVIF
+
+  SEGURANÇA
+  [ ]  Multi-process architecture
+  [ ]  Site Isolation
+  [ ]  Process sandboxing
+  [ ]  Permissions API
+  [ ]  Content/tracking protection
 
   ADVANCED
-  [ ] 3.13. WebRTC
-  [ ] 3.14. PWA support
-  [ ] 3.15. PDF viewer
-  [ ] 3.16. Extensions API
+  [ ]  PWA support
+  [ ]  PDF viewer
+  [ ]  Extensions API (WebExtensions compatibility)
+  [ ]  DNS over HTTPS (DoH)
+  [ ]  Intl API
 
   DEVTOOLS
-  [ ] 3.17. DOM Inspector
-  [ ] 3.18. Console REPL
-  [ ] 3.19. Network panel
-  [ ] 3.20. Performance profiler
+  [ ]  DOM Inspector
+  [ ]  Console REPL
+  [ ]  Network panel
+  [ ]  Performance profiler
+  [ ]  JavaScript debugger
 
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🏆  FASE 4 — COMPETIR COM FIREFOX  (24-36 meses)                               │
+│       Objetivo: Browser diário para qualquer usuário, qualquer site             │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 🏆 FASE 4: COMPETIR COM FIREFOX (24-36 meses)                              │
-│    Objetivo: Browser diário para qualquer uso.                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+  [ ]  Password manager com sync E2E
+  [ ]  Conta Albedo (sync cross-device)
+  [ ]  WebExtensions API completa
+  [ ]  Acessibilidade completa (screen readers, keyboard nav)
+  [x]  HTTP/3 / QUIC — IMPLEMENTADO ✅
+  [ ]  Private browsing / modo incógnito
+  [ ]  Auto-update system
+  [ ]  Multi-plataforma (Linux, Windows, macOS) com packaging
+  [ ]  JIT JavaScript (migrar para V8 ou SpiderMonkey se QuickJS insuficiente)
+  [ ]  HTTPS-Only mode
+  [ ]  Reader mode
+  [ ]  Tab discarding / memory budget
+  [ ]  Fingerprint protection
+  [ ]  CI/CD completo + fuzzing + benchmark regression
+  [ ]  Telemetry opt-in + crash reporting
 
-  [ ] 4.1. Password manager com sync
-  [ ] 4.2. Conta Albedo (sync cross-device)
-  [ ] 4.3. WebExtensions API (compatível com Firefox extensions)
-  [ ] 4.4. Acessibilidade completa (screen readers, keyboard nav)
-  [ ] 4.5. DNS over HTTPS (DoH)
-  [ ] 4.6. HTTP/3 / QUIC
-  [ ] 4.7. Private browsing / modo incógnito
-  [ ] 4.8. Auto-update system
-  [ ] 4.9. Multi-plataforma (Linux, Windows, macOS)
-  [ ] 4.10. JIT JavaScript (se insuficiente, migrar para V8 ou SpiderMonkey)
-  [ ] 4.11. HTTPS-Only mode
-  [ ] 4.12. Reader mode
-  [ ] 4.13. Tab discarding / memory budget
-  [ ] 4.14. Fingerprint protection
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          📊  MÉTRICAS DE PROGRESSO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+┌──────────────────────────┬──────────┬─────────┬─────────┬─────────┬─────────┐
+│ Categoria                │ Atual    │ Fase 1  │ Fase 2  │ Fase 3  │ Fase 4  │
+├──────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
+│ HTML5 Parsing            │ 6/10 ⚠️  │  7/10   │  8/10   │  9/10   │  9/10   │
+│ CSS Layout & Styling     │ 7/10 ⚠️  │  8/10   │  9/10   │  9/10   │ 10/10   │
+│ JavaScript Runtime       │ 6/10 ⚠️  │  7/10   │  8/10   │  9/10   │  9/10   │
+│ DOM & Web APIs           │ 7/10 ⚠️  │  7/10   │  8/10   │  9/10   │  9/10   │
+│ Networking               │ 8/10 ✅  │  8/10   │  8/10   │  9/10   │  9/10   │
+│ Security & Isolation     │ 5/10 ⚠️  │  6/10   │  7/10   │  8/10   │  9/10   │
+│ Rendering & Graphics     │ 3/10 🔴  │  5/10   │  7/10   │  8/10   │  9/10   │
+│ Media (Audio/Video)      │ 1/10 🔴  │  1/10   │  3/10   │  7/10   │  8/10   │
+│ Performance & Opt.       │ 3/10 🔴  │  5/10   │  7/10   │  8/10   │  9/10   │
+│ UI/UX Features           │ 3/10 🔴  │  5/10   │  7/10   │  8/10   │  9/10   │
+│ DevTools                 │ 0/10 🔴  │  0/10   │  2/10   │  6/10   │  8/10   │
+│ Accessibility            │ 0/10 🔴  │  1/10   │  3/10   │  5/10   │  8/10   │
+│ Build & Infra            │ 2/10 🔴  │  3/10   │  5/10   │  7/10   │  9/10   │
+├──────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
+│ GERAL (ponderado)        │ 4.2/10 🔴│  5.3/10 │  6.5/10 │  7.9/10 │  8.9/10 │
+└──────────────────────────┴──────────┴─────────┴─────────┴─────────┴─────────┘
 
-═══════════════════════════════════════════════════════════════════════════════
-                            📊 MÉTRICAS DE PROGRESSO
-═══════════════════════════════════════════════════════════════════════════════
+  Legenda: ✅ 8+   ⚠️ 4-7   🔴 0-3
+  Nota: Rendering, Performance e Security têm peso maior nos estágios iniciais.
+        Security incrementou de 4 para 5 com iframe + SOP + X-Frame-Options implementado.
 
-Pontuação por Categoria (0-10):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          📈  BENCHMARK TARGETS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-┌──────────────────────────────┬──────────┬─────────┬─────────┬─────────┬─────────┐
-│ Categoria                    │ Atual    │ Fase 1  │ Fase 2  │ Fase 3  │ Fase 4  │
-├──────────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
-│ HTML5 Parsing                │ 6/10 ⚠️  │ 7/10   │ 8/10   │ 9/10   │ 9/10   │
-│ CSS Layout & Styling         │ 7/10 ⚠️  │ 8/10   │ 9/10   │ 9/10   │ 10/10  │
-│ JavaScript Runtime           │ 6/10 ⚠️  │ 7/10   │ 8/10   │ 9/10   │ 9/10   │
-│ DOM & Web APIs               │ 6/10 ⚠️  │ 7/10   │ 8/10   │ 9/10   │ 9/10   │
-│ Networking                   │ 6/10 ⚠️  │ 7/10   │ 8/10   │ 9/10   │ 9/10   │
-│ Security & Isolation         │ 4/10 ⚠️  │ 6/10   │ 7/10   │ 8/10   │ 9/10   │
-│ Rendering & Graphics         │ 3/10 🔴  │ 5/10   │ 7/10   │ 8/10   │ 9/10   │
-│ Media (Audio/Video)          │ 1/10 🔴  │ 2/10   │ 3/10   │ 7/10   │ 8/10   │
-│ Performance & Optimization   │ 3/10 🔴  │ 4/10   │ 7/10   │ 8/10   │ 9/10   │
-│ UI/UX Features               │ 3/10 🔴  │ 5/10   │ 7/10   │ 8/10   │ 9/10   │
-│ DevTools                     │ 0/10 🔴  │ 0/10   │ 1/10   │ 5/10   │ 8/10   │
-│ Accessibility                │ 0/10 🔴  │ 1/10   │ 3/10   │ 5/10   │ 8/10   │
-├──────────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
-│ PONTUAÇÃO GERAL              │ 3.8/10 🔴│ 4.9/10 │ 6.3/10 │ 7.8/10 │ 8.8/10 │
-└──────────────────────────────┴──────────┴─────────┴─────────┴─────────┴─────────┘
+  Fase 1:  Wikipedia, MDN, docs.rs, blogs estáticos
+  Fase 2:  GitHub, Medium, Dev.to, StackOverflow
+  Fase 3:  Twitter/X, YouTube, Gmail, Google Docs
+  Fase 4:  Qualquer site da web sem regressão
 
-Nota: A pontuação geral é ponderada — Rendering, Performance e Security
-pesam mais que DevTools e Accessibility nos estágios iniciais.
-Atualização: HTTP/3 implementado (+0.1 em Networking = 5→6)
+  CONFORMANCE TESTS:
+  → Acid1 / Acid2 / Acid3          https://www.acidtests.org/
+  → CSS Test Suite W3C             https://test.csswg.org/
+  → web-platform-tests (WPT)       https://wpt.fyi/
+  → Speedometer 3.0, MotionMark, JetStream 2
 
-Legenda: ✅ 8+ | ⚠️ 4-7 | 🔴 0-3
+  SECURITY TESTS:
+  → OWASP ZAP (vulnerabilidades web)
+  → SSL Labs (certificados TLS)
+  → Mozilla Observatory (security headers)
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          📈  ESTIMATIVA DE ESFORÇO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-═══════════════════════════════════════════════════════════════════════════════
-                          📈 ESTIMATIVA DE ESFORÇO
-═══════════════════════════════════════════════════════════════════════════════
+  Fase 1 (Browser Navegável)     →   800 - 1.200h   (~4-6 meses, 1 dev)
+  Fase 2 (Apps Web)              →  2.000 - 3.000h   (~10-15 meses, 1 dev)
+  Fase 3 (Web Completa)          →  4.000 - 6.000h   (~20-30 meses, 1 dev)
+  Fase 4 (Competir c/ Firefox)   →  5.000 - 8.000h   (~24-36 meses, 1 dev)
+  ──────────────────────────────────────────────────────────────────────────
+  TOTAL:                         → 12.000 - 18.000h  (~5-7 anos, 1 dev)
 
-Fase 1 (Browser Navegável):    800-1200 horas   (~4-6 meses, 1 dev full-time)
-Fase 2 (Apps Web):             2000-3000 horas   (~10-15 meses, 1 dev)
-Fase 3 (Web Completa):         4000-6000 horas   (~20-30 meses, 1 dev)
-Fase 4 (Competir c/ Firefox):  5000-8000 horas   (~24-36 meses, 1 dev)
-───────────────────────────────────────────────────────────────────────────────
-TOTAL:                         12000-18000 horas  (~5-7 anos, 1 dev full-time)
+  Com equipe de 3-5 devs:   ~2-3 anos para Fase 3
+  Com equipe de 10+ devs:   ~1.5-2 anos para Fase 3
 
-Com equipe de 3-5 devs:        ~2-3 anos para Fase 3
-Com equipe de 10+ devs:        ~1.5-2 anos para Fase 3
+  Referências:
+  → Firefox       ~20M LOC  |  ~1000 engenheiros
+  → Servo (Rust)  levou 5+ anos com equipe dedicada na Mozilla
+  → Ladybird      levou 4+ anos com ~20 contribuidores
+  → Chromium      ~35M LOC  |  centenas de engenheiros do Google
 
-Referência: Firefox tem ~20 milhões de linhas e ~1000 engenheiros.
-Servo (engine em Rust da Mozilla) levou 5+ anos com equipe dedicada.
-Ladybird (browser from scratch) levou 4+ anos com ~20 contribuidores.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          🏗️  ARQUITETURA DE ARQUIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  src/
+  ├── main.rs                         Entry point, setup de UI e callbacks
+  ├── ui.rs                           Slint module include
+  ├── browser/                        Lógica do navegador (UI / eventos / abas)
+  │   ├── bridge.rs                   Ponte ACE Engine ↔ UI (sync visual)
+  │   ├── events.rs                   Handlers de eventos
+  │   ├── setup.rs                    Inicialização de janela e panic hook
+  │   ├── find.rs                     [TODO] Find in page
+  │   ├── downloads.rs                [TODO] Download manager
+  │   ├── bookmarks.rs                [TODO] Bookmarks
+  │   ├── history_ui.rs               [TODO] History UI
+  │   ├── settings.rs                 [TODO] Settings / Preferences
+  │   └── tabs/
+  │       ├── tab.rs                  Tab individual
+  │       ├── manager.rs              TabManager
+  │       └── collection.rs          Coleção de abas
+  │
+  ├── engine/                         ACE — Albedo Core Engine
+  │   ├── mod.rs                      Engine principal (layout, rendering, display list)
+  │   ├── inline.rs                   IFC — Inline Formatting Context ✅
+  │   ├── dom/mod.rs                  AceDOM: parsing HTML5, seletores, manipulação
+  │   ├── dom_tests.rs                Testes unitários do DOM
+  │   ├── compositor.rs               [TODO] GPU layer compositor
+  │   ├── print.rs                    [TODO] Print to PDF
+  │   ├── style/
+  │   │   ├── mod.rs                  Parser CSS, cascade, matching (2870+ linhas)
+  │   │   └── css_values.rs           Tipos CSS (CssLength, CssColor, ComputedStyle)
+  │   ├── text.rs                     Text measurement (cosmic-text)
+  │   ├── svg.rs                      SVG parsing (resvg) ✅
+  │   └── graphics/
+  │       ├── canvas2d.rs             Canvas 2D (tiny-skia) ✅
+  │       ├── webgl.rs                [TODO] WebGL via wgpu
+  │       ├── webgpu.rs               [TODO] WebGPU
+  │       └── gpu.rs                  GPU acceleration (wgpu, estrutura)
+  │
+  ├── runtime/                        JavaScript Runtime (QuickJS)
+  │   ├── core/
+  │   │   ├── runtime.rs              JsRuntime wrapper
+  │   │   ├── executor.rs             Executor de promises/async
+  │   │   ├── event_loop.rs           Event loop assíncrono
+  │   │   ├── eval.rs                 Avaliação de scripts
+  │   │   ├── init.rs                 Inicialização de bindings
+  │   │   └── service_worker.rs       [TODO] Service Workers
+  │   └── bindings/
+  │       ├── html/
+  │       │   ├── document/           Document API
+  │       │   ├── element/            Element API
+  │       │   ├── event.rs            Event / EventTarget
+  │       │   ├── event_subclasses.rs MouseEvent, KeyboardEvent, CustomEvent, etc.
+  │       │   ├── token_list.rs       DOMTokenList (classList)
+  │       │   ├── form_data.rs        FormData
+  │       │   ├── style_declaration.rs CSSStyleDeclaration
+  │       │   ├── computed_style.rs   getComputedStyle()
+  │       │   ├── mutation_observer.rs ✅ FUNCIONAL
+  │       │   ├── intersection_observer.rs ✅ FUNCIONAL
+  │       │   ├── resize_observer.rs  ✅ FUNCIONAL
+  │       │   ├── shadow_dom.rs       [TODO] Shadow DOM / attachShadow
+  │       │   ├── custom_elements.rs  [TODO] customElements.define
+  │       │   ├── range.rs            🟡 estrutura básica
+  │       │   └── selection.rs        🟡 estrutura básica
+  │       └── webapi/
+  │           ├── clipboard.rs        ✅ readText / writeText
+  │           ├── crypto.rs           ✅ getRandomValues, SubtleCrypto
+  │           ├── fetch.rs            ✅ Fetch API
+  │           ├── file_api.rs         ✅ Blob, File, FileReader
+  │           ├── geolocation.rs      ✅ getCurrentPosition
+  │           ├── history.rs          ✅ pushState, replaceState
+  │           ├── indexeddb.rs        ❌ estrutura vazia — implementar
+  │           ├── location.rs         ✅
+  │           ├── navigator.rs        ✅
+  │           ├── notification.rs     ✅
+  │           ├── storage.rs          ✅ localStorage / sessionStorage
+  │           ├── timers.rs           ✅ setTimeout / rAF
+  │           ├── url.rs              ✅
+  │           ├── url_search_params.rs ✅
+  │           ├── websocket.rs        ✅
+  │           ├── worker.rs           🟡 estrutura sem thread real
+  │           ├── streams.rs          [TODO] ReadableStream / WritableStream
+  │           ├── broadcast_channel.rs [TODO]
+  │           ├── message_channel.rs  [TODO]
+  │           ├── performance.rs      [TODO] Performance API
+  │           ├── locks.rs            [TODO] Web Locks API
+  │           ├── match_media.rs      [TODO] matchMedia()
+  │           ├── gamepad.rs          [TODO] Gamepad API
+  │           ├── web_share.rs        [TODO] Web Share API
+  │           ├── speech.rs           [TODO] Speech API
+  │           ├── credentials.rs      [TODO] Credential Management
+  │           ├── event_source.rs     [TODO] Server-Sent Events
+  │           └── web_transport.rs    [TODO] WebTransport
+  │
+  ├── network/
+  │   ├── client.rs                   HTTP client (reqwest + HTTP/2)
+  │   ├── resources.rs                ResourceManager assíncrono
+  │   ├── security.rs                 SOP, CSP, CORS, Cookies, Mixed Content
+  │   ├── cache.rs                    Disk cache (SQLite + compressão) ✅
+  │   ├── http3.rs                    HTTP/3 / QUIC client com pooling ✅
+  │   ├── blob.rs                     BlobStore em memória ✅
+  │   ├── dns.rs                      DNS prefetching ✅
+  │   ├── privacy.rs                  [TODO] Tracking protection
+  │   ├── safe_browsing.rs            [TODO] Safe browsing
+  │   └── protocols/
+  │       └── websocket.rs            WebSocket client ✅
+  │
+  └── ui/
+      ├── appwindow.slint             Janela principal
+      └── components/
+          ├── browser_view.slint      Área de renderização
+          ├── nav_bar.slint           Barra de navegação
+          ├── tab_bar.slint           Barra de abas
+          ├── start_page.slint        Página inicial (albedo://start)
+          └── icon_button.slint       Componente de botão
 
-═══════════════════════════════════════════════════════════════════════════════
-                          🏗️ ARQUITETURA DE ARQUIVOS
-═══════════════════════════════════════════════════════════════════════════════
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          🧪  TESTES E VALIDAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-src/
-├── main.rs                    # Entry point, setup de UI e callbacks
-├── ui.rs                      # Slint module include (slint::include_modules!)
-├── browser/                   # Lógica do navegador (UI/eventos/abas)
-│   ├── mod.rs                 # Declaração de módulos
-│   ├── bridge.rs              # Ponte ACE Engine ↔ UI (sync visual)
-│   ├── events.rs              # Handlers de eventos (navigate, click, hover, pulse)
-│   ├── setup.rs               # Inicialização de janela e panic hook
-│   └── tabs/                  # Sistema de abas
-│       ├── mod.rs
-│       ├── tab.rs             # Tab individual
-│       ├── manager.rs         # TabManager (criar/fechar/trocar abas)
-│       └── collection.rs      # Coleção de abas
-├── engine/                    # ACE (Albedo Core Engine) - Motor de renderização
-│   ├── mod.rs                 # Engine principal (1260+ linhas): layout, rendering, display list
-│   ├── dom/                   # DOM tree
-│   │   └── mod.rs             # AceDOM: nós, parsing HTML5, metadata, seletores
-│   ├── dom_tests.rs           # Testes unitários do DOM
-│   ├── style/                 # CSS Engine
-│   │   ├── mod.rs             # Parser CSS, cascade, matching de seletores (2870+ linhas)
-│   │   └── css_values.rs      # Tipos CSS (CssLength, CssColor, ComputedStyle, etc.)
-│   ├── text.rs                # Text measurement (cosmic-text)
-│   ├── svg.rs                 # SVG parsing (resvg)
-│   └── graphics/              # Gráficos & Rendering
-│       ├── mod.rs
-│       ├── canvas2d.rs        # Canvas 2D (tiny-skia)
-│       └── gpu.rs             # GPU acceleration (wgpu, estrutura)
-├── runtime/                   # JavaScript Runtime (QuickJS)
-│   ├── mod.rs
-│   ├── core/                  # Core do runtime
-│   │   ├── mod.rs
-│   │   ├── runtime.rs         # JsRuntime wrapper (QuickJS)
-│   │   ├── executor.rs        # Executor de promises/async
-│   │   ├── event_loop.rs      # Event loop assíncrono
-│   │   ├── eval.rs            # Avaliação de scripts
-│   │   ├── init.rs            # Inicialização de bindings para página
-│   │   └── runtime_tests.rs   # Testes unitários do runtime
-│   └── bindings/              # Bindings JS ↔ Rust
-│       ├── mod.rs
-│       ├── html/              # DOM & HTML APIs
-│       │   ├── document/      # Document API (query, events, traversal, etc.)
-│       │   ├── element/       # Element API (attributes, props, shadow, rect, etc.)
-│       │   ├── event.rs       # Event/EventTarget API
-│       │   ├── event_subclasses.rs  # MouseEvent, KeyboardEvent, FocusEvent, etc.
-│       │   ├── token_list.rs  # DOMTokenList (classList)
-│       │   ├── form_data.rs   # FormData API
-│       │   ├── style_declaration.rs # CSSStyleDeclaration
-│       │   ├── computed_style.rs    # getComputedStyle()
-│       │   ├── mutation_observer.rs # MutationObserver (estrutura)
-│       │   ├── range.rs       # Range API (estrutura)
-│       │   ├── selection.rs   # Selection API (estrutura)
-│       │   ├── resize_observer.rs   # ResizeObserver (estrutura)
-│       │   └── intersection_observer.rs # IntersectionObserver (estrutura)
-│       ├── webapi/            # Web Platform APIs
-│       │   ├── clipboard.rs   # Clipboard API
-│       │   ├── crypto.rs      # Crypto + SubtleCrypto
-│       │   ├── fetch.rs       # Fetch API
-│       │   ├── file_api.rs    # Blob, File, FileReader
-│       │   ├── geolocation.rs # Geolocation API
-│       │   ├── history.rs     # History API (pushState, replaceState)
-│       │   ├── indexeddb.rs   # IndexedDB (estrutura vazia)
-│       │   ├── location.rs    # Location API
-│       │   ├── navigator.rs   # Navigator API
-│       │   ├── notification.rs# Notification API
-│       │   ├── storage.rs     # localStorage/sessionStorage
-│       │   ├── timers.rs      # setTimeout/setInterval
-│       │   ├── url.rs         # URL API
-│       │   ├── url_search_params.rs # URLSearchParams
-│       │   ├── websocket.rs   # WebSocket API
-│       │   └── worker.rs      # Web Workers
-│       └── utils/             # Utilitários JS
-│           ├── console.rs     # Console API (log, warn, error, table, etc.)
-│           ├── parser.rs      # Parser auxiliar
-│           └── shims.rs       # Polyfills/shims
-├── network/                   # Networking & Segurança
-│   ├── mod.rs
-│   ├── client.rs              # HTTP client (reqwest wrapper)
-│   ├── resources.rs           # ResourceManager (carregamento assíncrono)
-│   ├── security.rs            # Origin, SOP, CSP, CORS, Mixed Content, Cookies
-│   └── protocols/             # Protocolos específicos
-│       ├── mod.rs
-│       └── websocket.rs       # WebSocket client (tokio-tungstenite)
-└── ui/                        # Interface Slint (arquivos .slint)
-    ├── appwindow.slint        # Janela principal
-    └── components/
-        ├── browser_view.slint # Área de renderização
-        ├── nav_bar.slint      # Barra de navegação
-        ├── tab_bar.slint      # Barra de abas
-        ├── start_page.slint   # Página inicial (albedo://start)
-        └── icon_button.slint  # Componente de botão
+  TESTES UNITÁRIOS EXISTENTES:
+  ✅  engine/dom_tests.rs                  Parsing HTML, metadata, atributos
+  ✅  runtime/core/runtime_tests.rs        JS execution, DOM sync, timers
+  ✅  runtime/bindings/html/document/      DOM API completa, eventos, bubbling
+  ✅  tests/form_validation_tests.rs       9/9 passando
+  ✅  tests/white_space_tests.rs           5/5 passando
+  ✅  tests/table_colspan_tests.rs         5/5 passando
+  ✅  engine/inline.rs                     4/4 passando (IFC)
 
+  TESTES A CRIAR:
+  [ ]  tests/scroll_tests.rs              Scroll offset, scrollIntoView
+  [ ]  tests/css_grid_advanced.rs         auto-fill, subgrid, named lines
+  [ ]  tests/css_animation_tests.rs       @keyframes, transitions, rAF
+  [ ]  tests/networking_tests.rs          HTTP/2, cache, cookies
+  [ ]  tests/security_tests.rs            CSP, CORS, SOP, Mixed Content
+  [ ]  tests/indexeddb_tests.rs           CRUD completo com persistência
+  [ ]  tests/service_worker_tests.rs      install, fetch intercept, cache
+  [ ]  Fuzzing: cargo-fuzz targets para HTML parser, CSS parser, JS eval
+  [ ]  WPT integration: rodar web-platform-tests automaticamente no CI
 
-═══════════════════════════════════════════════════════════════════════════════
-                          🧪 TESTES E VALIDAÇÃO
-═══════════════════════════════════════════════════════════════════════════════
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          💡  PRINCÍPIOS DO PROJETO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TESTES UNITÁRIOS EXISTENTES:
-  ✅ engine/dom_tests.rs — Parsing HTML, metadata, attributes, children
-  ✅ runtime/core/runtime_tests.rs — JS execution, DOM sync, timers, traversal
-  ✅ runtime/bindings/html/document/tests.rs — DOM API completa, events, bubbling
+  1. 🎯  BROWSER REAL, NÃO EXPERIMENTAL
+     O Albedo é um browser de produção. Cada decisão deve considerar o impacto
+     para usuários reais navegando na web real.
 
-BENCHMARK TARGETS:
-  Fase 1: Wikipedia, MDN, docs.rs, blogs estáticos
-  Fase 2: GitHub, Medium, Dev.to, StackOverflow
-  Fase 3: Twitter, YouTube, Gmail, Google Docs
-  Fase 4: Qualquer site da web
+  2. 🦀  RUST-FIRST
+     Escrito inteiramente em Rust. A segurança de memória e performance do Rust
+     são vantagens competitivas reais sobre browsers escritos em C++.
 
-CONFORMANCE TESTS:
-  - Acid1 / Acid2 / Acid3 (https://www.acidtests.org/)
-  - CSS Test Suite W3C (https://test.csswg.org/)
-  - web-platform-tests (https://wpt.fyi/)
-  - Speedometer 3.0, MotionMark, JetStream 2
+  3. ⚡  PERFORMANCE É FEATURE
+     Um browser lento é um browser ruim. Incremental layout, GPU compositing
+     e rendering eficiente são tão importantes quanto novas APIs.
 
-SECURITY TESTS:
-  - OWASP ZAP: Vulnerabilidades web
-  - SSL Labs: Certificados
-  - Mozilla Observatory: Headers de segurança
+  4. 🔐  SEGURANÇA É INEGOCIÁVEL
+     Sandboxing, site isolation, SRI e validação de TLS são requisitos, não extras.
+     O browser toca na internet aberta — segurança é prioridade máxima.
 
+  5. 🌐  COMPATIBILIDADE WEB ACIMA DE TUDO
+     Se um site funciona no Firefox, deve funcionar no Albedo. A spec W3C é
+     a referência. O objetivo é passar nos web-platform-tests.
 
-═══════════════════════════════════════════════════════════════════════════════
-                          💡 PRINCÍPIOS DO PROJETO
-═══════════════════════════════════════════════════════════════════════════════
+  6. 🧪  TESTAR TUDO
+     Cada feature nova precisa de testes unitários. CI roda a cada commit.
+     Fuzzing e benchmark regression previnem regressões silenciosas.
 
-1. 🎯 BROWSER REAL, NÃO EXPERIMENTAL
-   O Albedo é um browser de produção. Cada decisão deve considerar o impacto
-   para usuários reais navegando na web real.
+  7. 📦  SHIPABLE MATTERS
+     Build system, packaging e auto-update são parte do produto, não afterthought.
+     Um browser que não instala facilmente não existe para o usuário final.
 
-2. 🦀 RUST-FIRST
-   Escrito inteiramente em Rust. A segurança de memória e performance do Rust
-   são vantagens competitivas reais sobre browsers escritos em C++.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-3. ⚡ PERFORMANCE É FEATURE
-   Um browser lento é um browser ruim. Otimização de rendering e layout são
-   tão importantes quanto implementar novas APIs.
+  🚀  Albedo tem ~15.700 linhas de Rust, 30+ Web APIs, DOM funcional com testes,
+      CSS engine com 100+ propriedades e JS runtime com QuickJS.
+      A fundação está pronta. Agora é hora de transformá-la num browser real.
 
-4. 🔐 SEGURANÇA É INEGOCIÁVEL
-   Sandboxing, site isolation e validação de TLS são requisitos, não extras.
-   O browser toca na internet aberta — segurança é prioridade máxima.
-
-5. 🌐 COMPATIBILIDADE WEB ACIMA DE TUDO
-   Se um site funciona no Firefox, deve funcionar no Albedo. A spec W3C é
-   a referência. O objetivo é passar nos web-platform-tests.
-
-6. 🧪 TESTAR TUDO
-   Cada feature nova precisa de testes unitários. O CI deve rodar
-   automaticamente a cada commit.
-
-═══════════════════════════════════════════════════════════════════════════════
-
-🚀 O Albedo tem uma fundação sólida com ~15.700 linhas de Rust, 30+ Web APIs
-   implementadas, DOM funcional com testes, CSS engine completo com 100+
-   propriedades, e um JS runtime com QuickJS. A base está pronta — agora é
-   hora de transformar isso em um browser que as pessoas usam no dia a dia.
-
-═══════════════════════════════════════════════════════════════════════════════
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
