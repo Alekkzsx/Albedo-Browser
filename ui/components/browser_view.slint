@@ -48,6 +48,7 @@ export component BrowserView inherits Rectangle {
     callback key_down(string, string, bool, bool, bool, bool);
     callback key_up(string, string, bool, bool, bool, bool);
     callback scroll(length, length, float);
+    callback input_change(string, string);
 
     in-out property <bool> show-start-page;
     in property <[ACEBox]> ace_model;
@@ -145,6 +146,9 @@ export component BrowserView inherits Rectangle {
                             text: box.input_value;
                             font-size: box.font_size;
                             input-type: box.input_type == "password" ? InputType.password : InputType.text;
+                            edited => {
+                                input_change(box.node_id, self.text);
+                            }
                         }
 
                         if box.is_textarea : TextEdit {
@@ -152,6 +156,9 @@ export component BrowserView inherits Rectangle {
                              height: 100%;
                              text: box.input_value;
                              font-size: box.font_size;
+                             edited => {
+                                 input_change(box.node_id, self.text);
+                             }
                         }
 
                         if box.is_select : Rectangle {
