@@ -39,6 +39,8 @@ impl DOMParser {
             primitives: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             canvas_contexts: doc_borrow.canvas_contexts.clone(),
             pending_scroll: doc_borrow.pending_scroll.clone(),
+            element_geometry: doc_borrow.element_geometry.clone(),
+            element_scroll: doc_borrow.element_scroll.clone(),
             url: "about:blank".into(),
             referrer: "".into(),
         };

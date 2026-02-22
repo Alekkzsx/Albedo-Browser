@@ -24,7 +24,7 @@ pub fn post_message<'js>(
         .ok_or_else(|| rquickjs::Error::Exception)?
         .as_string().unwrap().to_string()?;
     
-    let caller_origin = caller_rt.origin.as_ref().map(|o| o.to_string()).unwrap_or_else(|| "null".to_string());
+    let caller_origin = caller_rt.origin.lock().unwrap().as_ref().map(|o: &crate::network::security::Origin| o.to_string()).unwrap_or_else(|| "null".to_string());
 
     if let Some(target_rt_arc) = crate::runtime::core::registry::get_runtime(target_rt_id) {
         let target_rt = target_rt_arc.lock().unwrap();
@@ -35,7 +35,8 @@ pub fn post_message<'js>(
             // Same-origin only
             allowed = caller_rt.check_same_origin(&target_rt);
         } else if target_origin != "*" {
-            if let Some(ref target_rt_origin) = target_rt.origin {
+            let target_rt_origin_lock = target_rt.origin.lock().unwrap();
+            if let Some(ref target_rt_origin) = *target_rt_origin_lock {
                 if target_rt_origin.to_string() != target_origin {
                     allowed = false;
                 }

@@ -14,3 +14,5 @@ pub mod url;
 pub mod url_search_params;
 pub mod websocket;
 pub mod worker;
+pub mod window_proxy;
+pub mod post_message;

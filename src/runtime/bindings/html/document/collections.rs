@@ -20,6 +20,10 @@ pub struct HtmlCollection {
     pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
+    #[qjs(skip_trace)]
+    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    #[qjs(skip_trace)]
+    pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
 
 #[rquickjs::methods]
@@ -41,6 +45,8 @@ impl HtmlCollection {
                 primitives: self.primitives.clone(),
                 canvas_contexts: self.canvas_contexts.clone(),
                 pending_scroll: self.pending_scroll.clone(),
+                element_geometry: self.element_geometry.clone(),
+                element_scroll: self.element_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -78,6 +84,8 @@ impl HtmlCollection {
                 primitives: self.primitives.clone(),
                 canvas_contexts: self.canvas_contexts.clone(),
                 pending_scroll: self.pending_scroll.clone(),
+                element_geometry: self.element_geometry.clone(),
+                element_scroll: self.element_scroll.clone(),
             };
             let instance = Class::instance(ctx.clone(), element)?;
             array.set(i, instance)?;

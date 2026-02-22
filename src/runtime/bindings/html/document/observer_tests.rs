@@ -16,7 +16,10 @@ mod tests {
         let stylesheet = Arc::new(Mutex::new(style::parse(""))); 
         
         register(&rt, dom.clone(), stylesheet, Arc::new(Mutex::new(Vec::new())), Arc::new(Mutex::new(std::collections::HashMap::new())), "http://localhost".to_string(), "".to_string(), None).unwrap();
-        crate::runtime::bindings::html::mutation_observer::register(&rt).unwrap();
+        rt.context.lock().unwrap().with(|ctx| {
+            let global = ctx.globals();
+            rquickjs::Class::<crate::runtime::bindings::html::mutation_observer::MutationObserver>::define(&global).unwrap();
+        });
         
         (rt, dom)
     }

@@ -25,6 +25,8 @@ impl ShadowRoot {
                         primitives: self.fragment.primitives.clone(),
                         canvas_contexts: self.fragment.canvas_contexts.clone(),
                         pending_scroll: self.fragment.pending_scroll.clone(),
+                        element_geometry: self.fragment.element_geometry.clone(),
+                        element_scroll: self.fragment.element_scroll.clone(),
                     };
                     let instance = Class::instance(ctx, element)?;
                     return Ok(instance.into_value());
@@ -56,6 +58,8 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
             primitives: el.primitives.clone(),
             canvas_contexts: el.canvas_contexts.clone(),
             pending_scroll: el.pending_scroll.clone(),
+            element_geometry: el.element_geometry.clone(),
+            element_scroll: el.element_scroll.clone(),
         }
     };
 
@@ -76,6 +80,8 @@ pub fn get_shadow_root<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                         primitives: el.primitives.clone(),
                         canvas_contexts: el.canvas_contexts.clone(),
                         pending_scroll: el.pending_scroll.clone(),
+                        element_geometry: el.element_geometry.clone(),
+                        element_scroll: el.element_scroll.clone(),
                     }
                 };
                 let instance = Class::instance(ctx, shadow)?;

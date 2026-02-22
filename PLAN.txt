@@ -196,10 +196,10 @@
         ⚠️  Lacks: nested iframe support (only 1 level deep verified)
   🟡  Web Workers — Estrutura sem execução real em thread separada
   🟡  Range e Selection — Stubs sem operações reais
-  🟡  Element geometry stubs:
-        ⚠️  clientWidth / clientHeight → valores fixos
-        ⚠️  scrollTop / scrollLeft     → não implementados
-        ⚠️  scrollWidth / scrollHeight → stubs
+  ✅  Element geometry (clientWidth, scrollTop, offsetHeight, etc.) reais
+        ✅  clientWidth / clientHeight calculados (consideram borders/padding)
+        ✅  scrollTop / scrollLeft implementados e mutáveis (estado por elemento)
+        ✅  scrollWidth / scrollHeight medem a área de overflow vs container
   🟡  IntersectionObserver / ResizeObserver — Funcionais mas sem integração real
       com layout (não disparam baseado em posição/tamanho real dos elementos)
   ✅  HTTP/3 / QUIC — Implementado com Quinn + H3
@@ -235,8 +235,8 @@
          → engine/mod.rs + browser/tabs/ ✅ IMPLEMENTADO
   [ ]  Float & Clear CSS properties (float: left/right, clear)
          → engine/mod.rs (build_layout_tree)
-  [ ]  Element geometry real (clientWidth, scrollTop, offsetHeight, etc.)
-         → runtime/bindings/html/element/mod.rs
+  [x]  Element geometry real (clientWidth, scrollTop, offsetHeight, etc.)
+         → runtime/bindings/html/element/mod.rs ✅ IMPLEMENTADO
 
   [B] PERFORMANCE (BLOQUEADOR CRÍTICO)
   ────────────────────────────────────

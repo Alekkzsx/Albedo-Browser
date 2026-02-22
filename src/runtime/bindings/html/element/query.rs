@@ -13,6 +13,8 @@ pub fn query_selector<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Res
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -34,6 +36,8 @@ pub fn query_selector_all<'js>(el: &Element, ctx: Ctx<'js>, selector: String) ->
                 primitives: el.primitives.clone(),
                 canvas_contexts: el.canvas_contexts.clone(),
                 pending_scroll: el.pending_scroll.clone(),
+                element_geometry: el.element_geometry.clone(),
+                element_scroll: el.element_scroll.clone(),
             };
             let instance = Class::instance(ctx.clone(), element)?;
             array.set(i, instance)?;
@@ -62,6 +66,8 @@ pub fn closest<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Val
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());

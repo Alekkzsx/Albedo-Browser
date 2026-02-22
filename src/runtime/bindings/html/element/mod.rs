@@ -21,6 +21,10 @@ pub struct Element {
     pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
+    #[qjs(skip_trace)]
+    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    #[qjs(skip_trace)]
+    pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
 
 pub mod hierarchy;
@@ -403,9 +407,19 @@ impl Element {
         self::props::scroll_top(self)
     }
 
+    #[qjs(set, rename = "scrollTop")]
+    pub fn set_scroll_top(&self, val: f32) {
+        self::props::set_scroll_top(self, val)
+    }
+
     #[qjs(get, rename = "scrollLeft")]
     pub fn scroll_left(&self) -> f32 {
         self::props::scroll_left(self)
+    }
+
+    #[qjs(set, rename = "scrollLeft")]
+    pub fn set_scroll_left(&self, val: f32) {
+        self::props::set_scroll_left(self, val)
     }
 
     #[qjs(get, rename = "scrollWidth")]
@@ -416,6 +430,46 @@ impl Element {
     #[qjs(get, rename = "scrollHeight")]
     pub fn scroll_height(&self) -> f32 {
         self::props::scroll_height(self)
+    }
+
+    #[qjs(get, rename = "clientWidth")]
+    pub fn client_width(&self) -> f32 {
+        self::props::client_width(self)
+    }
+
+    #[qjs(get, rename = "clientHeight")]
+    pub fn client_height(&self) -> f32 {
+        self::props::client_height(self)
+    }
+
+    #[qjs(get, rename = "clientTop")]
+    pub fn client_top(&self) -> f32 {
+        self::props::client_top(self)
+    }
+
+    #[qjs(get, rename = "clientLeft")]
+    pub fn client_left(&self) -> f32 {
+        self::props::client_left(self)
+    }
+
+    #[qjs(get, rename = "offsetWidth")]
+    pub fn offset_width(&self) -> f32 {
+        self::props::offset_width(self)
+    }
+
+    #[qjs(get, rename = "offsetHeight")]
+    pub fn offset_height(&self) -> f32 {
+        self::props::offset_height(self)
+    }
+
+    #[qjs(get, rename = "offsetTop")]
+    pub fn offset_top(&self) -> f32 {
+        self::props::offset_top(self)
+    }
+
+    #[qjs(get, rename = "offsetLeft")]
+    pub fn offset_left(&self) -> f32 {
+        self::props::offset_left(self)
     }
 
     #[qjs(get, rename = "origin")]
@@ -461,3 +515,4 @@ impl Element {
         self::canvas::get_context(self, ctx, type_)
     }
 }
+#[cfg(test)] mod tests;

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grandchild Window</title>
+</head>
+<body style="background: lightgreen;">
+    <h3>Grandchild</h3>
+    <script>
+        window.addEventListener("message", (e) => {
+            console.log("GRANDCHILD RECEIVED: " + e.data);
+            let p = document.createElement("p");
+            p.textContent = "GRANDCHILD RECEIVED: " + e.data;
+            document.body.appendChild(p);
+            
+            if (window.top) {
+                window.top.postMessage("Hello absolute top from grandchild!", "*");
+            }
+        });
+    </script>
+</body>
+</html>

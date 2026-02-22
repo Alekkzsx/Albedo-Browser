@@ -3,11 +3,14 @@ use rquickjs::function::IntoJsFunc;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::result::Result as StdResult;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::engine::dom::AceDOM;
 use crate::network::resources::ResourceManager;
 use crate::network::security::Origin;
 
 pub type JsResult<T> = StdResult<T, rquickjs::Error>;
+
+static NEXT_RUNTIME_ID: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Clone, Default)]
 pub struct HistoryEntry {
@@ -32,6 +35,8 @@ pub struct IntersectionRegistry {
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
 pub struct JsRuntime {
+    #[qjs(skip_trace)]
+    pub id: usize,
     #[qjs(skip_trace)]
     pub(crate) context: Arc<Mutex<Context>>,
     #[qjs(skip_trace)]
@@ -65,9 +70,13 @@ pub struct JsRuntime {
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
-    pub resource_manager: Option<ResourceManager>,
+    pub resource_manager: Arc<Mutex<Option<ResourceManager>>>,
     #[qjs(skip_trace)]
-    pub origin: Option<Origin>,
+    pub origin: Arc<Mutex<Option<Origin>>>,
+    #[qjs(skip_trace)]
+    pub element_geometry: Arc<Mutex<HashMap<usize, crate::engine::ElementGeometry>>>,
+    #[qjs(skip_trace)]
+    pub element_scroll: Arc<Mutex<HashMap<usize, (f32, f32)>>>,
 }
 
 use super::event_loop::EventLoop;
@@ -79,6 +88,7 @@ impl JsRuntime {
         let context = Context::full(&runtime)?;
         
         let rt = Self {
+            id: NEXT_RUNTIME_ID.fetch_add(1, Ordering::SeqCst),
             context: Arc::new(Mutex::new(context)),
             runtime: Arc::new(Mutex::new(runtime)),
             event_loop: Arc::new(Mutex::new(EventLoop::new())),
@@ -95,8 +105,10 @@ impl JsRuntime {
             layout_states: Arc::new(Mutex::new(HashMap::new())),
             canvas_contexts: Arc::new(Mutex::new(HashMap::new())),
             pending_scroll: Arc::new(Mutex::new(None)),
-            resource_manager: None,
-            origin: None,
+            resource_manager: Arc::new(Mutex::new(None)),
+            origin: Arc::new(Mutex::new(None)),
+            element_geometry: Arc::new(Mutex::new(HashMap::new())),
+            element_scroll: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Store self in userdata for access from within JS callbacks
@@ -175,6 +187,8 @@ impl JsRuntime {
                     primitives: self.primitives.clone(),
                     canvas_contexts: self.canvas_contexts.clone(),
                     pending_scroll: self.pending_scroll.clone(),
+                    element_geometry: self.element_geometry.clone(),
+                    element_scroll: self.element_scroll.clone(),
                 };
                 if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
                     let instance_val = instance.into_value();
@@ -207,6 +221,8 @@ impl JsRuntime {
                         primitives: self.primitives.clone(),
                         canvas_contexts: self.canvas_contexts.clone(),
                         pending_scroll: self.pending_scroll.clone(),
+                        element_geometry: self.element_geometry.clone(),
+                        element_scroll: self.element_scroll.clone(),
                     };
                     
                     if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
@@ -236,11 +252,42 @@ impl JsRuntime {
     }
 
 
+    pub fn dispatch_message_event(&self, message_json: String, origin: String, source_rt_id: Option<usize>) {
+        println!("[JsRuntime::dispatch_message_event] Entering (ID {})", self.id);
+        if self.dom.lock().unwrap().is_some() {
+            println!("[JsRuntime::dispatch_message_event] DOM exists, getting context lock...");
+            self.with_context(|ctx| {
+                println!("[JsRuntime::dispatch_message_event] Context locked, evaluating script...");
+                ctx.with(|ctx| {
+                    let safe_msg = message_json.replace("'", "\\'");
+                    let safe_origin = origin.replace("'", "\\'");
+                    let options_str = format!("{{ data: '{}', origin: '{}' }}", safe_msg, safe_origin);
+                    let script = format!("globalThis.dispatchEvent(new MessageEvent('message', {}))", options_str);
+                    
+                    let _ = ctx.eval::<(), _>(script);
+                })
+            });
+            println!("[JsRuntime::dispatch_message_event] Done.");
+        } else {
+            println!("[JsRuntime::dispatch_message_event] NO DOM!");
+        }
+    }
+
+
     pub fn get_pending_navigation(&self) -> Option<String> {
         let mut pending = self.pending_navigation.lock().unwrap();
         pending.take()
     }
 
+
+    pub fn check_same_origin(&self, other: &JsRuntime) -> bool {
+        let o1_lock = self.origin.lock().unwrap();
+        let o2_lock = other.origin.lock().unwrap();
+        match (&*o1_lock, &*o2_lock) {
+            (Some(o1), Some(o2)) => o1.is_same_origin(o2),
+            _ => false,
+        }
+    }
 
     pub fn run_gc(&self) {
         let rt = self.runtime.lock().unwrap();

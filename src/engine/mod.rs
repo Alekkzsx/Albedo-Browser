@@ -66,13 +66,13 @@ impl ElementGeometry {
             overflow_y: "visible".to_string(),
         }
     }
-    
-    /// Client width: content width + padding (no border)
+
+    /// Client width: content width - padding (no border) - Actually width - borders
     pub fn client_width(&self) -> f32 {
         (self.width - self.border_left - self.border_right).max(0.0)
     }
     
-    /// Client height: content height + padding (no border)
+    /// Client height: content height - padding (no border) - Actually height - borders
     pub fn client_height(&self) -> f32 {
         (self.height - self.border_top - self.border_bottom).max(0.0)
     }
@@ -124,7 +124,8 @@ pub struct AceEngine {
     pub active_element: Option<usize>,
     pub focused_element: Option<usize>,
     pub image_cache: Arc<Mutex<std::collections::HashMap<String, slint::Image>>>,
-    pub element_bounds: Arc<Mutex<std::collections::HashMap<usize, (f32, f32, f32, f32)>>>,
+    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, ElementGeometry>>>,
+    pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
     pub styles_dirty: bool,
     pub animation_manager: Arc<Mutex<crate::engine::style::animation::AnimationManager>>,
     pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
@@ -145,7 +146,8 @@ impl AceEngine {
             active_element: None,
             focused_element: None,
             image_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            element_bounds: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            element_geometry: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            element_scroll: Arc::new(Mutex::new(std::collections::HashMap::new())),
             styles_dirty: false,
             animation_manager: Arc::new(Mutex::new(crate::engine::style::animation::AnimationManager::new())),
             canvas_contexts: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -167,17 +169,31 @@ impl AceEngine {
     pub fn handle_resource_response(&mut self, response: crate::network::resources::ResourceResponse) -> bool {
         println!("Engine received resource: {} ({} bytes)", response.url, response.data.len());
         
+        let mut needs_layout = false;
+
         // Se for a URL principal, carregar como HTML
         if response.url == self.current_url {
-            if let Ok(html) = String::from_utf8(response.data) {
+            if let Ok(html) = String::from_utf8(response.data.clone()) {
                 self.load_html(&html);
                 return true; // Precisa de repaint/layout
             }
         }
         
-        // TODO: lidar com sub-recursos (CSS, JS, Imagens)
+        // Push response down to subframes to check if it's theirs
+        if let Some(ref dom_arc) = self.dom {
+            let dom = dom_arc.lock().unwrap();
+            if let Some(ref subframes_arc) = dom.subframes {
+                let mut subframes = subframes_arc.lock().unwrap();
+                for (_, sub_engine_arc) in subframes.iter_mut() {
+                    let mut sub_engine = sub_engine_arc.lock().unwrap();
+                    if sub_engine.handle_resource_response(response.clone()) {
+                        needs_layout = true;
+                    }
+                }
+            }
+        }
         
-        false
+        needs_layout
     }
 
     pub fn layout(&mut self, width: f32, height: f32) {
@@ -203,11 +219,11 @@ impl AceEngine {
                     
                     // 2. Compute Layout
                     if let Ok(_) = taffy.compute_layout(root_node, available_space) {
-                        let mut bounds = self.element_bounds.lock().unwrap();
-                        bounds.clear();
+                        let mut geometry = self.element_geometry.lock().unwrap();
+                        geometry.clear();
                         
                         // 3. Extract Global Coordinates
-                        self.extract_layout_recursively(&taffy, root_node, &node_map, &mut bounds, 0.0, 0.0);
+                        self.extract_layout_recursively(&taffy, root_node, &node_map, &mut geometry, 0.0, 0.0);
                     } else {
                         println!("[AceEngine] Layout computation failed");
                     }
@@ -220,7 +236,7 @@ impl AceEngine {
         taffy: &taffy::Taffy,
         node: taffy::prelude::Node,
         node_map: &std::collections::HashMap<taffy::prelude::Node, usize>,
-        bounds: &mut std::collections::HashMap<usize, (f32, f32, f32, f32)>,
+        geometry: &mut std::collections::HashMap<usize, ElementGeometry>,
         parent_x: f32,
         parent_y: f32
     ) {
@@ -231,15 +247,45 @@ impl AceEngine {
             let h = layout.size.height;
              
             if let Some(&dom_idx) = node_map.get(&node) {
-                bounds.insert(dom_idx, (x, y, w, h));
+                let mut geom = ElementGeometry::new();
+                geom.x = x;
+                geom.y = y;
+                geom.width = w;
+                geom.height = h;
+                // TODO: Extract borders, padding, content dimensions, overflow styles from DOM
+                geometry.insert(dom_idx, geom);
             }
              
             if let Ok(children) = taffy.children(node) {
                 for child in children {
-                    self.extract_layout_recursively(taffy, child, node_map, bounds, x, y);
+                    self.extract_layout_recursively(taffy, child, node_map, geometry, x, y);
                 }
             }
         }
+    }
+
+    /// Extract box model (borders and padding) from element.
+    /// Returns: (border_top, border_right, border_bottom, border_left, padding_top, padding_right, padding_bottom, padding_left)
+    fn extract_box_model(&self, node_idx: usize) -> (f32, f32, f32, f32, f32, f32, f32, f32) {
+        // TODO: Read from DOM computed style
+        // For now, return zeros
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    }
+
+    /// Calculate content dimensions based on children bounds.
+    /// Returns: (content_width, content_height)
+    fn calculate_content_dimensions(&self, node_idx: usize) -> (f32, f32) {
+        // TODO: Iterate children and find max bounds
+        // For now, return zeros
+        (0.0, 0.0)
+    }
+
+    /// Get overflow style (overflow-x, overflow-y) from element.
+    /// Returns: (overflow_x, overflow_y)
+    fn get_overflow_style(&self, node_idx: usize) -> (String, String) {
+        // TODO: Read from DOM computed style
+        // For now, return "visible" for both
+        ("visible".to_string(), "visible".to_string())
     }
 
     pub fn set_resource_manager(&mut self, rm: crate::network::resources::ResourceManager) {
@@ -249,12 +295,12 @@ impl AceEngine {
     pub fn find_element_at_position(&self, x: f32, y: f32) -> Option<usize> {
         // Hit testing: encontra o elemento no topo na posição (x, y)
         // Busca em ordem reversa (z-index maior = renderizado por último = no topo)
-        let bounds = self.element_bounds.lock().unwrap();
+        let geometry = self.element_geometry.lock().unwrap();
         let mut topmost: Option<(usize, f32)> = None; // (node_idx, z_index)
         
-        for (node_idx, (bx, by, bw, bh)) in bounds.iter() {
-            // Verificar se ponto (x, y) está dentro da caixa (bx, by, bw, bh)
-            if x >= *bx && x < (bx + bw) && y >= *by && y < (by + bh) {
+        for (node_idx, geom) in geometry.iter() {
+            // Verificar se ponto (x, y) está dentro da caixa
+            if x >= geom.x && x < (geom.x + geom.width) && y >= geom.y && y < (geom.y + geom.height) {
                 // Caixas com z-index maior são renderizadas por último
                 // Para simplificar, usamos o index como z-order (elementos adicionados depois têm z-index maior)
                 let z_index = *node_idx as f32;
@@ -350,13 +396,25 @@ impl AceEngine {
     }
 
     pub fn update_element_bounds(&self, node_idx: usize, x: f32, y: f32, width: f32, height: f32) {
-        let mut bounds = self.element_bounds.lock().unwrap();
-        bounds.insert(node_idx, (x, y, width, height));
+        let mut geometry = self.element_geometry.lock().unwrap();
+        if let Some(geom) = geometry.get_mut(&node_idx) {
+            geom.x = x;
+            geom.y = y;
+            geom.width = width;
+            geom.height = height;
+        } else {
+            let mut geom = ElementGeometry::new();
+            geom.x = x;
+            geom.y = y;
+            geom.width = width;
+            geom.height = height;
+            geometry.insert(node_idx, geom);
+        }
     }
 
     pub fn clear_element_bounds(&self) {
-        let mut bounds = self.element_bounds.lock().unwrap();
-        bounds.clear();
+        let mut geometry = self.element_geometry.lock().unwrap();
+        geometry.clear();
     }
 
     pub fn tick(&mut self, now: f64) -> bool {
@@ -378,13 +436,13 @@ impl AceEngine {
     }
 
     pub fn scroll_into_view(&mut self, node_idx: usize) {
-        let bounds = self.element_bounds.lock().unwrap();
-        if let Some(&(x, y, w, h)) = bounds.get(&node_idx) {
+        let geometry = self.element_geometry.lock().unwrap();
+        if let Some(geom) = geometry.get(&node_idx) {
             // No Slint, viewport-y é 0 no topo e fica mais negativo à medida que descemos.
             // Para colocar o elemento no topo da visão: viewport_y = -y
             // Para centralizar: viewport_y = -y + (window_height / 2)
-            self.viewport_y = -y;
-            println!("[AceEngine] Scrolling to node {}: Y={}", node_idx, y);
+            self.viewport_y = -geom.y;
+            println!("[AceEngine] Scrolling to node {}: Y={}", node_idx, geom.y);
         }
     }
 
@@ -429,6 +487,13 @@ impl AceEngine {
             // 1. Build Taffy Tree
             taffy.clear();
             let mut node_map = std::collections::HashMap::new();
+            
+            // Clear geometry before rebuilding
+            {
+                let mut geometry = self.element_geometry.lock().unwrap();
+                geometry.clear();
+            }
+
             let build_start = std::time::Instant::now();
             let root_nodes = self.build_layout_tree(&dom, &mut taffy, &stylesheet, 0, 800.0, 600.0, &mut node_map, None);
             let build_duration = build_start.elapsed();
@@ -446,7 +511,7 @@ impl AceEngine {
             let compute_duration = compute_start.elapsed();
             
             // 3. Update Element Bounds
-            self.clear_element_bounds();
+            // Note: clear_element_bounds() removed here because we want to keep the style data inserted by build_layout_tree
             self.sync_taffy_bounds(&taffy, &dom, root_node, 0.0, 0.0, &node_map);
             
             let total_duration = start_time.elapsed();
@@ -473,6 +538,37 @@ impl AceEngine {
             self.hovered_element, self.focused_element, self.active_element, 
             Some(&am), now, vw, vh, "light"
         );
+
+        // --- Element Geometry: Style Extraction ---
+        {
+            let mut geometry = self.element_geometry.lock().unwrap();
+            let geom = geometry.entry(node_idx).or_insert(ElementGeometry::new());
+            
+            // Resolve Box Model
+            let resolve = |l: &crate::engine::style::css_values::CssLength| -> f32 {
+                 crate::engine::style::css_values::resolve_length(l, style.font_size, 16.0, vw, vh)
+            };
+            
+            geom.padding_top = resolve(&style.padding_top);
+            geom.padding_right = resolve(&style.padding_right);
+            geom.padding_bottom = resolve(&style.padding_bottom);
+            geom.padding_left = resolve(&style.padding_left);
+            
+            geom.border_top = resolve(&style.border_width_top);
+            geom.border_right = resolve(&style.border_width_right);
+            geom.border_bottom = resolve(&style.border_width_bottom);
+            geom.border_left = resolve(&style.border_width_left);
+            
+            use crate::engine::style::css_values::CssOverflow;
+            geom.overflow_x = match style.overflow {
+                CssOverflow::Visible => "visible".to_string(),
+                CssOverflow::Hidden => "hidden".to_string(),
+                CssOverflow::Scroll => "scroll".to_string(),
+                CssOverflow::Auto => "auto".to_string(),
+            };
+            geom.overflow_y = geom.overflow_x.clone(); 
+        }
+        // ------------------------------------------
 
         let mut taffy_style = self.convert_to_taffy_style(&style);
         
@@ -605,7 +701,47 @@ impl AceEngine {
             
             grid_ctx = Some(ctx);
         } else if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-            if el.tag == "svg" {
+            if el.tag == "iframe" {
+                // If this is an iframe, ensure we have a subframe engine for it
+                let mut needs_init = false;
+                let mut iframe_src = String::new();
+                
+                {
+                    let mut dom_mut = self.dom.as_ref().unwrap().lock().unwrap();
+                    if dom_mut.subframes.is_none() {
+                        dom_mut.subframes = Some(std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())));
+                    }
+                    
+                    let subframes_arc = dom_mut.subframes.as_ref().unwrap().clone();
+                    let mut subframes = subframes_arc.lock().unwrap();
+                    
+                    if !subframes.contains_key(&node_idx) {
+                        let sub_engine = std::sync::Arc::new(std::sync::Mutex::new(AceEngine::new()));
+                        subframes.insert(node_idx, sub_engine);
+                        needs_init = true;
+                        
+                        if let Some(src) = el.attributes.get("src") {
+                            iframe_src = src.clone();
+                        }
+                    }
+                }
+                
+                if needs_init && !iframe_src.is_empty() {
+                     let dom_mutex = self.dom.as_ref().unwrap().lock().unwrap();
+                     if let Some(subframes_arc) = &dom_mutex.subframes {
+                          let subframes_lock = subframes_arc.lock().unwrap();
+                          if let Some(engine_arc) = subframes_lock.get(&node_idx) {
+                              let mut sub_engine = engine_arc.lock().unwrap();
+                              // Copy over resource manager and store target URL.
+                              // JS runtime is initialized lazily when the iframe content
+                              // is actually loaded (do NOT call init_js_for_url here as
+                              // it runs init_stdlib which uses tokio and may block).
+                              sub_engine.resource_manager = self.resource_manager.clone();
+                              sub_engine.current_url = iframe_src.clone();
+                          }
+                     }
+                }
+            } else if el.tag == "svg" {
                 // SVGs are treated as leaf nodes in layout, but we need to extract their dimensions
                 let mut svg_width = style.width.clone();
                 let mut svg_height = style.height.clone();
@@ -712,16 +848,42 @@ impl AceEngine {
         let width = layout.size.width;
         let height = layout.size.height;
         
-        if let Some(&node_idx) = node_map.get(&taffy_node) {
-            let mut bounds = self.element_bounds.lock().unwrap();
-            bounds.insert(node_idx, (abs_x, abs_y, width, height));
-        }
+            let mut content_w = 0.0f32;
+            let mut content_h = 0.0f32;
+            
+            // Calculate content dimensions from children
+            let taffy_children = taffy.children(taffy_node).unwrap();
+            if !taffy_children.is_empty() {
+                for &child in &taffy_children {
+                    if let Ok(child_layout) = taffy.layout(child) {
+                        let right = child_layout.location.x + child_layout.size.width;
+                        let bottom = child_layout.location.y + child_layout.size.height;
+                        if right > content_w { content_w = right; }
+                        if bottom > content_h { content_h = bottom; }
+                    }
+                }
+            } else {
+                 // For leaf nodes (like text), we might need intrinsic size? 
+                 // But Taffy layout size is usually enough for flow content.
+            }
+            
+            if let Some(&node_idx) = node_map.get(&taffy_node) {
+                let mut geometry = self.element_geometry.lock().unwrap();
+                // Ensure entry exists (it should from build_layout_tree)
+                let geom = geometry.entry(node_idx).or_insert(ElementGeometry::new());
+                
+                geom.x = abs_x;
+                geom.y = abs_y;
+                geom.width = width;
+                geom.height = height;
+                geom.content_width = content_w; // This is raw content size relative to padding box
+                geom.content_height = content_h;
+            }
 
-        let taffy_children = taffy.children(taffy_node).unwrap();
-        for &taffy_child in &taffy_children {
-            self.sync_taffy_bounds(taffy, dom, taffy_child, abs_x, abs_y, node_map);
+            for &taffy_child in &taffy_children {
+                self.sync_taffy_bounds(taffy, dom, taffy_child, abs_x, abs_y, node_map);
+            }
         }
-    }
 
     fn convert_to_taffy_style(&self, style: &crate::engine::style::css_values::ComputedStyle) -> taffy::prelude::Style {
         let mut t_style = taffy::prelude::Style::default();
@@ -932,7 +1094,7 @@ impl AceEngine {
         if let Some(ref dom_arc) = self.dom {
             let dom = dom_arc.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
-            let bounds = self.element_bounds.lock().unwrap();
+            let geometry = self.element_geometry.lock().unwrap();
             
             // Iterar sobre todos os elementos e gerar primitivas
             for (node_idx, node) in dom.nodes.iter().enumerate() {
@@ -962,7 +1124,11 @@ impl AceEngine {
                     }
                     
                     // Obter bounding box se disponível
-                    if let Some((x, y, w, h)) = bounds.get(&node_idx) {
+                    if let Some(geom) = geometry.get(&node_idx) {
+                        let x = geom.x;
+                        let y = geom.y;
+                        let w = geom.width;
+                        let h = geom.height;
                         // Converter CssColor para hex string
                         let color_str = match &computed_style.background_color {
                             crate::engine::style::css_values::CssColor::Named(name) => {
@@ -1006,17 +1172,17 @@ impl AceEngine {
                         } else if el.tag == "svg" {
                              // SVG Support: Rasterize the subtree
                              let svg_xml = dom.serialize_subtree_html(node_idx);
-                             if let Some(pixels) = crate::engine::svg::rasterize_svg_to_pixels(&svg_xml, *w, *h) {
+                             if let Some(pixels) = crate::engine::svg::rasterize_svg_to_pixels(&svg_xml, w, h) {
                                  canvas_data = Some(pixels);
                              }
                         }
 
                         // Criar primitiva visual
                         let prim = VisualPrimitive {
-                            x: *x,
-                            y: *y,
-                            width: *w,
-                            height: *h,
+                            x: x,
+                            y: y,
+                            width: w,
+                            height: h,
                             color: color_str,
                             text,
                             font_size: computed_style.font_size,
@@ -1103,10 +1269,10 @@ impl AceEngine {
                             // Para simplificar, o outline é renderizado como um retângulo de borda
                             // No futuro, pode ser melhorado com shader de borda
                             let outline_prim = VisualPrimitive {
-                                x: *x - outline.offset,
-                                y: *y - outline.offset,
-                                width: *w + outline.offset * 2.0,
-                                height: *h + outline.offset * 2.0,
+                                x: x - outline.offset,
+                                y: y - outline.offset,
+                                width: w + outline.offset * 2.0,
+                                height: h + outline.offset * 2.0,
                                 color: outline_color,
                                 text: String::new(),
                                 font_size: 0.0,
@@ -1162,10 +1328,50 @@ impl AceEngine {
         
         self.dom = Some(Arc::new(Mutex::new(ace_dom)));
         
-        // Force layout computation immediately
+        // Force layout computation immediately (this creates subframe slots for iframes)
         self.recompute_layout();
+
+        // After layout is done and all DOM locks are released, initialize JS runtimes
+        // for any iframe subframes that were just created. We do this OUTSIDE of all
+        // DOM locks to avoid nested lock hangs (init_js_for_url runs init_stdlib which
+        // uses tokio channels).
+        self.init_subframe_runtimes();
+    }
+
+    /// Initialize JS runtimes for all subframe iframes that don't have one yet.
+    /// Must be called when NO DOM locks are held.
+    fn init_subframe_runtimes(&mut self) {
+        // Collect (node_idx, url, Arc<Mutex<AceEngine>>) for subframes that need a runtime
+        let subframes_to_init: Vec<(usize, String, std::sync::Arc<std::sync::Mutex<AceEngine>>)> = {
+            if let Some(ref dom_arc) = self.dom {
+                let dom = dom_arc.lock().unwrap();
+                if let Some(ref subframes_arc) = dom.subframes {
+                    let subframes = subframes_arc.lock().unwrap();
+                    subframes.iter()
+                        .filter(|(_, eng_arc)| {
+                            let eng = eng_arc.lock().unwrap();
+                            eng.js_runtime.is_none() && !eng.current_url.is_empty()
+                        })
+                        .map(|(idx, eng_arc)| {
+                            let url = eng_arc.lock().unwrap().current_url.clone();
+                            (*idx, url, eng_arc.clone())
+                        })
+                        .collect()
+                } else { vec![] }
+            } else { vec![] }
+        };
+        // No DOM/subframes locks held from here on
+        for (_, url, sub_engine_arc) in subframes_to_init {
+            // Create a temporary snapshot of the engine for init_js_for_url (needs resource_manager etc.)
+            let snap = sub_engine_arc.lock().unwrap().clone();
+            // init_js_for_url does NOT require any external locks - it creates a fresh JsRuntime
+            if let Some(rt) = crate::runtime::core::init::init_js_for_url(&url, &snap) {
+                sub_engine_arc.lock().unwrap().js_runtime = Some(rt);
+            }
+        }
     }
 }
+
 
 impl Clone for AceEngine {
     fn clone(&self) -> Self {
@@ -1180,7 +1386,8 @@ impl Clone for AceEngine {
             active_element: self.active_element,
             focused_element: self.focused_element,
             image_cache: self.image_cache.clone(),
-            element_bounds: self.element_bounds.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
             styles_dirty: self.styles_dirty,
             animation_manager: self.animation_manager.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
@@ -1222,4 +1429,13 @@ pub struct VisualPrimitive {
     pub padding_right: f32,
     pub padding_bottom: f32,
     pub padding_left: f32,
+}
+
+impl std::fmt::Debug for AceEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AceEngine")
+            .field("current_url", &self.current_url)
+            .field("styles_dirty", &self.styles_dirty)
+            .finish()
+    }
 }

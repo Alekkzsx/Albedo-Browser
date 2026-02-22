@@ -43,11 +43,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tabs_model_clone = tabs_model.clone();
     
     // Create first tab immediately
+    let args: Vec<String> = std::env::args().collect();
+    let start_url = if args.len() > 1 {
+        // If it's a local file path, format it as file:// if not already
+        if args[1].starts_with("http") || args[1].starts_with("albedo:") || args[1].starts_with("file:") {
+            args[1].clone()
+        } else {
+            let path = std::env::current_dir().unwrap().join(&args[1]);
+            format!("file://{}", path.display())
+        }
+    } else {
+        "albedo://start".to_string()
+    };
+
     if let Some(ui) = ui_handle_clone.upgrade() {
-        tm_clone.create_tab(ui.window(), "albedo://start");
+        tm_clone.create_tab(ui.window(), &start_url);
         browser::bridge::sync_ace_visuals(&ui, &tm_clone);
         browser::events::sync_tabs(&tm_clone, &tabs_model_clone);
-        ui.set_current_url("".into());
+        ui.set_current_url(start_url.into());
         ui.set_show_start_page(true);
     }
 

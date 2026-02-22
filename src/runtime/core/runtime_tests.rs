@@ -218,3 +218,144 @@ fn test_dom_attribute_manipulation() {
     }
     assert!(found);
 }
+
+#[test]
+fn test_iframe_post_message() {
+    // Usa iframe sem src para evitar que init_subframe_runtimes() tente
+    // criar um JsRuntime (que rodaria init_stdlib com tokio e poderia bloquear).
+    // O runtime filho é criado e injetado manualmente logo abaixo.
+    let mut engine = AceEngine::new();
+    let html = r#"<iframe id="child"></iframe>"#;
+    engine.load_html(html);  // Não dispara init_subframe_runtimes (sem src)
+
+    let dom_arc = engine.dom.as_ref().unwrap().clone();
+
+    // ---- Runtime filho: criado manualmente com setup mínimo ----
+    let child_rt = JsRuntime::new().unwrap();
+    *child_rt.origin.lock().unwrap() = Some(
+        crate::network::security::Origin::from_url("test://child").unwrap()
+    );
+    // Registrar eventos (MessageEvent) e addEventListener/dispatchEvent básico
+    crate::runtime::core::init::register_events(&child_rt).unwrap();
+    {
+        let ctx = child_rt.context.lock().unwrap();
+        ctx.with(|ctx| {
+            let _ = ctx.eval::<(), _>(r#"
+                globalThis._listeners = {};
+                globalThis.addEventListener = function(type, fn) {
+                    if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
+                    globalThis._listeners[type].push(fn);
+                };
+                globalThis.dispatchEvent = function(event) {
+                    var ls = globalThis._listeners[event.type];
+                    if (ls) for (var i = 0; i < ls.length; i++) ls[i](event);
+                    return true;
+                };
+                globalThis.window = globalThis;
+                globalThis.self = globalThis;
+            "#);
+        });
+    }
+    // Registrar no global registry para postMessage conseguir encontrá-lo
+    crate::runtime::core::registry::register_runtime(
+        child_rt.id,
+        Arc::new(Mutex::new(child_rt.clone()))
+    );
+
+    // Injetar child_rt no subframe do DOM pai para que contentWindow retorne
+    // um WindowProxy apontando para child_rt.id
+    {
+        let dom = dom_arc.lock().unwrap();
+        if let Some(ref subframes_arc) = dom.subframes {
+            let mut subframes = subframes_arc.lock().unwrap();
+            if let Some((_, sub_engine_arc)) = subframes.iter_mut().next() {
+                let mut sub_engine = sub_engine_arc.lock().unwrap();
+                sub_engine.js_runtime = Some(child_rt.clone());
+            }
+        }
+    }
+
+    // ---- Runtime pai: setup mínimo com document API + WindowProxy ----
+    let parent_rt = JsRuntime::new().unwrap();
+    *parent_rt.origin.lock().unwrap() = Some(
+        crate::network::security::Origin::from_url("test://parent").unwrap()
+    );
+    crate::runtime::core::registry::register_runtime(
+        parent_rt.id,
+        Arc::new(Mutex::new(parent_rt.clone()))
+    );
+
+    let primitives = Arc::new(Mutex::new(Vec::<crate::engine::ACEPrimitive>::new()));
+    let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    document::register(
+        &parent_rt, dom_arc.clone(), engine.stylesheet.clone(),
+        primitives, canvas_contexts,
+        "test://parent".to_string(), "".to_string(), None
+    ).unwrap();
+
+    // Registrar WindowProxy e addEventListener no pai
+    {
+        let ctx = parent_rt.context.lock().unwrap();
+        ctx.with(|ctx| {
+            let _ = ctx.eval::<(), _>(r#"
+                globalThis._listeners = {};
+                globalThis.addEventListener = function(type, fn) {
+                    if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
+                    globalThis._listeners[type].push(fn);
+                };
+                globalThis.dispatchEvent = function(event) {
+                    var ls = globalThis._listeners[event.type];
+                    if (ls) for (var i = 0; i < ls.length; i++) ls[i](event);
+                    return true;
+                };
+                globalThis.window = globalThis;
+            "#);
+            let _ = crate::runtime::bindings::webapi::window_proxy::register(&ctx);
+            let _ = crate::runtime::bindings::webapi::post_message::register(&ctx);
+        });
+    }
+
+    // ---- Adicionar listener de mensagem no filho ----
+    child_rt.execute_script(r#"
+        globalThis.received = false;
+        globalThis.dataReceived = null;
+        globalThis.addEventListener('message', function(e) {
+            globalThis.received = true;
+            globalThis.dataReceived = e.data;
+        });
+    "#).unwrap();
+
+    // ---- Pai envia postMessage para o filho via contentWindow ----
+    // postMessage é assíncrono: enfileira no event_loop do filho
+    let result = parent_rt.execute_script(r#"
+        var iframe = document.getElementById('child');
+        if (!iframe) { 'no iframe'; }
+        else {
+            var w = iframe.contentWindow;
+            if (!w) { 'no contentWindow'; }
+            else {
+                w.postMessage("Hello from parent", "*");
+                'sent';
+            }
+        }
+    "#).unwrap();
+
+    println!("[test] postMessage result: {}", result);
+    assert!(result.contains("sent"),
+        "postMessage não enviado, resultado: {}", result);
+
+    // ---- Processar a mensagem no event loop do filho (próximo tick) ----
+    // run_pending() drena pending_messages e dispara os listeners
+    child_rt.run_pending();
+
+    // ---- Verificar que o filho recebeu a mensagem ----
+    let received = child_rt.execute_script("globalThis.received").unwrap();
+    println!("[test] received: {}", received);
+    assert_eq!(received, "true", "Mensagem não recebida pelo iframe filho");
+
+    let data = child_rt.execute_script("globalThis.dataReceived").unwrap();
+    println!("[test] dataReceived: {}", data);
+    // postMessage serializa como JSON, então "Hello from parent" → "\"Hello from parent\""
+    assert_eq!(data, "\"Hello from parent\"",
+        "Dado da mensagem incorreto: {}", data);
+}

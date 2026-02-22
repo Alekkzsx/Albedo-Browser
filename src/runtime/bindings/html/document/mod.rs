@@ -37,6 +37,10 @@ pub struct Document {
     pub resource_manager: Option<crate::network::resources::ResourceManager>,
     pub url: String,
     pub referrer: String,
+    #[qjs(skip_trace)]
+    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    #[qjs(skip_trace)]
+    pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
 
 #[rquickjs::methods]
@@ -135,6 +139,8 @@ impl Document {
             primitives: self.primitives.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
             pending_scroll: self.pending_scroll.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -166,6 +172,8 @@ impl Document {
             primitives: self.primitives.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
             pending_scroll: self.pending_scroll.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, frag)?;
@@ -197,6 +205,8 @@ impl Document {
             primitives: self.primitives.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
             pending_scroll: self.pending_scroll.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -228,6 +238,8 @@ impl Document {
             primitives: self.primitives.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
             pending_scroll: self.pending_scroll.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
         };
 
         let instance = Class::instance(ctx, element)?;
@@ -294,6 +306,8 @@ impl Document {
                 primitives: self.primitives.clone(),
                 canvas_contexts: self.canvas_contexts.clone(),
                 pending_scroll: self.pending_scroll.clone(),
+                element_geometry: self.element_geometry.clone(),
+                element_scroll: self.element_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -316,6 +330,8 @@ impl Document {
                 primitives: self.primitives.clone(),
                 canvas_contexts: self.canvas_contexts.clone(),
                 pending_scroll: self.pending_scroll.clone(),
+                element_geometry: self.element_geometry.clone(),
+                element_scroll: self.element_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -337,6 +353,8 @@ impl Document {
             primitives: self.primitives.clone(),
             canvas_contexts: self.canvas_contexts.clone(),
             pending_scroll: self.pending_scroll.clone(),
+            element_geometry: self.element_geometry.clone(),
+            element_scroll: self.element_scroll.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         Ok(instance.into_value())
@@ -370,6 +388,8 @@ impl Document {
                 primitives: self.primitives.clone(),
                 canvas_contexts: self.canvas_contexts.clone(),
                 pending_scroll: self.pending_scroll.clone(),
+                element_geometry: self.element_geometry.clone(),
+                element_scroll: self.element_scroll.clone(),
             };
             let instance = Class::instance(ctx, element)?;
             return Ok(instance.into_value());
@@ -402,6 +422,8 @@ pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::
                 primitives,
                 canvas_contexts,
                 pending_scroll: rt.pending_scroll.clone(),
+                element_geometry: rt.element_geometry.clone(), // Add
+                element_scroll: rt.element_scroll.clone(), // Add
                 url,
                 referrer,
             })?;

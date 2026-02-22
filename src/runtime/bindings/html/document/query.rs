@@ -17,6 +17,8 @@ pub fn get_element_by_id<'js>(doc: &Document, ctx: Ctx<'js>, id: String) -> Resu
                             primitives: doc.primitives.clone(),
                             canvas_contexts: doc.canvas_contexts.clone(),
                             pending_scroll: doc.pending_scroll.clone(),
+                            element_geometry: doc.element_geometry.clone(),
+                            element_scroll: doc.element_scroll.clone(),
                         };
                         let instance = Class::instance(ctx, element)?;
                         return Ok(instance.into_value());
@@ -40,6 +42,8 @@ pub fn query_selector<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) -> R
                     primitives: doc.primitives.clone(),
                     canvas_contexts: doc.canvas_contexts.clone(),
                     pending_scroll: doc.pending_scroll.clone(),
+                    element_geometry: doc.element_geometry.clone(),
+                    element_scroll: doc.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -64,6 +68,8 @@ pub fn query_selector_all<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) 
                     primitives: doc.primitives.clone(),
                     canvas_contexts: doc.canvas_contexts.clone(),
                     pending_scroll: doc.pending_scroll.clone(),
+                    element_geometry: doc.element_geometry.clone(),
+                    element_scroll: doc.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx.clone(), element)?;
                 array.set(idx, instance)?;
