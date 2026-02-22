@@ -4,18 +4,24 @@ use super::Element;
 
 /// Get the contentWindow property of an iframe element
 pub fn get_content_window<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js>> {
-    let engines = el.subframe_engines.lock().unwrap();
-    if let Some(engine_arc) = engines.get(&el.index) {
-        let engine = engine_arc.lock().unwrap();
-        if let Some(ref sub_rt) = engine.js_runtime {
-            // SOP Check: Access to window is generally allowed but restricted.
-            // However, typical Web APIs return the WindowProxy.
-            let sub_ctx = sub_rt.context.lock().unwrap();
-            // Returning cross-context values is not supported directly.
-            // For now, return null. A Proxy should be implemented here in the future.
-            return Ok(Value::new_null(ctx.clone()));
-        }
+    let caller_rt: crate::runtime::core::runtime::JsRuntime = ctx.globals().get("__albedo_rt__")?;
+    
+    // In Albedo, subframe engine creation happens in the Engine. We need to get the engine references.
+    // For now, if the Element struct was supposed to hold it but doesn't, we need to locate where `subframe_engines` was defined.
+    // Wait, let's look at `AceDOM`.
+    let dom = el.dom.lock().unwrap();
+    if let Some(subframes) = &dom.subframes {
+         if let Some(engine_arc) = subframes.get(&el.index) {
+             let engine = engine_arc.lock().unwrap();
+             if let Some(ref sub_rt) = engine.js_runtime {
+                 use crate::runtime::bindings::webapi::window_proxy::WindowProxy;
+                 if let Ok(proxy_val) = rquickjs::Class::instance(ctx.clone(), WindowProxy::new(sub_rt.id)) {
+                     return Ok(proxy_val.into_value());
+                 }
+             }
+         }
     }
+    
     Ok(Value::new_null(ctx.clone()))
 }
 
@@ -23,20 +29,20 @@ pub fn get_content_window<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js
 pub fn get_content_document<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js>> {
     let caller_rt: crate::runtime::core::runtime::JsRuntime = ctx.globals().get("__albedo_rt__")?;
     
-    let engines = el.subframe_engines.lock().unwrap();
-    if let Some(engine_arc) = engines.get(&el.index) {
-        let engine = engine_arc.lock().unwrap();
-        if let Some(ref sub_rt) = engine.js_runtime {
-            // SOP Check: contentDocument returns null if cross-origin
-            if !caller_rt.check_same_origin(sub_rt) {
-                println!("[SOP] Blocked cross-origin access to contentDocument");
+    let dom = el.dom.lock().unwrap();
+    if let Some(subframes) = &dom.subframes {
+        if let Some(engine_arc) = subframes.get(&el.index) {
+            let engine = engine_arc.lock().unwrap();
+            if let Some(ref sub_rt) = engine.js_runtime {
+                // SOP Check: contentDocument returns null if cross-origin
+                if !caller_rt.check_same_origin(sub_rt) {
+                    println!("[SOP] Blocked cross-origin access to contentDocument");
+                    return Ok(Value::new_null(ctx.clone()));
+                }
+
+                // WindowProxy is returned here actually as per some specs, or the true Document proxy
                 return Ok(Value::new_null(ctx.clone()));
             }
-
-            // Document is already registered in the subframe's globals
-            let sub_ctx = sub_rt.context.lock().unwrap();
-            // Returning cross-context values is not supported directly.
-            return Ok(Value::new_null(ctx.clone()));
         }
     }
     Ok(Value::new_null(ctx.clone()))

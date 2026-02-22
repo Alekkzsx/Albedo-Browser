@@ -95,6 +95,8 @@ impl MutationObserver {
                         primitives: self.rt.primitives.clone(),
                         canvas_contexts: self.rt.canvas_contexts.clone(),
                         pending_scroll: self.rt.pending_scroll.clone(),
+                        element_geometry: self.rt.element_geometry.clone(),
+                        element_scroll: self.rt.element_scroll.clone(),
                     };
                     Ok(Class::instance(ctx.clone(), el)?.into_value())
                 };

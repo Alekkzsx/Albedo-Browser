@@ -178,21 +178,22 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
 
                 let origin = rt_clone.origin.clone();
                 let resource_manager = rt_clone.resource_manager.clone();
-                
-                let rm_send = UnsafeSendVal(resource_manager);
-                let origin_send = UnsafeSendVal(origin);
 
                 tokio::spawn(async move {
-                    let resource_manager = rm_send.0;
-                    let origin = origin_send.0;
-                    let client = if let Some(ref rm) = resource_manager {
+                    let (rm_opt, org_opt) = {
+                        let rm_lock = resource_manager.lock().unwrap();
+                        let org_lock = origin.lock().unwrap();
+                        ((*rm_lock).clone(), (*org_lock).clone())
+                    };
+                    
+                    let client = if let Some(ref rm) = rm_opt {
                         rm.client.clone()
                     } else {
                         reqwest::Client::new()
                     };
 
                     let target_origin = Origin::from_url(&url);
-                    let is_cross_origin = match (&origin, &target_origin) {
+                    let is_cross_origin = match (&org_opt, &target_origin) {
                         (Some(o), Some(t)) => !o.is_same_origin(t),
                         _ => true,
                     };
@@ -205,7 +206,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                         _ => client.get(&url),
                     };
 
-                    if let Some(ref rm) = resource_manager {
+                    if let Some(ref rm) = rm_opt {
                         let cookies = rm.cookie_jar.lock().unwrap().get_cookies_for_url(&url);
                         if !cookies.is_empty() {
                             req_builder = req_builder.header("Cookie", cookies);
@@ -231,8 +232,8 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                             }
 
                             if is_cross_origin {
-                                let allowed = if let Some(ref rm) = resource_manager {
-                                    if let Some(ref org) = origin {
+                                let allowed = if let Some(ref rm) = rm_opt {
+                                    if let Some(ref org) = org_opt {
                                         rm.access_control.lock().unwrap().validate_cors(org, &url, &resp_headers)
                                     } else { false }
                                 } else { false };
@@ -246,7 +247,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                                 }
                             }
 
-                            if let Some(ref rm) = resource_manager {
+                            if let Some(ref rm) = rm_opt {
                                 if let Some(cookie_header) = resp.headers().get("set-cookie") {
                                     if let Ok(c_str) = cookie_header.to_str() {
                                         rm.cookie_jar.lock().unwrap().set_cookie(&url, c_str);

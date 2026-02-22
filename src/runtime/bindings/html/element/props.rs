@@ -290,77 +290,118 @@ pub fn offset_parent<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 }
 
 pub fn offset_top(el: &Element) -> f32 {
-    let primitives = el.primitives.lock().unwrap();
-    if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
-        return prim.y;
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.y;
     }
     0.0
 }
 
 pub fn offset_left(el: &Element) -> f32 {
-    let primitives = el.primitives.lock().unwrap();
-    if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
-        return prim.x;
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.x; 
     }
     0.0
 }
 
 pub fn offset_width(el: &Element) -> f32 {
-    let primitives = el.primitives.lock().unwrap();
-    if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
-        return prim.width;
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.width;
     }
     0.0
 }
 
 pub fn offset_height(el: &Element) -> f32 {
-    let primitives = el.primitives.lock().unwrap();
-    if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
-        return prim.height;
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.height;
     }
     0.0
 }
 
-pub fn client_top(_el: &Element) -> f32 {
-    0.0 // Stub: Usually border width
-}
-
-pub fn client_left(_el: &Element) -> f32 {
-    0.0 // Stub
-}
-
-pub fn client_width(el: &Element) -> f32 {
-    offset_width(el) // Simplified
-}
-
-pub fn client_height(el: &Element) -> f32 {
-    offset_height(el)
-}
-pub fn scroll_top(_el: &Element) -> f32 {
-    0.0 // Stub: Albedo uses global scroll for now
-}
-
-pub fn scroll_left(_el: &Element) -> f32 {
+pub fn client_top(el: &Element) -> f32 {
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.border_top;
+    }
     0.0
 }
 
+pub fn client_left(el: &Element) -> f32 {
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.border_left;
+    }
+    0.0
+}
+
+pub fn client_width(el: &Element) -> f32 {
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.client_width();
+    }
+    0.0
+}
+
+pub fn client_height(el: &Element) -> f32 {
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.client_height();
+    }
+    0.0
+}
+
+pub fn scroll_top(el: &Element) -> f32 {
+    let scroll = el.element_scroll.lock().unwrap();
+    if let Some((_, y)) = scroll.get(&el.index) {
+        return *y;
+    }
+    0.0
+}
+
+pub fn set_scroll_top(el: &Element, val: f32) {
+    let mut scroll = el.element_scroll.lock().unwrap();
+    let entry = scroll.entry(el.index).or_insert((0.0, 0.0));
+    entry.1 = val;
+    // Trigger repaint
+    if let Ok(mut sd) = el.stylesheet_dirty.lock() {
+        *sd = true;
+    }
+}
+
+pub fn scroll_left(el: &Element) -> f32 {
+    let scroll = el.element_scroll.lock().unwrap();
+    if let Some((x, _)) = scroll.get(&el.index) {
+        return *x;
+    }
+    0.0
+}
+
+pub fn set_scroll_left(el: &Element, val: f32) {
+    let mut scroll = el.element_scroll.lock().unwrap();
+    let entry = scroll.entry(el.index).or_insert((0.0, 0.0));
+    entry.0 = val;
+    if let Ok(mut sd) = el.stylesheet_dirty.lock() {
+        *sd = true;
+    }
+}
+
 pub fn scroll_width(el: &Element) -> f32 {
-    if let Ok(dom) = el.dom.lock() {
-        if el.index == dom.root || Some(el.index) == dom.body {
-             // Return viewport width or something?
-        }
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.scroll_width();
     }
     0.0
 }
 
 pub fn scroll_height(el: &Element) -> f32 {
-     // This is usually the total height of content
-     if let Ok(p) = el.primitives.lock() {
-         // Find total height of descendants
-         // For now, return a reasonable default or doc height if it's the root
-         return 800.0; // Basic stub
-     }
-     0.0
+    let geometry = el.element_geometry.lock().unwrap();
+    if let Some(geom) = geometry.get(&el.index) {
+        return geom.scroll_height();
+    }
+    0.0
 }
 
 pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
@@ -375,6 +416,8 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
             primitives: el.primitives.clone(),
             canvas_contexts: el.canvas_contexts.clone(),
             pending_scroll: el.pending_scroll.clone(),
+            element_geometry: el.element_geometry.clone(),
+            element_scroll: el.element_scroll.clone(),
         };
         let instance = Class::instance(ctx, element)?;
         return Ok(instance.into_value());

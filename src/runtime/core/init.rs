@@ -7,32 +7,43 @@ type JsResult<T> = Result<T, rquickjs::Error>;
 
 pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
     if let Ok(mut rt) = JsRuntime::new() {
-        // Note: set_userdata was removed from rquickjs API
-        // let _ = rt.context.lock().unwrap().set_userdata(rt.clone());
+        println!("[init_js_for_url] START for url={}", url);
         rt.context.lock().unwrap().with(|ctx| {
             let _ = ctx.globals().set("__albedo_rt__", rt.clone());
         });
-        rt.resource_manager = engine.resource_manager.clone();
-        rt.origin = crate::network::security::Origin::from_url(url);
+        println!("[init_js_for_url] __albedo_rt__ set");
+        *rt.resource_manager.lock().unwrap() = engine.resource_manager.clone();
+        rt.element_geometry = engine.element_geometry.clone();
+        rt.element_scroll = engine.element_scroll.clone();
+        *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(url);
         let origin_str = get_origin(url); 
+        println!("[init_js_for_url] origin set, calling init_storage");
         if let Err(e) = init_storage(&rt, origin_str) {
             eprintln!("Failed to initialize storage for {}: {}", origin_str, e);
         }
-        
+        println!("[init_js_for_url] storage done, registering in registry");
+        crate::runtime::core::registry::register_runtime(rt.id, Arc::new(Mutex::new(rt.clone())));
+        println!("[init_js_for_url] registered, checking dom");
         if let Some(dom) = &engine.dom {
+            println!("[init_js_for_url] registering document API");
             if let Err(e) = crate::runtime::bindings::html::document::register(&rt, dom.clone(), engine.stylesheet.clone(), engine.primitives.clone(), engine.canvas_contexts.clone(), url.to_string(), "".to_string(), engine.resource_manager.clone()) {
                     eprintln!("Failed to register document API: {}", e);
             }
+            println!("[init_js_for_url] document API done");
         }
+        println!("[init_js_for_url] registering console");
         if let Err(e) = crate::runtime::bindings::utils::console::Console::register(&rt) {
                 eprintln!("Failed to register console: {}", e);
         }
+        println!("[init_js_for_url] registering events");
         if let Err(e) = register_events(&rt) {
             eprintln!("Failed to register events: {}", e);
         }
+        println!("[init_js_for_url] calling init_stdlib");
         if let Err(e) = init_stdlib(&rt, &url) {
             eprintln!("Failed to init stdlib: {}", e);
         }
+        println!("[init_js_for_url] DONE for url={}", url);
         return Some(rt);
     }
     None
@@ -60,6 +71,15 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::indexeddb::register(rt)?;
     crate::runtime::bindings::webapi::file_api::register(rt)?;
     crate::runtime::bindings::webapi::crypto::register(rt)?;
+    
+    // Register window proxy and post message using the context
+    {
+        let ctx = rt.context.lock().unwrap();
+        ctx.with(|ctx_req| {
+            let _ = crate::runtime::bindings::webapi::window_proxy::register(&ctx_req);
+            let _ = crate::runtime::bindings::webapi::post_message::register(&ctx_req);
+        });
+    }
     crate::runtime::bindings::webapi::notification::register(&rt.context.lock().unwrap())?;
     crate::runtime::bindings::webapi::geolocation::register(&rt.context.lock().unwrap())?;
     crate::runtime::bindings::webapi::url::register(rt)?;
@@ -87,8 +107,22 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
             
             // Global event listeners, stubs and helpers implemented in JS to avoid lifetime issues
             ctx.eval::<(), _>(r#"
-                globalThis.addEventListener = function() {};
-                globalThis.dispatchEvent = function() { return true; };
+                globalThis._listeners = {};
+                globalThis.addEventListener = function(type, listener) {
+                    if (!globalThis._listeners[type]) {
+                        globalThis._listeners[type] = [];
+                    }
+                    globalThis._listeners[type].push(listener);
+                };
+                globalThis.dispatchEvent = function(event) {
+                    var type = event.type;
+                    if (globalThis._listeners[type]) {
+                        for (var i = 0; i < globalThis._listeners[type].length; i++) {
+                            globalThis._listeners[type][i](event);
+                        }
+                    }
+                    return true;
+                };
                 globalThis.getSelection = function() { return null; };
                 globalThis.innerWidth = 1280;
                 globalThis.innerHeight = 720;
@@ -154,9 +188,10 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
         rquickjs::Class::<Event>::define(&global)?;
         
         // Register subclasses
-        use crate::runtime::bindings::html::event_subclasses::{MouseEvent, KeyboardEvent};
+        use crate::runtime::bindings::html::event_subclasses::{MouseEvent, KeyboardEvent, MessageEvent};
         rquickjs::Class::<MouseEvent>::define(&global)?;
         rquickjs::Class::<KeyboardEvent>::define(&global)?;
+        rquickjs::Class::<MessageEvent>::define(&global)?;
         
         // Setup prototype chain (basic inheritance simulation)
         
@@ -167,9 +202,12 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
         let event_proto: rquickjs::Object = event_ctor.get("prototype")?;
         let mouse_proto: rquickjs::Object = mouse_ctor.get("prototype")?;
         let kbd_proto: rquickjs::Object = kbd_ctor.get("prototype")?;
+        let msg_ctor: rquickjs::Function = global.get("MessageEvent")?;
+        let msg_proto: rquickjs::Object = msg_ctor.get("prototype")?;
         
         mouse_proto.set_prototype(Some(&event_proto))?;
         kbd_proto.set_prototype(Some(&event_proto))?;
+        msg_proto.set_prototype(Some(&event_proto))?;
         
         Ok(())
     })

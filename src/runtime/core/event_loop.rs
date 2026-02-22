@@ -26,6 +26,14 @@ pub struct TimerTask {
     pub interval: Option<Duration>,
 }
 
+/// A message queued via postMessage for delivery on next run_pending()
+#[derive(Clone)]
+pub struct PendingMessage {
+    pub data_json: String,
+    pub origin: String,
+    pub source_runtime_id: Option<usize>,
+}
+
 pub struct EventLoop {
     macro_tasks: VecDeque<Box<dyn FnOnce() + Send>>,
     timers: HashMap<u32, TimerTask>,
@@ -37,7 +45,10 @@ pub struct EventLoop {
     next_resolution_id: u32,
     pub next_observer_id: usize,
     raf_callbacks: Vec<UnsafeSendVal<Persistent<Function<'static>>>>,
+    /// Cross-runtime messages queued via postMessage
+    pub pending_messages: VecDeque<PendingMessage>,
 }
+
 
 impl EventLoop {
     pub fn new() -> Self {
@@ -52,7 +63,19 @@ impl EventLoop {
             next_resolution_id: 1,
             next_observer_id: 0,
             raf_callbacks: Vec::new(),
+            pending_messages: VecDeque::new(),
         }
+    }
+
+    /// Queue a postMessage for delivery on the next run_pending() tick.
+    /// Never blocks - safe to call from any context.
+    pub fn enqueue_message(&mut self, data_json: String, origin: String, source_runtime_id: Option<usize>) {
+        self.pending_messages.push_back(PendingMessage { data_json, origin, source_runtime_id });
+    }
+
+    /// Drain all pending messages for processing in run_pending().
+    pub fn take_pending_messages(&mut self) -> VecDeque<PendingMessage> {
+        std::mem::take(&mut self.pending_messages)
     }
 
     pub fn register_promise(&mut self, resolve: Persistent<Function<'static>>, reject: Persistent<Function<'static>>) -> u32 {

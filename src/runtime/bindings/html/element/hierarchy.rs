@@ -83,6 +83,8 @@ pub fn parent_node<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -104,6 +106,8 @@ pub fn first_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -125,6 +129,8 @@ pub fn last_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -146,6 +152,8 @@ pub fn next_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -167,6 +175,8 @@ pub fn previous_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> 
                     primitives: el.primitives.clone(),
                     canvas_contexts: el.canvas_contexts.clone(),
                     pending_scroll: el.pending_scroll.clone(),
+                    element_geometry: el.element_geometry.clone(),
+                    element_scroll: el.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
@@ -200,6 +210,8 @@ pub fn prepend<'js>(el: &Element, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Res
             primitives: el.primitives.clone(),
             canvas_contexts: el.canvas_contexts.clone(),
             pending_scroll: el.pending_scroll.clone(),
+            element_geometry: el.element_geometry.clone(),
+            element_scroll: el.element_scroll.clone(),
         };
         Class::instance(ctx.clone(), element)?.into_value()
     } else {
@@ -230,6 +242,8 @@ pub fn children<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                             primitives: el.primitives.clone(),
                             canvas_contexts: el.canvas_contexts.clone(),
                             pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
                         };
                         let instance = Class::instance(ctx.clone(), element)?;
                         array.set(i, instance)?;
@@ -257,6 +271,8 @@ pub fn parent_element<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                                 primitives: el.primitives.clone(),
                                 canvas_contexts: el.canvas_contexts.clone(),
                                 pending_scroll: el.pending_scroll.clone(),
+                                element_geometry: el.element_geometry.clone(),
+                                element_scroll: el.element_scroll.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -282,6 +298,8 @@ pub fn first_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js
                                 primitives: el.primitives.clone(),
                                 canvas_contexts: el.canvas_contexts.clone(),
                                  pending_scroll: el.pending_scroll.clone(),
+                                element_geometry: el.element_geometry.clone(),
+                                element_scroll: el.element_scroll.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
                            return Ok(instance.into_value());
@@ -307,6 +325,8 @@ pub fn last_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
                                 primitives: el.primitives.clone(),
                                  pending_scroll: el.pending_scroll.clone(),
+                                 element_geometry: el.element_geometry.clone(),
+                                 element_scroll: el.element_scroll.clone(),
                                 canvas_contexts: el.canvas_contexts.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
@@ -331,8 +351,10 @@ pub fn next_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'j
                                 index: sibling_idx,
                                 mutations: el.mutations.clone(),
                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                 pending_scroll: el.pending_scroll.clone(),
-                                primitives: el.primitives.clone(),
+                                  pending_scroll: el.pending_scroll.clone(),
+                                  element_geometry: el.element_geometry.clone(),
+                                  element_scroll: el.element_scroll.clone(),
+                                 primitives: el.primitives.clone(),
                                 canvas_contexts: el.canvas_contexts.clone(),
                            };
                            let instance = Class::instance(ctx, element)?;
@@ -359,8 +381,10 @@ pub fn previous_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Valu
                                 dom: el.dom.clone(),
                                 index: sibling_idx,
                                 mutations: el.mutations.clone(),
-                                 pending_scroll: el.pending_scroll.clone(),
-                                stylesheet_dirty: el.stylesheet_dirty.clone(),
+                                  pending_scroll: el.pending_scroll.clone(),
+                                  element_geometry: el.element_geometry.clone(),
+                                  element_scroll: el.element_scroll.clone(),
+                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
                                 primitives: el.primitives.clone(),
                                 canvas_contexts: el.canvas_contexts.clone(),
                            };

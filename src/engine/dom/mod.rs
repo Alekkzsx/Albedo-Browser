@@ -1,6 +1,7 @@
 use kuchiki::NodeRef;
 use std::collections::HashMap;
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
@@ -11,6 +12,7 @@ pub struct AceDOM {
     pub observers: HashMap<usize, Vec<DomObserver>>, // Map target_node_id -> Observers
     pub pending_mutations: RefCell<HashMap<usize, Vec<MutationRecord>>>, // Map callback_id -> Records
     pub active_element: Option<usize>,
+    pub subframes: Option<Arc<Mutex<HashMap<usize, Arc<Mutex<crate::engine::AceEngine>>>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +103,7 @@ impl AceDOM {
             observers: HashMap::new(),
             pending_mutations: RefCell::new(HashMap::new()),
             active_element: None,
+            subframes: None,
         }
     }
 
@@ -118,6 +121,7 @@ impl AceDOM {
             observers: HashMap::new(),
             pending_mutations: RefCell::new(HashMap::new()),
             active_element: None,
+            subframes: None,
         };
 
         dom.find_head_body();

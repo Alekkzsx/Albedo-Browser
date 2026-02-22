@@ -5,7 +5,33 @@ use std::collections::HashMap;
 pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     let mut executed = false;
     
-    // 0. Check for DOM mutations that happened since last pulse
+    // 0. Deliver pending postMessage messages (async event loop delivery).
+    // Drain the queue first (only holds event_loop lock briefly), then dispatch
+    // into the JS context without holding any lock - safe and deadlock-free.
+    {
+        let messages: std::collections::VecDeque<_> = {
+            rt.event_loop.lock().unwrap().take_pending_messages()
+        };
+        if !messages.is_empty() {
+            rt.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    for msg in messages {
+                        let safe_data = msg.data_json.replace('\'', "\\'");
+                        let safe_origin = msg.origin.replace('\'', "\\'");
+                        let script = format!(
+                            "globalThis.dispatchEvent(new MessageEvent('message', {{ data: {}, origin: '{}' }}))",
+                            safe_data, safe_origin
+                        );
+                        let _ = ctx.eval::<(), _>(script);
+                        executed = true;
+                    }
+                })
+            });
+        }
+    }
+
+    // 0b. Check for DOM mutations that happened since last pulse
+
     {
         let mut mutated_flag = rt.mutations.lock().unwrap();
         if *mutated_flag {
@@ -275,6 +301,8 @@ fn wrap_element<'js>(rt: &JsRuntime, node_idx: usize, ctx: &Ctx<'js>) -> Value<'
         primitives: rt.primitives.clone(),
         canvas_contexts: rt.canvas_contexts.clone(),
         pending_scroll: rt.pending_scroll.clone(),
+        element_geometry: rt.element_geometry.clone(),
+        element_scroll: rt.element_scroll.clone(),
     };
     if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
         instance.into_value()
