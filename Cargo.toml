@@ -51,6 +51,7 @@ hex = "0.4"
 rand = "0.10.0"
 lazy_static = "1.5.0"
 bitflags = "2.11.0"
+bytemuck = { version = "1.25.0", features = ["derive"] }
 
 [build-dependencies]
 slint-build = "1.9"

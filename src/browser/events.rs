@@ -164,19 +164,25 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
         if let Some((_, Some(mut engine))) = tm.get_active_tab_native_data() {
             // Recompilar estilos se hover/focus mudou
             if engine.styles_dirty {
+                println!("[Pulse] Recomputing dirty styles...");
                 engine.recompute_dirty_styles();
                 sync_ace_visuals(&ui, tm);
             }
 
             // Pulse JS Runtime
             if let Some(ref rt) = engine.js_runtime {
+                // Sincroniza scroll position para uso de instersectionObservers no event_loop
+                *rt.viewport_y.lock().unwrap() = engine.viewport_y;
+
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs_f64() * 1000.0;
                 
                 let raf_executed = rt.run_raf_callbacks(now_ms);
+                // println!("[Pulse] Running JS pending jobs...");
                 let (js_executed, js_style_dirty) = rt.run_pending();
+                // println!("[Pulse] JS pending jobs done.");
                 
                 if raf_executed || js_executed || js_style_dirty {
                     sync_ace_visuals(&ui, tm);
@@ -186,11 +192,15 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
             let (mutated, style_dirty) = engine.check_mutations();
             
             if style_dirty {
+                println!("[Pulse] Updating stylesheet...");
                 engine.update_stylesheet();
                 sync_ace_visuals(&ui, tm);
             } else if mutated {
+                println!("[Pulse] Recomputing layout due to mutations...");
                 engine.recompute_layout();
+                println!("[Pulse] Syncing ACE visuals...");
                 sync_ace_visuals(&ui, tm);
+                println!("[Pulse] Layout and visual sync complete.");
             }
         }
     }

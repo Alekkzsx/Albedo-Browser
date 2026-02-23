@@ -33,6 +33,6 @@ impl Tab {
     pub fn load_url(&mut self, url: String) {
         println!("[Tab] Loading URL: {}", url);
         self.url = url.clone();
-        self.engine.load_url(&url);
+        self.engine.load_url(url);
     }
 }

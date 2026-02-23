@@ -130,7 +130,11 @@ pub struct AceEngine {
     pub animation_manager: Arc<Mutex<crate::engine::style::animation::AnimationManager>>,
     pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     pub taffy: Arc<Mutex<taffy::Taffy>>,
-    pub viewport_y: f32, // New: Current scroll position
+    pub viewport_y: f32,
+    /// Geometrias de elementos em subframes projetadas para o espaço global do frame pai.
+    /// Chave: (iframe_node_idx * 1_000_000) + elem_node_idx_no_subframe
+    /// Atualizado por collect_subframe_geometries() a cada layout.
+    pub iframe_projected_geometry: Arc<Mutex<std::collections::HashMap<u64, ElementGeometry>>>,
 }
 
 impl AceEngine {
@@ -153,30 +157,29 @@ impl AceEngine {
             canvas_contexts: Arc::new(Mutex::new(std::collections::HashMap::new())),
             taffy: Arc::new(Mutex::new(taffy::Taffy::new())),
             viewport_y: 0.0,
+            iframe_projected_geometry: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
-    pub fn load_url(&mut self, url: &str) {
-        println!("Engine loading URL: {}", url);
-        self.current_url = url.to_string();
+    pub fn load_url(&mut self, url: String) {
+        println!("[AceEngine] Initiating load for URL: {}", url);
+        self.current_url = url.clone();
         
         if let Some(rm) = &self.resource_manager {
-            // Iniciar fetch do recurso principal
-            rm.fetch(url.to_string(), crate::network::resources::ResourceType::Html, None);
+            rm.fetch(url, crate::network::resources::ResourceType::Html, None);
         }
     }
-    
-    pub fn handle_resource_response(&mut self, response: crate::network::resources::ResourceResponse) -> bool {
-        println!("Engine received resource: {} ({} bytes)", response.url, response.data.len());
-        
-        let mut needs_layout = false;
 
-        // Se for a URL principal, carregar como HTML
-        if response.url == self.current_url {
-            if let Ok(html) = String::from_utf8(response.data.clone()) {
-                self.load_html(&html);
-                return true; // Precisa de repaint/layout
-            }
+    pub fn handle_resource_response(&mut self, res: crate::network::resources::ResourceResponse) -> bool {
+        let mut needs_layout = false;
+        
+        if res.url == self.current_url {
+             if let Ok(html) = String::from_utf8(res.data.clone()) {
+                 println!("[AceEngine] Main document downloaded. Calling process_html...");
+                 self.load_html(&html);
+                 println!("[AceEngine] process_html returned successfully.");
+                 needs_layout = true;
+             }
         }
         
         // Push response down to subframes to check if it's theirs
@@ -186,7 +189,7 @@ impl AceEngine {
                 let mut subframes = subframes_arc.lock().unwrap();
                 for (_, sub_engine_arc) in subframes.iter_mut() {
                     let mut sub_engine = sub_engine_arc.lock().unwrap();
-                    if sub_engine.handle_resource_response(response.clone()) {
+                    if sub_engine.handle_resource_response(res.clone()) {
                         needs_layout = true;
                     }
                 }
@@ -480,6 +483,7 @@ impl AceEngine {
     pub fn recompute_layout(&mut self) {
         let start_time = std::time::Instant::now();
         if let Some(ref dom_arc) = self.dom {
+            println!("[AceEngine] Starting layout recompute...");
             let dom = dom_arc.lock().unwrap();
             let mut taffy = self.taffy.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
@@ -500,24 +504,114 @@ impl AceEngine {
             
             if root_nodes.is_empty() { return; }
             let root_node = root_nodes[0]; 
+            println!("[AceEngine] Taffy tree built, root nodes: {}", root_nodes.len());
             
             // 2. Compute Layout
             let compute_start = std::time::Instant::now();
-            let size = taffy::prelude::Size {
-                width: taffy::prelude::AvailableSpace::Definite(800.0),
-                height: taffy::prelude::AvailableSpace::MaxContent,
+            let size = taffy::geometry::Size {
+                width: taffy::style::AvailableSpace::Definite(800.0),
+                height: taffy::style::AvailableSpace::MaxContent,
             };
             let _ = taffy.compute_layout(root_node, size);
             let compute_duration = compute_start.elapsed();
             
             // 3. Update Element Bounds
-            // Note: clear_element_bounds() removed here because we want to keep the style data inserted by build_layout_tree
             self.sync_taffy_bounds(&taffy, &dom, root_node, 0.0, 0.0, &node_map);
             
             let total_duration = start_time.elapsed();
             println!("[AceEngine] Layout Recomputed: Total={:?}, Build={:?}, Compute={:?}", total_duration, build_duration, compute_duration);
         }
+
+        // 4. Projetar geometrias dos subframes para o espaço global
+        self.collect_subframe_geometries();
+
+        // 5. Sincronizar iframe_projected_geometry com o JsRuntime do frame pai
+        if let Some(ref rt) = self.js_runtime {
+            let projected = self.iframe_projected_geometry.lock().unwrap();
+            let mut rt_projected = rt.iframe_projected_geometry.lock().unwrap();
+            *rt_projected = projected.clone();
+        }
     }
+
+    /// Percorre todos os subframes e projeta as geometrias dos seus elementos
+    /// para o espaço de coordenadas global do frame pai.
+    ///
+    /// Para um elemento com coordenadas locais (ex, ey) dentro de um iframe
+    /// cujo rect no frame pai é (ix, iy, iw, ih), a posição global é:
+    ///   global_x = ix + ex
+    ///   global_y = iy + ey
+    ///
+    /// Elementos que estiverem completamente fora do iframe são descartados.
+    ///
+    /// Chave no map: (iframe_node_idx as u64) * 1_000_000 + (elem_node_idx as u64)
+    pub fn collect_subframe_geometries(&self) {
+        let mut projected = self.iframe_projected_geometry.lock().unwrap();
+        projected.clear();
+
+        let dom_arc = match &self.dom {
+            Some(d) => d,
+            None => return,
+        };
+
+        let dom = dom_arc.lock().unwrap();
+        let subframes_arc = match &dom.subframes {
+            Some(s) => s.clone(),
+            None => return,
+        };
+        // Drop DOM lock before iterating subframes (evitar deadlock)
+        drop(dom);
+
+        let subframes = subframes_arc.lock().unwrap();
+        let parent_geometry = self.element_geometry.lock().unwrap();
+
+        for (&iframe_node_idx, sub_engine_arc) in subframes.iter() {
+            // Obter rect do <iframe> no frame pai
+            let iframe_rect = match parent_geometry.get(&iframe_node_idx) {
+                Some(g) => (g.x, g.y, g.width, g.height),
+                None => {
+                    // iframe ainda não tem geometria calculada — pular
+                    continue;
+                }
+            };
+            let (iframe_x, iframe_y, iframe_w, iframe_h) = iframe_rect;
+
+            // Obter geometrias do subframe
+            let sub_engine = sub_engine_arc.lock().unwrap();
+            let sub_geometry = sub_engine.element_geometry.lock().unwrap();
+
+            for (&elem_idx, elem_geom) in sub_geometry.iter() {
+                // Projetar para coordenadas globais
+                let global_x = iframe_x + elem_geom.x;
+                let global_y = iframe_y + elem_geom.y;
+
+                // Clipping: recortar pelo rect do iframe
+                // Se o elemento está completamente fora do iframe, descartamos
+                let clip_x1 = global_x.max(iframe_x);
+                let clip_y1 = global_y.max(iframe_y);
+                let clip_x2 = (global_x + elem_geom.width).min(iframe_x + iframe_w);
+                let clip_y2 = (global_y + elem_geom.height).min(iframe_y + iframe_h);
+
+                let visible_w = (clip_x2 - clip_x1).max(0.0);
+                let visible_h = (clip_y2 - clip_y1).max(0.0);
+
+                // Ainda publicamos mesmo que parcialmente visível
+                // (o observer irá calcular a razão de interseção corretamente)
+                let mut proj_geom = elem_geom.clone();
+                proj_geom.x = global_x;
+                proj_geom.y = global_y;
+                // Expor as dimensões reais (não clippadas) — o observer clipa
+
+                // Chave única que codifica (iframe, elem)
+                let key: u64 = (iframe_node_idx as u64) * 1_000_000 + (elem_idx as u64);
+                projected.insert(key, proj_geom);
+
+                // Log apenas para debug em modo verbose
+                // println!("[Subframe] iframe={} elem={} -> global=({:.0},{:.0}) visible=({:.0}x{:.0})",
+                //     iframe_node_idx, elem_idx, global_x, global_y, visible_w, visible_h);
+            }
+        }
+    }
+
 
     fn build_layout_tree(&self, 
         dom: &AceDOM, 
@@ -594,19 +688,23 @@ impl AceEngine {
                 row_offset: 0,
             });
         } else if style.display == crate::engine::style::css_values::CssDisplay::Table {
-             // Table Layout Logic: Treat as Grid, flatten rows
-             // 1. Calculate dimensions (rows, cols) and collect cells
+             // 1. Calculate dimensions and collect cells
              let mut row_count = 0;
              let mut col_count = 0;
              let mut cell_list = Vec::new(); // (row_idx, col_idx, node_idx)
              
-             // Recursive function to find TRs and TDs
+             // Two-Pass Table Layout: Pre-calcular max-width do conteudo de cada coluna.
+             // Como Taffy falha com tabelas puras, nós passaremos uma Grid com `px` fixo para CADA track.
+             let mut col_max_widths: std::collections::HashMap<usize, f32> = std::collections::HashMap::new();
+
              fn scan_table_children(
                  dom: &AceDOM, 
                  node_idx: usize, 
                  row_count: &mut usize, 
                  col_count: &mut usize,
-                 cell_list: &mut Vec<(usize, usize, usize)>
+                 cell_list: &mut Vec<(usize, usize, usize)>,
+                 col_max_widths: &mut std::collections::HashMap<usize, f32>,
+                 font_size_cache: f32
              ) {
                  if let Some(node) = dom.get_node(node_idx) {
                      for &child_idx in &node.children {
@@ -615,14 +713,29 @@ impl AceEngine {
                                  let tag = el.tag.as_str();
                                  if tag == "tr" {
                                      let mut current_cols = 0;
-                                     // Scan cells in this row
                                      for &cell_idx in &child_node.children {
                                          if let Some(cell_node) = dom.get_node(cell_idx) {
                                             if let crate::engine::dom::AceNodeType::Element(cell_el) = &cell_node.node_type {
                                                 if cell_el.tag == "td" || cell_el.tag == "th" {
                                                     cell_list.push((*row_count, current_cols, cell_idx));
+                                                    
+                                                    // TWO-PASS: Buscar nó de texto filho pra saber a largura bruta em string
+                                                    let mut text_len = 0.0;
+                                                    for &inner_idx in &cell_node.children {
+                                                        if let Some(inner_node) = dom.get_node(inner_idx) {
+                                                            if let crate::engine::dom::AceNodeType::Text(text_str) = &inner_node.node_type {
+                                                                 // (Rough character estimation * font_size / 2.0 = text width px)
+                                                                 text_len += text_str.len() as f32 * (font_size_cache * 0.55);
+                                                            }
+                                                        }
+                                                    }
+                                                    // Add 20px of default padding to the text
+                                                    text_len += 20.0;
+                                                    
+                                                    let max_w = col_max_widths.entry(current_cols).or_insert(0.0);
+                                                    if text_len > *max_w { *max_w = text_len; }
+                                                    
                                                     current_cols += 1;
-                                                    // TODO: Handle colspan/rowspan here
                                                 }
                                             }
                                          }
@@ -630,8 +743,7 @@ impl AceEngine {
                                      if current_cols > *col_count { *col_count = current_cols; }
                                      *row_count += 1;
                                  } else if tag == "thead" || tag == "tbody" || tag == "tfoot" {
-                                     // Recurse into section groups
-                                     scan_table_children(dom, child_idx, row_count, col_count, cell_list);
+                                     scan_table_children(dom, child_idx, row_count, col_count, cell_list, col_max_widths, font_size_cache);
                                  }
                              }
                          }
@@ -639,14 +751,21 @@ impl AceEngine {
                  }
              }
 
-             scan_table_children(dom, node_idx, &mut row_count, &mut col_count, &mut cell_list);
+             scan_table_children(dom, node_idx, &mut row_count, &mut col_count, &mut cell_list, &mut col_max_widths, style.font_size);
 
-             // 2. Set Grid Template
-             if taffy_style.grid_template_columns.is_empty() && col_count > 0 {
-                 taffy_style.grid_template_columns = vec![taffy::prelude::TrackSizingFunction::Single(MinMax {
-                        min: taffy::prelude::MinTrackSizingFunction::Auto, // Fit content
-                        max: taffy::prelude::MaxTrackSizingFunction::Fraction(1.0), // Share space
-                 }); col_count];
+             // 2. Set Grid Template with Pre-calculated PX
+             if col_count > 0 {
+                  let mut tracks = Vec::new();
+                  for i in 0..col_count {
+                      let computed_px = *col_max_widths.get(&i).unwrap_or(&100.0);
+                      tracks.push(taffy::prelude::TrackSizingFunction::Single(
+                           taffy::geometry::MinMax {
+                               min: taffy::prelude::MinTrackSizingFunction::Fixed(taffy::prelude::LengthPercentage::Points(computed_px)),
+                               max: taffy::prelude::MaxTrackSizingFunction::Fixed(taffy::prelude::LengthPercentage::Points(computed_px)),
+                           }
+                      ));
+                  }
+                  taffy_style.grid_template_columns = tracks;
              }
              
              // 3. Create Children (Cells flattened)
@@ -717,6 +836,14 @@ impl AceEngine {
                     
                     if !subframes.contains_key(&node_idx) {
                         let sub_engine = std::sync::Arc::new(std::sync::Mutex::new(AceEngine::new()));
+                        // Marcar qual nó <iframe> este subframe representa no pai
+                        {
+                            let mut sub_eng = sub_engine.lock().unwrap();
+                            if let Some(ref dom_arc) = sub_eng.dom {
+                                let mut sub_dom = dom_arc.lock().unwrap();
+                                sub_dom.iframe_node_idx = Some(node_idx);
+                            }
+                        }
                         subframes.insert(node_idx, sub_engine);
                         needs_init = true;
                         
@@ -1380,6 +1507,7 @@ impl Clone for AceEngine {
             stylesheet: self.stylesheet.clone(),
             primitives: self.primitives.clone(),
             resource_manager: self.resource_manager.clone(),
+            iframe_projected_geometry: self.iframe_projected_geometry.clone(),
             current_url: self.current_url.clone(),
             js_runtime: self.js_runtime.clone(),
             hovered_element: self.hovered_element,

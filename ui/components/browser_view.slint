@@ -138,26 +138,47 @@ export component BrowserView inherits Rectangle {
                             rotation-angle: box.rotate * 1deg;
                         }
 
-                        // Form Widgets
-                        if box.is_input : LineEdit {
+                        // Form Widgets (CSS Overlay Architecture)
+                        if box.is_input : Rectangle {
                             width: 100%;
                             height: 100%;
-                            placeholder-text: box.placeholder;
-                            text: box.input_value;
-                            font-size: box.font_size;
-                            input-type: box.input_type == "password" ? InputType.password : InputType.text;
-                            edited => {
-                                input_change(box.node_id, self.text);
+                            background: box.background;
+                            border-width: box.border_width;
+                            border-color: box.border_color;
+                            border-radius: box.border_radius_tl;
+                            
+                            // LineEdit base (Invisível pra herdar CSS nativo acima)
+                            LineEdit {
+                                width: 100%;
+                                height: 100%;
+                                placeholder-text: box.placeholder;
+                                text: box.input_value;
+                                font-size: box.font_size;
+                                input-type: box.input_type == "password" ? InputType.password : InputType.text;
+                                edited => {
+                                    input_change(box.node_id, self.text);
+                                }
+                                // Em Rust/Slint 1.x o LineEdit não tem property color/background exposta 
+                                // O truque é deixar a caixa parente lidar com os graficos.
                             }
                         }
 
-                        if box.is_textarea : TextEdit {
+                        if box.is_textarea : Rectangle {
                              width: 100%;
                              height: 100%;
-                             text: box.input_value;
-                             font-size: box.font_size;
-                             edited => {
-                                 input_change(box.node_id, self.text);
+                             background: box.background;
+                             border-width: box.border_width;
+                             border-color: box.border_color;
+                             border-radius: box.border_radius_tl;
+                            
+                             TextEdit {
+                                 width: 100%;
+                                 height: 100%;
+                                 text: box.input_value;
+                                 font-size: box.font_size;
+                                 edited => {
+                                     input_change(box.node_id, self.text);
+                                 }
                              }
                         }
 
@@ -213,6 +234,63 @@ export component BrowserView inherits Rectangle {
                 wrap: word-wrap;
                 vertical-alignment: top;
                 rotation-angle: box.rotate * 1deg;
+            }
+        }
+    }
+
+    // --- Custom Native ScrollBars ---
+    if root.content-height > root.height : Rectangle {
+        width: 12px;
+        height: root.height;
+        x: root.width - self.width;
+        y: 0px;
+        background: #f0f0f0;
+
+        // Scroll Handle (A barra que move)
+        Rectangle {
+            width: 8px;
+            x: 2px;
+            background: scroll_touch.pressed ? #707070 : (scroll_touch.has-hover ? #a0a0a0 : #c0c0c0);
+            border-radius: 4px;
+
+            // Altura do handle proporcional ao quanto estamos vendo (viewport_height vs root.height)
+            height: max(30px, root.height * (root.height / root.content-height));
+
+            // Position y = scroll percentual * espaco livre na barra (barra_toda - handle)
+            y: (root.height - self.height) * (-root.viewport-y / (root.content-height - root.height));
+
+            scroll_touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                
+                property <length> start_drag_y;
+                property <length> start_viewport_y;
+
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down) {
+                        self.start_drag_y = self.mouse-y;
+                        self.start_viewport_y = root.viewport-y;
+                    }
+                }
+
+                moved => {
+                    if (self.pressed) {
+                        let delta = (self.mouse-y - self.start_drag_y) / 1px;
+                        // Regra de três: movendo na tela X pixels, movemos qnts pixels de documento?
+                        let ratio = (root.content-height - root.height) / (root.height - parent.height);
+                        let doc_delta = (delta * ratio) * 1px;
+                        
+                        let unchecked_y = self.start_viewport_y - doc_delta;
+                        
+                        // Computa os clamps (limitadores de scroll) com max/min devido à imutabilidade do let
+                        let min_y = -(root.content-height - root.height);
+                        let clamped_y = max(min_y, min(0px, unchecked_y));
+                        
+                        // Atualiza Slint via binding bidirecional com var de Root
+                        root.viewport-y = clamped_y;
+                    }
+                }
             }
         }
     }

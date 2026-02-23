@@ -201,15 +201,21 @@ fn check_layout_observers(rt: &JsRuntime) {
     let mut intersection_notifications = Vec::new();
 
     {
-        let primitives = rt.primitives.lock().unwrap();
+        let geometry = rt.element_geometry.lock().unwrap();
+        let iframe_projected_geometry = rt.iframe_projected_geometry.lock().unwrap(); // Added
         let mut layout_states = rt.layout_states.lock().unwrap();
         let resize_registry = rt.resize_registry.lock().unwrap();
         let intersection_registry = rt.intersection_registry.lock().unwrap();
 
-        // Create a map from node_idx to actual primitive for quick lookup
+        // Obtém o viewport do Runtime e calcula o retângulo da Câmera (janela de visualização) no mundo
+        // Offset (viewport_y) do Browser_View Slint é tipicamente esticado pro negativo ou positivo 
+        let current_viewport_y = *rt.viewport_y.lock().unwrap();
+        let viewport = (0.0, -current_viewport_y, 1024.0, 768.0); // Câmera 1024x768 ajustada via Y Scroll
+
         let mut current_rects = HashMap::new();
-        for p in primitives.iter() {
-            current_rects.insert(p.node_idx, (p.x, p.y, p.width, p.height));
+        // Diferente do "Primitive", Geometry armazena TODOS IDs validos da page mesmo "invisíveis" 
+        for (node_idx, geom) in geometry.iter() {
+            current_rects.insert(*node_idx, (geom.x, geom.y, geom.width, geom.height));
         }
 
         // Check ResizeObservers
@@ -224,13 +230,13 @@ fn check_layout_observers(rt: &JsRuntime) {
             }
         }
 
-        // Check IntersectionObservers
-        let viewport = (0.0, 0.0, 1024.0, 768.0); // Default viewport, should be dynamic later
+        // Check IntersectionObservers (first pass: normal elements)
         for (&node_idx, observers) in intersection_registry.iter() {
             if let Some(&(cx, cy, cw, ch)) = current_rects.get(&node_idx) {
-                // Calculate intersection area
+                // Calculate intersection area baseando-se no viewport_y Dinâmico
                 let x_overlap = (cx.max(viewport.0)).min(cx + cw).min(viewport.0 + viewport.2) - (cx.max(viewport.0));
                 let y_overlap = (cy.max(viewport.1)).min(cy + ch).min(viewport.1 + viewport.3) - (cy.max(viewport.1));
+                
                 let intersection_area = (x_overlap * y_overlap).max(0.0);
                 let total_area = cw * ch;
                 let ratio = if total_area > 0.0 { intersection_area / total_area } else { 0.0 };
@@ -238,6 +244,32 @@ fn check_layout_observers(rt: &JsRuntime) {
                 for (cb, threshold) in observers {
                     if ratio >= *threshold {
                         intersection_notifications.push((cb.clone(), node_idx, ratio));
+                    }
+                }
+            }
+        }
+
+        // Check IntersectionObservers (second pass: elementos em subframes projetados)
+        // iframe_projected_geometry tem chave u64 = (iframe_idx * 1_000_000 + elem_idx).
+        // O intersection_registry usa elem_idx (usize) como chave.
+        // Iteramos sobre as projeções e buscamos observers que correspondam ao elem_idx.
+        for (&proj_key, proj_geom) in iframe_projected_geometry.iter() {
+            // Extrair elem_idx da chave composta
+            let elem_idx = (proj_key % 1_000_000) as usize;
+
+            if let Some(observers) = intersection_registry.get(&elem_idx) {
+                let (gx, gy, gw, gh) = (proj_geom.x, proj_geom.y, proj_geom.width, proj_geom.height);
+
+                // Interseção com o viewport do frame pai
+                let x_overlap = (gx.max(viewport.0)).min(gx + gw).min(viewport.0 + viewport.2) - (gx.max(viewport.0));
+                let y_overlap = (gy.max(viewport.1)).min(gy + gh).min(viewport.1 + viewport.3) - (gy.max(viewport.1));
+                let intersection_area = (x_overlap * y_overlap).max(0.0);
+                let total_area = gw * gh;
+                let ratio = if total_area > 0.0 { intersection_area / total_area } else { 0.0 };
+
+                for (cb, threshold) in observers {
+                    if ratio >= *threshold {
+                        intersection_notifications.push((cb.clone(), elem_idx, ratio));
                     }
                 }
             }
