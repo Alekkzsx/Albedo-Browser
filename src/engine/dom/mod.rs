@@ -13,6 +13,9 @@ pub struct AceDOM {
     pub pending_mutations: RefCell<HashMap<usize, Vec<MutationRecord>>>, // Map callback_id -> Records
     pub active_element: Option<usize>,
     pub subframes: Option<Arc<Mutex<HashMap<usize, Arc<Mutex<crate::engine::AceEngine>>>>>>,
+    /// Índice do nó <iframe> que este DOM representa no frame pai.
+    /// None se este for o frame raiz (não um subframe).
+    pub iframe_node_idx: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -104,6 +107,7 @@ impl AceDOM {
             pending_mutations: RefCell::new(HashMap::new()),
             active_element: None,
             subframes: None,
+            iframe_node_idx: None,
         }
     }
 
@@ -122,6 +126,7 @@ impl AceDOM {
             pending_mutations: RefCell::new(HashMap::new()),
             active_element: None,
             subframes: None,
+            iframe_node_idx: None,
         };
 
         dom.find_head_body();

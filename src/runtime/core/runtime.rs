@@ -77,6 +77,13 @@ pub struct JsRuntime {
     pub element_geometry: Arc<Mutex<HashMap<usize, crate::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<HashMap<usize, (f32, f32)>>>,
+    #[qjs(skip_trace)]
+    pub viewport_y: Arc<Mutex<f32>>,
+    #[qjs(skip_trace)]
+    /// Geometrias de elementos em subframes projetadas para coordenadas globais.
+    /// Populado pelo AceEngine via collect_subframe_geometries() após cada layout.
+    /// Chave: (iframe_node_idx * 1_000_000) + elem_node_idx
+    pub iframe_projected_geometry: Arc<Mutex<HashMap<u64, crate::engine::ElementGeometry>>>,
 }
 
 use super::event_loop::EventLoop;
@@ -109,6 +116,8 @@ impl JsRuntime {
             origin: Arc::new(Mutex::new(None)),
             element_geometry: Arc::new(Mutex::new(HashMap::new())),
             element_scroll: Arc::new(Mutex::new(HashMap::new())),
+            viewport_y: Arc::new(Mutex::new(0.0)),
+            iframe_projected_geometry: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Store self in userdata for access from within JS callbacks
