@@ -1,6 +1,8 @@
 export struct TabData {
     title: string,
     active: bool,
+    favicon: image,
+    is-loading: bool,
 }
 
 export component TabBar inherits Rectangle {
@@ -36,6 +38,22 @@ export component TabBar inherits Rectangle {
                 padding-right: 5px;
                 spacing: 5px;
                 
+                Image {
+                    source: tab.favicon;
+                    width: 16px;
+                    height: 16px;
+                    y: 7px;
+                    visible: !tab.is-loading;
+                }
+
+                Text {
+                    text: tab.is-loading ? "↻" : "";
+                    color: #555555;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    visible: tab.is-loading;
+                }
+
                 Text {
                     text: tab.title;
                     vertical-alignment: center;

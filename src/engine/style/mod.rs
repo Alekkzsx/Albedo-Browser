@@ -8,10 +8,10 @@ use crate::engine::dom::{AceDOM, AceNodeType};
 pub mod css_values;
 use self::css_values::{
     ComputedStyle, CssLength, CssColor, CssDisplay, CssTextAlign, CssFontWeight,
-    CssPosition, CssOverflow, CssFloat, CssFlexDirection, CssJustifyContent,
+    CssPosition, CssOverflow, CssFloat, CssClear, CssFlexDirection, CssJustifyContent,
     CssAlignItems, CssAlignContent, CssFlexWrap, BoxShadow, TextShadow, BackgroundImage, Gradient, GradientStop,
     CssContent, CssBoxSizing, CssVisibility, CssCursor, CssObjectFit,
-    CssObjectPosition, CssPointerEvents, CssBlendMode
+    CssObjectPosition, CssPointerEvents, CssBlendMode, CssTextOverflow, CssTextTransform
 };
 use crate::engine::CssFilter;
 use crate::engine::TransformFunction;
@@ -613,11 +613,11 @@ impl<'a> selectors::Element for AceElement<'a> {
 
 pub fn get_user_agent_stylesheet() -> Stylesheet {
     let ua_css = "
-        header, footer, main, section, article, nav, aside, 
+        html, body, header, footer, main, section, article, nav, aside, 
         details, summary, figure, figcaption, h1, h2, h3, h4, 
-        h5, h6, p, ul, ol, li, div, blockquote, address { display: block; }
+        h5, h6, p, ul, ol, li, div, blockquote, address, form { display: block; }
         
-        template { display: none; }
+        template, script, style, head, meta, link, title { display: none; }
         
         h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
         h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
@@ -1138,6 +1138,10 @@ impl Stylesheet {
             s.visibility = parent.visibility.clone();
             s.cursor = parent.cursor.clone();
             s.pointer_events = parent.pointer_events.clone();
+            
+            // Text properties
+            s.text_transform = parent.text_transform.clone();
+            s.text_overflow = parent.text_overflow.clone();
             
             // Inherit custom properties
             s.custom_properties = parent.custom_properties.clone();
@@ -1739,6 +1743,34 @@ fn parse_float(val: &str) -> CssFloat {
         "right" => CssFloat::Right,
         "none" => CssFloat::None,
         _ => CssFloat::None,
+    }
+}
+
+fn parse_clear(val: &str) -> CssClear {
+    match val.trim() {
+        "left" => CssClear::Left,
+        "right" => CssClear::Right,
+        "both" => CssClear::Both,
+        "none" => CssClear::None,
+        _ => CssClear::None,
+    }
+}
+
+fn parse_text_transform(val: &str) -> CssTextTransform {
+    match val.trim() {
+        "uppercase" => CssTextTransform::Uppercase,
+        "lowercase" => CssTextTransform::Lowercase,
+        "capitalize" => CssTextTransform::Capitalize,
+        "none" => CssTextTransform::None,
+        _ => CssTextTransform::None,
+    }
+}
+
+fn parse_text_overflow(val: &str) -> CssTextOverflow {
+    match val.trim() {
+        "ellipsis" => CssTextOverflow::Ellipsis,
+        "clip" => CssTextOverflow::Clip,
+        _ => CssTextOverflow::Clip,
     }
 }
 
@@ -2634,11 +2666,15 @@ pub fn apply_single_declaration(
     };
 
     match name {
+        "text-transform" => style.text_transform = parse_text_transform(val),
+        "text-overflow" => style.text_overflow = parse_text_overflow(val),
         "background-color" | "background" => style.background_color = parse_color(val),
         "color" => style.color = parse_color(val),
         "display" => style.display = parse_display(val),
         "position" => style.position = parse_position(val),
         "overflow" => style.overflow = parse_overflow(val),
+        "float" => style.float = parse_float(val),
+        "clear" => style.clear = parse_clear(val),
         "z-index" | "zIndex" => {
             if val == "auto" {
                 style.z_index = i32::MIN;

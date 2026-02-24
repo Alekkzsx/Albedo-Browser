@@ -286,7 +286,7 @@
 
   [A] RENDERING PIPELINE
   ─────────────────────
-  [ ]  Float & Clear CSS (float: left/right, clear: both/left/right)
+  ✅   Float & Clear CSS (float: left/right, clear: both/left/right)
          → engine/mod.rs (build_layout_tree)
   [ ]  text-overflow: ellipsis / clip
          → engine/style/ + engine/inline.rs
@@ -396,10 +396,12 @@
   [ ]  Validação de inputs de URL (evitar path traversal, JS injection)
          → browser/events.rs
 
-  [E] UI MÍNIMA
-  ─────────────
-  [ ]  Favicon loading e exibição nas abas
-  [ ]  Loading indicator / progress bar durante navegação
+  [B] NAVEGADOR (NATIVO/UI)
+  ─────────────────────
+  ✅   Favicon loading e exibição nas abas
+         → Integrado com Slint Image Type e Taffy Backend
+  ✅   Loading indicator / progress bar durante navegação
+         → Exibido nativamente na NavBar components (DNS, timeout, SSL, 404)
   [ ]  Páginas de erro customizadas (DNS, timeout, SSL, 404)
   [ ]  Find in page — Ctrl+F com highlight de resultados
          → browser/find.rs (CRIAR)

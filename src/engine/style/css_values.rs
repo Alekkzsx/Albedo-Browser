@@ -248,6 +248,32 @@ impl Default for CssDisplay {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CssTextTransform {
+    None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
+}
+
+impl Default for CssTextTransform {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssTextOverflow {
+    Clip,
+    Ellipsis,
+}
+
+impl Default for CssTextOverflow {
+    fn default() -> Self {
+        Self::Clip
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CssPosition {
     Static,
     Relative,
@@ -284,6 +310,20 @@ pub enum CssFloat {
 }
 
 impl Default for CssFloat {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssClear {
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+impl Default for CssClear {
     fn default() -> Self {
         Self::None
     }
@@ -612,6 +652,7 @@ pub struct ComputedStyle {
     pub overflow: CssOverflow,
     pub z_index: i32,
     pub float: CssFloat,
+    pub clear: CssClear,
     
     // Box Model - Dimensions
     pub width: CssLength,
@@ -626,8 +667,11 @@ pub struct ComputedStyle {
     pub right: CssLength,
     pub bottom: CssLength,
     pub left: CssLength,
+
+    pub text_transform: CssTextTransform,
+    pub text_overflow: CssTextOverflow,
     
-    // Box Model - Margins
+    // Backgroundel - Margins
     pub margin_top: CssLength,
     pub margin_right: CssLength,
     pub margin_bottom: CssLength,
@@ -721,11 +765,11 @@ impl Default for ComputedStyle {
     fn default() -> Self {
         Self {
             // Display & Layout
-            display: CssDisplay::Inline,
             position: CssPosition::Static,
             overflow: CssOverflow::Visible,
             z_index: 0,
             float: CssFloat::None,
+            clear: CssClear::None,
             
             // Dimensions
             width: CssLength::Auto,
@@ -735,13 +779,18 @@ impl Default for ComputedStyle {
             min_height: CssLength::Zero,
             max_height: CssLength::Auto,
             
+            display: CssDisplay::default(),
+            
             // Position
             top: CssLength::Auto,
             right: CssLength::Auto,
             bottom: CssLength::Auto,
             left: CssLength::Auto,
             
-            // Margins
+            text_transform: CssTextTransform::default(),
+            text_overflow: CssTextOverflow::default(),
+            
+            // Backgrounds
             margin_top: CssLength::Zero,
             margin_right: CssLength::Zero,
             margin_bottom: CssLength::Zero,
