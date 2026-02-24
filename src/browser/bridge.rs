@@ -101,9 +101,9 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
             };
             
             // Só mandamos o box pro Slint se ele tiver conteúdo que o Slint deva manejar:
-            // Textos, Imagens, Outlines e Form Widgets.
-            // Para background puro (divs vazias coloridas), o WGPU já cuida, poupando a CPU do Slint!
-            let needs_slint = p.text.len() > 0 || has_image || is_outline || is_form;
+            // Textos, Imagens, Outlines, Form Widgets e Backgrounds sólidos (enquanto WGPU opcional).
+            let has_bg = bg_color.alpha() > 0;
+            let needs_slint = p.text.len() > 0 || has_image || is_outline || is_form || has_bg;
             
             if needs_slint {
                 slint_boxes.push(ACEBox {
@@ -111,7 +111,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                     y: p.y,
                     width: p.width,
                     height: p.height,
-                    background: if is_form { bg_color } else { slint::Color::from_argb_u8(0,0,0,0) }, // Forms guardam cores no box pra layout
+                    background: bg_color, // Sempre passar a cor para o Slint agora
                     text: p.text.clone().into(),
                     font_size: p.font_size,
                     text_color: slint::Color::from_rgb_u8(0, 0, 0),
