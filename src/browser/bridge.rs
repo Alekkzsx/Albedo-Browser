@@ -117,7 +117,18 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                     text: p.text.clone().into(),
                     text_overflow: p.text_overflow.clone().into(),
                     font_size: p.font_size,
-                    text_color: slint::Color::from_rgb_u8(0, 0, 0),
+                    text_color: {
+                        let tc = &p.text_color;
+                        if tc.starts_with('#') && (tc.len() == 7 || tc.len() == 9) {
+                            let r = u8::from_str_radix(&tc[1..3], 16).unwrap_or(0);
+                            let g = u8::from_str_radix(&tc[3..5], 16).unwrap_or(0);
+                            let b = u8::from_str_radix(&tc[5..7], 16).unwrap_or(0);
+                            let a = if tc.len() == 9 { u8::from_str_radix(&tc[7..9], 16).unwrap_or(255) } else { 255 };
+                            slint::Color::from_argb_u8(a, r, g, b)
+                        } else {
+                            slint::Color::from_rgb_u8(0, 0, 0) // fallback preto
+                        }
+                    },
                     image_data,
                     has_image,
                     link_url: p.link_url.clone().unwrap_or_default().into(),

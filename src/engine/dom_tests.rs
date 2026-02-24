@@ -59,3 +59,10 @@ fn test_acedom_parsing() {
         panic!("Body not found");
     }
 }
+
+#[test]
+fn test_css_parsing() {
+    let css = "body { color: red; border: 1px solid black; }\n.box { margin: 10px; }";
+    let stylesheet = crate::engine::style::parse(css);
+    assert_eq!(stylesheet.rules.len(), 2, "Deveria ter extraido 2 regras do CSS");
+}

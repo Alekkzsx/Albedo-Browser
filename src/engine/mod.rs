@@ -141,6 +141,8 @@ pub struct AceEngine {
     /// Chave: (iframe_node_idx * 1_000_000) + elem_node_idx_no_subframe
     /// Atualizado por collect_subframe_geometries() a cada layout.
     pub iframe_projected_geometry: Arc<Mutex<std::collections::HashMap<u64, ElementGeometry>>>,
+    pub external_css: Arc<Mutex<std::collections::HashMap<String, String>>>,
+    pub pending_resources: Arc<Mutex<std::collections::HashSet<String>>>,
     pub element_styles: Arc<Mutex<std::collections::HashMap<usize, ComputedStyle>>>,
 }
 
@@ -165,6 +167,8 @@ impl AceEngine {
             taffy: Arc::new(Mutex::new(taffy::Taffy::new())),
             viewport_y: 0.0,
             iframe_projected_geometry: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            external_css: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            pending_resources: Arc::new(Mutex::new(std::collections::HashSet::new())),
             element_styles: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
@@ -188,6 +192,31 @@ impl AceEngine {
                  println!("[AceEngine] process_html returned successfully.");
                  needs_layout = true;
              }
+        } else {
+            let (is_css, css_data) = {
+                let mut pending = self.pending_resources.lock().unwrap();
+                if pending.contains(&res.url) {
+                    pending.remove(&res.url);
+                    (true, Some(res.data.clone()))
+                } else {
+                    (false, None)
+                }
+            };
+
+            if is_css {
+                if let Some(data) = css_data {
+                    if let Ok(css) = String::from_utf8(data) {
+                        println!("[AceEngine] External CSS downloaded: {}", res.url);
+                        {
+                            let mut external = self.external_css.lock().unwrap();
+                            external.insert(res.url.clone(), css);
+                        }
+                        // Trigger style recomputation after dropping lock
+                        self.update_stylesheet();
+                        needs_layout = true;
+                    }
+                }
+            }
         }
         
         // Push response down to subframes to check if it's theirs
@@ -342,6 +371,7 @@ impl AceEngine {
     }
 
     pub fn mark_styles_dirty(&mut self) {
+        println!("[DEBUG] mark_styles_dirty called! Stack trace or origin unknown.");
         self.styles_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -450,6 +480,7 @@ impl AceEngine {
         }
         
         if has_changes {
+            println!("[DEBUG] tick() has_changes == true, setting styles_dirty!");
             self.styles_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
         }
         
@@ -509,15 +540,49 @@ impl AceEngine {
                                 }
                             }
                         }
+                    } else if el.tag == "link" && el.attributes.get("rel") == Some(&"stylesheet".to_string()) {
+                        if let Some(href) = el.attributes.get("href") {
+                            // Resolve relative URL
+                            if let Ok(base_url) = url::Url::parse(&self.current_url) {
+                                if let Ok(abs_url) = base_url.join(href) {
+                                    let url_str = abs_url.to_string();
+                                    
+                                    // Check if we already have it
+                                    let external = self.external_css.lock().unwrap();
+                                    if let Some(content) = external.get(&url_str) {
+                                        css_source.push_str(content);
+                                        css_source.push_str("\n");
+                                    } else {
+                                        // Trigger download if not pending
+                                        let mut pending = self.pending_resources.lock().unwrap();
+                                        if !pending.contains(&url_str) {
+                                            println!("[AceEngine] Triggering download for external CSS: {}", url_str);
+                                            if let Some(ref rm) = self.resource_manager {
+                                                rm.fetch(url_str.clone(), crate::network::resources::ResourceType::Css, None);
+                                            }
+                                            pending.insert(url_str);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
         
-        println!("[AceEngine] Parsed Author CSS, {} bytes injected.", css_source.len());
         let new_stylesheet = crate::engine::style::parse(&css_source);
+        println!("[AceEngine] Parsed Author CSS, {} bytes injected. Rules fetched: {}, UA: {}", css_source.len(), new_stylesheet.rules.len(), new_stylesheet.user_agent_rules.len());
         let mut current_style = self.stylesheet.lock().unwrap();
-        *current_style = new_stylesheet;
+        // Copiar TODOS os campos da nova stylesheet (rules, rule_maps, media, supports, container, fonts, keyframes)
+        current_style.rules = new_stylesheet.rules;
+        current_style.author_rule_map = new_stylesheet.author_rule_map;
+        current_style.media_rules = new_stylesheet.media_rules;
+        current_style.supports_rules = new_stylesheet.supports_rules;
+        current_style.container_rules = new_stylesheet.container_rules;
+        current_style.font_faces = new_stylesheet.font_faces;
+        current_style.keyframes = new_stylesheet.keyframes;
+        println!("[DEBUG] update_stylesheet() setting styles_dirty!");
         self.styles_dirty.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -743,12 +808,15 @@ impl AceEngine {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
         
         let style = {
-            let am = self.animation_manager.lock().unwrap();
-            stylesheet.calculate_style(
-                dom, node_idx, None, None, 
-                self.hovered_element, self.focused_element, self.active_element, 
-                Some(&am), now, vw, vh, "light"
-            )
+            let engine_styles = self.element_styles.lock().unwrap();
+            engine_styles.get(&node_idx).cloned().unwrap_or_else(|| {
+                let am = self.animation_manager.lock().unwrap();
+                stylesheet.calculate_style(
+                    dom, node_idx, None, None, 
+                    self.hovered_element, self.focused_element, self.active_element, 
+                    Some(&am), now, vw, vh, "light"
+                )
+            })
         };
 
         // --- Element Geometry: Style Extraction ---
@@ -1553,10 +1621,25 @@ impl AceEngine {
                             }
                             opts.join("|")
                         } else { String::new() },
-                        padding_top: 0.0,
-                        padding_right: 0.0,
-                        padding_bottom: 0.0,
-                        padding_left: 0.0,
+                        padding_top: geom.padding_top,
+                        padding_right: geom.padding_right,
+                        padding_bottom: geom.padding_bottom,
+                        padding_left: geom.padding_left,
+                        text_color: computed_style.color.to_rgba_string(),
+                        font_weight: match &computed_style.font_weight {
+                            crate::engine::style::css_values::CssFontWeight::Normal => "normal".to_string(),
+                            crate::engine::style::css_values::CssFontWeight::Bold => "bold".to_string(),
+                            crate::engine::style::css_values::CssFontWeight::Lighter => "lighter".to_string(),
+                            crate::engine::style::css_values::CssFontWeight::Bolder => "bolder".to_string(),
+                            crate::engine::style::css_values::CssFontWeight::Weight(w) => format!("{}", *w as u32),
+                        },
+                        white_space: match &computed_style.white_space {
+                            crate::engine::style::css_values::CssWhiteSpace::Normal => "normal".to_string(),
+                            crate::engine::style::css_values::CssWhiteSpace::NoWrap => "nowrap".to_string(),
+                            crate::engine::style::css_values::CssWhiteSpace::Pre => "pre".to_string(),
+                            crate::engine::style::css_values::CssWhiteSpace::PreWrap => "pre-wrap".to_string(),
+                            crate::engine::style::css_values::CssWhiteSpace::PreLine => "pre-line".to_string(),
+                        },
                     };
                     
                     if let Some(outline) = &computed_style.outline {
@@ -1588,6 +1671,7 @@ impl AceEngine {
                             canvas_data: None, input_value: String::new(), placeholder: String::new(),
                             input_type: String::new(), options: String::new(),
                             padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
+                            text_color: String::new(), font_weight: String::new(), white_space: String::new(),
                         };
                         primitives.insert(primitives.len() - 1, outline_prim);
                     }
@@ -1636,6 +1720,9 @@ impl AceEngine {
         
         // Compilação do CSS da Página e injeção do Author CSS em self.stylesheet
         self.update_stylesheet();
+        
+        // Calcular estilos de todos os nós para habilitar o Display e Box Model
+        self.recompute_dirty_styles();
         
         // Force layout computation immediately (this creates subframe slots for iframes)
         self.recompute_layout();
@@ -1703,6 +1790,8 @@ impl Clone for AceEngine {
             canvas_contexts: self.canvas_contexts.clone(),
             taffy: self.taffy.clone(),
             viewport_y: self.viewport_y,
+            external_css: self.external_css.clone(),
+            pending_resources: self.pending_resources.clone(),
             element_styles: self.element_styles.clone(),
         }
     }
@@ -1811,6 +1900,13 @@ pub struct VisualPrimitive {
     pub padding_right: f32,
     pub padding_bottom: f32,
     pub padding_left: f32,
+    
+    // CSS text color (hex string like #rrggbb)
+    pub text_color: String,
+    // CSS font-weight ("normal", "bold", "100"-"900")
+    pub font_weight: String,
+    // CSS white-space ("normal", "nowrap", "pre", etc.)
+    pub white_space: String,
 }
 
 impl std::fmt::Debug for AceEngine {
