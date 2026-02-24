@@ -2,6 +2,7 @@ import { LineEdit, Button } from "std-widgets.slint";
 
 export component NavBar inherits Rectangle {
     in-out property <string> current-url;
+    in property <float> loading-progress: 0.0;
     callback reload();
     callback back();
     callback forward();
@@ -34,6 +35,20 @@ export component NavBar inherits Rectangle {
                 width: 100%;
                 height: 100%;
                 clicked => { input.focus(); }
+            }
+            
+            // Progress Bar Foreground
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                height: 100%;
+                width: root.loading-progress * parent.width;
+                background: #0078d730; // Light blue translucent fill
+                border-top-left-radius: 15px;
+                border-bottom-left-radius: 15px;
+                border-top-right-radius: root.loading-progress >= 1.0 ? 15px : 0px;
+                border-bottom-right-radius: root.loading-progress >= 1.0 ? 15px : 0px;
+                visible: root.loading-progress > 0.0 && root.loading-progress < 1.0;
             }
 
             HorizontalLayout {

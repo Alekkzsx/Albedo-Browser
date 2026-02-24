@@ -6,8 +6,10 @@ use slint::ComponentHandle;
 
 
 pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
-    if let Some((_, Some(engine))) = tm.get_active_tab_native_data() {
-        let primitives = engine.render_visual();
+    if let Some((_, Some(engine), _)) = tm.get_active_tab_native_data() {
+        let vw = (ui.window().size().width as f32).max(800.0);
+        let vh = (ui.window().size().height as f32).max(600.0);
+        let primitives = engine.render_visual(vw, vh);
         let cache = engine.image_cache.lock().unwrap();
         
         let mut slint_boxes: Vec<ACEBox> = Vec::new();
@@ -60,9 +62,9 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                 if let Some(ref img_url) = p.image_url {
                     // Resolve URL para chave do cache
                     let resolved_url = if let Ok(base) = Url::parse(&engine.current_url) {
-                        base.join(img_url).ok().map(|u| u.to_string()).unwrap_or(img_url.clone())
+                        base.join(img_url).ok().map(|u| u.to_string()).unwrap_or(img_url.to_string())
                     } else {
-                        img_url.clone()
+                        img_url.to_string()
                     };
 
                     if let Some(img) = cache.get(&resolved_url) {
@@ -113,6 +115,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                     height: p.height,
                     background: bg_color, // Sempre passar a cor para o Slint agora
                     text: p.text.clone().into(),
+                    text_overflow: p.text_overflow.clone().into(),
                     font_size: p.font_size,
                     text_color: slint::Color::from_rgb_u8(0, 0, 0),
                     image_data,

@@ -17,8 +17,8 @@ export component AppWindow inherits Window {
     in property <[ACEBox]> ace_model: [];
     in property <length> content-height: 0px; // Added for scrolling
     in-out property <length> viewport-y: 0px; // Added for external scroll control
-
     
+    in property <float> loading-progress: 0.0;
     callback navigate(string);
     callback reload();
     callback back();
@@ -52,6 +52,7 @@ export component AppWindow inherits Window {
 
         NavBar {
             current-url: root.current-url;
+            loading-progress: root.loading-progress;
             navigate(url) => { root.navigate(url); }
             reload => { root.reload(); }
             back => { root.back(); }
@@ -74,7 +75,7 @@ export component AppWindow inherits Window {
             show-start-page: root.show-start-page;
             ace_model: root.ace_model;
             content-height: root.content-height;
-            viewport-y: root.viewport-y;
+            viewport-y <=> root.viewport-y;
             reload => { root.reload(); }
             back => { root.back(); }
             forward => { root.forward(); }

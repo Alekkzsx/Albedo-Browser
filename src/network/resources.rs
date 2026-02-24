@@ -243,10 +243,33 @@ impl ResourceManager {
             let resource_type = resource_type.clone();
             
             tokio::spawn(async move {
-                let path_str = url_clone.trim_start_matches("file://");
-                let decoded_path = urlencoding::decode(path_str).map(|s| s.into_owned()).unwrap_or_else(|_| path_str.to_string());
+                let path_buf = if let Ok(parsed_url) = url::Url::parse(&url_clone) {
+                    if let Ok(file_path) = parsed_url.to_file_path() {
+                        file_path
+                    } else {
+                        let path_str = url_clone.trim_start_matches("file://");
+                        let mut p = urlencoding::decode(path_str).map(|s| s.into_owned()).unwrap_or_else(|_| path_str.to_string());
+                        if cfg!(windows) && p.starts_with('/') {
+                            let chars: Vec<char> = p.chars().collect();
+                            if chars.len() > 3 && chars[1].is_ascii_alphabetic() && chars[2] == ':' {
+                                p = p[1..].to_string();
+                            }
+                        }
+                        std::path::PathBuf::from(p)
+                    }
+                } else {
+                    let path_str = url_clone.trim_start_matches("file://");
+                    let mut p = urlencoding::decode(path_str).map(|s| s.into_owned()).unwrap_or_else(|_| path_str.to_string());
+                    if cfg!(windows) && p.starts_with('/') {
+                        let chars: Vec<char> = p.chars().collect();
+                        if chars.len() > 3 && chars[1].is_ascii_alphabetic() && chars[2] == ':' {
+                            p = p[1..].to_string();
+                        }
+                    }
+                    std::path::PathBuf::from(p)
+                };
                 
-                let path = std::path::Path::new(&decoded_path);
+                let path = path_buf.as_path();
                 
                 match tokio::fs::read(path).await {
                     Ok(data) => {
@@ -282,7 +305,7 @@ impl ResourceManager {
                         let _ = tx.send(response);
                     },
                     Err(e) => {
-                         eprintln!("[ResourceManager] Erro ao ler arquivo {}: {}", decoded_path, e);
+                         eprintln!("[ResourceManager] Erro ao ler arquivo {}: {}", path.display(), e);
                          let response = ResourceResponse {
                             url: url_clone,
                             data: Vec::new(),

@@ -43,7 +43,18 @@ impl TabManager {
         println!("[TabManager] Loading URL: {}", url);
         let mut col = self.collection.borrow_mut();
         if let Some(pos) = col.tabs.iter().position(|t| t.id == tab_id) {
-            col.tabs[pos].load_url(url);
+            col.tabs[pos].load_url(url.clone());
+            col.tabs[pos].favicon_data = None; // Reset favicon
+            
+            // Requisita o favicon hardcoded pelo Google Service
+            if let Ok(parsed) = url::Url::parse(&url) {
+                if let Some(host) = parsed.host_str() {
+                    let favicon_url = format!("https://www.google.com/s2/favicons?domain={}&sz=64", host);
+                    if let Some(rm) = col.tabs[pos].engine.resource_manager.as_ref() {
+                        rm.fetch(favicon_url, crate::network::resources::ResourceType::Image, None);
+                    }
+                }
+            }
         }
     }
 
@@ -64,20 +75,26 @@ impl TabManager {
         None
     }
 
-    pub fn get_active_tab_native_data(&self) -> Option<(String, Option<AceEngine>)> {
+    pub fn get_active_tab_native_data(&self) -> Option<(String, Option<AceEngine>, f32)> {
         let col = self.collection.borrow();
         if let Some(tab) = col.get_active() {
-             return Some((tab.url.clone(), Some(tab.engine.clone())));
+             return Some((tab.url.clone(), Some(tab.engine.clone()), tab.loading_progress));
         }
         None
     }
 
-    pub fn get_tabs_info(&self) -> Vec<(String, bool)> {
+    pub fn get_tabs_info(&self) -> Vec<(String, bool, bool, slint::Image)> {
         let col = self.collection.borrow();
         let active_idx = col.active_index;
         
+        let default_image = slint::Image::default();
+
         col.tabs.iter().enumerate().map(|(i, tab)| {
-            (tab.title.clone(), Some(i) == active_idx)
+            let img = match &tab.favicon_data {
+                Some(buf) => slint::Image::from_rgba8(buf.clone()),
+                None => default_image.clone()
+            };
+            (tab.title.clone(), Some(i) == active_idx, tab.is_loading, img)
         }).collect()
     }
 
@@ -106,6 +123,35 @@ impl TabManager {
                 // Ler até o canal estar vazio ou limite de mensagens
                 let mut count = 0;
                 while let Ok(response) = rx.try_recv() {
+                    let mut is_html = false;
+                    let mut is_favicon = false;
+                    
+                    if let crate::network::resources::ResourceType::Html = response.resource_type {
+                         if response.url == tab.url || response.url == tab.engine.current_url {
+                             is_html = true;
+                         }
+                    } else if response.url.contains("favicon") || response.url.contains(".png") || response.url.contains(".ico") {
+                         is_favicon = true;
+                    }
+                    
+                    if is_html {
+                        tab.is_loading = false;
+                        tab.loading_progress = 1.0;
+                    }
+                    
+                    if is_favicon && tab.favicon_data.is_none() {
+                        if let Ok(img) = image::load_from_memory(&response.data) {
+                            let rgba = img.to_rgba8();
+                            let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                                rgba.as_raw(), 
+                                rgba.width(), 
+                                rgba.height()
+                            );
+                            tab.favicon_data = Some(buffer);
+                            did_update = true;
+                        }
+                    }
+
                     if tab.engine.handle_resource_response(response) {
                         did_update = true;
                     }

@@ -22,10 +22,12 @@ pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<Sy
 
 pub fn sync_tabs(tm: &TabManager, tabs_model: &Rc<VecModel<TabData>>) {
     let tabs_info = tm.get_tabs_info();
-    let slint_tabs: Vec<TabData> = tabs_info.into_iter().map(|(title, active)| {
+    let slint_tabs: Vec<TabData> = tabs_info.into_iter().map(|(title, active, is_loading, favicon)| {
         TabData {
             title: title.into(),
             active,
+            favicon,
+            is_loading,
         }
     }).collect();
     tabs_model.set_vec(slint_tabs);
@@ -161,9 +163,11 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
             sync_ace_visuals(&ui, tm);
         }
 
-        if let Some((_, Some(mut engine))) = tm.get_active_tab_native_data() {
+        if let Some((_, Some(mut engine), progress)) = tm.get_active_tab_native_data() {
+            ui.set_loading_progress(progress);
+            
             // Recompilar estilos se hover/focus mudou
-            if engine.styles_dirty {
+            if engine.styles_dirty.load(std::sync::atomic::Ordering::SeqCst) {
                 println!("[Pulse] Recomputing dirty styles...");
                 engine.recompute_dirty_styles();
                 sync_ace_visuals(&ui, tm);

@@ -9,6 +9,7 @@ export struct ACEBox {
     text: string,
     font_size: length,
     text_color: color,
+    text_overflow: string, // "clip" or "ellipsis"
     image_data: image,
     has_image: bool,
     link_url: string,
@@ -132,8 +133,9 @@ export component BrowserView inherits Rectangle {
                             font-size: box.font_size;
                             width: 100%;
                             height: 100%;
-                            wrap: word-wrap;
+                            wrap: box.text_overflow == "ellipsis" || box.text_overflow == "clip-nowrap" ? TextWrap.no-wrap : TextWrap.word-wrap;
                             vertical-alignment: top;
+                            overflow: box.text_overflow == "ellipsis" ? TextOverflow.elide : TextOverflow.clip;
                             opacity: box.opacity;
                             rotation-angle: box.rotate * 1deg;
                         }
@@ -233,6 +235,7 @@ export component BrowserView inherits Rectangle {
                 height: 100%;
                 wrap: word-wrap;
                 vertical-alignment: top;
+                overflow: box.text_overflow == "ellipsis" ? TextOverflow.elide : TextOverflow.clip;
                 rotation-angle: box.rotate * 1deg;
             }
         }
