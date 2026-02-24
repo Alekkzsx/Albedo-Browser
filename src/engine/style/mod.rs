@@ -11,7 +11,8 @@ use self::css_values::{
     CssPosition, CssOverflow, CssFloat, CssClear, CssFlexDirection, CssJustifyContent,
     CssAlignItems, CssAlignContent, CssFlexWrap, BoxShadow, TextShadow, BackgroundImage, Gradient, GradientStop,
     CssContent, CssBoxSizing, CssVisibility, CssCursor, CssObjectFit,
-    CssObjectPosition, CssPointerEvents, CssBlendMode, CssTextOverflow, CssTextTransform
+    CssObjectPosition, CssPointerEvents, CssBlendMode, CssTextOverflow, CssTextTransform,
+    CssWhiteSpace
 };
 use crate::engine::CssFilter;
 use crate::engine::TransformFunction;
@@ -57,6 +58,7 @@ pub struct AceContainerRule {
 pub struct AceRule {
     pub selectors: selectors::SelectorList<AceSelectorImpl>,
     pub declarations: Vec<Declaration>,
+    pub order: usize, // New: track original definition order
 }
 
 #[derive(Default, Clone)]
@@ -99,7 +101,7 @@ impl RuleMap {
     }
 
     pub fn match_element<'a>(&'a self, element: &AceElement, matched_rules: &mut Vec<MatchedRule<'a>>, origin: CascadeOrigin, base_order: usize) {
-        let mut try_match = |rule: &'a AceRule, order: usize| {
+        let mut try_match = |rule: &'a AceRule| {
             for selector in rule.selectors.slice() {
                 let mut caches = selectors::matching::SelectorCaches::default();
                 let mut context = MatchingContext::new(
@@ -110,7 +112,12 @@ impl RuleMap {
                 );
                 if selectors::matching::matches_selector(selector, 0, None, element, &mut context) {
                     matched_rules.push(MatchedRule {
-                        priority: CascadePriority { origin: origin.clone(), important: false, specificity: selector.specificity(), order: base_order + order },
+                        priority: CascadePriority { 
+                            origin: origin.clone(), 
+                            important: false, 
+                            specificity: selector.specificity(), 
+                            order: base_order + rule.order 
+                        },
                         rule
                     });
                 }
@@ -118,26 +125,26 @@ impl RuleMap {
         };
 
         // 1. Check Universal rules
-        for (i, rule) in self.universal_rules.iter().enumerate() {
-            try_match(rule, i);
+        for rule in &self.universal_rules {
+            try_match(rule);
         }
 
         if let AceNodeType::Element(el) = &element.dom.get_node(element.index).unwrap().node_type {
             // 2. Check Tag rules
             if let Some(rules) = self.tag_rules.get(el.tag_name()) {
-                for (i, rule) in rules.iter().enumerate() { try_match(rule, i); }
+                for rule in rules { try_match(rule); }
             }
             // 3. Check ID rules
             if let Some(id) = el.attributes.get("id") {
                 if let Some(rules) = self.id_rules.get(id) {
-                    for (i, rule) in rules.iter().enumerate() { try_match(rule, i); }
+                    for rule in rules { try_match(rule); }
                 }
             }
             // 4. Check Class rules
             if let Some(class_attr) = el.attributes.get("class") {
                 for class in class_attr.split_whitespace() {
                     if let Some(rules) = self.class_rules.get(class) {
-                        for (i, rule) in rules.iter().enumerate() { try_match(rule, i); }
+                        for rule in rules { try_match(rule); }
                     }
                 }
             }
@@ -831,23 +838,30 @@ fn parse_simple(source: &str) -> Stylesheet {
 
     while !parser.is_exhausted() {
         let selectors = match selectors::SelectorList::<AceSelectorImpl>::parse(&AceSelectorParser, &mut parser, selectors::parser::ParseRelative::No) {
-            Ok(s) => s,
-            Err(_) => {
+            Ok(s) => {
+                println!("[DEBUG-PARSER] parsed selector OK");
+                s
+            },
+            Err(e) => {
+                println!("[DEBUG-PARSER] Failed parsing selector: {:?}", e);
                 let _ = parser.next();
                 continue;
             }
         };
         
-        if parser.expect_curly_bracket_block().is_ok() {
-            let decls = parser.parse_nested_block(|p| {
+        match parser.parse_nested_block(|p| {
                     let mut decls = Vec::new();
                     while !p.is_exhausted() {
                         if let Ok(name) = p.expect_ident() {
                             let name = name.to_string();
                             if p.expect_colon().is_ok() {
                                 let mut value_raw = String::new();
-                                while let Ok(token) = p.next() {
-                                    value_raw.push_str(&token.to_css_string());
+                                while !p.is_exhausted() {
+                                    match p.next() {
+                                        Ok(cssparser::Token::Semicolon) => break,
+                                        Ok(token) => value_raw.push_str(&token.to_css_string()),
+                                        Err(_) => break,
+                                    }
                                 }
                                 
                                 // Clean up value and detect !important
@@ -962,8 +976,16 @@ fn parse_simple(source: &str) -> Stylesheet {
                         let _ = p.expect_semicolon();
                     }
                     Ok::<_, ParseError<'_, selectors::parser::SelectorParseErrorKind<'_>>>(decls)
-                }).unwrap_or_default();
-                stylesheet.rules.push(AceRule { selectors, declarations: decls });
+                }) {
+            Ok(decls) => {
+                println!("[DEBUG-PARSER] Block parsed OK with {} decls", decls.len());
+                stylesheet.rules.push(AceRule { 
+                    selectors, 
+                    declarations: decls,
+                    order: stylesheet.rules.len() 
+                });
+            },
+            Err(e) => println!("[DEBUG-PARSER] Block parse failed: {:?}", e),
         }
     }
 
@@ -1142,6 +1164,7 @@ impl Stylesheet {
             // Text properties
             s.text_transform = parent.text_transform.clone();
             s.text_overflow = parent.text_overflow.clone();
+            s.white_space = parent.white_space.clone();
             
             // Inherit custom properties
             s.custom_properties = parent.custom_properties.clone();
@@ -1162,6 +1185,13 @@ impl Stylesheet {
 
                  // 2. Process Author Rules (via RuleMap)
                  self.author_rule_map.match_element(&ace_element, &mut matched_rules, CascadeOrigin::Author, 1000);
+
+                 if el.tag == "body" || el.tag == "div" {
+                     println!("[DEBUG-CSS] element <{}> class '{:?}' has {} matched rules.", el.tag, el.attributes.get("class"), matched_rules.len());
+                     for mr in &matched_rules {
+                          println!("  -> Matched selector: {:?}", mr.rule.selectors);
+                     }
+                 }
 
                   // 3. Process Media Rules
                   for media_rule in &self.media_rules {
@@ -1281,7 +1311,7 @@ impl Stylesheet {
 
                           let prev_weight = *property_importance.get(&prop_name).unwrap_or(&0);
                           
-                          if current_weight > prev_weight || (current_weight == prev_weight && match_rule.priority.specificity >= 0) {
+                          if current_weight >= prev_weight {
                                // Specificity check is implicit if we sort rules by specificity first, 
                                // but here we are iterating over already sorted rules.
                                // However, the current_weight handles the origin/importance jump.
@@ -1291,6 +1321,25 @@ impl Stylesheet {
                       }
                   }
                   
+                  // REAL CSS: Estilos inline para outras propriedades (Phase 2)
+                  if let AceNodeType::Element(el) = &node.node_type {
+                      if let Some(inline_str) = el.attributes.get("style") {
+                          let inline_decls = parse_inline_declarations(inline_str);
+                          for decl in &inline_decls {
+                              let prop_name = decl.name.clone();
+                              let is_important = decl.important;
+                              
+                              let current_weight = if is_important { 3 } else { 2 };
+                              let prev_weight = *property_importance.get(&prop_name).unwrap_or(&0);
+
+                              if current_weight >= prev_weight {
+                                  apply_single_declaration(&mut style, decl, current_font_size, root_font_size, false);
+                                  property_importance.insert(prop_name, current_weight);
+                              }
+                          }
+                      }
+                  }
+
                   // Aplicar outline padrão para :focus se nenhum outline foi explicitamente definido
                   if focused_element == Some(node_id) && style.outline.is_none() {
                       style.outline = Some(crate::engine::style::css_values::Outline {
@@ -2668,6 +2717,16 @@ pub fn apply_single_declaration(
     match name {
         "text-transform" => style.text_transform = parse_text_transform(val),
         "text-overflow" => style.text_overflow = parse_text_overflow(val),
+        "white-space" | "whiteSpace" => {
+            style.white_space = match val {
+                "normal" => CssWhiteSpace::Normal,
+                "nowrap" => CssWhiteSpace::NoWrap,
+                "pre" => CssWhiteSpace::Pre,
+                "pre-wrap" => CssWhiteSpace::PreWrap,
+                "pre-line" => CssWhiteSpace::PreLine,
+                _ => CssWhiteSpace::Normal,
+            };
+        },
         "background-color" | "background" => style.background_color = parse_color(val),
         "color" => style.color = parse_color(val),
         "display" => style.display = parse_display(val),
@@ -2842,6 +2901,42 @@ pub fn apply_single_declaration(
                 style.grid_row_end = parse_grid_placement(parts[1]);
             }
         },
+        
+        // Flexbox Detail
+        "flex-direction" | "flexDirection" => style.flex_direction = parse_flex_direction(val),
+        "justify-content" | "justifyContent" => style.justify_content = parse_justify_content(val),
+        "align-items" | "alignItems" => style.align_items = parse_align_items(val),
+        "flex-wrap" | "flexWrap" => style.flex_wrap = parse_flex_wrap(val),
+        "flex-grow" | "flexGrow" => {
+            if let Ok(n) = val.parse::<f32>() { style.flex_grow = n; }
+        },
+        "flex-shrink" | "flexShrink" => {
+            if let Ok(n) = val.parse::<f32>() { style.flex_shrink = n; }
+        },
+        "flex-basis" | "flexBasis" => style.flex_basis = parse_length(val),
+
+        // Borders Detail
+        "border-top-width" | "borderTopWidth" => style.border_width_top = parse_length(val),
+        "border-right-width" | "borderRightWidth" => style.border_width_right = parse_length(val),
+        "border-bottom-width" | "borderBottomWidth" => style.border_width_bottom = parse_length(val),
+        "border-left-width" | "borderLeftWidth" => style.border_width_left = parse_length(val),
+        "border-top-color" | "borderTopColor" => style.border_color_top = parse_color(val),
+        "border-right-color" | "borderRightColor" => style.border_color_right = parse_color(val),
+        "border-bottom-color" | "borderBottomColor" => style.border_color_bottom = parse_color(val),
+        "border-left-color" | "borderLeftColor" => style.border_color_left = parse_color(val),
+        
+        // Typography Detail
+        "font-family" | "fontFamily" => style.font_family = val.trim().trim_matches('\'').trim_matches('"').to_string(),
+        "font-weight" | "fontWeight" => style.font_weight = parse_font_weight(val),
+        "font-style" | "fontStyle" => style.font_style = val.to_string(),
+        "line-height" | "lineHeight" => style.line_height = parse_length(val),
+        "text-align" | "textAlign" => style.text_align = parse_text_align(val),
+
+        // Min/Max Sizing
+        "min-width" | "minWidth" => style.min_width = resolve_rel(parse_length(val)),
+        "max-width" | "maxWidth" => style.max_width = resolve_rel(parse_length(val)),
+        "min-height" | "minHeight" => style.min_height = resolve_rel(parse_length(val)),
+        "max-height" | "maxHeight" => style.max_height = resolve_rel(parse_length(val)),
         "grid-area" | "gridArea" => {
             let parts: Vec<&str> = val.split('/').collect();
             if parts.len() == 1 {
