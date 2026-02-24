@@ -201,7 +201,7 @@ impl AceEngine {
 
     pub fn layout(&mut self, width: f32, height: f32) {
         if let Some(ref dom_arc) = self.dom {
-            let dom = dom_arc.lock().unwrap();
+            let mut dom = dom_arc.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
             
             let mut taffy = self.taffy.lock().unwrap();
@@ -212,7 +212,7 @@ impl AceEngine {
             // 1. Build Taffy Tree starting from root (index 0)
             // Assuming index 0 is always Document or root element
             if !dom.nodes.is_empty() {
-                let root_nodes = self.build_layout_tree(&dom, &mut taffy, &stylesheet, 0, width, height, &mut node_map, None);
+                let root_nodes = self.build_layout_tree(&mut dom, &mut taffy, &stylesheet, 0, width, height, &mut node_map, None);
                 
                 if let Some(&root_node) = root_nodes.first() {
                     let available_space = taffy::prelude::Size {
@@ -483,8 +483,7 @@ impl AceEngine {
     pub fn recompute_layout(&mut self) {
         let start_time = std::time::Instant::now();
         if let Some(ref dom_arc) = self.dom {
-            println!("[AceEngine] Starting layout recompute...");
-            let dom = dom_arc.lock().unwrap();
+            let mut dom = dom_arc.lock().unwrap();
             let mut taffy = self.taffy.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
             
@@ -499,7 +498,7 @@ impl AceEngine {
             }
 
             let build_start = std::time::Instant::now();
-            let root_nodes = self.build_layout_tree(&dom, &mut taffy, &stylesheet, 0, 800.0, 600.0, &mut node_map, None);
+            let root_nodes = self.build_layout_tree(&mut dom, &mut taffy, &stylesheet, 0, 800.0, 600.0, &mut node_map, None);
             let build_duration = build_start.elapsed();
             
             if root_nodes.is_empty() { return; }
@@ -614,7 +613,7 @@ impl AceEngine {
 
 
     fn build_layout_tree(&self, 
-        dom: &AceDOM, 
+        dom: &mut AceDOM, 
         taffy: &mut taffy::Taffy, 
         stylesheet: &Stylesheet, 
         node_idx: usize, 
@@ -623,15 +622,20 @@ impl AceEngine {
         node_map: &mut std::collections::HashMap<taffy::prelude::Node, usize>,
         parent_grid_ctx: Option<&GridContext>
     ) -> Vec<taffy::prelude::Node> {
-        let node = dom.get_node(node_idx).unwrap();
+        let (node_type, children_indices) = {
+            let node = dom.get_node(node_idx).unwrap();
+            (node.node_type.clone(), node.children.clone())
+        };
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
-        let am = self.animation_manager.lock().unwrap();
-
-        let style = stylesheet.calculate_style(
-            dom, node_idx, None, None, 
-            self.hovered_element, self.focused_element, self.active_element, 
-            Some(&am), now, vw, vh, "light"
-        );
+        
+        let style = {
+            let am = self.animation_manager.lock().unwrap();
+            stylesheet.calculate_style(
+                dom, node_idx, None, None, 
+                self.hovered_element, self.focused_element, self.active_element, 
+                Some(&am), now, vw, vh, "light"
+            )
+        };
 
         // --- Element Geometry: Style Extraction ---
         {
@@ -819,19 +823,18 @@ impl AceEngine {
             }
             
             grid_ctx = Some(ctx);
-        } else if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+        } else if let crate::engine::dom::AceNodeType::Element(el) = &node_type {
             if el.tag == "iframe" {
                 // If this is an iframe, ensure we have a subframe engine for it
                 let mut needs_init = false;
                 let mut iframe_src = String::new();
                 
                 {
-                    let mut dom_mut = self.dom.as_ref().unwrap().lock().unwrap();
-                    if dom_mut.subframes.is_none() {
-                        dom_mut.subframes = Some(std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())));
+                    if dom.subframes.is_none() {
+                        dom.subframes = Some(std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())));
                     }
                     
-                    let subframes_arc = dom_mut.subframes.as_ref().unwrap().clone();
+                    let subframes_arc = dom.subframes.as_ref().unwrap().clone();
                     let mut subframes = subframes_arc.lock().unwrap();
                     
                     if !subframes.contains_key(&node_idx) {
@@ -854,8 +857,7 @@ impl AceEngine {
                 }
                 
                 if needs_init && !iframe_src.is_empty() {
-                     let dom_mutex = self.dom.as_ref().unwrap().lock().unwrap();
-                     if let Some(subframes_arc) = &dom_mutex.subframes {
+                     if let Some(subframes_arc) = &dom.subframes {
                           let subframes_lock = subframes_arc.lock().unwrap();
                           if let Some(engine_arc) = subframes_lock.get(&node_idx) {
                               let mut sub_engine = engine_arc.lock().unwrap();
@@ -893,6 +895,22 @@ impl AceEngine {
                 node_map.insert(taffy_node, node_idx);
                 return vec![taffy_node];
             }
+        } else if let crate::engine::dom::AceNodeType::Text(text) = &node_type {
+            // Text nodes need an intrinsic size estimate to be visible
+            let font_size = style.font_size;
+            let char_width = font_size * 0.5; // Rough estimate
+            let text_width = text.len() as f32 * char_width;
+            
+            // Limit width to viewport if it's too long, causing wrap
+            let width = if text_width > vw { vw } else { text_width };
+            let height = font_size * (text_width / width).ceil();
+            
+            taffy_style.size.width = taffy::prelude::Dimension::Points(width);
+            taffy_style.size.height = taffy::prelude::Dimension::Points(height);
+            
+            let taffy_node = taffy.new_leaf(taffy_style).unwrap();
+            node_map.insert(taffy_node, node_idx);
+            return vec![taffy_node];
         }
         
         let mut children = Vec::new();
@@ -901,16 +919,16 @@ impl AceEngine {
              // Already handled in build_layout_tree main block for tables
         } else if style.display == crate::engine::style::css_values::CssDisplay::TableRow {
             // Table rows are flattened, their children (cells) become direct children of the table grid
-            for &child_idx in &node.children {
+            for child_idx in children_indices {
                 children.extend(self.build_layout_tree(dom, taffy, stylesheet, child_idx, vw, vh, node_map, grid_ctx.as_ref()));
             }
         } else if style.display == crate::engine::style::css_values::CssDisplay::TableHeader {
             // Table headers are also flattened, their children (cells) become direct children of the table grid
-            for &child_idx in &node.children {
+            for child_idx in children_indices {
                 children.extend(self.build_layout_tree(dom, taffy, stylesheet, child_idx, vw, vh, node_map, grid_ctx.as_ref()));
             }
         } else {
-             for &child_idx in &node.children {
+             for child_idx in children_indices {
                 children.extend(self.build_layout_tree(dom, taffy, stylesheet, child_idx, vw, vh, node_map, grid_ctx.as_ref()));
             }
         }
@@ -1225,7 +1243,11 @@ impl AceEngine {
             
             // Iterar sobre todos os elementos e gerar primitivas
             for (node_idx, node) in dom.nodes.iter().enumerate() {
-                if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                let (is_element, element_tag) = match &node.node_type {
+                    crate::engine::dom::AceNodeType::Element(el) => (true, el.tag.clone()),
+                    crate::engine::dom::AceNodeType::Text(_) => (false, "#text".to_string()),
+                    _ => continue, // Skip others
+                };
                     // Calcular estilos com estados atuais (hover, focus, active)
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
                     let am = self.animation_manager.lock().unwrap();
@@ -1282,21 +1304,19 @@ impl AceEngine {
                         };
                         
                         // Extrair texto se disponível
-                        let text = if let crate::engine::dom::AceNodeType::Element(_) = &node.node_type {
-                            // Para elementos, tentar extrair textContent
-                            node.get_text_content()
-                        } else {
-                            String::new()
+                        let text = match &node.node_type {
+                            crate::engine::dom::AceNodeType::Text(t) => t.clone(),
+                            _ => String::new(),
                         };
                         
                         // Extrair dados de canvas se for um elemento <canvas>
                         let mut canvas_data = None;
-                        if el.tag == "canvas" {
+                        if element_tag == "canvas" {
                             let contexts = self.canvas_contexts.lock().unwrap();
                             if let Some(ctx2d) = contexts.get(&node_idx) {
                                 canvas_data = Some(ctx2d.get_pixels().to_vec());
                             }
-                        } else if el.tag == "svg" {
+                        } else if element_tag == "svg" {
                              // SVG Support: Rasterize the subtree
                              let svg_xml = dom.serialize_subtree_html(node_idx);
                              if let Some(pixels) = crate::engine::svg::rasterize_svg_to_pixels(&svg_xml, w, h) {
@@ -1304,50 +1324,56 @@ impl AceEngine {
                              }
                         }
 
-                        // Criar primitiva visual
-                        let prim = VisualPrimitive {
-                            x: x,
-                            y: y,
-                            width: w,
-                            height: h,
-                            color: color_str,
-                            text,
-                            font_size: computed_style.font_size,
-                            image_url: None,
-                            link_url: None,
-                            node_idx,
-                            element_type: el.tag.clone(),
-                            is_fixed: matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed),
-                            opacity: computed_style.opacity,
-                            border_radius: [
-                                computed_style.border_radius_top_left,
-                                computed_style.border_radius_top_right,
-                                computed_style.border_radius_bottom_right,
-                                computed_style.border_radius_bottom_left,
-                            ],
-                            transform_rotate: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Rotate(a) = t { Some(*a) } else { None }).unwrap_or(0.0),
-                            transform_scale: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Scale(sx, sy) = t { Some((*sx, *sy)) } else { None }).unwrap_or((1.0, 1.0)),
-                            transform_translate: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Translate(tx, ty) = t { 
-                                // Simplified: only support Px for now in bridge sync
-                                let tx_val = if let crate::engine::style::css_values::CssLength::Px(v) = tx { *v } else { 0.0 };
-                                let ty_val = if let crate::engine::style::css_values::CssLength::Px(v) = ty { *v } else { 0.0 };
-                                Some((tx_val, ty_val))
-                            } else { None }).unwrap_or((0.0, 0.0)),
-                            canvas_data,
+                            // Criar primitiva visual
+                            let prim = VisualPrimitive {
+                                x: x,
+                                y: y,
+                                width: w,
+                                height: h,
+                                color: color_str,
+                                text,
+                                font_size: computed_style.font_size,
+                                image_url: None,
+                                link_url: None,
+                                node_idx,
+                                element_type: element_tag.clone(),
+                                is_fixed: matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed),
+                                opacity: computed_style.opacity,
+                                border_radius: [
+                                    computed_style.border_radius_top_left,
+                                    computed_style.border_radius_top_right,
+                                    computed_style.border_radius_bottom_right,
+                                    computed_style.border_radius_bottom_left,
+                                ],
+                                transform_rotate: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Rotate(a) = t { Some(*a) } else { None }).unwrap_or(0.0),
+                                transform_scale: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Scale(sx, sy) = t { Some((*sx, *sy)) } else { None }).unwrap_or((1.0, 1.0)),
+                                transform_translate: computed_style.transform.iter().find_map(|t| if let crate::engine::style::css_values::TransformFunction::Translate(tx, ty) = t { 
+                                    // Simplified: only support Px for now in bridge sync
+                                    let tx_val = if let crate::engine::style::css_values::CssLength::Px(v) = tx { *v } else { 0.0 };
+                                    let ty_val = if let crate::engine::style::css_values::CssLength::Px(v) = ty { *v } else { 0.0 };
+                                    Some((tx_val, ty_val))
+                                } else { None }).unwrap_or((0.0, 0.0)),
+                                canvas_data,
+                                
+                                
+                                // Form Data Extraction
+                                input_value: if element_tag == "input" || element_tag == "textarea" || element_tag == "select" {
+                                    if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                        el.attributes.get("value").cloned().unwrap_or_default()
+                                    } else { String::new() }
+                                } else { String::new() },
+                                
+                                placeholder: if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                    el.attributes.get("placeholder").cloned().unwrap_or_default()
+                                } else { String::new() },
+                                
+                                input_type: if element_tag == "input" {
+                                    if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                        el.attributes.get("type").cloned().unwrap_or("text".to_string())
+                                    } else { String::new() }
+                                } else { String::new() },
                             
-                            
-                            // Form Data Extraction
-                            input_value: if el.tag == "input" || el.tag == "textarea" || el.tag == "select" {
-                                el.attributes.get("value").cloned().unwrap_or_default()
-                            } else { String::new() },
-                            
-                            placeholder: el.attributes.get("placeholder").cloned().unwrap_or_default(),
-                            
-                            input_type: if el.tag == "input" {
-                                el.attributes.get("type").cloned().unwrap_or("text".to_string())
-                            } else { String::new() },
-                            
-                            options: if el.tag == "select" {
+                            options: if element_tag == "select" {
                                 // Extract options from children
                                 let mut opts = Vec::new();
                                 for &child_idx in &node.children {
@@ -1406,7 +1432,7 @@ impl AceEngine {
                                 image_url: None,
                                 link_url: None,
                                 node_idx,
-                                element_type: format!("outline-{}", el.tag),
+                                element_type: format!("outline-{}", element_tag),
                                 is_fixed: false,
                                 opacity: 1.0,
                                 border_radius: [0.0; 4],
@@ -1433,7 +1459,6 @@ impl AceEngine {
                     }
                 }
             }
-        }
         
         primitives
     }
