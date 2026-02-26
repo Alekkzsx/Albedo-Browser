@@ -1,41 +1,5 @@
 import { LineEdit, Button, TextEdit } from "std-widgets.slint";
 
-export struct ACEBox {
-    x: length,
-    y: length,
-    width: length,
-    height: length,
-    background: color,
-    text: string,
-    font_size: length,
-    text_color: color,
-    text_overflow: string, // "clip" or "ellipsis"
-    image_data: image,
-    has_image: bool,
-    link_url: string,
-    node_id: string,
-    element_type: string,
-    is_fixed: bool,
-    border_width: length,
-    border_color: color,
-    opacity: float,
-    border_radius_tl: length,
-    border_radius_tr: length,
-    border_radius_br: length,
-    border_radius_bl: length,
-    rotate: float,
-    scale_x: float,
-    scale_y: float,
-    // Form Widgets
-    is_input: bool,
-    is_textarea: bool,
-    is_select: bool,
-    placeholder: string,
-    input_value: string,
-    input_type: string, // "text", "password", "date" etc.
-    options: string, // Pipe items for select: "Option A|Option B"
-}
-
 export component BrowserView inherits Rectangle {
     in-out property <string> current-url;
     callback reload();
@@ -52,7 +16,7 @@ export component BrowserView inherits Rectangle {
     callback input_change(string, string);
 
     in-out property <bool> show-start-page;
-    in property <[ACEBox]> ace_model;
+    in property <image> web_content_buffer;
     in property <length> content-height: 0px;
     in-out property <length> viewport-y <=> f.viewport-y;
 
@@ -106,137 +70,12 @@ export component BrowserView inherits Rectangle {
                     }
                 }
 
-                for box in root.ace_model : Rectangle {
-                    if !box.is_fixed : Rectangle {
-                        x: box.x;
-                        y: box.y;
-                        width: box.width;
-                        height: box.height;
-                        background: box.is_input || box.is_textarea || box.is_select ? transparent : box.background;
-                        border-width: box.border_width;
-                        border-color: box.border_color;
-                        opacity: box.opacity;
-                        border-radius: box.border_radius_tl;
-
-                        if box.has_image && box.element_type == "image" : Image {
-                            source: box.image_data;
-                            width: 100%;
-                            height: 100%;
-                            image-fit: cover;
-                            opacity: box.opacity;
-                            rotation-angle: box.rotate * 1deg;
-                        }
-                        
-                        if box.text != "" && !box.has_image && !box.is_input && !box.is_textarea && !box.is_select : Text {
-                            text: box.text;
-                            color: box.text_color;
-                            font-size: box.font_size;
-                            width: 100%;
-                            height: 100%;
-                            wrap: box.text_overflow == "ellipsis" || box.text_overflow == "clip-nowrap" ? TextWrap.no-wrap : TextWrap.word-wrap;
-                            vertical-alignment: top;
-                            overflow: box.text_overflow == "ellipsis" ? TextOverflow.elide : TextOverflow.clip;
-                            opacity: box.opacity;
-                            rotation-angle: box.rotate * 1deg;
-                        }
-
-                        // Form Widgets (CSS Overlay Architecture)
-                        if box.is_input : Rectangle {
-                            width: 100%;
-                            height: 100%;
-                            background: box.background;
-                            border-width: box.border_width;
-                            border-color: box.border_color;
-                            border-radius: box.border_radius_tl;
-                            
-                            // LineEdit base (Invisível pra herdar CSS nativo acima)
-                            LineEdit {
-                                width: 100%;
-                                height: 100%;
-                                placeholder-text: box.placeholder;
-                                text: box.input_value;
-                                font-size: box.font_size;
-                                input-type: box.input_type == "password" ? InputType.password : InputType.text;
-                                edited => {
-                                    input_change(box.node_id, self.text);
-                                }
-                                // Em Rust/Slint 1.x o LineEdit não tem property color/background exposta 
-                                // O truque é deixar a caixa parente lidar com os graficos.
-                            }
-                        }
-
-                        if box.is_textarea : Rectangle {
-                             width: 100%;
-                             height: 100%;
-                             background: box.background;
-                             border-width: box.border_width;
-                             border-color: box.border_color;
-                             border-radius: box.border_radius_tl;
-                            
-                             TextEdit {
-                                 width: 100%;
-                                 height: 100%;
-                                 text: box.input_value;
-                                 font-size: box.font_size;
-                                 edited => {
-                                     input_change(box.node_id, self.text);
-                                 }
-                             }
-                        }
-
-                        if box.is_select : Rectangle {
-                             width: 100%;
-                             height: 100%;
-                             background: white;
-                             border-width: 1px;
-                             border-color: #ccc;
-                             Text {
-                                 text: box.input_value != "" ? box.input_value : (box.placeholder != "" ? box.placeholder : "Select...");
-                                 vertical-alignment: center;
-                                 x: 5px;
-                             }
-                             // Simple arrow
-                             Text {
-                                 text: "▼";
-                                 x: parent.width - 20px;
-                                 vertical-alignment: center;
-                             }
-                        }
-                    }
+                Image {
+                    source: root.web_content_buffer;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: contain;
                 }
-            }
-        }
-    }
-
-    // Fixed elements
-    for box in root.ace_model : Rectangle {
-        if box.is_fixed : Rectangle {
-            x: box.x;
-            y: box.y;
-            width: box.width;
-            height: box.height;
-            background: box.background;
-            opacity: box.opacity;
-            border_radius: box.border_radius_tl;
-            
-            if box.has_image && box.element_type == "image" : Image {
-                source: box.image_data;
-                width: 100%;
-                height: 100%;
-                image-fit: cover;
-                rotation-angle: box.rotate * 1deg;
-            }
-            
-            if box.text != "" && !box.has_image : Text {
-                text: box.text;
-                color: box.text_color;
-                font-size: box.font_size;
-                width: 100%;
-                height: 100%;
-                wrap: word-wrap;
-                vertical-alignment: top;
-                overflow: box.text_overflow == "ellipsis" ? TextOverflow.elide : TextOverflow.clip;
-                rotation-angle: box.rotate * 1deg;
             }
         }
     }

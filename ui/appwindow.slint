@@ -1,5 +1,5 @@
 import { StartPage } from "components/start_page.slint";
-import { BrowserView, ACEBox } from "components/browser_view.slint";
+import { BrowserView } from "components/browser_view.slint";
 import { TabBar, TabData } from "components/tab_bar.slint";
 import { NavBar } from "components/nav_bar.slint";
 
@@ -14,7 +14,7 @@ export component AppWindow inherits Window {
 
     in property <[TabData]> tabs_model; // Model from Rust
     in-out property <string> system-stats: "Loading Stats...";
-    in property <[ACEBox]> ace_model: [];
+    in property <image> web-content-buffer;
     in property <length> content-height: 0px; // Added for scrolling
     in-out property <length> viewport-y: 0px; // Added for external scroll control
     
@@ -73,7 +73,7 @@ export component AppWindow inherits Window {
         if !root.show-start-page : BrowserView {
             current-url: root.current-url;
             show-start-page: root.show-start-page;
-            ace_model: root.ace_model;
+            web_content_buffer: root.web-content-buffer;
             content-height: root.content-height;
             viewport-y <=> root.viewport-y;
             reload => { root.reload(); }
