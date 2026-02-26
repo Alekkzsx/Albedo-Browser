@@ -5,6 +5,7 @@ mod engine;
 mod runtime;
 mod network;
 mod ui;
+pub mod renderer;
 
 use slint::ComponentHandle;
 use browser::tabs::manager::TabManager;

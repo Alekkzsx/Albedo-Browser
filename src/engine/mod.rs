@@ -1085,11 +1085,20 @@ impl AceEngine {
                 crate::engine::style::css_values::CssTextTransform::Uppercase => text.to_uppercase(),
                 crate::engine::style::css_values::CssTextTransform::Lowercase => text.to_lowercase(),
                 crate::engine::style::css_values::CssTextTransform::Capitalize => {
-                    let mut c = text.chars();
-                    match c.next() {
-                        None => String::new(),
-                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    let mut result = String::with_capacity(text.len());
+                    let mut capitalize_next = true;
+                    for c in text.chars() {
+                        if c.is_whitespace() {
+                            capitalize_next = true;
+                            result.push(c);
+                        } else if capitalize_next {
+                            result.extend(c.to_uppercase());
+                            capitalize_next = false;
+                        } else {
+                            result.push(c);
+                        }
                     }
+                    result
                 },
                 crate::engine::style::css_values::CssTextTransform::None => text.clone(),
             };
@@ -1538,23 +1547,90 @@ impl AceEngine {
                         _ => "transparent".to_string(),
                     };
                     
-                    let text = match &node.node_type {
+                    let mut text = match &node.node_type {
                         crate::engine::dom::AceNodeType::Text(t) => {
                             match computed_style.text_transform {
                                 crate::engine::style::css_values::CssTextTransform::Uppercase => t.to_uppercase(),
                                 crate::engine::style::css_values::CssTextTransform::Lowercase => t.to_lowercase(),
                                 crate::engine::style::css_values::CssTextTransform::Capitalize => {
-                                    let mut c = t.chars();
-                                    match c.next() {
-                                        None => String::new(),
-                                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                    let mut result = String::with_capacity(t.len());
+                                    let mut capitalize_next = true;
+                                    for c in t.chars() {
+                                        if c.is_whitespace() {
+                                            capitalize_next = true;
+                                            result.push(c);
+                                        } else if capitalize_next {
+                                            result.extend(c.to_uppercase());
+                                            capitalize_next = false;
+                                        } else {
+                                            result.push(c);
+                                        }
                                     }
+                                    result
                                 },
                                 crate::engine::style::css_values::CssTextTransform::None => t.clone(),
                             }
                         },
                         _ => String::new(),
                     };
+
+                    // --- NATIVE TEXT-OVERFLOW: ELLIPSIS ---
+                    if !text.is_empty() 
+                       && matches!(computed_style.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) 
+                       && matches!(computed_style.white_space, crate::engine::style::css_values::CssWhiteSpace::NoWrap) 
+                    {
+                        let mut font_system = cosmic_text::FontSystem::new();
+                        let mut buffer = cosmic_text::Buffer::new(&mut font_system, cosmic_text::Metrics::new(computed_style.font_size, computed_style.font_size * 1.2));
+                        buffer.set_text(&mut font_system, &text, cosmic_text::Attrs::new(), cosmic_text::Shaping::Advanced);
+                        buffer.set_size(&mut font_system, Some(f32::MAX), Some(f32::MAX));
+                        buffer.shape_until_scroll(&mut font_system, false);
+                        
+                        let mut current_width: f32 = 0.0;
+                        for run in buffer.layout_runs() {
+                            current_width = current_width.max(run.line_w);
+                        }
+
+                        if current_width > w {
+                            let ellipsis_str = "…";
+                            let mut ell_buffer = cosmic_text::Buffer::new(&mut font_system, cosmic_text::Metrics::new(computed_style.font_size, computed_style.font_size * 1.2));
+                            ell_buffer.set_text(&mut font_system, ellipsis_str, cosmic_text::Attrs::new(), cosmic_text::Shaping::Advanced);
+                            ell_buffer.set_size(&mut font_system, Some(f32::MAX), Some(f32::MAX));
+                            ell_buffer.shape_until_scroll(&mut font_system, false);
+                            
+                            let mut ellipsis_width: f32 = 0.0;
+                            for run in ell_buffer.layout_runs() {
+                                ellipsis_width = ellipsis_width.max(run.line_w);
+                            }
+
+                            let safe_width = w - ellipsis_width;
+                            if safe_width > 0.0 {
+                                let mut accum_w = 0.0;
+                                let mut cut_idx = 0;
+                                
+                                'outer: for run in buffer.layout_runs() {
+                                    for glyph in run.glyphs.iter() {
+                                        accum_w += glyph.w;
+                                        if accum_w > safe_width {
+                                            cut_idx = glyph.start;
+                                            break 'outer;
+                                        }
+                                    }
+                                }
+
+                                if cut_idx > 0 && cut_idx <= text.len() {
+                                    while cut_idx > 0 && !text.is_char_boundary(cut_idx) {
+                                        cut_idx -= 1;
+                                    }
+                                    let mut truncated = text[..cut_idx].to_string();
+                                    truncated.push_str(ellipsis_str);
+                                    text = truncated;
+                                }
+                            } else {
+                                text = ellipsis_str.to_string();
+                            }
+                        }
+                    }
+                    // --------------------------------------
                     
                     let mut canvas_data = None;
                     if element_tag == "canvas" {
@@ -1575,7 +1651,13 @@ impl AceEngine {
                         text,
                         text_overflow: match computed_style.text_overflow {
                             crate::engine::style::css_values::CssTextOverflow::Ellipsis => "ellipsis".to_string(),
-                            _ => "clip".to_string()
+                            _ => {
+                                if computed_style.white_space == crate::engine::style::css_values::CssWhiteSpace::NoWrap {
+                                    "clip-nowrap".to_string()
+                                } else {
+                                    "clip".to_string()
+                                }
+                            }
                         },
                         font_size: computed_style.font_size,
                         image_url: None,

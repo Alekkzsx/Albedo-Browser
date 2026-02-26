@@ -823,6 +823,185 @@ pub fn parse(source: &str) -> Stylesheet {
     stylesheet
 }
 
+struct AceStyleRuleParser;
+
+impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
+    type Prelude = selectors::SelectorList<AceSelectorImpl>;
+    type QualifiedRule = AceRule;
+    type Error = selectors::parser::SelectorParseErrorKind<'i>;
+
+    fn parse_prelude<'t>(
+        &mut self,
+        input: &mut cssparser::Parser<'i, 't>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        selectors::SelectorList::parse(&AceSelectorParser, input, selectors::parser::ParseRelative::No)
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        prelude: Self::Prelude,
+        _start_location: &cssparser::ParserState,
+        input: &mut cssparser::Parser<'i, 't>,
+    ) -> Result<Self::QualifiedRule, cssparser::ParseError<'i, Self::Error>> {
+        let mut decls = Vec::new();
+        while !input.is_exhausted() {
+            if let Ok(name) = input.expect_ident() {
+                let name = name.to_string();
+                if input.expect_colon().is_ok() {
+                    let mut value_raw = String::new();
+                    while !input.is_exhausted() {
+                        match input.next() {
+                            Ok(cssparser::Token::Semicolon) => break,
+                            Ok(token) => value_raw.push_str(&token.to_css_string()),
+                            Err(_) => break,
+                        }
+                    }
+                    
+                    // Clean up value and detect !important
+                    let mut important = false;
+                    let mut value = value_raw.trim_end_matches(';').trim().to_string();
+                    if value.to_lowercase().ends_with("!important") {
+                        important = true;
+                        value = value[..value.len() - 10].trim().to_string();
+                    }
+                    
+                    // Expand shorthands (Simple implementation)
+                    match name.as_str() {
+                        "margin" => {
+                            let parts: Vec<&str> = value.split_whitespace().collect();
+                            match parts.len() {
+                                1 => {
+                                    for suffix in &["top", "right", "bottom", "left"] {
+                                        decls.push(Declaration { name: format!("margin-{}", suffix), value: parts[0].to_string(), important: important });
+                                    }
+                                },
+                                2 => {
+                                    decls.push(Declaration { name: "margin-top".to_string(), value: parts[0].to_string(), important: important });
+                                    decls.push(Declaration { name: "margin-bottom".to_string(), value: parts[0].to_string(), important: important });
+                                    decls.push(Declaration { name: "margin-right".to_string(), value: parts[1].to_string(), important: important });
+                                    decls.push(Declaration { name: "margin-left".to_string(), value: parts[1].to_string(), important: important });
+                                },
+                                4 => {
+                                     decls.push(Declaration { name: "margin-top".to_string(), value: parts[0].to_string(), important: important });
+                                     decls.push(Declaration { name: "margin-right".to_string(), value: parts[1].to_string(), important: important });
+                                     decls.push(Declaration { name: "margin-bottom".to_string(), value: parts[2].to_string(), important: important });
+                                     decls.push(Declaration { name: "margin-left".to_string(), value: parts[3].to_string(), important: important });
+                                },
+                                _ => decls.push(Declaration { name: "margin".to_string(), value, important }),
+                            }
+                        },
+                        "padding" => {
+                            let parts: Vec<&str> = value.split_whitespace().collect();
+                            match parts.len() {
+                                1 => {
+                                    for suffix in &["top", "right", "bottom", "left"] {
+                                        decls.push(Declaration { name: format!("padding-{}", suffix), value: parts[0].to_string(), important: important });
+                                    }
+                                },
+                                2 => {
+                                    decls.push(Declaration { name: "padding-top".to_string(), value: parts[0].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-bottom".to_string(), value: parts[0].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-right".to_string(), value: parts[1].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-left".to_string(), value: parts[1].to_string(), important: important });
+                                },
+                                4 => {
+                                    decls.push(Declaration { name: "padding-top".to_string(), value: parts[0].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-right".to_string(), value: parts[1].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-bottom".to_string(), value: parts[2].to_string(), important: important });
+                                    decls.push(Declaration { name: "padding-left".to_string(), value: parts[3].to_string(), important: important });
+                                },
+                                _ => decls.push(Declaration { name: "padding".to_string(), value, important }),
+                            }
+                        },
+                        "border" => {
+                            let parts: Vec<&str> = value.split_whitespace().collect();
+                            for part in parts {
+                                if part.ends_with("px") || part.ends_with("em") || part.ends_with("rem") || part == "0" || part == "thin" || part == "medium" || part == "thick" {
+                                    for suffix in &["top", "right", "bottom", "left"] {
+                                        decls.push(Declaration { name: format!("border-{}-width", suffix), value: part.to_string(), important: important });
+                                    }
+                                } else if part == "solid" || part == "dashed" || part == "dotted" || part == "double" || part == "none" {
+                                    for suffix in &["top", "right", "bottom", "left"] {
+                                        decls.push(Declaration { name: format!("border-{}-style", suffix), value: part.to_string(), important: important });
+                                    }
+                                } else {
+                                    // Assume it's a color
+                                    for suffix in &["top", "right", "bottom", "left"] {
+                                        decls.push(Declaration { name: format!("border-{}-color", suffix), value: part.to_string(), important: important });
+                                    }
+                                }
+                            }
+                        },
+                        "background" => {
+                            let parts: Vec<&str> = value.split_whitespace().collect();
+                            for part in parts {
+                                if part.starts_with("url(") || part.starts_with("linear-gradient(") || part.starts_with("radial-gradient(") {
+                                    decls.push(Declaration { name: "background-image".to_string(), value: part.to_string(), important: important });
+                                } else if part == "no-repeat" || part == "repeat" || part == "repeat-x" || part == "repeat-y" {
+                                    decls.push(Declaration { name: "background-repeat".to_string(), value: part.to_string(), important: important });
+                                } else if part == "center" || part == "top" || part == "bottom" || part == "left" || part == "right" || part.ends_with("%") || part.ends_with("px") {
+                                    decls.push(Declaration { name: "background-position".to_string(), value: part.to_string(), important: important });
+                                } else {
+                                    // Assume color
+                                    decls.push(Declaration { name: "background-color".to_string(), value: part.to_string(), important: important });
+                                }
+                            }
+                        },
+                        "font" => {
+                            let parts: Vec<&str> = value.split_whitespace().collect();
+                            for part in parts {
+                                if part == "italic" || part == "oblique" {
+                                    decls.push(Declaration { name: "font-style".to_string(), value: part.to_string(), important: important });
+                                } else if part == "bold" || part == "bolder" || part == "lighter" || part.parse::<f32>().is_ok() {
+                                    decls.push(Declaration { name: "font-weight".to_string(), value: part.to_string(), important: important });
+                                } else if part.ends_with("px") || part.ends_with("em") || part.ends_with("rem") || part.ends_with("%") || part.ends_with("pt") {
+                                    decls.push(Declaration { name: "font-size".to_string(), value: part.to_string(), important: important });
+                                } else {
+                                    decls.push(Declaration { name: "font-family".to_string(), value: part.to_string(), important: important });
+                                }
+                            }
+                        },
+                        _ => decls.push(Declaration { name, value, important: important }),
+                    }
+                }
+            }
+            let _ = input.expect_semicolon();
+        }
+        
+        Ok(AceRule { 
+            selectors: prelude, 
+            declarations: decls,
+            order: 0 
+        })
+    }
+}
+
+impl<'i> cssparser::AtRuleParser<'i> for AceStyleRuleParser {
+    type Prelude = ();
+    type AtRule = AceRule;
+    type Error = selectors::parser::SelectorParseErrorKind<'i>;
+
+    fn parse_prelude<'t>(
+        &mut self,
+        name: cssparser::CowRcStr<'i>,
+        _input: &mut cssparser::Parser<'i, 't>,
+    ) -> Result<Self::Prelude, cssparser::ParseError<'i, Self::Error>> {
+        Err(cssparser::ParseError {
+            kind: cssparser::ParseErrorKind::Custom(selectors::parser::SelectorParseErrorKind::UnexpectedIdent(name.clone())),
+            location: cssparser::SourceLocation { line: 0, column: 0 },
+        })
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        _prelude: Self::Prelude,
+        _start_location: &cssparser::ParserState,
+        _input: &mut cssparser::Parser<'i, 't>,
+    ) -> Result<Self::AtRule, cssparser::ParseError<'i, Self::Error>> {
+        unreachable!()
+    }
+}
+
 fn parse_simple(source: &str) -> Stylesheet {
     let mut stylesheet = Stylesheet { 
         user_agent_rules: Vec::new(), rules: Vec::new(), 
@@ -833,159 +1012,20 @@ fn parse_simple(source: &str) -> Stylesheet {
         user_agent_rule_map: RuleMap::default(),
         author_rule_map: RuleMap::default(),
     };
-    let mut input = ParserInput::new(source);
-    let mut parser = Parser::new(&mut input);
-
-    while !parser.is_exhausted() {
-        let selectors = match selectors::SelectorList::<AceSelectorImpl>::parse(&AceSelectorParser, &mut parser, selectors::parser::ParseRelative::No) {
-            Ok(s) => {
-                println!("[DEBUG-PARSER] parsed selector OK");
-                s
-            },
-            Err(e) => {
-                println!("[DEBUG-PARSER] Failed parsing selector: {:?}", e);
-                let _ = parser.next();
-                continue;
+    let mut input = cssparser::ParserInput::new(source);
+    let mut parser = cssparser::Parser::new(&mut input);
+    let mut rule_Parser_instance = AceStyleRuleParser;
+    let mut rule_parser = cssparser::StyleSheetParser::new(&mut parser, &mut rule_Parser_instance);
+    while let Some(result) = rule_parser.next() {
+        match result {
+            Ok(mut rule) => {
+                println!("[DEBUG-PARSER] Block parsed OK with {} decls", rule.declarations.len());
+                rule.order = stylesheet.rules.len();
+                stylesheet.rules.push(rule);
             }
-        };
-        
-        match parser.parse_nested_block(|p| {
-                    let mut decls = Vec::new();
-                    while !p.is_exhausted() {
-                        if let Ok(name) = p.expect_ident() {
-                            let name = name.to_string();
-                            if p.expect_colon().is_ok() {
-                                let mut value_raw = String::new();
-                                while !p.is_exhausted() {
-                                    match p.next() {
-                                        Ok(cssparser::Token::Semicolon) => break,
-                                        Ok(token) => value_raw.push_str(&token.to_css_string()),
-                                        Err(_) => break,
-                                    }
-                                }
-                                
-                                // Clean up value and detect !important
-                                let mut important = false;
-                                let mut value = value_raw.trim_end_matches(';').trim().to_string();
-                                if value.to_lowercase().ends_with("!important") {
-                                    important = true;
-                                    value = value[..value.len() - 10].trim().to_string();
-                                }
-                                
-                                // Expand shorthands (Simple implementation)
-                                // Only margin and padding for now
-                                match name.as_str() {
-                                    "margin" => {
-                                        let parts: Vec<&str> = value.split_whitespace().collect();
-                                        match parts.len() {
-                                            1 => {
-                                                for suffix in &["top", "right", "bottom", "left"] {
-                                                    decls.push(Declaration { name: format!("margin-{}", suffix), value: parts[0].to_string(), important: important });
-                                                }
-                                            },
-                                            2 => {
-                                                decls.push(Declaration { name: "margin-top".to_string(), value: parts[0].to_string(), important: important });
-                                                decls.push(Declaration { name: "margin-bottom".to_string(), value: parts[0].to_string(), important: important });
-                                                decls.push(Declaration { name: "margin-right".to_string(), value: parts[1].to_string(), important: important });
-                                                decls.push(Declaration { name: "margin-left".to_string(), value: parts[1].to_string(), important: important });
-                                            },
-                                            4 => {
-                                                 decls.push(Declaration { name: "margin-top".to_string(), value: parts[0].to_string(), important: important });
-                                                 decls.push(Declaration { name: "margin-right".to_string(), value: parts[1].to_string(), important: important });
-                                                 decls.push(Declaration { name: "margin-bottom".to_string(), value: parts[2].to_string(), important: important });
-                                                 decls.push(Declaration { name: "margin-left".to_string(), value: parts[3].to_string(), important: important });
-                                            },
-                                            _ => {} // Ignore invalid syntax
-                                        }
-                                    },
-                                    "padding" => {
-                                        let parts: Vec<&str> = value.split_whitespace().collect();
-                                        match parts.len() {
-                                            1 => {
-                                                for suffix in &["top", "right", "bottom", "left"] {
-                                                    decls.push(Declaration { name: format!("padding-{}", suffix), value: parts[0].to_string(), important: important });
-                                                }
-                                            },
-                                            2 => {
-                                                decls.push(Declaration { name: "padding-top".to_string(), value: parts[0].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-bottom".to_string(), value: parts[0].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-right".to_string(), value: parts[1].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-left".to_string(), value: parts[1].to_string(), important: important });
-                                            },
-                                            4 => {
-                                                decls.push(Declaration { name: "padding-top".to_string(), value: parts[0].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-right".to_string(), value: parts[1].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-bottom".to_string(), value: parts[2].to_string(), important: important });
-                                                decls.push(Declaration { name: "padding-left".to_string(), value: parts[3].to_string(), important: important });
-                                            },
-                                            _ => {}
-                                        }
-                                    },
-                                    "border" => {
-                                        let parts: Vec<&str> = value.split_whitespace().collect();
-                                        for part in parts {
-                                            if part.ends_with("px") || part.ends_with("em") || part.ends_with("rem") || part == "0" || part == "thin" || part == "medium" || part == "thick" {
-                                                for suffix in &["top", "right", "bottom", "left"] {
-                                                    decls.push(Declaration { name: format!("border-{}-width", suffix), value: part.to_string(), important: important });
-                                                }
-                                            } else if part == "solid" || part == "dashed" || part == "dotted" || part == "double" || part == "none" {
-                                                for suffix in &["top", "right", "bottom", "left"] {
-                                                    decls.push(Declaration { name: format!("border-{}-style", suffix), value: part.to_string(), important: important });
-                                                }
-                                            } else {
-                                                // Assume it's a color
-                                                for suffix in &["top", "right", "bottom", "left"] {
-                                                    decls.push(Declaration { name: format!("border-{}-color", suffix), value: part.to_string(), important: important });
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "background" => {
-                                        let parts: Vec<&str> = value.split_whitespace().collect();
-                                        for part in parts {
-                                            if part.starts_with("url(") || part.starts_with("linear-gradient(") || part.starts_with("radial-gradient(") {
-                                                decls.push(Declaration { name: "background-image".to_string(), value: part.to_string(), important: important });
-                                            } else if part == "no-repeat" || part == "repeat" || part == "repeat-x" || part == "repeat-y" {
-                                                decls.push(Declaration { name: "background-repeat".to_string(), value: part.to_string(), important: important });
-                                            } else if part == "center" || part == "top" || part == "bottom" || part == "left" || part == "right" || part.ends_with("%") || part.ends_with("px") {
-                                                decls.push(Declaration { name: "background-position".to_string(), value: part.to_string(), important: important });
-                                            } else {
-                                                // Assume color
-                                                decls.push(Declaration { name: "background-color".to_string(), value: part.to_string(), important: important });
-                                            }
-                                        }
-                                    },
-                                    "font" => {
-                                        let parts: Vec<&str> = value.split_whitespace().collect();
-                                        for part in parts {
-                                            if part == "italic" || part == "oblique" {
-                                                decls.push(Declaration { name: "font-style".to_string(), value: part.to_string(), important: important });
-                                            } else if part == "bold" || part == "bolder" || part == "lighter" || part.parse::<f32>().is_ok() {
-                                                decls.push(Declaration { name: "font-weight".to_string(), value: part.to_string(), important: important });
-                                            } else if part.ends_with("px") || part.ends_with("em") || part.ends_with("rem") || part.ends_with("%") || part.ends_with("pt") {
-                                                decls.push(Declaration { name: "font-size".to_string(), value: part.to_string(), important: important });
-                                            } else {
-                                                decls.push(Declaration { name: "font-family".to_string(), value: part.to_string(), important: important });
-                                            }
-                                        }
-                                    },
-                                    _ => decls.push(Declaration { name, value, important: important }),
-                                }
-                            }
-                        }
-                        let _ = p.expect_semicolon();
-                    }
-                    Ok::<_, ParseError<'_, selectors::parser::SelectorParseErrorKind<'_>>>(decls)
-                }) {
-            Ok(decls) => {
-                println!("[DEBUG-PARSER] Block parsed OK with {} decls", decls.len());
-                stylesheet.rules.push(AceRule { 
-                    selectors, 
-                    declarations: decls,
-                    order: stylesheet.rules.len() 
-                });
-            },
-            Err(e) => println!("[DEBUG-PARSER] Block parse failed: {:?}", e),
+            Err((e, _)) => {
+                println!("[DEBUG-PARSER] Rule failed: {:?}", e);
+            }
         }
     }
 
