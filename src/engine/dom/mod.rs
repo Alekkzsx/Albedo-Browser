@@ -47,6 +47,17 @@ pub struct MutationRecord {
     pub old_value: Option<String>,
 }
 
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct NodeDirtyFlags: u32 {
+        const NONE = 0;
+        const STYLE = 1 << 0;     // Estilo precisa ser recalculado
+        const LAYOUT = 1 << 1;    // Taffy precisa atualizar propriedades físicas
+        const CHILDREN = 1 << 2;  // Lista de filhos mudou (ordem/adição/remoção)
+        const SUBTREE = 1 << 3;   // Algum descendente está sujo
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AceNode {
     pub node_type: AceNodeType,
@@ -55,6 +66,7 @@ pub struct AceNode {
     pub prev_sibling: Option<usize>,
     pub next_sibling: Option<usize>,
     pub shadow_root: Option<usize>, // FASE 5: Shadow DOM support
+    pub dirty: NodeDirtyFlags,
 }
 
 impl AceNode {
@@ -99,6 +111,7 @@ impl AceDOM {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
+                dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
             }],
             root: 0,
             head: None,
@@ -165,6 +178,7 @@ impl AceDOM {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
         });
 
         let mut children_indices = Vec::new();
@@ -254,6 +268,10 @@ impl AceDOM {
             }
         }
         
+        // Propagate dirty flags
+        self.mark_dirty(parent_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
+        self.mark_dirty(child_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
+
         // Notify observers
         self.notify_mutation(parent_idx, MutationRecord {
             type_: "childList".to_string(),
@@ -265,6 +283,33 @@ impl AceDOM {
             attribute_name: None,
             old_value: None,
         });
+    }
+
+    pub fn mark_dirty(&mut self, node_idx: usize, flags: NodeDirtyFlags) {
+        if flags.is_empty() { return; }
+
+        let mut current_idx = Some(node_idx);
+        let mut first = true;
+        
+        while let Some(idx) = current_idx {
+            if let Some(node) = self.nodes.get_mut(idx) {
+                if first {
+                    node.dirty.insert(flags);
+                    first = false;
+                }
+                
+                // If subtree flag is already set, we can stop propagating up
+                // (except for the first node which might have other flags)
+                if node.dirty.contains(NodeDirtyFlags::SUBTREE) && !first {
+                    break;
+                }
+                
+                node.dirty.insert(NodeDirtyFlags::SUBTREE);
+                current_idx = node.parent;
+            } else {
+                break;
+            }
+        }
     }
 
     pub fn remove_node_from_parent(&mut self, node_idx: usize) {
@@ -308,6 +353,9 @@ impl AceDOM {
                 node.next_sibling = None;
             }
             
+            // Mark parent dirty
+            self.mark_dirty(p_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
+
             // Notify observers
             self.notify_mutation(p_idx, MutationRecord {
                 type_: "childList".to_string(),
@@ -355,6 +403,9 @@ impl AceDOM {
                 child_node.next_sibling = next;
             }
         }
+
+        self.mark_dirty(parent_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
+        self.mark_dirty(child_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
 
         self.notify_mutation(parent_idx, MutationRecord {
             type_: "childList".to_string(),
@@ -424,11 +475,14 @@ impl AceDOM {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
         });
 
         if let Some(node) = self.nodes.get_mut(node_idx) {
             node.children.push(text_idx);
         }
+
+        self.mark_dirty(node_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
 
         self.notify_mutation(node_idx, MutationRecord {
             type_: "childList".to_string(),
@@ -511,12 +565,15 @@ impl AceDOM {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
         });
         
         if let Some(node) = self.nodes.get_mut(element_idx) {
             node.shadow_root = Some(shadow_idx);
         }
         
+        self.mark_dirty(element_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
+
         shadow_idx
     }
 
@@ -626,6 +683,8 @@ impl AceDOM {
             }
         }
         
+        self.mark_dirty(node_idx, NodeDirtyFlags::STYLE | NodeDirtyFlags::LAYOUT);
+
         self.notify_mutation(node_idx, MutationRecord {
             type_: "attributes".to_string(),
             target: node_idx,

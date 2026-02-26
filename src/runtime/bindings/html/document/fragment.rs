@@ -65,6 +65,7 @@ impl DocumentFragment {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
+            dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
         });
 
         Self { dom: dom.clone(), index, mutations, stylesheet_dirty, primitives, canvas_contexts, pending_scroll, element_geometry, element_scroll }
