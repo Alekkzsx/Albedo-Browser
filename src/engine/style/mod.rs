@@ -646,11 +646,24 @@ pub fn get_user_agent_stylesheet() -> Stylesheet {
             box-sizing: border-box;
         }
         button { background-color: #efefef; border: 1px solid #767676; padding: 1px 6px; }
-        input[type=\"text\"], input[type=\"password\"], input[type=\"email\"], input[type=\"number\"] { 
+        input[type=\"text\"], input[type=\"password\"], input[type=\"email\"], input[type=\"number\"], 
+        input[type=\"date\"], input[type=\"time\"] { 
             background-color: white; 
             border: 1px solid #767676; 
             padding: 1px 2px; 
             min-height: 1.2em;
+        }
+        input[type=\"color\"] {
+            width: 44px;
+            height: 23px;
+            padding: 1px 2px;
+            background-color: white;
+            border: 1px solid #767676;
+        }
+        input[type=\"range\"] {
+            width: 129px;
+            height: 21px;
+            background: transparent;
         }
         textarea {
             background-color: white; 

@@ -125,6 +125,7 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -158,6 +159,7 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -191,6 +193,7 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -224,6 +227,7 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {

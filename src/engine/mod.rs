@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use crate::engine::dom::{AceDOM, AceNodeType};
 use self::style::Stylesheet;
 use self::style::css_values::{CssAlignItems, CssAlignContent, CssBoxSizing, CssFontWeight, CssFilter, TransformFunction, ComputedStyle};
+use self::text::TextMeasurer;
 use taffy::prelude::*;
 use taffy::geometry::MinMax;
 
@@ -144,10 +145,13 @@ pub struct AceEngine {
     pub external_css: Arc<Mutex<std::collections::HashMap<String, String>>>,
     pub pending_resources: Arc<Mutex<std::collections::HashSet<String>>>,
     pub element_styles: Arc<Mutex<std::collections::HashMap<usize, ComputedStyle>>>,
+    pub node_to_taffy: Arc<Mutex<std::collections::HashMap<usize, taffy::prelude::Node>>>,
+    pub text_measurer: TextMeasurer,
 }
 
 impl AceEngine {
     pub fn new() -> Self {
+        let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         Self {
             dom: Some(Arc::new(Mutex::new(AceDOM::new()))),
             stylesheet: Arc::new(Mutex::new(crate::engine::style::get_user_agent_stylesheet())),
@@ -170,6 +174,8 @@ impl AceEngine {
             external_css: Arc::new(Mutex::new(std::collections::HashMap::new())),
             pending_resources: Arc::new(Mutex::new(std::collections::HashSet::new())),
             element_styles: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            node_to_taffy: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            text_measurer: TextMeasurer::new(font_system),
         }
     }
 
@@ -377,7 +383,16 @@ impl AceEngine {
 
     pub fn recompute_dirty_styles(&mut self) {
         if !self.styles_dirty.load(std::sync::atomic::Ordering::SeqCst) {
-            return;
+            // Check if any individual node is STYLE dirty
+            let is_any_node_style_dirty = if let Some(ref dom_arc) = self.dom {
+                let dom = dom_arc.lock().unwrap();
+                dom.nodes.iter().any(|n| n.dirty.contains(crate::engine::dom::NodeDirtyFlags::STYLE))
+            } else {
+                false
+            };
+            if !is_any_node_style_dirty {
+                return;
+            }
         }
 
         println!("[AceEngine] Actual Recompute of dirty styles starting...");
@@ -593,26 +608,19 @@ impl AceEngine {
             let mut taffy = self.taffy.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
             
-            // 1. Build Taffy Tree
-            taffy.clear();
+            // 1. Build/Update Taffy Tree Incrementally
             let mut node_map = std::collections::HashMap::new();
             
-            // Clear geometry before rebuilding
-            {
-                let mut geometry = self.element_geometry.lock().unwrap();
-                geometry.clear();
-            }
-
             let build_start = std::time::Instant::now();
             let root_nodes = self.build_layout_tree(&mut dom, &mut taffy, &stylesheet, 0, 800.0, 600.0, &mut node_map, None);
             let build_duration = build_start.elapsed();
             
             if root_nodes.is_empty() { return; }
             let root_node = root_nodes[0]; 
-            println!("[AceEngine] Taffy tree built, root nodes: {}", root_nodes.len());
             
             // 2. Compute Layout
             let compute_start = std::time::Instant::now();
+            // We only compute if the root or its descendants are LAYOUT dirty OR if it's the first run
             let size = taffy::geometry::Size {
                 width: taffy::style::AvailableSpace::Definite(800.0),
                 height: taffy::style::AvailableSpace::MaxContent,
@@ -623,8 +631,13 @@ impl AceEngine {
             // 3. Update Element Bounds
             self.sync_taffy_bounds(&taffy, &dom, root_node, 0.0, 0.0, &node_map);
             
+            // 4. Reset Dirty Flags
+            for node in dom.nodes.iter_mut() {
+                node.dirty = crate::engine::dom::NodeDirtyFlags::NONE;
+            }
+
             let total_duration = start_time.elapsed();
-            println!("[AceEngine] Layout Recomputed: Total={:?}, Build={:?}, Compute={:?}", total_duration, build_duration, compute_duration);
+            println!("[AceEngine] Layout Recomputed (Incremental): Total={:?}, Build={:?}, Compute={:?}", total_duration, build_duration, compute_duration);
         }
 
         // 3.5. Float and Clear CSS apply pass
@@ -818,6 +831,34 @@ impl AceEngine {
                 )
             })
         };
+
+        // --- Incremental Check ---
+        let mut existing_node = {
+            let n2t = self.node_to_taffy.lock().unwrap();
+            n2t.get(&node_idx).cloned()
+        };
+
+        let node_flags = {
+            let node = dom.get_node(node_idx).unwrap();
+            node.dirty
+        };
+        
+        let is_strictly_dirty = node_flags.intersects(crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::CHILDREN | crate::engine::dom::NodeDirtyFlags::STYLE);
+        let has_dirty_descendants = node_flags.contains(crate::engine::dom::NodeDirtyFlags::SUBTREE);
+
+        if let Some(taffy_node) = existing_node {
+            if !is_strictly_dirty && !has_dirty_descendants && parent_grid_ctx.is_none() {
+                // TRUE INCREMENTAL: Node and its entire subtree are clean. Skip everything.
+                node_map.insert(taffy_node, node_idx);
+                self.populate_node_map_recursively(dom, taffy, taffy_node, node_idx, node_map);
+                return vec![taffy_node];
+            }
+            
+            if !is_strictly_dirty && has_dirty_descendants && parent_grid_ctx.is_none() {
+                // Style/Layout is clean, but children need work.
+                // We don't return early here, but we will skip set_style later.
+            }
+        }
 
         // --- Element Geometry: Style Extraction ---
         {
@@ -1104,13 +1145,20 @@ impl AceEngine {
             };
             // Text nodes need an intrinsic size estimate to be visible
             let font_size = style.font_size;
-            let char_width = font_size * 0.45; // slightly smaller estimate for better fit
-            let text_width = transformed_text.len() as f32 * char_width;
+            let line_height = font_size * 1.2;
             
-            // Se o texto é pequeno, mantemos na largura original
-            // Se o texto é longo, permitimos que ele ocupe a largura disponível (vw por enquanto)
-            let width = if text_width > vw { vw * 0.9 } else { text_width };
-            let height = font_size * (text_width / width).ceil() * 1.2; // 1.2 for line height
+            // Usar o TextMeasurer global para dimensões reais
+            let (text_width, text_height) = self.text_measurer.measure_text(
+                &transformed_text,
+                font_size,
+                line_height,
+                Some(&style.font_family),
+                cosmic_text::Weight::NORMAL,
+                Some(vw)
+            );
+            
+            let width = text_width;
+            let height = text_height;
             
             taffy_style.size.width = taffy::prelude::Dimension::Points(width);
             taffy_style.size.height = taffy::prelude::Dimension::Points(height);
@@ -1118,7 +1166,17 @@ impl AceEngine {
             // Se o texto for curto, não queremos que ele "estique" se for um bloco
             taffy_style.max_size.width = taffy::prelude::Dimension::Points(width);
 
-            let taffy_node = taffy.new_leaf(taffy_style).unwrap();
+            let taffy_node = if let Some(node) = existing_node {
+                if is_strictly_dirty {
+                    let _ = taffy.set_style(node, taffy_style);
+                }
+                node
+            } else {
+                let node = taffy.new_leaf(taffy_style).unwrap();
+                self.node_to_taffy.lock().unwrap().insert(node_idx, node);
+                node
+            };
+            
             node_map.insert(taffy_node, node_idx);
             return vec![taffy_node];
         }
@@ -1149,9 +1207,47 @@ impl AceEngine {
             return children;
         }
 
-        let taffy_node = taffy.new_with_children(taffy_style, &children).unwrap();
+        let taffy_node = if let Some(node) = existing_node {
+            if is_strictly_dirty {
+                let _ = taffy.set_style(node, taffy_style);
+            }
+            // Only update children if list is potentially changed
+            let is_children_dirty = {
+                let dom_node = dom.get_node(node_idx).unwrap();
+                dom_node.dirty.intersects(crate::engine::dom::NodeDirtyFlags::CHILDREN | crate::engine::dom::NodeDirtyFlags::LAYOUT)
+            };
+            if is_children_dirty || taffy.children(node).unwrap_or_default().len() != children.len() {
+                let _ = taffy.set_children(node, &children);
+            }
+            node
+        } else {
+            let node = taffy.new_with_children(taffy_style, &children).unwrap();
+            self.node_to_taffy.lock().unwrap().insert(node_idx, node);
+            node
+        };
+
         node_map.insert(taffy_node, node_idx);
         vec![taffy_node]
+    }
+
+    fn populate_node_map_recursively(&self, 
+        dom: &AceDOM, 
+        taffy: &taffy::Taffy, 
+        node: taffy::prelude::Node, 
+        node_idx: usize, 
+        node_map: &mut std::collections::HashMap<taffy::prelude::Node, usize>
+    ) {
+        node_map.insert(node, node_idx);
+        if let Ok(children) = taffy.children(node) {
+            if let Some(dom_node) = dom.get_node(node_idx) {
+                // Simplified 1:1 mapping for stable subtrees
+                for (i, &taffy_child) in children.iter().enumerate() {
+                    if i < dom_node.children.len() {
+                        self.populate_node_map_recursively(dom, taffy, taffy_child, dom_node.children[i], node_map);
+                    }
+                }
+            }
+        }
     }
 
     fn apply_grid_context(&self, t_style: &mut taffy::prelude::Style, style: &crate::engine::style::css_values::ComputedStyle, ctx: &GridContext) {
@@ -1616,63 +1712,73 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         _ => String::new(),
                     };
 
-                    // --- NATIVE TEXT-OVERFLOW: ELLIPSIS ---
+                    // --- OPTIMIZED TEXT-OVERFLOW: ELLIPSIS (AceEngine) ---
                     if !text.is_empty() 
                        && matches!(computed_style.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) 
                        && matches!(computed_style.white_space, crate::engine::style::css_values::CssWhiteSpace::NoWrap) 
                     {
-                        let mut font_system = cosmic_text::FontSystem::new();
-                        let mut buffer = cosmic_text::Buffer::new(&mut font_system, cosmic_text::Metrics::new(computed_style.font_size, computed_style.font_size * 1.2));
-                        buffer.set_text(&mut font_system, &text, cosmic_text::Attrs::new(), cosmic_text::Shaping::Advanced);
-                        buffer.set_size(&mut font_system, Some(f32::MAX), Some(f32::MAX));
-                        buffer.shape_until_scroll(&mut font_system, false);
+                        let font_size = computed_style.font_size;
+                        let line_height = font_size * 1.2;
                         
-                        let mut current_width: f32 = 0.0;
-                        for run in buffer.layout_runs() {
-                            current_width = current_width.max(run.line_w);
-                        }
-
-                        if current_width > w {
-                            let ellipsis_str = "…";
-                            let mut ell_buffer = cosmic_text::Buffer::new(&mut font_system, cosmic_text::Metrics::new(computed_style.font_size, computed_style.font_size * 1.2));
-                            ell_buffer.set_text(&mut font_system, ellipsis_str, cosmic_text::Attrs::new(), cosmic_text::Shaping::Advanced);
-                            ell_buffer.set_size(&mut font_system, Some(f32::MAX), Some(f32::MAX));
-                            ell_buffer.shape_until_scroll(&mut font_system, false);
+                        let (total_w, _) = self.text_measurer.measure_text(
+                            &text,
+                            font_size,
+                            line_height,
+                            Some(&computed_style.font_family),
+                            cosmic_text::Weight::NORMAL,
+                            None
+                        );
+                        
+                        if total_w > w {
+                            let ellipsis = "…";
+                            let (ell_w, _) = self.text_measurer.measure_text(
+                                ellipsis,
+                                font_size,
+                                line_height,
+                                Some(&computed_style.font_family),
+                                cosmic_text::Weight::NORMAL,
+                                None
+                            );
                             
-                            let mut ellipsis_width: f32 = 0.0;
-                            for run in ell_buffer.layout_runs() {
-                                ellipsis_width = ellipsis_width.max(run.line_w);
-                            }
+                            let safe_width = w - ell_w;
 
-                            let safe_width = w - ellipsis_width;
                             if safe_width > 0.0 {
-                                let mut accum_w = 0.0;
-                                let mut cut_idx = 0;
+                                let mut best_len = 0;
+                                let mut left = 0;
+                                let mut right = text.len();
                                 
-                                'outer: for run in buffer.layout_runs() {
-                                    for glyph in run.glyphs.iter() {
-                                        accum_w += glyph.w;
-                                        if accum_w > safe_width {
-                                            cut_idx = glyph.start;
-                                            break 'outer;
-                                        }
+                                while left <= right {
+                                    let mid = (left + right) / 2;
+                                    let mut mid_adj = mid;
+                                    while mid_adj > 0 && !text.is_char_boundary(mid_adj) { mid_adj -= 1; }
+                                    
+                                    let (sub_w, _) = self.text_measurer.measure_text(
+                                        &text[..mid_adj],
+                                        font_size,
+                                        line_height,
+                                        Some(&computed_style.font_family),
+                                        cosmic_text::Weight::NORMAL,
+                                        None
+                                    );
+                                    
+                                    if sub_w <= safe_width {
+                                        best_len = mid_adj;
+                                        left = mid + 1;
+                                        while left < text.len() && !text.is_char_boundary(left) { left += 1; }
+                                    } else {
+                                        right = mid.saturating_sub(1);
                                     }
                                 }
-
-                                if cut_idx > 0 && cut_idx <= text.len() {
-                                    while cut_idx > 0 && !text.is_char_boundary(cut_idx) {
-                                        cut_idx -= 1;
-                                    }
-                                    let mut truncated = text[..cut_idx].to_string();
-                                    truncated.push_str(ellipsis_str);
-                                    text = truncated;
-                                }
+                                
+                                let mut truncated = text[..best_len].to_string();
+                                truncated.push_str(ellipsis);
+                                text = truncated;
                             } else {
-                                text = ellipsis_str.to_string();
+                                text = ellipsis.to_string();
                             }
                         }
                     }
-                    // --------------------------------------
+                    // -----------------------------------------------------
                     
                     let mut canvas_data = None;
                     if element_tag == "canvas" {
@@ -1734,6 +1840,21 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 el.attributes.get("type").cloned().unwrap_or("text".to_string())
                             } else { String::new() }
                         } else { String::new() },
+                        input_min: if element_tag == "input" {
+                            if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                el.attributes.get("min").cloned().unwrap_or_default()
+                            } else { String::new() }
+                        } else { String::new() },
+                        input_max: if element_tag == "input" {
+                            if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                el.attributes.get("max").cloned().unwrap_or_default()
+                            } else { String::new() }
+                        } else { String::new() },
+                        input_step: if element_tag == "input" {
+                            if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                                el.attributes.get("step").cloned().unwrap_or_default()
+                            } else { String::new() }
+                        } else { String::new() },
                         options: if element_tag == "select" {
                             let mut opts = Vec::new();
                             for &child_idx in &node.children {
@@ -1767,6 +1888,8 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                             crate::engine::style::css_values::CssWhiteSpace::PreWrap => "pre-wrap".to_string(),
                             crate::engine::style::css_values::CssWhiteSpace::PreLine => "pre-line".to_string(),
                         },
+                        is_hovered: self.hovered_element == Some(node_idx),
+                        is_focused: self.focused_element == Some(node_idx),
                     };
                     
                     if let Some(outline) = &computed_style.outline {
@@ -1788,9 +1911,14 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                             is_fixed: false, opacity: 1.0, border_radius: [0.0;4],
                             transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
                             canvas_data: None, input_value: String::new(), placeholder: String::new(),
-                            input_type: String::new(), options: String::new(),
+                            input_type: String::new(), 
+                            input_min: String::new(),
+                            input_max: String::new(),
+                            input_step: String::new(),
+                            options: String::new(),
                             padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
                             font_weight: String::new(), white_space: String::new(),
+                            is_hovered: false, is_focused: false,
                         };
                         primitives.push(outline_prim);
                     }
@@ -1909,9 +2037,11 @@ impl Clone for AceEngine {
             canvas_contexts: self.canvas_contexts.clone(),
             taffy: self.taffy.clone(),
             viewport_y: self.viewport_y,
+            node_to_taffy: self.node_to_taffy.clone(),
             external_css: self.external_css.clone(),
             pending_resources: self.pending_resources.clone(),
             element_styles: self.element_styles.clone(),
+            text_measurer: self.text_measurer.clone(),
         }
     }
 }
@@ -2015,6 +2145,9 @@ pub struct VisualPrimitive {
     pub input_value: String,
     pub placeholder: String,
     pub input_type: String,
+    pub input_min: String,
+    pub input_max: String,
+    pub input_step: String,
     pub options: String,
     
     // Padding for box model rendering
@@ -2028,6 +2161,8 @@ pub struct VisualPrimitive {
     pub font_weight: String,
     // CSS white-space ("normal", "nowrap", "pre", etc.)
     pub white_space: String,
+    pub is_hovered: bool,
+    pub is_focused: bool,
 }
 
 impl std::fmt::Debug for AceEngine {

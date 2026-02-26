@@ -6,7 +6,7 @@
 ║                                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════════╝
 
-  📅 Última Atualização  →  2026-02-23  (Auditoria rigorosa: plan vs código real)
+  📅 Última Atualização  →  2026-02-26  (Auditoria rigorosa: plan vs código real)
   🔧 Versão Atual        →  0.1.0-alpha  →  Target: v0.2.0 em 2 semanas
   📊 Codebase            →  ~15.700 LOC Rust  |  ~103 arquivos  |  80 crates
   📈 Completude Geral    →  ≈ 35% (core features)
@@ -263,11 +263,13 @@
         🟡 offsetTop / offsetLeft / offsetParent (verificar precisão)
         ❌ getBoundingClientRect em elementos dentro de iframes aninhados
 
-  🟡  Rendering de Form Widgets
+  ✅  Rendering de Form Widgets
         ✅ Caixa visual delegada ao CSS com inputs transparentes Slint
-        ❌ <input type="color"> sem color picker UI
-        ❌ <input type="date"> / <input type="time"> sem UI nativa
-        ❌ <input type="range"> sem slider visual
+        ✅ <input type="color"> com chip visual, shadow, hover highlight (renderer.rs)
+        ✅ <input type="date"> / <input type="time"> com ícones vetorias (calendário/relógio) + texto (renderer.rs)
+        ✅ <input type="range"> com gradient track + circular thumb + shadow + posição min/max (renderer.rs)
+        ✅ VisualPrimitive com campos: element_type, input_type, input_value, input_min, input_max, is_hovered
+        🟡 Falta: interatividade JS (drag do slider, popup de color picker, popup de date/time picker)
 
   🟡  Table Layout
         ✅ Motor custom "Two-Pass" de pré-cálculo para tabela proporcional
@@ -286,8 +288,9 @@
 
   [A] RENDERING PIPELINE
   ─────────────────────
-  ✅   Float & Clear CSS (float: left/right, clear: both/left/right)
-         → engine/mod.rs (build_layout_tree)
+  🟡   Float & Clear CSS (float: left/right, clear: both/left/right)
+         ✅ Parsing CSS de float/clear em style/mod.rs e css_values.rs
+         ❌ Layout engine (engine/mod.rs) NÃO consome esses valores — sem efeito visual
   [ ]  text-overflow: ellipsis / clip
          → engine/style/ + engine/inline.rs
   [ ]  text-transform: uppercase, lowercase, capitalize
@@ -307,10 +310,14 @@
 
   [B] PERFORMANCE (BLOQUEADOR CRÍTICO)
   ────────────────────────────────────
-  [ ]  Incremental layout — dirty flags por nó (não recomputar tudo a cada frame)
-         ⚠️ SEM ISSO: qualquer mutação de DOM ou animação CSS recomputa o layout
-         inteiro a cada frame. Inviável para sites reais.
-         → engine/mod.rs (recompute_layout)
+  [x]  Incremental layout — dirty flags por nó (não recomputar tudo a cada frame) ✅
+         ✅ DOM: NodeDirtyFlags (STYLE|LAYOUT|CHILDREN|SUBTREE) + mark_dirty() propagando p/ ancestrais
+         ✅ Engine: build_layout_tree() consulta dirty flags (L831-856):
+            • Nó limpo + sem descendentes sujos → pula subárvore inteira (cache node_to_taffy)
+            • Nó limpo + descendentes sujos → pula set_style, processa filhos
+         ✅ recompute_dirty_styles() skipa quando zero nós têm flag STYLE
+         ✅ recompute_layout() reseta todos os flags p/ NONE após layout (L630-633)
+         ✅ styles_dirty (AtomicBool) + per-node flags consumidos em ambos os caminhos
   [ ]  Style sharing cache (elementos com mesmo seletor compartilham estilo)
          → engine/style/mod.rs
   [ ]  Paint invalidation inteligente (repintar apenas região modificada)
@@ -400,8 +407,9 @@
   ─────────────────────
   ✅   Favicon loading e exibição nas abas
          → Integrado com Slint Image Type e Taffy Backend
-  ✅   Loading indicator / progress bar durante navegação
-         → Exibido nativamente na NavBar components (DNS, timeout, SSL, 404)
+  🟡   Loading indicator / progress bar durante navegação
+         ✅ Backend: campos is_loading/loading_progress em tab.rs/manager.rs
+         ❌ UI visual: nav_bar.slint NÃO contém progress bar — dados não exibidos
   [ ]  Páginas de erro customizadas (DNS, timeout, SSL, 404)
   [ ]  Find in page — Ctrl+F com highlight de resultados
          → browser/find.rs (CRIAR)
@@ -520,10 +528,10 @@
 
   [K-UI] UI AVANÇADA
   ──────────────────
-  [ ]  <input type="color"> color picker UI
-         → engine/mod.rs + ui/ (Slint overlay)
-  [ ]  <input type="date"> / <input type="time"> / <input type="range"> UI real
-         → engine/mod.rs + ui/ (componentes Slint)
+  ✅   <input type="color"> rendering visual (chip + shadow + hover — renderer.rs)
+         🟡 Falta: popup de color picker interativo ao clicar
+  ✅   <input type="date"> / <input type="time"> / <input type="range"> rendering visual
+         🟡 Falta: popups interativos de calendário/relógio, drag do slider
   [ ]  <datalist> + autocomplete nativo para <input list="">
          → engine/mod.rs + runtime/bindings/html/element/
   [ ]  Drag and Drop API (dragstart, dragover, drop events)
@@ -741,7 +749,7 @@
   [ ]  <details>/<summary>, <dialog>
 
   PERFORMANCE  ⚠️ ÁREA MAIS CRÍTICA
-  [ ]  Incremental layout com dirty flags  ⚠️ BLOQUEADOR #1
+  [x]  Incremental layout com dirty flags  ✅ IMPLEMENTADO
   [ ]  Virtual scrolling / culling         ⚠️ BLOQUEADOR #2
   [ ]  Style sharing cache
   [ ]  Font caching
@@ -760,8 +768,8 @@
   [ ]  Validação de inputs de URL
 
   UI
-  [ ]  Favicon nas abas
-  [ ]  Loading indicator / progress bar
+  [x]  Favicon nas abas ✅ (via Google Favicons API + SharedPixelBuffer)
+  [/]  Loading indicator / progress bar (backend pronto, UI visual ausente)
   [ ]  Páginas de erro (DNS fail, timeout, SSL error)
   [ ]  Find in page (Ctrl+F)
   [ ]  Zoom (Ctrl+/-), Keyboard shortcuts padrão
@@ -898,11 +906,12 @@
   EXISTENTES:
   ✅  engine/dom_tests.rs                  Parsing HTML, metadata, atributos
   ✅  runtime/core/runtime_tests.rs        JS execution, DOM sync, timers
-  ✅  runtime/bindings/html/document/      DOM API completa, eventos, bubbling
-  ✅  tests/form_validation_tests.rs       9/9 passando
-  ✅  tests/table_colspan_tests.rs         5/5 passando
-  ✅  engine/inline.rs                     4/4 passando (IFC)
-  ✅  tests/http3_tests.rs                 10/10 passando (HTTP/3 QUIC)
+  ✅  runtime/bindings/html/document/tests.rs  DOM API, eventos, bubbling
+  ✅  tests/form_validation_tests.rs       9/9 testes passando
+  ✅  tests/table_colspan_tests.rs         5/5 testes passando
+  ✅  engine/inline.rs (unit tests)        4/4 testes IFC passando
+  ✅  tests/iframe_intersection_tests.rs   Testes de interseção entre iframe boundaries
+  ⚠️  tests/http3_tests.rs                ARQUIVO NÃO EXISTE — claim anterior inválido
   ⚠️  tests/white_space_tests.rs.bak      ARQUIVO .BAK — 5 testes fora do build!
 
   A CRIAR (por prioridade):
@@ -939,33 +948,26 @@
   │   ├── bridge.rs                   Ponte ACE Engine ↔ UI (sync visual)
   │   ├── events.rs                   Handlers de eventos
   │   ├── setup.rs                    Inicialização de janela e panic hook
-  │   ├── find.rs                     [TODO] Find in page (Ctrl+F)
-  │   ├── downloads.rs                [TODO] Download manager
-  │   ├── bookmarks.rs                [TODO] Bookmarks
-  │   ├── history_ui.rs               [TODO] History UI
-  │   ├── settings.rs                 [TODO] Settings / Preferences
   │   └── tabs/
   │       ├── tab.rs                  Tab individual
   │       ├── manager.rs              TabManager
   │       └── collection.rs          Coleção de abas
   │
   ├── engine/                         ACE — Albedo Core Engine
-  │   ├── mod.rs                      Engine principal (1467+ linhas)
+  │   ├── mod.rs                      Engine principal (~2600 linhas)
   │   ├── inline.rs                   IFC — Inline Formatting Context ✅
   │   ├── dom/mod.rs                  AceDOM: parsing HTML5, seletores, manipulação
   │   ├── dom_tests.rs                Testes unitários do DOM
-  │   ├── compositor.rs               [TODO] GPU layer compositor
-  │   ├── print.rs                    [TODO] Print to PDF
   │   ├── style/
-  │   │   ├── mod.rs                  Parser CSS, cascade, matching (2870+ linhas)
-  │   │   └── css_values.rs           Tipos CSS (CssLength, CssColor, ComputedStyle)
+  │   │   ├── mod.rs                  Parser CSS, cascade, matching (~3400 linhas)
+  │   │   ├── css_values.rs           Tipos CSS (CssLength, CssColor, ComputedStyle)
+  │   │   ├── animation.rs            @keyframes, transitions, interpolação
+  │   │   └── grid_tests.rs           Testes de CSS Grid
   │   ├── text.rs                     Text measurement (cosmic-text)
   │   ├── svg.rs                      SVG parsing (resvg) ✅
   │   └── graphics/
   │       ├── canvas2d.rs             Canvas 2D (tiny-skia) ✅
-  │       ├── gpu.rs                  GPU acceleration (wgpu) ✅
-  │       ├── webgl.rs                [TODO] WebGL via wgpu
-  │       └── webgpu.rs               [TODO] WebGPU
+  │       └── gpu.rs                  GPU acceleration (wgpu) ✅
   │
   ├── runtime/                        JavaScript Runtime (QuickJS)
   │   ├── core/
@@ -974,11 +976,14 @@
   │   │   ├── event_loop.rs           Event loop assíncrono
   │   │   ├── eval.rs                 Avaliação de scripts
   │   │   ├── init.rs                 Inicialização de bindings
-  │   │   └── service_worker.rs       [TODO] Service Workers
+  │   │   ├── intersection_registry.rs Registry de IntersectionObserver
+  │   │   ├── registry.rs             Registry genérico
+  │   │   ├── sandbox.rs              Sandbox de execução JS
+  │   │   └── runtime_tests.rs        Testes unitários do runtime
   │   └── bindings/
   │       ├── html/
-  │       │   ├── document/           Document API
-  │       │   ├── element/            Element API
+  │       │   ├── document/           Document API (8 arquivos)
+  │       │   ├── element/            Element API (14 arquivos)
   │       │   ├── event.rs            Event / EventTarget
   │       │   ├── event_subclasses.rs MouseEvent, KeyboardEvent, CustomEvent, etc.
   │       │   ├── token_list.rs       DOMTokenList (classList)
@@ -988,8 +993,6 @@
   │       │   ├── mutation_observer.rs ✅ FUNCIONAL
   │       │   ├── intersection_observer.rs ✅ (🟡 verificar tick por frame)
   │       │   ├── resize_observer.rs  ✅ (🟡 box options ausentes)
-  │       │   ├── shadow_dom.rs       [TODO] Shadow DOM / attachShadow
-  │       │   ├── custom_elements.rs  [TODO] customElements.define
   │       │   ├── range.rs            🟡 estrutura parcial
   │       │   └── selection.rs        🟡 estrutura parcial
   │       └── webapi/
@@ -1011,21 +1014,7 @@
   │           ├── url_search_params.rs ✅
   │           ├── websocket.rs        ✅
   │           ├── window_proxy.rs     ✅
-  │           ├── worker.rs           🟡 (onmessage no-op, fetch hack MVP)
-  │           ├── text_encoding.rs    [TODO] TextEncoder / TextDecoder
-  │           ├── streams.rs          [TODO] ReadableStream / WritableStream
-  │           ├── broadcast_channel.rs [TODO]
-  │           ├── message_channel.rs  [TODO]
-  │           ├── performance.rs      [TODO] Performance API
-  │           ├── locks.rs            [TODO] Web Locks API
-  │           ├── match_media.rs      [TODO] matchMedia()
-  │           ├── visual_viewport.rs  [TODO] visualViewport API
-  │           ├── gamepad.rs          [TODO] Gamepad API
-  │           ├── web_share.rs        [TODO] Web Share API
-  │           ├── speech.rs           [TODO] Speech API
-  │           ├── credentials.rs      [TODO] Credential Management
-  │           ├── event_source.rs     [TODO] Server-Sent Events
-  │           └── web_transport.rs    [TODO] WebTransport
+  │           └── worker.rs           🟡 (onmessage no-op, fetch hack MVP)
   │
   ├── network/
   │   ├── client.rs                   HTTP client (reqwest + HTTP/2)
@@ -1035,16 +1024,8 @@
   │   ├── http3.rs                    HTTP/3 / QUIC client com pooling ✅
   │   ├── blob.rs                     BlobStore em memória ✅
   │   ├── dns.rs                      DNS prefetching ✅
-  │   ├── privacy.rs                  [TODO] Tracking protection
-  │   ├── safe_browsing.rs            [TODO] Safe browsing
   │   └── protocols/
   │       └── websocket.rs            WebSocket client ✅
-  │
-  ├── devtools/                       [TODO — módulo completo a criar]
-  │   ├── inspector.rs                [TODO] DOM Inspector
-  │   ├── console.rs                  [TODO] Console REPL
-  │   ├── network.rs                  [TODO] Network panel
-  │   └── profiler.rs                 [TODO] Performance profiler
   │
   └── ui/
       ├── appwindow.slint             Janela principal
@@ -1058,9 +1039,22 @@
   tests/
   ├── form_validation_tests.rs        9/9 ✅
   ├── table_colspan_tests.rs          5/5 ✅
+  ├── iframe_intersection_tests.rs    Testes interseção iframe ✅
   ├── white_space_tests.rs.bak        ⚠️ RENOMEADO — restaurar!
-  ├── http3_tests.rs                  10/10 ✅
   └── iframe_env/                     HTML de teste para iframes
+
+  ⚠️  ARQUIVOS PLANEJADOS (NÃO CRIADOS AINDA):
+  Estes arquivos são mencionados nas seções ❌ acima mas ainda não existem no disco:
+  → browser/: find.rs, downloads.rs, bookmarks.rs, history_ui.rs, settings.rs
+  → engine/: compositor.rs, print.rs
+  → engine/graphics/: webgl.rs, webgpu.rs
+  → runtime/core/: service_worker.rs
+  → runtime/bindings/html/: shadow_dom.rs, custom_elements.rs
+  → runtime/bindings/webapi/: text_encoding.rs, streams.rs, broadcast_channel.rs,
+    message_channel.rs, performance.rs, locks.rs, match_media.rs, visual_viewport.rs,
+    gamepad.rs, web_share.rs, speech.rs, credentials.rs, event_source.rs, web_transport.rs
+  → network/: privacy.rs, safe_browsing.rs
+  → devtools/: inspector.rs, console.rs, network.rs, profiler.rs (diretório inteiro)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                           💡  PRINCÍPIOS DO PROJETO
@@ -1106,9 +1100,9 @@
       CSS engine com 100+ propriedades e JS runtime com QuickJS.
       A fundação está pronta. Agora é hora de transformá-la num browser real.
 
-  ⚠️  PRÓXIMOS 3 PASSOS MAIS IMPACTANTES (auditoria 2026-02-23):
-      1. Incremental layout com dirty flags  → maior bloqueador para sites reais
-      2. TextEncoder / TextDecoder           → ~100 linhas, desbloqueia frameworks
-      3. ES Modules (import/export)          → sem isso, zero framework moderno funciona
+  ⚠️  PRÓXIMOS 3 PASSOS MAIS IMPACTANTES (auditoria 2026-02-26):
+      1. Virtual scrolling / culling          → maior bloqueador restante para sites reais
+      2. TextEncoder / TextDecoder            → ~100 linhas, desbloqueia frameworks
+      3. ES Modules (import/export)           → sem isso, zero framework moderno funciona
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
