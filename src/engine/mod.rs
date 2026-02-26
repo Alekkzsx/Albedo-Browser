@@ -1478,6 +1478,52 @@ impl AceEngine {
         }
     }
 
+pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor) -> Option<tiny_skia::Color> {
+    use crate::engine::style::css_values::CssColor;
+    match css_color {
+        CssColor::Rgba(r, g, b, a) => Some(tiny_skia::Color::from_rgba8(*r, *g, *b, (*a * 255.0) as u8)),
+        CssColor::Named(name) => {
+            let name = name.to_lowercase();
+            if name == "transparent" { return None; }
+            if name.starts_with("#") {
+                let hex = name.trim_start_matches('#');
+                if hex.len() == 3 {
+                    let r = u8::from_str_radix(&format!("{}{}", &hex[0..1], &hex[0..1]), 16).unwrap_or(0);
+                    let g = u8::from_str_radix(&format!("{}{}", &hex[1..2], &hex[1..2]), 16).unwrap_or(0);
+                    let b = u8::from_str_radix(&format!("{}{}", &hex[2..3], &hex[2..3]), 16).unwrap_or(0);
+                    Some(tiny_skia::Color::from_rgba8(r, g, b, 255))
+                } else {
+                    let r = u8::from_str_radix(if hex.len() >= 2 { &hex[0..2] } else { hex }, 16).unwrap_or(0);
+                    let g = u8::from_str_radix(if hex.len() >= 4 { &hex[2..4] } else { "0" }, 16).unwrap_or(0);
+                    let b = u8::from_str_radix(if hex.len() >= 6 { &hex[4..6] } else { "0" }, 16).unwrap_or(0);
+                    let a = if hex.len() == 8 {
+                        u8::from_str_radix(&hex[6..8], 16).unwrap_or(255)
+                    } else {
+                        255
+                    };
+                    Some(tiny_skia::Color::from_rgba8(r, g, b, a))
+                }
+            } else {
+                match name.as_str() {
+                    "white" => Some(tiny_skia::Color::from_rgba8(255, 255, 255, 255)),
+                    "black" | "currentcolor" => Some(tiny_skia::Color::from_rgba8(0, 0, 0, 255)),
+                    "red" => Some(tiny_skia::Color::from_rgba8(255, 0, 0, 255)),
+                    "green" => Some(tiny_skia::Color::from_rgba8(0, 128, 0, 255)),
+                    "blue" => Some(tiny_skia::Color::from_rgba8(0, 0, 255, 255)),
+                    "darkblue" => Some(tiny_skia::Color::from_rgba8(0, 0, 139, 255)),
+                    "darkgreen" => Some(tiny_skia::Color::from_rgba8(0, 100, 0, 255)),
+                    "darkred" => Some(tiny_skia::Color::from_rgba8(139, 0, 0, 255)),
+                    "yellow" => Some(tiny_skia::Color::from_rgba8(255, 255, 0, 255)),
+                    "gray" | "grey" => Some(tiny_skia::Color::from_rgba8(128, 128, 128, 255)),
+                    "lightslategray" => Some(tiny_skia::Color::from_rgba8(119, 136, 153, 255)),
+                    _ => None,
+                }
+            }
+        },
+        _ => None,
+    }
+}
+
     pub fn render_visual(&self, vw: f32, vh: f32) -> Vec<VisualPrimitive> {
         let mut primitives = Vec::new();
         
@@ -1499,7 +1545,7 @@ impl AceEngine {
                 if self.has_technical_ancestor(&dom, node_idx) { continue; }
 
                 // Usar estilo cacheado ou calcular se faltar (ex: novos nós)
-                let computed_style = if let Some(cached) = element_styles.get(&node_idx) {
+                let mut computed_style = if let Some(cached) = element_styles.get(&node_idx) {
                     cached.clone()
                 } else {
                     // Fallback para calculate_style simples (ponto de melhoria futuro: herança aqui também)
@@ -1518,6 +1564,15 @@ impl AceEngine {
                         "light"
                     )
                 };
+
+                // Inherit parent styles for pure text nodes
+                if !is_element {
+                    if let Some(parent_idx) = node.parent {
+                        if let Some(parent_style) = element_styles.get(&parent_idx) {
+                            computed_style = parent_style.clone();
+                        }
+                    }
+                }
                 
                 if matches!(computed_style.display, crate::engine::style::css_values::CssDisplay::None) {
                     continue;
@@ -1529,24 +1584,11 @@ impl AceEngine {
                     let w = geom.width;
                     let h = geom.height;
 
-                    let color_str = match &computed_style.background_color {
-                        crate::engine::style::css_values::CssColor::Named(name) => {
-                            if name.starts_with("#") { name.clone() }
-                            else {
-                                match name.to_lowercase().as_str() {
-                                    "white" => "#ffffff".to_string(),
-                                    "black" => "#000000".to_string(),
-                                    "red" => "#ff0000".to_string(),
-                                    "green" => "#008000".to_string(),
-                                    "blue" => "#0000ff".to_string(),
-                                    _ => "transparent".to_string(),
-                                }
-                            }
-                        },
-                        crate::engine::style::css_values::CssColor::Rgba(r, g, b, _) => format!("#{:02x}{:02x}{:02x}", r, g, b),
-                        _ => "transparent".to_string(),
-                    };
+                    let background_color = Self::css_color_to_skia(&computed_style.background_color);
+                    let border_color = Self::css_color_to_skia(&computed_style.border_color_top);
+                    let text_color = Self::css_color_to_skia(&computed_style.color).unwrap_or(tiny_skia::Color::BLACK);
                     
+
                     let mut text = match &node.node_type {
                         crate::engine::dom::AceNodeType::Text(t) => {
                             match computed_style.text_transform {
@@ -1647,8 +1689,11 @@ impl AceEngine {
 
                     let prim = VisualPrimitive {
                         x, y, width: w, height: h,
-                        color: color_str,
-                        text,
+                        background_color,
+                        border_width: geom.border_top.max(geom.border_right).max(geom.border_bottom).max(geom.border_left),
+                        border_color,
+                        text_content: if text.is_empty() { None } else { Some(text) },
+                        text_color,
                         text_overflow: match computed_style.text_overflow {
                             crate::engine::style::css_values::CssTextOverflow::Ellipsis => "ellipsis".to_string(),
                             _ => {
@@ -1707,7 +1752,7 @@ impl AceEngine {
                         padding_right: geom.padding_right,
                         padding_bottom: geom.padding_bottom,
                         padding_left: geom.padding_left,
-                        text_color: computed_style.color.to_rgba_string(),
+                        // text_color: computed_style.color.to_rgba_string(), // Removed duplicate and incorrect type
                         font_weight: match &computed_style.font_weight {
                             crate::engine::style::css_values::CssFontWeight::Normal => "normal".to_string(),
                             crate::engine::style::css_values::CssFontWeight::Bold => "bold".to_string(),
@@ -1725,25 +1770,17 @@ impl AceEngine {
                     };
                     
                     if let Some(outline) = &computed_style.outline {
-                        let outline_color = match &outline.color {
-                            crate::engine::style::css_values::CssColor::Named(name) => {
-                                if name.starts_with("#") { name.clone() }
-                                else {
-                                    match name.to_lowercase().as_str() {
-                                        "blue" => "#0066ff".to_string(),
-                                        _ => "#0066ff".to_string(),
-                                    }
-                                }
-                            },
-                             _ => "#0066ff".to_string(),
-                        };
+                        let outline_color = Self::css_color_to_skia(&outline.color);
                         let outline_prim = VisualPrimitive {
                             x: x - outline.offset,
                             y: y - outline.offset,
                             width: w + outline.offset * 2.0,
                             height: h + outline.offset * 2.0,
-                            color: outline_color,
-                            text: String::new(),
+                            background_color: None,
+                            border_width: outline.offset,
+                            border_color: outline_color,
+                            text_content: None,
+                            text_color: tiny_skia::Color::BLACK,
                             text_overflow: String::from("clip"),
                             font_size: 0.0,
                             image_url: None, link_url: None, node_idx,
@@ -1753,9 +1790,9 @@ impl AceEngine {
                             canvas_data: None, input_value: String::new(), placeholder: String::new(),
                             input_type: String::new(), options: String::new(),
                             padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
-                            text_color: String::new(), font_weight: String::new(), white_space: String::new(),
+                            font_weight: String::new(), white_space: String::new(),
                         };
-                        primitives.insert(primitives.len() - 1, outline_prim);
+                        primitives.push(outline_prim);
                     }
                     primitives.push(prim);
                 }
@@ -1955,8 +1992,11 @@ pub struct VisualPrimitive {
     pub y: f32,
     pub width: f32,
     pub height: f32,
-    pub color: String,
-    pub text: String,
+    pub background_color: Option<tiny_skia::Color>,
+    pub border_width: f32,
+    pub border_color: Option<tiny_skia::Color>,
+    pub text_content: Option<String>,
+    pub text_color: tiny_skia::Color,
     pub text_overflow: String,
     pub font_size: f32,
     pub image_url: Option<String>,
@@ -1983,8 +2023,7 @@ pub struct VisualPrimitive {
     pub padding_bottom: f32,
     pub padding_left: f32,
     
-    // CSS text color (hex string like #rrggbb)
-    pub text_color: String,
+    // CSS text color mapped earlier
     // CSS font-weight ("normal", "bold", "100"-"900")
     pub font_weight: String,
     // CSS white-space ("normal", "nowrap", "pre", etc.)
