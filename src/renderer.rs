@@ -2,25 +2,6 @@ use tiny_skia::{Pixmap, Paint, Rect, Transform, Color, BlendMode, PixmapPaint};
 use crate::engine::VisualPrimitive;
 use cosmic_text::{FontSystem, Buffer, Metrics, Attrs, Shaping, SwashCache};
 
-fn parse_color(color_str: &str) -> Option<Color> {
-    if color_str == "transparent" || color_str.is_empty() {
-        return None;
-    }
-    if color_str.starts_with('#') {
-        let hex = color_str.trim_start_matches('#');
-        let r = u8::from_str_radix(if hex.len() >= 2 { &hex[0..2] } else { hex }, 16).unwrap_or(0);
-        let g = u8::from_str_radix(if hex.len() >= 4 { &hex[2..4] } else { "0" }, 16).unwrap_or(0);
-        let b = u8::from_str_radix(if hex.len() >= 6 { &hex[4..6] } else { "0" }, 16).unwrap_or(0);
-        let a = if hex.len() == 8 {
-            u8::from_str_radix(&hex[6..8], 16).unwrap_or(255)
-        } else {
-            255
-        };
-        return Some(Color::from_rgba8(r, g, b, a));
-    }
-    None
-}
-
 pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32, scale_factor: f32, font_system: &mut FontSystem) -> Pixmap {
     let mut pixmap = Pixmap::new(width.max(1), height.max(1)).unwrap();
     pixmap.fill(Color::WHITE); // Default background
@@ -37,12 +18,24 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
         let rect = rect.unwrap();
 
         // 1. Draw Background Form/Box
-        if let Some(mut color) = parse_color(&prim.color) {
+        if let Some(mut color) = prim.background_color {
             let mut paint = Paint::default();
-            // TODO: integrate prim.opacity into the color alpha
             color.set_alpha(color.alpha() * prim.opacity);
             paint.set_color(color);
             pixmap.fill_rect(rect, &paint, Transform::from_scale(scale_factor, scale_factor), None);
+        }
+
+        // 1.5 Draw Borders
+        if prim.border_width > 0.0 {
+            if let Some(mut color) = prim.border_color {
+                let mut stroke = tiny_skia::Stroke::default();
+                stroke.width = prim.border_width;
+                let mut paint = Paint::default();
+                color.set_alpha(color.alpha() * prim.opacity);
+                paint.set_color(color);
+                let path = tiny_skia::PathBuilder::from_rect(rect);
+                pixmap.stroke_path(&path, &paint, &stroke, Transform::from_scale(scale_factor, scale_factor), None);
+            }
         }
 
         // 2. Draw SVG / Canvas Sub-buffers
@@ -65,14 +58,14 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
         }
 
         // 3. Draw Text Node
-        if !prim.text.is_empty() {
+        if let Some(text) = &prim.text_content {
             let mut buffer = Buffer::new(font_system, Metrics::new(prim.font_size * scale_factor, prim.font_size * 1.2 * scale_factor));
             buffer.set_size(font_system, Some(prim.width * scale_factor), Some(prim.height * scale_factor));
              
             let attrs = Attrs::new(); // TODO: apply text_color and font_family
-            let text_color = parse_color(&prim.text_color).unwrap_or(Color::BLACK);
+            let text_color = prim.text_color;
              
-            buffer.set_text(font_system, &prim.text, attrs, Shaping::Advanced);
+            buffer.set_text(font_system, text, attrs, Shaping::Advanced);
             buffer.shape_until_scroll(font_system, false);
              
             let r_base = (text_color.red() * 255.0) as u32;

@@ -40,10 +40,12 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
         
         let primitives = engine.render_visual(vw, vh);
         let viewport_y = engine.viewport_y;
-        let last_y = primitives.last().map(|p| p.y + p.height).unwrap_or(0.0);
         
-        let physical_w = (vw * scale_factor) as u32;
-        let physical_h = (vh * scale_factor) as u32;
+        let max_y = primitives.iter().fold(0.0f32, |max, p| max.max(p.y + p.height));
+        let content_h = max_y.max(vh);
+        
+        let physical_w = (vw * scale_factor).ceil() as u32;
+        let physical_h = (content_h * scale_factor).ceil() as u32;
 
         let ui_clone = ui.as_weak();
         
@@ -56,7 +58,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
                 if let Some(ui) = ui_clone.upgrade() {
                     let slint_image = Image::from_rgba8(pixel_buffer);
                     ui.set_web_content_buffer(slint_image);
-                    ui.set_content_height(last_y);
+                    ui.set_content_height(content_h);
                     ui.set_viewport_y(viewport_y);
                 }
             });
