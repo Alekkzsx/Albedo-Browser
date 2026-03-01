@@ -181,10 +181,82 @@ impl TabManager {
     }
 
     pub fn handle_click(&self, x: f32, y: f32) -> bool {
-        let col = self.collection.borrow();
-        if let Some(tab) = col.get_active() {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
             let node_id = tab.engine.find_element_at_position(x, y);
             if let Some(idx) = node_id {
+                // Comportamento nativo: toggle de <details> via <summary>
+                if let Some(ref dom_arc) = tab.engine.dom {
+                    let mut dom = dom_arc.lock().unwrap();
+                    let is_summary = if let Some(n) = dom.get_node(idx) {
+                        matches!(&n.node_type, crate::engine::dom::AceNodeType::Element(el) if el.tag == "summary")
+                    } else { false };
+
+                    if is_summary {
+                        let parent_idx = dom.get_node(idx).and_then(|n| n.parent);
+                        if let Some(p_idx) = parent_idx {
+                            let is_details = if let Some(p) = dom.get_node(p_idx) {
+                                matches!(&p.node_type, crate::engine::dom::AceNodeType::Element(el) if el.tag == "details")
+                            } else { false };
+
+                            if is_details {
+                                let has_open = dom.get_node(p_idx)
+                                    .and_then(|n| if let crate::engine::dom::AceNodeType::Element(el) = &n.node_type {
+                                        Some(el.attributes.contains_key("open"))
+                                    } else { None })
+                                    .unwrap_or(false);
+
+                                if has_open {
+                                    dom.remove_attribute_notify(p_idx, "open".into());
+                                } else {
+                                    dom.set_attribute_notify(p_idx, "open".into(), String::new());
+                                }
+                            }
+                        }
+                    }
+
+                    // Comportamento nativo: <form method="dialog"> fecha <dialog> pai
+                    // Quando um <button> ou <input type="submit"> dentro de um <form method="dialog">
+                    // é clicado, o dialog ancestral é fechado com returnValue = button.value
+                    let clicked_tag = if let Some(n) = dom.get_node(idx) {
+                        if let crate::engine::dom::AceNodeType::Element(el) = &n.node_type {
+                            el.tag.clone()
+                        } else { String::new() }
+                    } else { String::new() };
+                    
+                    if clicked_tag == "button" || clicked_tag == "input" {
+                        // Caminhar ancestrais procurando <form method="dialog"> → <dialog>
+                        let button_value = if let Some(n) = dom.get_node(idx) {
+                            if let crate::engine::dom::AceNodeType::Element(el) = &n.node_type {
+                                el.attributes.get("value").cloned().unwrap_or_default()
+                            } else { String::new() }
+                        } else { String::new() };
+                        
+                        let mut ancestor = dom.get_node(idx).and_then(|n| n.parent);
+                        let mut found_form_dialog = false;
+                        while let Some(a_idx) = ancestor {
+                            if let Some(a_node) = dom.get_node(a_idx) {
+                                if let crate::engine::dom::AceNodeType::Element(a_el) = &a_node.node_type {
+                                    if a_el.tag == "form" && a_el.attributes.get("method").map_or(false, |m| m.eq_ignore_ascii_case("dialog")) {
+                                        found_form_dialog = true;
+                                    }
+                                    if found_form_dialog && a_el.tag == "dialog" && a_el.attributes.contains_key("open") {
+                                        // Fechar este dialog
+                                        if !button_value.is_empty() {
+                                            dom.set_attribute_notify(a_idx, "data-return-value".into(), button_value.clone());
+                                        }
+                                        dom.remove_attribute_notify(a_idx, "open".into());
+                                        dom.remove_attribute_notify(a_idx, "data-ace-modal".into());
+                                        break;
+                                    }
+                                }
+                                ancestor = a_node.parent;
+                            } else { break; }
+                        }
+                    }
+                }
+
+                // Dispatch JS click event
                 if let Some(ref rt) = tab.engine.js_runtime {
                     if let Some(ref dom) = tab.engine.dom {
                         println!("[TabManager] Click at ({}, {}) -> Node {}", x, y, idx);
@@ -298,8 +370,36 @@ impl TabManager {
     }
 
     pub fn handle_key_down(&self, key: &str, code: &str, ctrl: bool, shift: bool, alt: bool, meta: bool) -> bool {
-        let col = self.collection.borrow();
-        if let Some(tab) = col.get_active() {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+            // Comportamento nativo: ESC fecha dialog modal
+            if key == "Escape" {
+                if let Some(ref dom_arc) = tab.engine.dom {
+                    let mut dom = dom_arc.lock().unwrap();
+                    // Procurar o último <dialog data-ace-modal open> (topmost)
+                    let mut modal_idx = None;
+                    for (i, node) in dom.nodes.iter().enumerate() {
+                        if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                            if el.tag == "dialog" 
+                               && el.attributes.contains_key("open") 
+                               && el.attributes.contains_key("data-ace-modal") 
+                            {
+                                modal_idx = Some(i); // Último encontrado = topmost
+                            }
+                        }
+                    }
+                    
+                    if let Some(idx) = modal_idx {
+                        // Disparar evento "cancel" (cancelável pela spec, mas simplificado aqui)
+                        // Fechar o dialog
+                        dom.remove_attribute_notify(idx, "open".into());
+                        dom.remove_attribute_notify(idx, "data-ace-modal".into());
+                        return true;
+                    }
+                }
+            }
+            
+            // Dispatch JS keydown event
             if let Some(ref rt) = tab.engine.js_runtime {
                 if let Some(focused_idx) = tab.engine.focused_element {
                     rt.dispatch_keyboard_event(focused_idx, "keydown", key, code, ctrl, shift, alt, meta);
@@ -323,18 +423,46 @@ impl TabManager {
         false
     }
 
-    pub fn handle_scroll(&self, _x: f32, _y: f32, delta: f32) -> bool {
+    pub fn handle_scroll(&self, x: f32, y: f32, delta: f32) -> bool {
         let mut col = self.collection.borrow_mut();
         if let Some(tab) = col.get_active_mut() {
-            // No Slint, viewport-y costuma ser negativo para scroll down
-            // delta vindo do mouse wheel (positiva para cima, negativa para baixo)
-            // Se delta > 0 (scroll up), queremos incrementar viewport_y (em direção a 0)
-            // Se delta < 0 (scroll down), queremos decrementar viewport_y (mais negativo)
+            // Verificar elemento sob o cursor
+            let node_id = tab.engine.find_element_at_position(x, y);
             
+            if let Some(idx) = node_id {
+                if let Some(ref dom_arc) = tab.engine.dom {
+                    let dom = dom_arc.lock().unwrap();
+                    let geometry = tab.engine.element_geometry.lock().unwrap();
+                    let mut scroll_map = tab.engine.element_scroll.lock().unwrap();
+                    
+                    let mut current = Some(idx);
+                    while let Some(current_idx) = current {
+                        if let Some(geom) = geometry.get(&current_idx) {
+                            if (geom.overflow_y == "scroll" || geom.overflow_y == "auto") && geom.content_height > geom.height {
+                                // Encontramos um container scrollável internamente
+                                let current_scroll = scroll_map.get(&current_idx).copied().unwrap_or((0.0, 0.0));
+                                
+                                // delta > 0 (scroll up) diminui o offset Y; delta < 0 (scroll down) aumenta o offset Y
+                                let mut new_sy = current_scroll.1 - delta;
+                                let max_scroll = geom.content_height - geom.height;
+                                
+                                new_sy = new_sy.clamp(0.0, max_scroll);
+                                scroll_map.insert(current_idx, (current_scroll.0, new_sy));
+                                
+                                // Marcar para redesenho
+                                drop(scroll_map);
+                                drop(geometry);
+                                drop(dom);
+                                return true;
+                            }
+                        }
+                        current = dom.get_node(current_idx).and_then(|n| n.parent);
+                    }
+                }
+            }
+            
+            // Fallback: scroll do viewport principal
             let new_y = tab.engine.viewport_y + delta;
-            
-            // Limit scroll (0 to -content_height + window_height)
-            // Para simplificar agora, vamos apenas impedir que suba acima de 0
             tab.engine.viewport_y = new_y.min(0.0);
             return true;
         }

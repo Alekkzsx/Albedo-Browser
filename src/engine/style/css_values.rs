@@ -328,6 +328,25 @@ pub struct GradientStop {
     pub position: Option<f32>, // 0.0 to 1.0
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CssVerticalAlign {
+    Baseline,
+    Sub,
+    Super,
+    Top,
+    TextTop,
+    Middle,
+    Bottom,
+    TextBottom,
+    Length(CssLength),
+}
+
+impl Default for CssVerticalAlign {
+    fn default() -> Self {
+        CssVerticalAlign::Baseline
+    }
+}
+
 /// Gradient type
 #[derive(Debug, Clone, PartialEq)]
 pub enum Gradient {
@@ -830,6 +849,10 @@ pub struct ComputedStyle {
     pub padding_bottom: CssLength,
     pub padding_left: CssLength,
     
+    // Spacing
+    pub letter_spacing: CssLength,
+    pub word_spacing: CssLength,
+    
     // Border
     pub border_width_top: CssLength,
     pub border_width_right: CssLength,
@@ -946,10 +969,14 @@ impl Default for ComputedStyle {
             margin_left: CssLength::Zero,
             
             // Padding
-            padding_top: CssLength::Zero,
-            padding_right: CssLength::Zero,
-            padding_bottom: CssLength::Zero,
-            padding_left: CssLength::Zero,
+    padding_top: CssLength::Zero,
+    padding_right: CssLength::Zero,
+    padding_bottom: CssLength::Zero,
+    padding_left: CssLength::Zero,
+    
+    // Spacing
+    letter_spacing: CssLength::Zero,
+    word_spacing: CssLength::Zero,
             
             // Border
             border_width_top: CssLength::Zero,

@@ -685,6 +685,15 @@ pub fn get_user_agent_stylesheet() -> Stylesheet {
         tr { display: table-row; vertical-align: inherit; border-color: inherit; }
         td, th { display: table-cell; vertical-align: inherit; }
         th { font-weight: bold; text-align: center; }
+
+        /* Dialog Default Styles */
+        dialog { display: none; position: fixed; background: white; color: black;
+                 border: 1px solid rgba(0,0,0,0.3); padding: 1em; margin: auto;
+                 max-width: 80vw; max-height: 80vh; overflow: auto; }
+        dialog[open] { display: block; }
+
+        /* Summary pointer cursor */
+        summary { cursor: pointer; }
     ";
     
     let mut ss = parse_simple(ua_css);
@@ -941,6 +950,24 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
                                     // Assume it's a color
                                     for suffix in &["top", "right", "bottom", "left"] {
                                         decls.push(Declaration { name: format!("border-{}-color", suffix), value: part.to_string(), important: important });
+                                    }
+                                }
+                            }
+                        },
+                        "outline" => {
+                            let val_trimmed = value.trim();
+                            if val_trimmed == "none" || val_trimmed == "0" {
+                                decls.push(Declaration { name: "outline-style".to_string(), value: "none".to_string(), important });
+                            } else {
+                                let parts: Vec<&str> = value.split_whitespace().collect();
+                                for part in parts {
+                                    if part.ends_with("px") || part.ends_with("em") || part.ends_with("rem")
+                                       || part == "thin" || part == "medium" || part == "thick" {
+                                        decls.push(Declaration { name: "outline-width".to_string(), value: part.to_string(), important });
+                                    } else if matches!(part, "none"|"solid"|"dashed"|"dotted"|"double"|"groove"|"ridge"|"inset"|"outset"|"auto") {
+                                        decls.push(Declaration { name: "outline-style".to_string(), value: part.to_string(), important });
+                                    } else {
+                                        decls.push(Declaration { name: "outline-color".to_string(), value: part.to_string(), important });
                                     }
                                 }
                             }
@@ -1208,6 +1235,8 @@ impl Stylesheet {
             s.font_weight = parent.font_weight.clone();
             s.text_align = parent.text_align.clone();
             s.line_height = parent.line_height.clone();
+            s.letter_spacing = parent.letter_spacing.clone();
+            s.word_spacing = parent.word_spacing.clone();
             s.opacity = parent.opacity;
             // Inherited properties Fase 2
             s.visibility = parent.visibility.clone();
@@ -2978,11 +3007,51 @@ pub fn apply_single_declaration(
         "border-bottom-color" | "borderBottomColor" => style.border_color_bottom = parse_color(val),
         "border-left-color" | "borderLeftColor" => style.border_color_left = parse_color(val),
         
+        // Outline Detail
+        "outline-width" | "outlineWidth" => {
+            let w = resolve_length(&parse_length(val), style.font_size, 16.0, 0.0, 0.0);
+            let mut o = style.outline.clone().unwrap_or(crate::engine::style::css_values::Outline {
+                width: 0.0, color: CssColor::Named("currentcolor".into()), style: "solid".into(), offset: 0.0
+            });
+            o.width = w;
+            style.outline = Some(o);
+        },
+        "outline-color" | "outlineColor" => {
+            let c = parse_color(val);
+            let mut o = style.outline.clone().unwrap_or(crate::engine::style::css_values::Outline {
+                width: 3.0, color: CssColor::Named("currentcolor".into()), style: "solid".into(), offset: 0.0
+            });
+            o.color = c;
+            style.outline = Some(o);
+        },
+        "outline-style" | "outlineStyle" => {
+            if val.trim() == "none" {
+                style.outline = None;
+            } else {
+                let mut o = style.outline.clone().unwrap_or(crate::engine::style::css_values::Outline {
+                    width: 3.0, color: CssColor::Named("currentcolor".into()), style: "none".into(), offset: 0.0
+                });
+                o.style = val.trim().to_string();
+                style.outline = Some(o);
+            }
+        },
+        "outline-offset" | "outlineOffset" => {
+            // outline-offset pode ser NEGATIVO (inset do outline sobre o elemento)
+            let off = resolve_length(&parse_length(val), style.font_size, 16.0, 0.0, 0.0);
+            let mut o = style.outline.clone().unwrap_or(crate::engine::style::css_values::Outline {
+                width: 0.0, color: CssColor::Named("currentcolor".into()), style: "solid".into(), offset: 0.0
+            });
+            o.offset = off;
+            style.outline = Some(o);
+        },
+        
         // Typography Detail
         "font-family" | "fontFamily" => style.font_family = val.trim().trim_matches('\'').trim_matches('"').to_string(),
         "font-weight" | "fontWeight" => style.font_weight = parse_font_weight(val),
         "font-style" | "fontStyle" => style.font_style = val.to_string(),
         "line-height" | "lineHeight" => style.line_height = parse_length(val),
+        "letter-spacing" | "letterSpacing" => style.letter_spacing = parse_length(val),
+        "word-spacing" | "wordSpacing" => style.word_spacing = parse_length(val),
         "text-align" | "textAlign" => style.text_align = parse_text_align(val),
 
         // Min/Max Sizing

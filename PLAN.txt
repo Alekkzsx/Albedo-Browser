@@ -288,25 +288,51 @@
 
   [A] RENDERING PIPELINE
   ─────────────────────
-  🟡   Float & Clear CSS (float: left/right, clear: both/left/right)
+  ✅   Float & Clear CSS (float: left/right, clear: both/left/right)
          ✅ Parsing CSS de float/clear em style/mod.rs e css_values.rs
-         ❌ Layout engine (engine/mod.rs) NÃO consome esses valores — sem efeito visual
-  [ ]  text-overflow: ellipsis / clip
-         → engine/style/ + engine/inline.rs
-  [ ]  text-transform: uppercase, lowercase, capitalize
-         → engine/style/ + engine/inline.rs
-  [ ]  letter-spacing e word-spacing no text rendering
-         → engine/text.rs + engine/inline.rs
-  [ ]  outline vs border (outline não ocupa espaço — falta outline-offset)
-         → engine/style/mod.rs
-  [ ]  Rendering de <details> / <summary> (disclosure widget nativo)
-         → engine/mod.rs (build_layout_tree)
-  [ ]  Rendering de <dialog> modal (position:fixed + backdrop nativo)
-         → engine/mod.rs + runtime/bindings/html/element/
-  [ ]  Sticky positioning completo (scroll threshold real por container)
-         → engine/mod.rs (build_layout_tree)
-  [ ]  Scroll em elementos internos (overflow:scroll em divs aninhadas)
-         → engine/mod.rs
+         ✅ Layout engine (engine/mod.rs) consome via apply_floats_and_clear() — FloatContext + FloatRect
+  ✅   text-overflow: ellipsis / clip
+         ✅ Parsing CSS (CssTextOverflow enum) em css_values.rs + style/mod.rs
+         ✅ IFC (inline.rs) aplica truncamento com busca binária + insere "…"
+         ✅ Render pipeline (engine/mod.rs) otimiza para white-space:nowrap
+         ✅ Testes unitários em inline.rs (ellipsis + clip)
+  ✅   text-transform: uppercase, lowercase, capitalize
+         ✅ Parsing CSS (CssTextTransform enum) em css_values.rs + style/mod.rs
+         ✅ Herança CSS propagada para filhos
+         ✅ Função centralizada apply_text_transform() em inline.rs
+         ✅ Consumido em build_layout_tree() e render_visual()
+  ✅   letter-spacing e word-spacing no text rendering
+         ✅ Parsing CSS em css_values.rs + style/mod.rs (parse_length)
+         ✅ Herança CSS propagada para filhos
+         ✅ TextMeasurer (text.rs) calcula largura real com spacing
+         ✅ Consumido em build_layout_tree(), render_visual() e renderer.rs
+  ✅   outline vs border (outline não ocupa espaço — outline-offset implementado)
+         ✅ Parsing CSS shorthand `outline` + longhands (width, color, style, offset)
+         ✅ outline-offset (suporte a valores negativos)
+         ✅ Fix rendering: width = stroke, offset = gap, border-radius conformance
+         ✅ Estilos visuais: dashed/dotted via StrokeDash no renderer
+         ✅ outline: none anula focus ring default
+  ✅   Rendering de <details> / <summary> (disclosure widget nativo)
+         ✅ build_layout_tree filtra filhos quando `open` ausente (zero layout para ocultos)
+         ✅ handle_click toggle nativo do atributo `open` via set_attribute_notify
+         ✅ Disclosure marker ▶/▼ prepended ao texto do <summary>
+  ✅   Rendering de <dialog> modal (position:fixed + backdrop nativo)
+         ✅ UA stylesheet: dialog hidden + dialog[open] display:block + position:fixed
+         ✅ JS API: show(), showModal(), close(returnValue?), open getter, returnValue get/set
+         ✅ ESC fecha dialog modal (handle_key_down intercepção nativa)
+         ✅ Backdrop semi-transparente (rgba(0,0,0,0.3)) via VisualPrimitive
+         ✅ <form method="dialog"> fecha dialog pai com returnValue = button.value
+         ✅ Summary cursor:pointer no UA stylesheet
+  ✅   Sticky positioning completo (scroll threshold real por container)
+         ✅ Offset dinâmico em render_visual: compara geom.y com scroll_y + top threshold
+         ✅ Clamp por parent bottom (não ultrapassa container)
+         ✅ Herança para nós de texto filhos de sticky via delta_y
+         ✅ is_fixed toggled dinamicamente quando "stuck"
+  ✅   Scroll em elementos internos (overflow:scroll em divs aninhadas)
+         ✅ clip_rect (intersection) dinâmico computado on-the-fly baseado na ancestralidade.
+         ✅ renderer.rs: Skia Rect intersect real e hard-clip limite para renderização de glyphs de texto.
+         ✅ sync_taffy_bounds: Subtract offset de engine.element_scroll p/ deslocar layout dos filhos sem invalidar caching.
+         ✅ manager.rs (handle_scroll): Ancestral-walk sob cursor para aplicar scroll na div local vs scroll na página.
 
   [B] PERFORMANCE (BLOQUEADOR CRÍTICO)
   ────────────────────────────────────
@@ -744,9 +770,11 @@
   [x]  Table layout Two-Pass ✅
   [x]  Scrollbars custom (viewport principal) ✅
   [ ]  Scroll em elementos internos (overflow:scroll em sub-divs)
-  [ ]  Float & Clear
-  [ ]  text-overflow, text-transform, letter-spacing
-  [ ]  <details>/<summary>, <dialog>
+  [x]  Float & Clear ✅
+  [x]  text-overflow ✅
+  [x]  text-transform, letter-spacing
+  [x]  <details>/<summary> ✅
+  [x]  <dialog> ✅ (show/showModal/close + ESC + backdrop + form method=dialog)
 
   PERFORMANCE  ⚠️ ÁREA MAIS CRÍTICA
   [x]  Incremental layout com dirty flags  ✅ IMPLEMENTADO

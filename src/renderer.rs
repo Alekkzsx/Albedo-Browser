@@ -13,8 +13,18 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
             continue;
         }
 
-        let rect = Rect::from_xywh(prim.x, prim.y, prim.width, prim.height);
+        let mut rect = Rect::from_xywh(prim.x, prim.y, prim.width, prim.height);
         if rect.is_none() { continue; }
+        
+        // 0. Clip Intersection
+        if let Some(cr) = prim.clip_rect {
+            if let Some(clip) = Rect::from_xywh(cr[0], cr[1], cr[2], cr[3]) {
+                rect = rect.unwrap().intersect(&clip);
+                // Se a interseção for vazia ou inválida, o nó está 100% clipado (invisível)
+                 if rect.is_none() { continue; }
+            }
+        }
+        
         let rect = rect.unwrap();
 
         // 1. Draw Background Form/Box
@@ -27,9 +37,22 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
 
         // 1.5 Draw Borders
         if prim.border_width > 0.0 {
-            if let Some(mut color) = prim.border_color {
+            if prim.border_style == "none" {
+                // Não desenhar borda se estilo for none
+            } else if let Some(mut color) = prim.border_color {
                 let mut stroke = tiny_skia::Stroke::default();
                 stroke.width = prim.border_width;
+                // Aplicar estilo de traço (dashed, dotted, etc.)
+                match prim.border_style.as_str() {
+                    "dashed" => {
+                        stroke.dash = tiny_skia::StrokeDash::new(vec![prim.border_width * 3.0, prim.border_width * 2.0], 0.0);
+                    },
+                    "dotted" => {
+                        stroke.dash = tiny_skia::StrokeDash::new(vec![prim.border_width, prim.border_width], 0.0);
+                        stroke.line_cap = tiny_skia::LineCap::Round;
+                    },
+                    _ => {} // "solid" e outros => traço contínuo default
+                }
                 let mut paint = Paint::default();
                 color.set_alpha(color.alpha() * prim.opacity);
                 paint.set_color(color);
@@ -59,73 +82,186 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
 
         // 3. Draw Text Node
         if let Some(text) = &prim.text_content {
-            let mut buffer = Buffer::new(font_system, Metrics::new(prim.font_size * scale_factor, prim.font_size * 1.2 * scale_factor));
-            buffer.set_size(font_system, Some(prim.width * scale_factor), Some(prim.height * scale_factor));
-             
-            let attrs = Attrs::new(); // TODO: apply text_color and font_family
+            let font_size = prim.font_size * scale_factor;
+            let line_height = prim.font_size * 1.2 * scale_factor;
+            let mut buffer = Buffer::new(font_system, Metrics::new(font_size, line_height));
+            
+            let attrs = Attrs::new(); // TODO: apply css font_family/weight
             let text_color = prim.text_color;
-             
-            buffer.set_text(font_system, text, attrs, Shaping::Advanced);
-            buffer.shape_until_scroll(font_system, false);
              
             let r_base = (text_color.red() * 255.0) as u32;
             let g_base = (text_color.green() * 255.0) as u32;
             let b_base = (text_color.blue() * 255.0) as u32;
+            let max_w = prim.width * scale_factor;
 
-            for run in buffer.layout_runs() {
-                for glyph in run.glyphs.iter() {
-                    let physical_glyph = glyph.physical((prim.x * scale_factor, prim.y * scale_factor), 1.0);
-                    if let Some(image) = swash_cache.get_image(font_system, physical_glyph.cache_key) {
-                        let top = (physical_glyph.y as i32) - image.placement.top;
-                        let left = (physical_glyph.x as i32) + image.placement.left;
-                        
-                        match image.content {
-                            cosmic_text::SwashContent::Mask => { // Anti-aliased text (alpha channel only)
-                                for (y, row) in image.data.chunks(image.placement.width as usize).enumerate() {
-                                    for (x, alpha_byte) in row.iter().enumerate() {
-                                        let p_x = left as i32 + x as i32;
-                                        let p_y = top as i32 + y as i32;
-                                        if p_x >= 0 && p_x < width as i32 && p_y >= 0 && p_y < height as i32 {
-                                            if *alpha_byte > 0 {
-                                                let pixel_idx = ((p_y as u32 * width) + p_x as u32) as usize * 4;
-                                                let data = pixmap.data_mut();
-                                                // Simple alpha blending
-                                                let src_a = (*alpha_byte as f32 / 255.0) * text_color.alpha() * prim.opacity;
-                                                let dst_a = 1.0 - src_a;
-                                                
-                                                data[pixel_idx] = ((r_base as f32 * src_a) + (data[pixel_idx] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+1] = ((g_base as f32 * src_a) + (data[pixel_idx+1] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+2] = ((b_base as f32 * src_a) + (data[pixel_idx+2] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+3] = 255;
-                                            }
+            // Determinar limites de clipping absolutos para os pixels do texto
+            let (clip_min_x, clip_min_y, clip_max_x, clip_max_y) = if let Some(cr) = prim.clip_rect {
+                (
+                    (cr[0] * scale_factor) as i32,
+                    (cr[1] * scale_factor) as i32,
+                    ((cr[0] + cr[2]) * scale_factor) as i32,
+                    ((cr[1] + cr[3]) * scale_factor) as i32,
+                )
+            } else {
+                (0, 0, width as i32, height as i32)
+            };
+
+            let render_glyph_image = |swash_cache: &mut SwashCache, font_system: &mut FontSystem, physical_glyph: cosmic_text::PhysicalGlyph, pixmap: &mut Pixmap| {
+                if let Some(image) = swash_cache.get_image(font_system, physical_glyph.cache_key) {
+                    let top = (physical_glyph.y as i32) - image.placement.top;
+                    let left = (physical_glyph.x as i32) + image.placement.left;
+                    match image.content {
+                        cosmic_text::SwashContent::Mask => {
+                            for (y, row) in image.data.chunks(image.placement.width as usize).enumerate() {
+                                for (x, alpha_byte) in row.iter().enumerate() {
+                                    let p_x = left as i32 + x as i32;
+                                    let p_y = top as i32 + y as i32;
+                                    if p_x >= clip_min_x && p_x < clip_max_x && p_y >= clip_min_y && p_y < clip_max_y {
+                                        if *alpha_byte > 0 {
+                                            let pixel_idx = ((p_y as u32 * width) + p_x as u32) as usize * 4;
+                                            let data = pixmap.data_mut();
+                                            let src_a = (*alpha_byte as f32 / 255.0) * text_color.alpha() * prim.opacity;
+                                            let dst_a = 1.0 - src_a;
+                                            data[pixel_idx] = ((r_base as f32 * src_a) + (data[pixel_idx] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+1] = ((g_base as f32 * src_a) + (data[pixel_idx+1] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+2] = ((b_base as f32 * src_a) + (data[pixel_idx+2] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+3] = 255;
                                         }
                                     }
                                 }
                             }
-                            cosmic_text::SwashContent::Color => { // Emojis / Color fonts
-                                for (y, row) in image.data.chunks(image.placement.width as usize * 4).enumerate() {
-                                    for (x, pixel) in row.chunks(4).enumerate() {
-                                        let p_x = left as i32 + x as i32;
-                                        let p_y = top as i32 + y as i32;
-                                        if p_x >= 0 && p_x < width as i32 && p_y >= 0 && p_y < height as i32 {
-                                            let src_a = (pixel[3] as f32 / 255.0) * prim.opacity;
-                                            if src_a > 0.0 {
-                                                let pixel_idx = ((p_y as u32 * width) + p_x as u32) as usize * 4;
-                                                let data = pixmap.data_mut();
-                                                let dst_a = 1.0 - src_a;
-                                                
-                                                data[pixel_idx] = ((pixel[0] as f32 * src_a) + (data[pixel_idx] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+1] = ((pixel[1] as f32 * src_a) + (data[pixel_idx+1] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+2] = ((pixel[2] as f32 * src_a) + (data[pixel_idx+2] as f32 * dst_a)) as u8;
-                                                data[pixel_idx+3] = 255;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
                         }
+                        cosmic_text::SwashContent::Color => {
+                            for (y, row) in image.data.chunks(image.placement.width as usize * 4).enumerate() {
+                                for (x, pixel) in row.chunks(4).enumerate() {
+                                    let p_x = left as i32 + x as i32;
+                                    let p_y = top as i32 + y as i32;
+                                    if p_x >= clip_min_x && p_x < clip_max_x && p_y >= clip_min_y && p_y < clip_max_y {
+                                        let src_a = (pixel[3] as f32 / 255.0) * prim.opacity;
+                                        if src_a > 0.0 {
+                                            let pixel_idx = ((p_y as u32 * width) + p_x as u32) as usize * 4;
+                                            let data = pixmap.data_mut();
+                                            let dst_a = 1.0 - src_a;
+                                            data[pixel_idx] = ((pixel[0] as f32 * src_a) + (data[pixel_idx] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+1] = ((pixel[1] as f32 * src_a) + (data[pixel_idx+1] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+2] = ((pixel[2] as f32 * src_a) + (data[pixel_idx+2] as f32 * dst_a)) as u8;
+                                            data[pixel_idx+3] = 255;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
+                }
+            };
+
+            let letter_spacing = prim.letter_spacing * scale_factor;
+            let word_spacing = prim.word_spacing * scale_factor;
+
+            if letter_spacing == 0.0 && word_spacing == 0.0 {
+                // Fast Path
+                buffer.set_size(font_system, Some(max_w), Some(prim.height * scale_factor));
+                buffer.set_text(font_system, text, attrs, Shaping::Advanced);
+                buffer.shape_until_scroll(font_system, false);
+                for run in buffer.layout_runs() {
+                    for glyph in run.glyphs.iter() {
+                        let physical_glyph = glyph.physical((prim.x * scale_factor, prim.y * scale_factor), 1.0);
+                        render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                    }
+                }
+            } else {
+                // Spaced Path (Tokenized Greedy Wrapping & Manual Rendering)
+                let mut current_x = 0.0;
+                let mut current_y = 0.0; // Starts relative to top
+                
+                let mut space_w = 0.0;
+                buffer.set_text(font_system, " ", attrs, Shaping::Advanced);
+                buffer.shape_until_scroll(font_system, false);
+                if let Some(run) = buffer.layout_runs().next() { space_w = run.line_w; }
+
+                let mut first_word_in_line = true;
+
+                for word in text.split_inclusive(|c: char| c.is_whitespace()) {
+                    let is_space_ended = word.ends_with(|c: char| c.is_whitespace());
+                    let (word_trim, trailing) = if is_space_ended {
+                        let bytes = word.len() - word.chars().last().unwrap().len_utf8();
+                        (&word[..bytes], &word[bytes..])
+                    } else {
+                        (word, "")
+                    };
+                    
+                    let mut word_w = 0.0;
+                    if letter_spacing != 0.0 {
+                        for c in word_trim.chars() {
+                            let mut b = [0; 4];
+                            let char_str = c.encode_utf8(&mut b);
+                            buffer.set_text(font_system, char_str, attrs, Shaping::Advanced);
+                            buffer.shape_until_scroll(font_system, false);
+                            word_w += buffer.layout_runs().next().map_or(0.0, |r| r.line_w) + letter_spacing;
+                        }
+                    } else {
+                        buffer.set_text(font_system, word_trim, attrs, Shaping::Advanced);
+                        buffer.shape_until_scroll(font_system, false);
+                        word_w = buffer.layout_runs().next().map_or(0.0, |r| r.line_w);
+                    }
+
+                    if !first_word_in_line && current_x + word_w > max_w {
+                        current_x = 0.0;
+                        current_y += line_height;
+                        first_word_in_line = true;
+                    }
+
+                    // Render the word
+                    if letter_spacing != 0.0 {
+                        let mut cx = current_x;
+                        for c in word_trim.chars() {
+                            let mut b = [0; 4];
+                            let char_str = c.encode_utf8(&mut b);
+                            buffer.set_text(font_system, char_str, attrs, Shaping::Advanced);
+                            buffer.shape_until_scroll(font_system, false);
+                            for run in buffer.layout_runs() {
+                                for glyph in run.glyphs.iter() {
+                                    let physical_glyph = glyph.physical((prim.x * scale_factor + cx, prim.y * scale_factor + current_y), 1.0);
+                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                                }
+                            }
+                            cx += buffer.layout_runs().next().map_or(0.0, |r| r.line_w) + letter_spacing;
+                        }
+                        current_x = cx;
+                    } else {
+                        buffer.set_text(font_system, word_trim, attrs, Shaping::Advanced);
+                        buffer.shape_until_scroll(font_system, false);
+                        for run in buffer.layout_runs() {
+                            for glyph in run.glyphs.iter() {
+                                let physical_glyph = glyph.physical((prim.x * scale_factor + current_x, prim.y * scale_factor + current_y), 1.0);
+                                render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                            }
+                        }
+                        current_x += word_w;
+                    }
+
+                    if is_space_ended {
+                        let mut spc_adv = space_w;
+                        if letter_spacing != 0.0 {
+                            let mut b = [0; 4];
+                            let c = trailing.chars().next().unwrap();
+                            let char_str = c.encode_utf8(&mut b);
+                            buffer.set_text(font_system, char_str, attrs, Shaping::Advanced);
+                            buffer.shape_until_scroll(font_system, false);
+                            // Also render space if it had visual meaning, but space is invisible Mask
+                            for run in buffer.layout_runs() {
+                                for glyph in run.glyphs.iter() {
+                                    let physical_glyph = glyph.physical((prim.x * scale_factor + current_x, prim.y * scale_factor + current_y), 1.0);
+                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                                }
+                            }
+                            spc_adv = buffer.layout_runs().next().map_or(0.0, |r| r.line_w);
+                        }
+                        current_x += spc_adv + word_spacing + letter_spacing;
+                    }
+
+                    first_word_in_line = false;
                 }
             }
         }
