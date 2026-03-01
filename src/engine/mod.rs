@@ -3,6 +3,7 @@ pub mod style;
 pub mod graphics;
 pub mod svg;
 pub mod text;
+pub mod inline;
 
 use std::sync::{Arc, Mutex};
 use crate::engine::dom::{AceDOM, AceNodeType};
@@ -1122,39 +1123,24 @@ impl AceEngine {
                 return vec![taffy_node];
             }
         } else if let crate::engine::dom::AceNodeType::Text(text) = &node_type {
-            let transformed_text = match style.text_transform {
-                crate::engine::style::css_values::CssTextTransform::Uppercase => text.to_uppercase(),
-                crate::engine::style::css_values::CssTextTransform::Lowercase => text.to_lowercase(),
-                crate::engine::style::css_values::CssTextTransform::Capitalize => {
-                    let mut result = String::with_capacity(text.len());
-                    let mut capitalize_next = true;
-                    for c in text.chars() {
-                        if c.is_whitespace() {
-                            capitalize_next = true;
-                            result.push(c);
-                        } else if capitalize_next {
-                            result.extend(c.to_uppercase());
-                            capitalize_next = false;
-                        } else {
-                            result.push(c);
-                        }
-                    }
-                    result
-                },
-                crate::engine::style::css_values::CssTextTransform::None => text.clone(),
-            };
+            let transformed_text = crate::engine::inline::apply_text_transform(text, &style.text_transform);
             // Text nodes need an intrinsic size estimate to be visible
             let font_size = style.font_size;
             let line_height = font_size * 1.2;
             
             // Usar o TextMeasurer global para dimensões reais
+            let letter_spacing = crate::engine::style::css_values::resolve_length(&style.letter_spacing, font_size, 16.0, vw, vh);
+            let word_spacing = crate::engine::style::css_values::resolve_length(&style.word_spacing, font_size, 16.0, vw, vh);
+
             let (text_width, text_height) = self.text_measurer.measure_text(
                 &transformed_text,
                 font_size,
                 line_height,
                 Some(&style.font_family),
                 cosmic_text::Weight::NORMAL,
-                Some(vw)
+                None,
+                letter_spacing,
+                word_spacing
             );
             
             let width = text_width;
@@ -1196,7 +1182,21 @@ impl AceEngine {
                 children.extend(self.build_layout_tree(dom, taffy, stylesheet, child_idx, vw, vh, node_map, grid_ctx.as_ref()));
             }
         } else {
-             for child_idx in children_indices {
+            // <details> filtering: quando fechado (sem atributo "open"),
+            // renderizar apenas filhos <summary>, ignorando todo o resto
+            let is_details_closed = if let crate::engine::dom::AceNodeType::Element(el) = &node_type {
+                el.tag == "details" && !el.attributes.contains_key("open")
+            } else { false };
+
+            for child_idx in children_indices {
+                if is_details_closed {
+                    if let Some(child_node) = dom.get_node(child_idx) {
+                        let is_summary = if let crate::engine::dom::AceNodeType::Element(child_el) = &child_node.node_type {
+                            child_el.tag == "summary"
+                        } else { false };
+                        if !is_summary { continue; }
+                    }
+                }
                 children.extend(self.build_layout_tree(dom, taffy, stylesheet, child_idx, vw, vh, node_map, grid_ctx.as_ref()));
             }
         }
@@ -1331,8 +1331,16 @@ impl AceEngine {
                 geom.content_height = content_h;
             }
 
+            // Aplicar offset de scroll interno para os filhos
+            let (sx, sy) = if let Some(&node_idx) = node_map.get(&taffy_node) {
+                let scroll_map = self.element_scroll.lock().unwrap();
+                scroll_map.get(&node_idx).copied().unwrap_or((0.0, 0.0))
+            } else {
+                (0.0, 0.0)
+            };
+
             for &taffy_child in &taffy_children {
-                self.sync_taffy_bounds(taffy, dom, taffy_child, abs_x, abs_y, node_map);
+                self.sync_taffy_bounds(taffy, dom, taffy_child, abs_x - sx, abs_y - sy, node_map);
             }
         }
 
@@ -1675,10 +1683,91 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                 }
                 
                 if let Some(geom) = geometry.get(&node_idx) {
-                    let x = geom.x;
-                    let y = geom.y;
+                    let mut x = geom.x;
+                    let mut y = geom.y;
                     let w = geom.width;
                     let h = geom.height;
+                    let mut is_sticky_fixed = false;
+
+                    // ─── STICKY POSITIONING ─────────────────────────────────
+                    // position:sticky → o elemento flui normalmente até que o
+                    // scroll do viewport ultrapasse seu threshold (top/bottom).
+                    // Quando "stuck", comporta-se como fixed, clampado pelo parent.
+                    let effective_position = if is_element {
+                        computed_style.position.clone()
+                    } else {
+                        // Texto herda sticky do pai
+                        if let Some(parent_idx) = node.parent {
+                            if let Some(ps) = element_styles.get(&parent_idx) {
+                                ps.position.clone()
+                            } else {
+                                crate::engine::style::css_values::CssPosition::Static
+                            }
+                        } else {
+                            crate::engine::style::css_values::CssPosition::Static
+                        }
+                    };
+
+                    if effective_position == crate::engine::style::css_values::CssPosition::Sticky {
+                        let font_size = computed_style.font_size;
+                        // Resolver o threshold CSS (top, bottom)
+                        let sticky_top = crate::engine::style::css_values::resolve_length(
+                            &computed_style.top, font_size, 16.0, vw, vh
+                        );
+
+                        // scroll_y: quanto o viewport desceu (viewport_y é negativo quando scrollado)
+                        let scroll_y = (-self.viewport_y).max(0.0);
+
+                        // Para texto filho de sticky, usar a geometria do pai sticky
+                        let (natural_y, elem_h, parent_info) = if !is_element {
+                            if let Some(parent_idx) = node.parent {
+                                if let Some(pg) = geometry.get(&parent_idx) {
+                                    // Delta relativo ao pai
+                                    let delta_y = geom.y - pg.y;
+                                    // Buscar avô para constraint
+                                    let gp_info = if let Some(pnode) = dom.get_node(parent_idx) {
+                                        if let Some(gp_idx) = pnode.parent {
+                                            geometry.get(&gp_idx).map(|gpg| (gpg.y, gpg.height))
+                                        } else { None }
+                                    } else { None };
+                                    (pg.y, pg.height, Some((delta_y, gp_info)))
+                                } else { (geom.y, h, None) }
+                            } else { (geom.y, h, None) }
+                        } else {
+                            (geom.y, h, None)
+                        };
+
+                        // Buscar parent container para clampar
+                        let (parent_top, parent_bottom) = if let Some((_, gp_info)) = &parent_info {
+                            // Para texto: constraint é o avô do sticky
+                            if let Some((gp_y, gp_h)) = gp_info {
+                                (*gp_y, *gp_y + *gp_h)
+                            } else {
+                                (0.0, vh * 10.0) // fallback
+                            }
+                        } else if let Some(parent_idx) = node.parent {
+                            if let Some(pg) = geometry.get(&parent_idx) {
+                                (pg.y, pg.y + pg.height)
+                            } else { (0.0, vh * 10.0) }
+                        } else { (0.0, vh * 10.0) };
+
+                        // Clampar: o elemento gruda quando sairia do viewport
+                        let threshold_line = scroll_y + sticky_top;
+                        if natural_y < threshold_line {
+                            // Elemento grudou — fixar na posição do threshold
+                            let max_y = parent_bottom - elem_h;
+                            let stuck_y = threshold_line.min(max_y);
+
+                            if let Some((delta_y, _)) = parent_info {
+                                // Texto filho: aplicar o mesmo delta do pai sticky
+                                y = stuck_y + delta_y;
+                            } else {
+                                y = stuck_y;
+                            }
+                            is_sticky_fixed = true;
+                        }
+                    }
+                    // ─── FIM STICKY ─────────────────────────────────────────
 
                     let background_color = Self::css_color_to_skia(&computed_style.background_color);
                     let border_color = Self::css_color_to_skia(&computed_style.border_color_top);
@@ -1687,58 +1776,78 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
 
                     let mut text = match &node.node_type {
                         crate::engine::dom::AceNodeType::Text(t) => {
-                            match computed_style.text_transform {
-                                crate::engine::style::css_values::CssTextTransform::Uppercase => t.to_uppercase(),
-                                crate::engine::style::css_values::CssTextTransform::Lowercase => t.to_lowercase(),
-                                crate::engine::style::css_values::CssTextTransform::Capitalize => {
-                                    let mut result = String::with_capacity(t.len());
-                                    let mut capitalize_next = true;
-                                    for c in t.chars() {
-                                        if c.is_whitespace() {
-                                            capitalize_next = true;
-                                            result.push(c);
-                                        } else if capitalize_next {
-                                            result.extend(c.to_uppercase());
-                                            capitalize_next = false;
-                                        } else {
-                                            result.push(c);
-                                        }
-                                    }
-                                    result
-                                },
-                                crate::engine::style::css_values::CssTextTransform::None => t.clone(),
-                            }
+                            crate::engine::inline::apply_text_transform(t, &computed_style.text_transform)
                         },
                         _ => String::new(),
                     };
 
+                    // Disclosure marker para <summary>: ▶ (fechado) ou ▼ (aberto)
+                    if !text.is_empty() {
+                        if let Some(parent_idx) = node.parent {
+                            if let Some(parent_node) = dom.get_node(parent_idx) {
+                                if let crate::engine::dom::AceNodeType::Element(parent_el) = &parent_node.node_type {
+                                    if parent_el.tag == "summary" {
+                                        // Verificar se este é o primeiro filho de texto do summary
+                                        let is_first_text = parent_node.children.first() == Some(&node_idx);
+                                        if is_first_text {
+                                            // Verificar o avô <details> pelo atributo "open"
+                                            let is_open = if let Some(gp_idx) = parent_node.parent {
+                                                if let Some(gp_node) = dom.get_node(gp_idx) {
+                                                    if let crate::engine::dom::AceNodeType::Element(gp_el) = &gp_node.node_type {
+                                                        gp_el.tag == "details" && gp_el.attributes.contains_key("open")
+                                                    } else { false }
+                                                } else { false }
+                                            } else { false };
+                                            let marker = if is_open { "▼ " } else { "▶ " };
+                                            text = format!("{}{}", marker, text);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // --- OPTIMIZED TEXT-OVERFLOW: ELLIPSIS (AceEngine) ---
+                    // This logic handles the case where a single text node overflows its container
+                    // specifically with white-space: nowrap and text-overflow: ellipsis/clip.
                     if !text.is_empty() 
-                       && matches!(computed_style.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) 
                        && matches!(computed_style.white_space, crate::engine::style::css_values::CssWhiteSpace::NoWrap) 
                     {
                         let font_size = computed_style.font_size;
-                        let line_height = font_size * 1.2;
+                        let line_height = crate::engine::style::css_values::resolve_length(&computed_style.line_height, font_size, 16.0, vw, vh);
+                        let line_height = if line_height <= 0.0 { font_size * 1.2 } else { line_height };
                         
+                        let letter_spacing = crate::engine::style::css_values::resolve_length(&computed_style.letter_spacing, font_size, 16.0, vw, vh);
+                        let word_spacing = crate::engine::style::css_values::resolve_length(&computed_style.word_spacing, font_size, 16.0, vw, vh);
+
                         let (total_w, _) = self.text_measurer.measure_text(
                             &text,
                             font_size,
                             line_height,
                             Some(&computed_style.font_family),
                             cosmic_text::Weight::NORMAL,
-                            None
+                            None,
+                            letter_spacing,
+                            word_spacing
                         );
                         
                         if total_w > w {
+                            let use_ellipsis = matches!(computed_style.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis);
                             let ellipsis = "…";
-                            let (ell_w, _) = self.text_measurer.measure_text(
-                                ellipsis,
-                                font_size,
-                                line_height,
-                                Some(&computed_style.font_family),
-                                cosmic_text::Weight::NORMAL,
-                                None
-                            );
+                            let (ell_w, _) = if use_ellipsis {
+                                self.text_measurer.measure_text(
+                                    ellipsis,
+                                    font_size,
+                                    line_height,
+                                    Some(&computed_style.font_family),
+                                    cosmic_text::Weight::NORMAL,
+                                    None,
+                                    letter_spacing,
+                                    word_spacing
+                                )
+                            } else {
+                                (0.0, 0.0)
+                            };
                             
                             let safe_width = w - ell_w;
 
@@ -1748,7 +1857,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 let mut right = text.len();
                                 
                                 while left <= right {
-                                    let mid = (left + right) / 2;
+                                    let mid: usize = (left + right) / 2;
                                     let mut mid_adj = mid;
                                     while mid_adj > 0 && !text.is_char_boundary(mid_adj) { mid_adj -= 1; }
                                     
@@ -1758,7 +1867,9 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                         line_height,
                                         Some(&computed_style.font_family),
                                         cosmic_text::Weight::NORMAL,
-                                        None
+                                        None,
+                                        letter_spacing,
+                                        word_spacing
                                     );
                                     
                                     if sub_w <= safe_width {
@@ -1770,11 +1881,15 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                     }
                                 }
                                 
-                                let mut truncated = text[..best_len].to_string();
-                                truncated.push_str(ellipsis);
-                                text = truncated;
-                            } else {
+                                let mut result_text = text[..best_len].to_string();
+                                if use_ellipsis {
+                                    result_text.push_str(ellipsis);
+                                }
+                                text = result_text;
+                            } else if use_ellipsis {
                                 text = ellipsis.to_string();
+                            } else {
+                                text = String::new(); // Clip everything
                             }
                         }
                     }
@@ -1790,14 +1905,41 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                          let svg_xml = dom.serialize_subtree_html(node_idx);
                          if let Some(pixels) = crate::engine::svg::rasterize_svg_to_pixels(&svg_xml, w, h) {
                              canvas_data = Some(pixels);
-                         }
+                        }
                     }
+
+                    // ─── CLIPPING (OVERFLOW: HIDDEN / SCROLL / AUTO) ─────────
+                    let mut clip_rect: Option<[f32; 4]> = None;
+                    let mut current_ancestor = node.parent;
+                    while let Some(pidx) = current_ancestor {
+                        if let Some(pgeom) = geometry.get(&pidx) {
+                            if pgeom.overflow_y != "visible" || pgeom.overflow_x != "visible" {
+                                let cr = [pgeom.x, pgeom.y, pgeom.width, pgeom.height];
+                                clip_rect = Some(match clip_rect {
+                                    Some(c) => {
+                                        // Intersect rects
+                                        let x1 = c[0].max(cr[0]);
+                                        let y1 = c[1].max(cr[1]);
+                                        let x2 = (c[0] + c[2]).min(cr[0] + cr[2]);
+                                        let y2 = (c[1] + c[3]).min(cr[1] + cr[3]);
+                                        let w = (x2 - x1).max(0.0);
+                                        let h = (y2 - y1).max(0.0);
+                                        [x1, y1, w, h]
+                                    },
+                                    None => cr,
+                                });
+                            }
+                        }
+                        current_ancestor = dom.get_node(pidx).and_then(|n| n.parent);
+                    }
+                    // ─── FIM CLIPPING ───────────────────────────────────────
 
                     let prim = VisualPrimitive {
                         x, y, width: w, height: h,
                         background_color,
                         border_width: geom.border_top.max(geom.border_right).max(geom.border_bottom).max(geom.border_left),
                         border_color,
+                        border_style: "solid".to_string(),
                         text_content: if text.is_empty() { None } else { Some(text) },
                         text_color,
                         text_overflow: match computed_style.text_overflow {
@@ -1811,11 +1953,13 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                             }
                         },
                         font_size: computed_style.font_size,
+                        letter_spacing: crate::engine::style::css_values::resolve_length(&computed_style.letter_spacing, computed_style.font_size, 16.0, vw, vh),
+                        word_spacing: crate::engine::style::css_values::resolve_length(&computed_style.word_spacing, computed_style.font_size, 16.0, vw, vh),
                         image_url: None,
                         link_url: None,
                         node_idx,
                         element_type: element_tag.clone(),
-                        is_fixed: matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed),
+                        is_fixed: is_sticky_fixed || matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed),
                         opacity: computed_style.opacity,
                         border_radius: [
                             computed_style.border_radius_top_left,
@@ -1890,37 +2034,80 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         },
                         is_hovered: self.hovered_element == Some(node_idx),
                         is_focused: self.focused_element == Some(node_idx),
+                        clip_rect,
                     };
                     
                     if let Some(outline) = &computed_style.outline {
-                        let outline_color = Self::css_color_to_skia(&outline.color);
-                        let outline_prim = VisualPrimitive {
-                            x: x - outline.offset,
-                            y: y - outline.offset,
-                            width: w + outline.offset * 2.0,
-                            height: h + outline.offset * 2.0,
-                            background_color: None,
-                            border_width: outline.offset,
-                            border_color: outline_color,
-                            text_content: None,
-                            text_color: tiny_skia::Color::BLACK,
-                            text_overflow: String::from("clip"),
-                            font_size: 0.0,
-                            image_url: None, link_url: None, node_idx,
-                            element_type: format!("outline-{}", element_tag),
-                            is_fixed: false, opacity: 1.0, border_radius: [0.0;4],
-                            transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
-                            canvas_data: None, input_value: String::new(), placeholder: String::new(),
-                            input_type: String::new(), 
-                            input_min: String::new(),
-                            input_max: String::new(),
-                            input_step: String::new(),
-                            options: String::new(),
-                            padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
-                            font_weight: String::new(), white_space: String::new(),
-                            is_hovered: false, is_focused: false,
-                        };
-                        primitives.push(outline_prim);
+                        // outline-style: none => não renderiza
+                        if outline.style != "none" {
+                            let outline_color = Self::css_color_to_skia(&outline.color);
+                            let total_gap = outline.width + outline.offset;
+                            let outline_prim = VisualPrimitive {
+                                x: x - total_gap,
+                                y: y - total_gap,
+                                width: w + total_gap * 2.0,
+                                height: h + total_gap * 2.0,
+                                background_color: None,
+                                border_width: outline.width,
+                                border_color: outline_color,
+                                border_style: outline.style.clone(),
+                                text_content: None,
+                                text_color: tiny_skia::Color::BLACK,
+                                text_overflow: String::from("clip"),
+                                font_size: 0.0,
+                                letter_spacing: 0.0,
+                                word_spacing: 0.0,
+                                image_url: None, link_url: None, node_idx,
+                                element_type: format!("outline-{}", element_tag),
+                                is_fixed: false, opacity: 1.0,
+                                border_radius: [
+                                    (computed_style.border_radius_top_left + total_gap).max(0.0),
+                                    (computed_style.border_radius_top_right + total_gap).max(0.0),
+                                    (computed_style.border_radius_bottom_right + total_gap).max(0.0),
+                                    (computed_style.border_radius_bottom_left + total_gap).max(0.0),
+                                ],
+                                transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
+                                canvas_data: None, input_value: String::new(), placeholder: String::new(),
+                                input_type: String::new(), 
+                                input_min: String::new(),
+                                input_max: String::new(),
+                                input_step: String::new(),
+                                options: String::new(),
+                                padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
+                                font_weight: String::new(), white_space: String::new(),
+                                is_hovered: false, is_focused: false,
+                                clip_rect: None,
+                            };
+                            primitives.push(outline_prim);
+                        }
+                    }
+                    // Backdrop para <dialog data-ace-modal> (modal)
+                    if element_tag == "dialog" {
+                        if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                            if el.attributes.contains_key("data-ace-modal") {
+                                let backdrop = VisualPrimitive {
+                                    x: 0.0, y: 0.0, width: vw, height: vh,
+                                    background_color: Some(tiny_skia::Color::from_rgba8(0, 0, 0, 76)),
+                                    border_width: 0.0, border_color: None, border_style: "none".into(),
+                                    text_content: None, text_color: tiny_skia::Color::BLACK,
+                                    text_overflow: "clip".into(), font_size: 0.0,
+                                    letter_spacing: 0.0, word_spacing: 0.0,
+                                    image_url: None, link_url: None, node_idx,
+                                    element_type: "dialog-backdrop".into(),
+                                    is_fixed: true, opacity: 1.0, border_radius: [0.0; 4],
+                                    transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
+                                    canvas_data: None, input_value: String::new(), placeholder: String::new(),
+                                    input_type: String::new(),
+                                    input_min: String::new(), input_max: String::new(), input_step: String::new(),
+                                    options: String::new(),
+                                    padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
+                                    font_weight: String::new(), white_space: String::new(),
+                                    is_hovered: false, is_focused: false,
+                                    clip_rect: None,
+                                };
+                                primitives.push(backdrop);
+                            }
+                        }
                     }
                     primitives.push(prim);
                 }
@@ -2141,6 +2328,10 @@ pub struct VisualPrimitive {
     pub transform_translate: (f32, f32),
     pub canvas_data: Option<Vec<u8>>,
     
+    // Spacing
+    pub letter_spacing: f32,
+    pub word_spacing: f32,
+    
     // Form Extensions
     pub input_value: String,
     pub placeholder: String,
@@ -2161,8 +2352,13 @@ pub struct VisualPrimitive {
     pub font_weight: String,
     // CSS white-space ("normal", "nowrap", "pre", etc.)
     pub white_space: String,
+    // Border style ("solid", "dashed", "dotted", "none", etc.)
+    pub border_style: String,
     pub is_hovered: bool,
     pub is_focused: bool,
+    
+    // Clipping viewport (for overflow: hidden/scroll/auto)
+    pub clip_rect: Option<[f32; 4]>,
 }
 
 impl std::fmt::Debug for AceEngine {

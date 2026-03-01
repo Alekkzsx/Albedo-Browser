@@ -514,5 +514,90 @@ impl Element {
     pub fn get_context<'js>(&self, ctx: Ctx<'js>, type_: String) -> Result<Value<'js>> {
         self::canvas::get_context(self, ctx, type_)
     }
+
+    // ─── HTMLDialogElement API ───────────────────────────────────────
+    
+    /// dialog.show() — abre o dialog como non-modal
+    #[qjs(rename = "show")]
+    pub fn dialog_show(&self) {
+        let is_dialog = {
+            let dom = self.dom.lock().unwrap();
+            if let Some(node) = dom.get_node(self.index) {
+                matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
+            } else { false }
+        };
+        if !is_dialog { return; }
+        
+        // Se já está aberto, no-op
+        if self.has_attribute("open".into()) { return; }
+        
+        self.set_attribute("open".into(), String::new());
+        self.mark_mutation();
+    }
+
+    /// dialog.showModal() — abre como modal com backdrop
+    #[qjs(rename = "showModal")]
+    pub fn dialog_show_modal(&self) {
+        let is_dialog = {
+            let dom = self.dom.lock().unwrap();
+            if let Some(node) = dom.get_node(self.index) {
+                matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
+            } else { false }
+        };
+        if !is_dialog { return; }
+        
+        // Se já está aberto, no-op (spec diz InvalidStateError, mas sem throw por agora)
+        if self.has_attribute("open".into()) { return; }
+        
+        self.set_attribute("open".into(), String::new());
+        self.set_attribute("data-ace-modal".into(), String::new());
+        self.mark_mutation();
+    }
+
+    /// dialog.close(returnValue?) — fecha o dialog, dispara evento "close"
+    #[qjs(rename = "close")]
+    pub fn dialog_close(&self, return_value: Option<String>) {
+        let is_dialog = {
+            let dom = self.dom.lock().unwrap();
+            if let Some(node) = dom.get_node(self.index) {
+                matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
+            } else { false }
+        };
+        if !is_dialog { return; }
+        
+        // Se não está aberto, no-op
+        if !self.has_attribute("open".into()) { return; }
+        
+        // Armazenar returnValue se fornecido
+        if let Some(rv) = return_value {
+            self.set_attribute("data-return-value".into(), rv);
+        }
+        
+        self.remove_attribute("open".into());
+        self.remove_attribute("data-ace-modal".into());
+        self.mark_mutation();
+        
+        // Disparar evento "close" no nó (via DOM mutation — o pulse tratará)
+        // Nota: Para disparar imediatamente, seria necessário acesso ao JS runtime aqui.
+        // A marca de mutation garante que o layout recompute.
+    }
+
+    /// dialog.open (getter) — retorna true se o atributo "open" está presente
+    #[qjs(get, rename = "open")]
+    pub fn dialog_open_get(&self) -> bool {
+        self.has_attribute("open".into())
+    }
+
+    /// dialog.returnValue (getter)
+    #[qjs(get, rename = "returnValue")]
+    pub fn dialog_return_value_get(&self) -> String {
+        self.get_attribute("data-return-value".into()).unwrap_or_default()
+    }
+
+    /// dialog.returnValue (setter)
+    #[qjs(set, rename = "returnValue")]
+    pub fn dialog_return_value_set(&self, val: String) {
+        self.set_attribute("data-return-value".into(), val);
+    }
 }
 #[cfg(test)] mod tests;

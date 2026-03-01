@@ -148,30 +148,38 @@ impl InlineFormattingContext {
 
                     // Check if box fits on current line
                     if self.current_line.width + box_width > self.available_width && !self.current_line.boxes.is_empty() {
-                        // If text-overflow is ellipsis and we are in a nowrap context (single line basically or first box of line)
-                        // Actually, ellipsis is usually for the container's overflow.
-                        if matches!(self.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) {
-                             // Handle ellipsis truncation
-                             self.apply_ellipsis(box_.clone());
-                             // Stop further layout if we've hit the ellipsis (simplification for nowrap)
-                             return;
-                        } else {
-                            // Box doesn't fit, start new line
-                            self.finish_line();
+                        match self.text_overflow {
+                            crate::engine::style::css_values::CssTextOverflow::Ellipsis => {
+                                // Handle ellipsis truncation
+                                self.apply_overflow_logic(box_.clone(), true);
+                                return;
+                            }
+                            crate::engine::style::css_values::CssTextOverflow::Clip => {
+                                // For clip with nowrap, we just add it and it will be physically clipped by the renderer or container
+                                // But if it's NOT the first box, we might want to start a new line if not nowrap.
+                                // Specification: text-overflow only affects line boxes that overflow in the inline-progression direction.
+                                self.finish_line();
+                            }
                         }
                     }
 
                     self.current_line.add_box(box_);
                     
-                    // If we just added a box that made it overflow (even if it's the first box), 
-                    // and we have ellipsis, we should truncate it now.
-                    if self.current_line.width > self.available_width && matches!(self.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) {
-                        let last_box = self.current_line.boxes.pop();
-                        if let Some((b, _, _)) = last_box {
-                            self.current_line.width -= b.inline_size();
-                            self.apply_ellipsis(b);
+                    // After adding, if it overflows and we have ellipsis/clip on a single line (nowrap logic simulation)
+                    if self.current_line.width > self.available_width {
+                        match self.text_overflow {
+                            crate::engine::style::css_values::CssTextOverflow::Ellipsis => {
+                                let last_box = self.current_line.boxes.pop();
+                                if let Some((b, _, _)) = last_box {
+                                    self.current_line.width -= b.inline_size();
+                                    self.apply_overflow_logic(b, true);
+                                }
+                                return;
+                            }
+                            crate::engine::style::css_values::CssTextOverflow::Clip => {
+                                // Just keep it, renderer handles physical clipping if overflow: hidden is set on parent
+                            }
                         }
-                        return;
                     }
                 }
                 InlineBox::Inline { children, .. } => {
@@ -183,9 +191,8 @@ impl InlineFormattingContext {
 
                     // Check if box fits on current line
                     if self.current_line.width + box_width > self.available_width && !self.current_line.boxes.is_empty() {
-                        if matches!(self.text_overflow, crate::engine::style::css_values::CssTextOverflow::Ellipsis) {
-                            // Even blocks can be truncated or just stop there
-                            // For simplicity, we'll just stop if we hit ellipsis.
+                        if !matches!(self.text_overflow, crate::engine::style::css_values::CssTextOverflow::Clip) {
+                            // Non-clip (e.g. ellipsis) usually stops here for inline-blocks too if they overflow
                             return;
                         }
                         // Box doesn't fit, start new line
@@ -203,64 +210,72 @@ impl InlineFormattingContext {
         }
     }
 
-    /// Apply ellipsis truncation to a text box and add it to the current line
-    fn apply_ellipsis(&mut self, box_: InlineBox) {
+    /// Apply overflow logic (ellipsis or clip) to a text box
+    fn apply_overflow_logic(&mut self, box_: InlineBox, use_ellipsis: bool) {
         if let InlineBox::Text { content, metrics, style } = box_ {
-            let ellipsis = "…";
             let font_size = style.font_size;
-            let line_height = font_size * 1.2; // default
+            let line_height = crate::engine::style::css_values::resolve_length(&style.line_height, font_size, 16.0, self.available_width, 0.0); // Simple resolve
+            let line_height = if line_height <= 0.0 { font_size * 1.2 } else { line_height };
             
-            // Measure ellipsis
-            let (ell_w, _) = self.text_measurer.measure_text(ellipsis, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None);
+            let letter_spacing = crate::engine::style::css_values::resolve_length(&style.letter_spacing, font_size, 16.0, self.available_width, 0.0);
+            let word_spacing = crate::engine::style::css_values::resolve_length(&style.word_spacing, font_size, 16.0, self.available_width, 0.0);
+            
+            let ellipsis = "…";
+            let (ell_w, _) = if use_ellipsis {
+                self.text_measurer.measure_text(ellipsis, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing)
+            } else {
+                (0.0, 0.0)
+            };
             
             let available = self.available_width - self.current_line.width;
             let safe_width = available - ell_w;
             
             if safe_width <= 0.0 {
-                // Not even the ellipsis fits, or barely.
-                // Just add ellipsis as a box if possible, or nothing.
-                let ell_metrics = crate::engine::text::TextMetrics {
-                    width: ell_w,
-                    height: metrics.height,
-                    ascent: metrics.ascent,
-                    descent: metrics.descent,
-                    line_height: metrics.line_height,
-                };
-                self.current_line.add_box(InlineBox::Text {
-                    content: ellipsis.to_string(),
-                    metrics: ell_metrics,
-                    style,
-                });
+                if use_ellipsis {
+                    let ell_metrics = crate::engine::text::TextMetrics {
+                        width: ell_w,
+                        height: metrics.height,
+                        ascent: metrics.ascent,
+                        descent: metrics.descent,
+                        line_height: metrics.line_height,
+                    };
+                    self.current_line.add_box(InlineBox::Text {
+                        content: ellipsis.to_string(),
+                        metrics: ell_metrics,
+                        style,
+                    });
+                }
+                // If clip, we don't add anything if there's no space? 
+                // Actually, clip means we draw what fits.
             } else {
                 // Find truncation point
-                // Using a simple binary search or iterative approach for accurate measurement
                 let mut left = 0;
                 let mut right = content.len();
                 let mut best_idx = 0;
                 
                 while left <= right {
                     let mid = (left + right) / 2;
-                    let mut mid = mid;
-                    // Char boundary
-                    while mid > 0 && !content.is_char_boundary(mid) { mid -= 1; }
+                    let mut mid_adj = mid;
+                    while mid_adj > 0 && !content.is_char_boundary(mid_adj) { mid_adj -= 1; }
                     
-                    let sub = &content[..mid];
-                    let (w, _) = self.text_measurer.measure_text(sub, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None);
+                    let sub = &content[..mid_adj];
+                    let (w, _) = self.text_measurer.measure_text(sub, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing);
                     
                     if w <= safe_width {
-                        best_idx = mid;
+                        best_idx = mid_adj;
                         left = mid + 1;
-                        // Skip to next char boundary
                         while left < content.len() && !content.is_char_boundary(left) { left += 1; }
                     } else {
                         right = mid.saturating_sub(1);
                     }
                 }
                 
-                let mut truncated = content[..best_idx].to_string();
-                truncated.push_str(ellipsis);
+                let mut result_content = content[..best_idx].to_string();
+                if use_ellipsis {
+                    result_content.push_str(ellipsis);
+                }
                 
-                let (new_w, _) = self.text_measurer.measure_text(&truncated, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None);
+                let (new_w, _) = self.text_measurer.measure_text(&result_content, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing);
                 
                 let new_metrics = crate::engine::text::TextMetrics {
                     width: new_w,
@@ -271,7 +286,7 @@ impl InlineFormattingContext {
                 };
                 
                 self.current_line.add_box(InlineBox::Text {
-                    content: truncated,
+                    content: result_content,
                     metrics: new_metrics,
                     style,
                 });
@@ -308,8 +323,8 @@ impl LineBreaker {
     /// Break text into lines based on width constraint
     /// Returns vector of (text, width) tuples
     pub fn break_text(text: &str, max_width: f32, measurer: &crate::engine::text::TextMeasurer, font_size: f32, line_height: f32, family: Option<&str>, weight: cosmic_text::Weight) -> Vec<(String, f32)> {
-        // Use cosmic-text's built-in wrapping
-        measurer.measure_text_wrapped(text, font_size, line_height, family, weight, max_width, None)
+        // Obsolete
+        vec![]
     }
 
     /// Break text at word boundaries
@@ -324,6 +339,30 @@ impl LineBreaker {
             .iter()
             .map(|c| c.to_string())
             .collect()
+    }
+}
+
+pub fn apply_text_transform(text: &str, transform: &crate::engine::style::css_values::CssTextTransform) -> String {
+    match transform {
+        crate::engine::style::css_values::CssTextTransform::Uppercase => text.to_uppercase(),
+        crate::engine::style::css_values::CssTextTransform::Lowercase => text.to_lowercase(),
+        crate::engine::style::css_values::CssTextTransform::Capitalize => {
+            let mut result = String::with_capacity(text.len());
+            let mut capitalize_next = true;
+            for c in text.chars() {
+                if c.is_whitespace() {
+                    capitalize_next = true;
+                    result.push(c);
+                } else if capitalize_next {
+                    result.extend(c.to_uppercase());
+                    capitalize_next = false;
+                } else {
+                    result.push(c);
+                }
+            }
+            result
+        },
+        crate::engine::style::css_values::CssTextTransform::None => text.to_string(),
     }
 }
 
@@ -486,12 +525,43 @@ mod tests {
         ifc.layout(boxes);
 
         assert_eq!(ifc.lines.len(), 1);
-        let last_box = &ifc.lines[0].boxes[0].0;
-        if let InlineBox::Text { content, .. } = last_box {
+        let (box_0, _, _) = &ifc.lines[0].boxes[0];
+        if let InlineBox::Text { content, .. } = box_0 {
             assert!(content.contains("…"));
             assert!(ifc.lines[0].width <= 50.1);
         } else {
             panic!("Expected text box");
         }
+    }
+
+    #[test]
+    fn test_inline_formatting_context_clip() {
+        let metrics = TextMetrics {
+            width: 80.0,
+            height: 20.0,
+            ascent: 16.0,
+            descent: 4.0,
+            line_height: 20.0,
+        };
+
+        let style = ComputedStyle::default();
+        let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
+        let measurer = crate::engine::text::TextMeasurer::new(font_system);
+        
+        let mut ifc = InlineFormattingContext::new(50.0, measurer, crate::engine::style::css_values::CssTextOverflow::Clip);
+
+        let boxes = vec![
+            InlineBox::Text {
+                content: "Very long text that should be clipped".to_string(),
+                metrics,
+                style: style.clone(),
+            },
+        ];
+
+        ifc.layout(boxes);
+
+        // Clip scenario: we currently allow the box but the line would be marked as overflowing
+        assert_eq!(ifc.lines.len(), 1);
+        assert_eq!(ifc.lines[0].boxes.len(), 1);
     }
 }
