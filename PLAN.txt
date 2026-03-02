@@ -336,7 +336,7 @@
 
   [B] PERFORMANCE (BLOQUEADOR CRÍTICO)
   ────────────────────────────────────
-  [x]  Incremental layout — dirty flags por nó (não recomputar tudo a cada frame) ✅
+  ✅  Incremental layout — dirty flags por nó (não recomputar tudo a cada frame)
          ✅ DOM: NodeDirtyFlags (STYLE|LAYOUT|CHILDREN|SUBTREE) + mark_dirty() propagando p/ ancestrais
          ✅ Engine: build_layout_tree() consulta dirty flags (L831-856):
             • Nó limpo + sem descendentes sujos → pula subárvore inteira (cache node_to_taffy)
@@ -344,13 +344,21 @@
          ✅ recompute_dirty_styles() skipa quando zero nós têm flag STYLE
          ✅ recompute_layout() reseta todos os flags p/ NONE após layout (L630-633)
          ✅ styles_dirty (AtomicBool) + per-node flags consumidos em ambos os caminhos
-  [ ]  Style sharing cache (elementos com mesmo seletor compartilham estilo)
-         → engine/style/mod.rs
-  [ ]  Paint invalidation inteligente (repintar apenas região modificada)
-         → engine/mod.rs (render_visual)
-  [ ]  Virtual scrolling / culling (não renderizar elementos fora do viewport)
-         ⚠️ SEM ISSO: páginas longas travam renderizando milhares de nós.
-         → engine/mod.rs
+  ✅  Style sharing cache (elementos com mesmo seletor compartilham estilo)
+         ✅ HashMap<u64, ComputedStyle> em Stylesheet.style_sharing_cache (Arc<RwLock>)
+         ✅ compute_style_hash() hasha: tag, id, class, inline style, atributos, pseudo-states,
+            contexto de siblings (+ e ~), cadeia completa de ancestrais, e ambiente (vw/vh/color_scheme)
+         ✅ calculate_style() faz lookup antes de calcular; insert após computar
+         ✅ clear_cache() chamado em layout() quando viewport muda
+  ✅  Paint invalidation inteligente (repintar apenas região modificada)
+         ✅ InvalidationManager com dirty_rects + merge heurístico (union se área ≤ 1.5×; coalesce se >20 rects)
+         ✅ Detecção por mudança de estilo (old != computed → add_dirty_rect expandido +20px)
+         ✅ Detecção por mudança de geometria (previous_geometries vs nova posição/tamanho → invalida antigo + novo)
+         ✅ Renderer: framebuffer persistente, clear seletivo só nas regiões sujas, skip primitivas fora de dirty_rects
+         ✅ bridge.rs: return early sem repaint se dirty_rects vazio
+  ✅  Virtual Scrolling / Culling (não renderizar elementos fora do viewport)
+         ✅ engine/mod.rs (render_visual) ignorando elementos fora de `(0, -viewport_y, vw, vh)` + buffer 1.5x
+         ✅ position:fixed elements consists explicitly exempt from skip.
   [ ]  GPU compositing / layer tree (wgpu — renderização por camadas)
          → engine/compositor.rs (CRIAR)
   [ ]  Font caching (não recarregar fontes a cada render)
@@ -360,9 +368,15 @@
 
   [C] JAVASCRIPT — COMPLETUDE MÍNIMA
   ───────────────────────────────────
-  [ ]  ES Modules (<script type="module">, import/export, import() dinâmico)
-         ⚠️ SEM ISSO: React, Vue, Svelte e qualquer framework moderno não funcionam.
-         → engine/mod.rs + runtime/core/eval.rs
+  ✅  ES Modules (<script type="module">, import/export, import() dinâmico)
+         ✅ AlbedoModuleResolver: resolve specifiers relativos, absolutos, data URIs, bare (fallback esm.sh)
+         ✅ AlbedoModuleLoader: busca módulos do cache ou via HTTP, registra via Module::declare
+         ✅ ModuleRegistry: cache compartilhado (url → código-fonte) + tracking de módulos avaliados
+         ✅ ImportMap parser: <script type="importmap"> com imports + scopes hierárquicos
+         ✅ collect_scripts_from_dom(): scanner de <script> tags extraindo type/src/defer/async/nomodule
+         ✅ Pipeline de execução em 5 fases: importmaps → clássicos sync → defer → módulos ES → microtasks
+         ✅ execute_module() + execute_module_from_url() em eval.rs via Module::evaluate do rquickjs
+         ✅ Runtime::set_loader registrado em init_js_for_url com resolver+loader do Albedo
   [ ]  IndexedDB funcional (backend: rusqlite ou sled)
          → runtime/bindings/webapi/indexeddb.rs (reescrever do zero)
          Implementar: IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor
@@ -779,7 +793,7 @@
   PERFORMANCE  ⚠️ ÁREA MAIS CRÍTICA
   [x]  Incremental layout com dirty flags  ✅ IMPLEMENTADO
   [ ]  Virtual scrolling / culling         ⚠️ BLOQUEADOR #2
-  [ ]  Style sharing cache
+  [x]  Style sharing cache ✅
   [ ]  Font caching
 
   JAVASCRIPT

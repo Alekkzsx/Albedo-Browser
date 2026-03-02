@@ -1,26 +1,70 @@
 use tiny_skia::{Pixmap, Paint, Rect, Transform, Color, BlendMode, PixmapPaint, PathBuilder};
-use crate::engine::VisualPrimitive;
+use crate::engine::DisplayItem;
 use cosmic_text::{FontSystem, Buffer, Metrics, Attrs, Shaping, SwashCache};
 
-pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32, scale_factor: f32, font_system: &mut FontSystem) -> Pixmap {
-    let mut pixmap = Pixmap::new(width.max(1), height.max(1)).unwrap();
-    pixmap.fill(Color::WHITE); // Default background
+pub fn paint_layout_tree(
+    tile: &crate::engine::layer_tree::Tile,
+    width: u32, 
+    height: u32, 
+    scale_factor: f32, 
+    font_system: &mut FontSystem,
+    framebuffer: &mut Option<Pixmap>,
+    dirty_rects: &[Rect] // dirty rects are relative to the Tile's logical coordinates
+) {
+    if framebuffer.is_none() || framebuffer.as_ref().unwrap().width() != width || framebuffer.as_ref().unwrap().height() != height {
+        let mut new_pixmap = Pixmap::new(width.max(1), height.max(1)).unwrap();
+        new_pixmap.fill(Color::TRANSPARENT); // Tiles need transparent backgrounds for proper alpha blending in wgpu
+        *framebuffer = Some(new_pixmap);
+    }
+
+    let pixmap = framebuffer.as_mut().unwrap();
+
+    let mut clear_paint = Paint::default();
+    clear_paint.set_color(Color::TRANSPARENT);
+    clear_paint.blend_mode = BlendMode::Source;
+
+    for dirty in dirty_rects {
+        if let Some(scaled_dirty) = Rect::from_xywh(
+            (dirty.x() - tile.x as f32) * scale_factor,
+            (dirty.y() - tile.y as f32) * scale_factor,
+            dirty.width() * scale_factor,
+            dirty.height() * scale_factor
+        ) {
+            pixmap.fill_rect(scaled_dirty, &clear_paint, Transform::identity(), None);
+        }
+    }
 
     let mut swash_cache = SwashCache::new();
 
-    for prim in primitives {
+    // To prevent checking the intersection for all sub-commands, we can precompute the bounds.
+    for prim in &tile.display_items {
         if prim.width <= 0.0 || prim.height <= 0.0 || prim.opacity <= 0.0 {
             continue;
         }
 
-        let mut rect = Rect::from_xywh(prim.x, prim.y, prim.width, prim.height);
+        // Adjust coordinates relative to the Tile's local space
+        let local_x = prim.x - tile.x as f32;
+        let local_y = prim.y - tile.y as f32;
+
+        let mut rect = Rect::from_xywh(local_x, local_y, prim.width, prim.height);
         if rect.is_none() { continue; }
         
+        let mut intersects_dirty = false;
+        for dirty in dirty_rects {
+            if rect.unwrap().intersect(dirty).is_some() {
+                intersects_dirty = true;
+                break;
+            }
+        }
+
+        if !intersects_dirty {
+            continue;
+        }
+
         // 0. Clip Intersection
         if let Some(cr) = prim.clip_rect {
             if let Some(clip) = Rect::from_xywh(cr[0], cr[1], cr[2], cr[3]) {
                 rect = rect.unwrap().intersect(&clip);
-                // Se a interseção for vazia ou inválida, o nó está 100% clipado (invisível)
                  if rect.is_none() { continue; }
             }
         }
@@ -69,8 +113,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                     tiny_skia::IntSize::from_wh(prim.width as u32, prim.height as u32).unwrap()
                 ) {
                     pixmap.draw_pixmap(
-                        (prim.x * scale_factor) as i32, 
-                        (prim.y * scale_factor) as i32, 
+                        (local_x * scale_factor) as i32, 
+                        (local_y * scale_factor) as i32, 
                         sub_pixmap.as_ref(), 
                         &PixmapPaint::default(), 
                         Transform::from_scale(scale_factor, scale_factor), 
@@ -166,8 +210,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                 buffer.shape_until_scroll(font_system, false);
                 for run in buffer.layout_runs() {
                     for glyph in run.glyphs.iter() {
-                        let physical_glyph = glyph.physical((prim.x * scale_factor, prim.y * scale_factor), 1.0);
-                        render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                        let physical_glyph = glyph.physical((local_x * scale_factor, local_y * scale_factor), 1.0);
+                        render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
                     }
                 }
             } else {
@@ -222,8 +266,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                             buffer.shape_until_scroll(font_system, false);
                             for run in buffer.layout_runs() {
                                 for glyph in run.glyphs.iter() {
-                                    let physical_glyph = glyph.physical((prim.x * scale_factor + cx, prim.y * scale_factor + current_y), 1.0);
-                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                                    let physical_glyph = glyph.physical(((local_x + cx) * scale_factor, (local_y + current_y) * scale_factor), 1.0);
+                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
                                 }
                             }
                             cx += buffer.layout_runs().next().map_or(0.0, |r| r.line_w) + letter_spacing;
@@ -234,8 +278,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                         buffer.shape_until_scroll(font_system, false);
                         for run in buffer.layout_runs() {
                             for glyph in run.glyphs.iter() {
-                                let physical_glyph = glyph.physical((prim.x * scale_factor + current_x, prim.y * scale_factor + current_y), 1.0);
-                                render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                                let physical_glyph = glyph.physical((local_x * scale_factor + current_x, local_y * scale_factor + current_y), 1.0);
+                                render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
                             }
                         }
                         current_x += word_w;
@@ -252,8 +296,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                             // Also render space if it had visual meaning, but space is invisible Mask
                             for run in buffer.layout_runs() {
                                 for glyph in run.glyphs.iter() {
-                                    let physical_glyph = glyph.physical((prim.x * scale_factor + current_x, prim.y * scale_factor + current_y), 1.0);
-                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, &mut pixmap);
+                                    let physical_glyph = glyph.physical((local_x * scale_factor + current_x, local_y * scale_factor + current_y), 1.0);
+                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
                                 }
                             }
                             spc_adv = buffer.layout_runs().next().map_or(0.0, |r| r.line_w);
@@ -282,14 +326,14 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                         // Draw shadow/depth effect
                         let mut shadow_paint = Paint::default();
                         shadow_paint.set_color(Color::from_rgba8(0, 0, 0, 40));
-                        if let Some(shadow_rect) = Rect::from_xywh(prim.x + inset, prim.y + inset + 1.0, (prim.width - inset * 2.0).max(0.0), (prim.height - inset * 2.0).max(0.0)) {
+                        if let Some(shadow_rect) = Rect::from_xywh(local_x + inset, local_y + inset + 1.0, (prim.width - inset * 2.0).max(0.0), (prim.height - inset * 2.0).max(0.0)) {
                              let shadow_path = PathBuilder::from_rect(shadow_rect);
                              pixmap.fill_path(&shadow_path, &shadow_paint, tiny_skia::FillRule::Winding, Transform::from_scale(scale_factor, scale_factor), None);
                         }
 
                         if let Some(inner_rect) = Rect::from_xywh(
-                            prim.x + inset, 
-                            prim.y + inset, 
+                            local_x + inset, 
+                            local_y + inset, 
                             (prim.width - inset * 2.0).max(0.0), 
                             (prim.height - inset * 2.0).max(0.0)
                         ) {
@@ -311,13 +355,13 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                 "range" => {
                     // Modern Slider: Gradient track and circular thumb
                     let track_h = 6.0;
-                    let track_y = prim.y + (prim.height - track_h) / 2.0;
+                    let track_y = local_y + (prim.height - track_h) / 2.0;
                     
                     // Track with gradient
                     let mut track_paint = Paint::default();
                     let shader = tiny_skia::LinearGradient::new(
-                        tiny_skia::Point::from_xy(prim.x, track_y),
-                        tiny_skia::Point::from_xy(prim.x + prim.width, track_y),
+                        tiny_skia::Point::from_xy(local_x, track_y),
+                        tiny_skia::Point::from_xy(local_x + prim.width, track_y),
                         vec![
                             tiny_skia::GradientStop::new(0.0, Color::from_rgba8(220, 220, 220, 255)),
                             tiny_skia::GradientStop::new(1.0, Color::from_rgba8(180, 180, 180, 255)),
@@ -328,7 +372,7 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                     track_paint.shader = shader;
                     track_paint.anti_alias = true;
 
-                    if let Some(track_rect) = Rect::from_xywh(prim.x, track_y, prim.width, track_h) {
+                    if let Some(track_rect) = Rect::from_xywh(local_x, track_y, prim.width, track_h) {
                         let track_path = PathBuilder::from_rect(track_rect);
                         pixmap.fill_path(&track_path, &track_paint, tiny_skia::FillRule::Winding, Transform::from_scale(scale_factor, scale_factor), None);
                     }
@@ -340,8 +384,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                     let percent = if max > min { (val - min) / (max - min) } else { 0.5 };
                     
                     let thumb_radius = 9.0;
-                    let thumb_x = prim.x + (prim.width - thumb_radius * 2.0) * percent.clamp(0.0, 1.0) + thumb_radius;
-                    let thumb_y = prim.y + prim.height / 2.0;
+                    let thumb_x = local_x + (prim.width - thumb_radius * 2.0) * percent.clamp(0.0, 1.0) + thumb_radius;
+                    let thumb_y = local_y + prim.height / 2.0;
 
                     // Thumb Shadow
                     let mut shadow_paint = Paint::default();
@@ -378,8 +422,8 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                     
                     // Draw Icon on the right
                     let icon_size = 14.0;
-                    let icon_x = prim.x + prim.width - icon_size - 6.0;
-                    let icon_y = prim.y + (prim.height - icon_size) / 2.0;
+                    let icon_x = local_x + prim.width - icon_size - 6.0;
+                    let icon_y = local_y + (prim.height - icon_size) / 2.0;
                     
                     let mut icon_paint = Paint::default();
                     icon_paint.set_color(Color::from_rgba8(100, 100, 100, 255));
@@ -420,7 +464,7 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
                          
                          for run in buffer.layout_runs() {
                              for glyph in run.glyphs.iter() {
-                                 let physical_glyph = glyph.physical((prim.x * scale_factor + 6.0, prim.y * scale_factor + (prim.height * scale_factor - prim.font_size * scale_factor)/2.0), 1.0);
+                                 let physical_glyph = glyph.physical((local_x * scale_factor + 6.0, local_y * scale_factor + (prim.height * scale_factor - prim.font_size * scale_factor)/2.0), 1.0);
                                  if let Some(image) = swash_cache.get_image(font_system, physical_glyph.cache_key) {
                                      let top = (physical_glyph.y as i32) - image.placement.top;
                                      let left = (physical_glyph.x as i32) + image.placement.left;
@@ -451,8 +495,6 @@ pub fn paint_layout_tree(primitives: &[VisualPrimitive], width: u32, height: u32
             }
         }
     }
-    
-    pixmap
 }
 
 fn parse_hex_color(hex: &str) -> Result<tiny_skia::Color, ()> {

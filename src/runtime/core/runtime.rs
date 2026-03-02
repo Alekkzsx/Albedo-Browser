@@ -84,6 +84,10 @@ pub struct JsRuntime {
     /// Populado pelo AceEngine via collect_subframe_geometries() após cada layout.
     /// Chave: (iframe_node_idx * 1_000_000) + elem_node_idx
     pub iframe_projected_geometry: Arc<Mutex<HashMap<u64, crate::engine::ElementGeometry>>>,
+    #[qjs(skip_trace)]
+    pub module_registry: Arc<Mutex<crate::runtime::core::module_loader::ModuleRegistry>>,
+    #[qjs(skip_trace)]
+    pub import_map: Arc<Mutex<Option<crate::runtime::core::module_loader::ImportMap>>>,
 }
 
 use super::event_loop::EventLoop;
@@ -118,6 +122,8 @@ impl JsRuntime {
             element_scroll: Arc::new(Mutex::new(HashMap::new())),
             viewport_y: Arc::new(Mutex::new(0.0)),
             iframe_projected_geometry: Arc::new(Mutex::new(HashMap::new())),
+            module_registry: Arc::new(Mutex::new(crate::runtime::core::module_loader::ModuleRegistry::new(""))),
+            import_map: Arc::new(Mutex::new(None)),
         };
 
         // Store self in userdata for access from within JS callbacks
@@ -137,6 +143,16 @@ impl JsRuntime {
     /// ```
     pub fn execute_script(&self, code: &str) -> JsResult<String> {
         super::eval::execute_script(self, code)
+    }
+
+    /// Execute an ES Module inline
+    pub fn execute_module(&self, code: &str, name: &str) -> JsResult<String> {
+        super::eval::execute_module(self, code, name)
+    }
+
+    /// Load and execute an ES Module from URL
+    pub fn load_module_from_url(&self, url: &str) -> JsResult<String> {
+        super::eval::execute_module_from_url(self, url)
     }
     
     /*
