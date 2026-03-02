@@ -17,6 +17,30 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         rt.element_scroll = engine.element_scroll.clone();
         *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(url);
         let origin_str = get_origin(url); 
+
+        // ═══════════════════════════════════════════════════════════════
+        // ES Modules: Configurar ModuleRegistry e registrar Loader/Resolver
+        // ═══════════════════════════════════════════════════════════════
+        {
+            let mut registry = rt.module_registry.lock().unwrap();
+            *registry = crate::runtime::core::module_loader::ModuleRegistry::new(url);
+        }
+
+        // Registrar o resolver e loader no Runtime do QuickJS
+        {
+            let registry_clone = rt.module_registry.lock().unwrap().clone();
+            let resolver = crate::runtime::core::module_loader::AlbedoModuleResolver {
+                registry: registry_clone.clone(),
+            };
+            let loader = crate::runtime::core::module_loader::AlbedoModuleLoader {
+                registry: registry_clone,
+            };
+            let runtime = rt.runtime.lock().unwrap();
+            runtime.set_loader(resolver, loader);
+        }
+        println!("[init_js_for_url] ES Module loader registered");
+        // ═══════════════════════════════════════════════════════════════
+
         println!("[init_js_for_url] origin set, calling init_storage");
         if let Err(e) = init_storage(&rt, origin_str) {
             eprintln!("Failed to initialize storage for {}: {}", origin_str, e);

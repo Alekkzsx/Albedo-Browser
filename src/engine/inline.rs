@@ -369,6 +369,7 @@ pub fn apply_text_transform(text: &str, transform: &crate::engine::style::css_va
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_inline_box_dimensions() {
@@ -408,7 +409,7 @@ mod tests {
 
         let box1 = InlineBox::Text {
             content: "hello".to_string(),
-            metrics,
+            metrics: metrics.clone(),
             style: style.clone(),
         };
 
@@ -444,7 +445,7 @@ mod tests {
         let boxes = vec![
             InlineBox::Text {
                 content: "hello".to_string(),
-                metrics,
+                metrics: metrics.clone(),
                 style: style.clone(),
             },
             InlineBox::Text {
@@ -479,7 +480,7 @@ mod tests {
         let boxes = vec![
             InlineBox::Text {
                 content: "hello".to_string(),
-                metrics,
+                metrics: metrics.clone(),
                 style: style.clone(),
             },
             InlineBox::Text {

@@ -5,7 +5,7 @@ use tiny_skia::Pixmap;
 
 /// Converts a 100% Rust memory buffer (tiny-skia Pixmap) into a natively compatible
 /// Slint Image via SharedPixelBuffer.
-pub fn skia_to_slint_buffer(pixmap: Pixmap) -> SharedPixelBuffer<Rgba8Pixel> {
+pub fn skia_to_slint_buffer(pixmap: &Pixmap) -> SharedPixelBuffer<Rgba8Pixel> {
     let width = pixmap.width();
     let height = pixmap.height();
     let data = pixmap.data();
@@ -41,27 +41,88 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
         let primitives = engine.render_visual(vw, vh);
         let viewport_y = engine.viewport_y;
         
-        let max_y = primitives.iter().fold(0.0f32, |max, p| max.max(p.y + p.height));
+        let max_y = primitives.get_all_layers_sorted().iter()
+            .flat_map(|layer| layer.display_items.iter())
+            .fold(0.0f32, |max, p| max.max(p.y + p.height));
         let content_h = max_y.max(vh);
         
         let physical_w = (vw * scale_factor).ceil() as u32;
         let physical_h = (content_h * scale_factor).ceil() as u32;
 
-        let ui_clone = ui.as_weak();
+        let mut dirty_rects = Vec::new();
+        let framebuffer = engine.framebuffer.clone();
         
-        tokio::spawn(async move {
-            let mut font_system = cosmic_text::FontSystem::new();
-            let pixmap = crate::renderer::paint_layout_tree(&primitives, physical_w, physical_h, scale_factor, &mut font_system);
-            let pixel_buffer = skia_to_slint_buffer(pixmap);
-            
+        {
+            let mut im = engine.invalidation_manager.lock().unwrap();
+            dirty_rects = im.dirty_rects.clone();
+            im.clear();
+        }
+
+        let mut fb_size_changed = false;
+        {
+            let fb = framebuffer.lock().unwrap();
+            if let Some(ref p) = *fb {
+                if p.width() != physical_w || p.height() != physical_h {
+                    fb_size_changed = true;
+                }
+            } else {
+                fb_size_changed = true;
+            }
+        }
+
+        if dirty_rects.is_empty() && !fb_size_changed {
+            let ui_clone = ui.as_weak();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_clone.upgrade() {
-                    let slint_image = Image::from_rgba8(pixel_buffer);
-                    ui.set_web_content_buffer(slint_image);
                     ui.set_content_height(content_h);
                     ui.set_viewport_y(viewport_y);
                 }
             });
+            return;
+        }
+
+        if fb_size_changed {
+            dirty_rects.clear();
+            if let Some(rect) = tiny_skia::Rect::from_xywh(0.0, 0.0, logical_width, content_h) {
+                dirty_rects.push(rect);
+            }
+        }
+
+        let ui_clone = ui.as_weak();
+        
+        tokio::spawn(async move {
+            let mut font_system = cosmic_text::FontSystem::new();
+            let mut fb_lock = framebuffer.lock().unwrap();
+            
+            // Temporary Bridge for Phase 2: Paint all Tiles to the single CPU Pixmap
+            // until the WGPU compositor is wired up.
+            for layer in primitives.get_all_layers_sorted() {
+                let tiles = layer.build_tiles(512);
+                for tile in tiles {
+                    crate::renderer::paint_layout_tree(
+                        &tile, 
+                        physical_w, 
+                        physical_h, 
+                        scale_factor, 
+                        &mut font_system,
+                        &mut fb_lock,
+                        &dirty_rects
+                    );
+                }
+            }
+            
+            if let Some(ref pixmap) = *fb_lock {
+                let pixel_buffer = skia_to_slint_buffer(pixmap);
+                
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_clone.upgrade() {
+                        let slint_image = Image::from_rgba8(pixel_buffer);
+                        ui.set_web_content_buffer(slint_image);
+                        ui.set_content_height(content_h);
+                        ui.set_viewport_y(viewport_y);
+                    }
+                });
+            }
         });
     }
 }

@@ -809,7 +809,7 @@ impl Default for CssContent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComputedStyle {
     // Display & Layout
     pub display: CssDisplay,

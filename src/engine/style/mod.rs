@@ -33,6 +33,7 @@ pub struct Stylesheet {
     pub keyframes: HashMap<String, Vec<self::css_values::CssKeyframe>>,
     pub user_agent_rule_map: RuleMap,
     pub author_rule_map: RuleMap,
+    pub style_sharing_cache: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<u64, ComputedStyle>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1051,6 +1052,7 @@ fn parse_simple(source: &str) -> Stylesheet {
         keyframes: HashMap::new(),
         user_agent_rule_map: RuleMap::default(),
         author_rule_map: RuleMap::default(),
+        style_sharing_cache: std::sync::Arc::new(std::sync::RwLock::new(HashMap::new())),
     };
     let mut input = cssparser::ParserInput::new(source);
     let mut parser = cssparser::Parser::new(&mut input);
@@ -1085,6 +1087,13 @@ impl Stylesheet {
             keyframes: HashMap::new(),
             user_agent_rule_map: RuleMap::default(),
             author_rule_map: RuleMap::default(),
+            style_sharing_cache: std::sync::Arc::new(std::sync::RwLock::new(HashMap::new())),
+        }
+    }
+    
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = self.style_sharing_cache.write() {
+            cache.clear();
         }
     }
     
@@ -1226,6 +1235,21 @@ impl Stylesheet {
             AceNodeType::Element(e) => e,
             _ => return ComputedStyle::default(), 
         };
+        
+        // 1. Compute Cache Hash
+        let cache_key = self.compute_style_hash(
+            dom, node_id, 
+            hovered_element, focused_element, active_element,
+            vw, vh, color_scheme
+        );
+
+        // 2. Check Cache
+        if let Ok(cache) = self.style_sharing_cache.read() {
+            if let Some(cached_style) = cache.get(&cache_key) {
+                 return cached_style.clone();
+            }
+        }
+        
         let mut style = if let Some(parent) = parent_style {
             let mut s = ComputedStyle::default();
             // Inherited properties
@@ -1431,10 +1455,88 @@ impl Stylesheet {
                           offset: 2.0,
                       });
                   }
-                     }
-                    }
+             }
+        }
+
+        // Store in cache
+        if let Ok(mut cache) = self.style_sharing_cache.write() {
+             cache.insert(cache_key, style.clone());
+        }
 
         style
+    }
+
+    fn compute_style_hash(&self, 
+        dom: &AceDOM, 
+        node_id: usize,
+        hovered_element: Option<usize>, 
+        focused_element: Option<usize>, 
+        active_element: Option<usize>,
+        vw: f32, vh: f32, color_scheme: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        
+        // Hash environment (media queries can change result)
+        (vw.to_bits(), vh.to_bits(), color_scheme).hash(&mut hasher);
+
+        let mut current_idx = Some(node_id);
+        let mut depth = 0;
+        
+        while let Some(idx) = current_idx {
+            if let Some(node) = dom.get_node(idx) {
+                if let AceNodeType::Element(el) = &node.node_type {
+                     // Hash Element Identity
+                     el.tag.hash(&mut hasher);
+                     
+                     if let Some(id) = el.attributes.get("id") {
+                         id.hash(&mut hasher);
+                     }
+                     if let Some(classes) = el.attributes.get("class") {
+                         classes.hash(&mut hasher);
+                     }
+                     
+                     // Style attributes have high specificity
+                     if let Some(inline_style) = el.attributes.get("style") {
+                         inline_style.hash(&mut hasher);
+                     }
+
+                     for (k, v) in &el.attributes {
+                         if k != "id" && k != "class" && k != "style" {
+                             k.hash(&mut hasher);
+                             v.hash(&mut hasher);
+                         }
+                     }
+                     
+                     // State hashes (crucial for pseudo-classes like :hover)
+                     if hovered_element == Some(idx) { 1u8.hash(&mut hasher); }
+                     if focused_element == Some(idx) { 2u8.hash(&mut hasher); }
+                     if active_element == Some(idx) { 3u8.hash(&mut hasher); }
+
+                     // Hash Sibling Context (for + and ~ selectors)
+                     if depth == 0 {
+                         let mut prev_idx = node.prev_sibling;
+                         while let Some(p_idx) = prev_idx {
+                             if let Some(p_node) = dom.get_node(p_idx) {
+                                  if let AceNodeType::Element(p_el) = &p_node.node_type {
+                                       "sibling".hash(&mut hasher);
+                                       p_el.tag.hash(&mut hasher);
+                                       if let Some(pc) = p_el.attributes.get("class") { pc.hash(&mut hasher); }
+                                  }
+                                  prev_idx = p_node.prev_sibling;
+                             } else { break; }
+                         }
+                     }
+                }
+                
+                // Go to parent
+                current_idx = node.parent;
+                depth += 1;
+            } else {
+                break;
+            }
+        }
+        
+        hasher.finish()
     }
 
     pub fn calculate_pseudo_style(&self, dom: &AceDOM, node_id: usize, pseudo: &AcePseudoElement, hovered_element: Option<usize>, focused_element: Option<usize>, active_element: Option<usize>, vw: f32, vh: f32, color_scheme: &str) -> ComputedStyle {

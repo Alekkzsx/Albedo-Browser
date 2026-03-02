@@ -1,10 +1,11 @@
 pub mod dom;
 pub mod style;
 pub mod graphics;
+pub mod layer_tree;
+pub mod compositor;
 pub mod svg;
 pub mod text;
 pub mod inline;
-
 use std::sync::{Arc, Mutex};
 use crate::engine::dom::{AceDOM, AceNodeType};
 use self::style::Stylesheet;
@@ -121,6 +122,45 @@ pub struct ACEPrimitive {
     pub options: String, 
 }
 
+/// Complete element geometry information including scroll and content dimensions
+#[derive(Clone, Debug, Default)]
+pub struct InvalidationManager {
+    pub dirty_rects: Vec<tiny_skia::Rect>,
+}
+
+impl InvalidationManager {
+    pub fn new() -> Self {
+        Self { dirty_rects: Vec::new() }
+    }
+
+    pub fn add_dirty_rect(&mut self, rect: tiny_skia::Rect) {
+        let mut merged = false;
+        for existing in &mut self.dirty_rects {
+            if let Some(union_rect) = Self::union_rect(*existing, rect) {
+                *existing = union_rect;
+                merged = true;
+                break;
+            }
+        }
+        if !merged {
+            self.dirty_rects.push(rect);
+        }
+    }
+
+    pub fn union_rect(a: tiny_skia::Rect, b: tiny_skia::Rect) -> Option<tiny_skia::Rect> {
+        let left = a.left().min(b.left());
+        let right = a.right().max(b.right());
+        let top = a.top().min(b.top());
+        let bottom = a.bottom().max(b.bottom());
+
+        tiny_skia::Rect::from_ltrb(left, top, right, bottom)
+    }
+
+    pub fn clear(&mut self) {
+        self.dirty_rects.clear();
+    }
+}
+
 pub struct AceEngine {
     pub dom: Option<Arc<Mutex<AceDOM>>>,
     pub stylesheet: Arc<Mutex<Stylesheet>>,
@@ -148,6 +188,9 @@ pub struct AceEngine {
     pub element_styles: Arc<Mutex<std::collections::HashMap<usize, ComputedStyle>>>,
     pub node_to_taffy: Arc<Mutex<std::collections::HashMap<usize, taffy::prelude::Node>>>,
     pub text_measurer: TextMeasurer,
+    pub framebuffer: Arc<Mutex<Option<tiny_skia::Pixmap>>>,
+    pub invalidation_manager: Arc<Mutex<InvalidationManager>>,
+    pub gpu_compositor: Arc<Mutex<Option<compositor::GpuCompositor>>>,
 }
 
 impl AceEngine {
@@ -177,7 +220,25 @@ impl AceEngine {
             element_styles: Arc::new(Mutex::new(std::collections::HashMap::new())),
             node_to_taffy: Arc::new(Mutex::new(std::collections::HashMap::new())),
             text_measurer: TextMeasurer::new(font_system),
-        }
+            framebuffer: Arc::new(Mutex::new(None)),
+            invalidation_manager: Arc::new(Mutex::new(InvalidationManager::new())),
+            gpu_compositor: Arc::new(Mutex::new(None)),
+        };
+        engine.init_gpu();
+        engine
+    }
+
+    pub fn init_gpu(&self) {
+        let comp_arc = self.gpu_compositor.clone();
+        tokio::spawn(async move {
+            println!("[AceEngine] Initializing GPU Compositor (WGPU)...");
+            if let Some(comp) = compositor::GpuCompositor::new().await {
+                *comp_arc.lock().unwrap() = Some(comp);
+                println!("[AceEngine] GPU Compositor initialized successfully!");
+            } else {
+                println!("[AceEngine] WARNING: Failed to initialize GPU Compositor. Falling back to CPU bounds.");
+            }
+        });
     }
 
     pub fn load_url(&mut self, url: String) {
@@ -328,7 +389,7 @@ impl AceEngine {
     }
 
     /// Get overflow style (overflow-x, overflow-y) from element.
-    /// Returns: (overflow_x, overflow_y)
+    /// Returns: (String, String)
     fn get_overflow_style(&self, node_idx: usize) -> (String, String) {
         // TODO: Read from DOM computed style
         // For now, return "visible" for both
@@ -1628,8 +1689,18 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
     }
 }
 
-    pub fn render_visual(&self, vw: f32, vh: f32) -> Vec<VisualPrimitive> {
-        let mut primitives = Vec::new();
+    pub fn render_visual(&self, vw: f32, vh: f32) -> crate::engine::layer_tree::LayerTree {
+        let mut items = Vec::new();
+        let mut fixed_nodes = Vec::new();
+        
+        // ─── VIRTUAL SCROLLING / CULLING BOUNDARIES ─────────────
+        // viewport_y is negative when scrolled down
+        let scroll_y = (-self.viewport_y).max(0.0);
+        // Add a buffer so elements don't pop-in instantly
+        let culling_buffer = vh * 1.5; 
+        let visible_top = scroll_y - culling_buffer;
+        let visible_bottom = scroll_y + vh + culling_buffer;
+        // ────────────────────────────────────────────────────────
         
         if let Some(ref dom_arc) = self.dom {
             let dom = dom_arc.lock().unwrap();
@@ -1769,10 +1840,23 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                     }
                     // ─── FIM STICKY ─────────────────────────────────────────
 
+                    // ─── CULLING (VIRTUAL SCROLLING) ────────────────────────
+                    // Skip processing elements completely outside the visible viewport
+                    // Exceptions: position:fixed (always on screen)
+                    if effective_position != crate::engine::style::css_values::CssPosition::Fixed {
+                        let element_top = y;
+                        let element_bottom = y + h;
+                        
+                        if element_bottom < visible_top || element_top > visible_bottom {
+                            continue; // Element is entirely culled
+                        }
+                    }
+                    // ────────────────────────────────────────────────────────
+
                     let background_color = Self::css_color_to_skia(&computed_style.background_color);
                     let border_color = Self::css_color_to_skia(&computed_style.border_color_top);
                     let text_color = Self::css_color_to_skia(&computed_style.color).unwrap_or(tiny_skia::Color::BLACK);
-                    
+
 
                     let mut text = match &node.node_type {
                         crate::engine::dom::AceNodeType::Text(t) => {
@@ -1934,7 +2018,9 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                     }
                     // ─── FIM CLIPPING ───────────────────────────────────────
 
-                    let prim = VisualPrimitive {
+                    let is_fixed = is_sticky_fixed || matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed);
+
+                    let prim = DisplayItem {
                         x, y, width: w, height: h,
                         background_color,
                         border_width: geom.border_top.max(geom.border_right).max(geom.border_bottom).max(geom.border_left),
@@ -1959,7 +2045,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         link_url: None,
                         node_idx,
                         element_type: element_tag.clone(),
-                        is_fixed: is_sticky_fixed || matches!(computed_style.position, crate::engine::style::css_values::CssPosition::Fixed),
+                        is_fixed,
                         opacity: computed_style.opacity,
                         border_radius: [
                             computed_style.border_radius_top_left,
@@ -2042,7 +2128,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         if outline.style != "none" {
                             let outline_color = Self::css_color_to_skia(&outline.color);
                             let total_gap = outline.width + outline.offset;
-                            let outline_prim = VisualPrimitive {
+                            let outline_prim = DisplayItem {
                                 x: x - total_gap,
                                 y: y - total_gap,
                                 width: w + total_gap * 2.0,
@@ -2053,7 +2139,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 border_style: outline.style.clone(),
                                 text_content: None,
                                 text_color: tiny_skia::Color::BLACK,
-                                text_overflow: String::from("clip"),
+                                text_overflow: "clip".to_string(),
                                 font_size: 0.0,
                                 letter_spacing: 0.0,
                                 word_spacing: 0.0,
@@ -2078,14 +2164,14 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 is_hovered: false, is_focused: false,
                                 clip_rect: None,
                             };
-                            primitives.push(outline_prim);
+                            items.push(outline_prim);
                         }
                     }
                     // Backdrop para <dialog data-ace-modal> (modal)
                     if element_tag == "dialog" {
                         if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
                             if el.attributes.contains_key("data-ace-modal") {
-                                let backdrop = VisualPrimitive {
+                                let backdrop = DisplayItem {
                                     x: 0.0, y: 0.0, width: vw, height: vh,
                                     background_color: Some(tiny_skia::Color::from_rgba8(0, 0, 0, 76)),
                                     border_width: 0.0, border_color: None, border_style: "none".into(),
@@ -2105,15 +2191,21 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                     is_hovered: false, is_focused: false,
                                     clip_rect: None,
                                 };
-                                primitives.push(backdrop);
+                                if backdrop.is_fixed {
+                                    fixed_nodes.push(node_idx);
+                                }
+                                items.push(backdrop);
                             }
                         }
                     }
-                    primitives.push(prim);
+                    if prim.is_fixed {
+                        fixed_nodes.push(node_idx);
+                    }
+                    items.push(prim);
                 }
             }
         }
-        primitives
+        crate::engine::layer_tree::LayerTree::build(items, &fixed_nodes)
     }
 
     fn is_technical_tag(&self, tag: &str) -> bool {
@@ -2164,7 +2256,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
         // After layout is done and all DOM locks are released, initialize JS runtimes
         // for any iframe subframes that were just created. We do this OUTSIDE of all
         // DOM locks to avoid nested lock hangs (init_js_for_url runs init_stdlib which
-        // uses tokio channels).
+        // uses tokio and may block).
         self.init_subframe_runtimes();
     }
 
@@ -2229,6 +2321,8 @@ impl Clone for AceEngine {
             pending_resources: self.pending_resources.clone(),
             element_styles: self.element_styles.clone(),
             text_measurer: self.text_measurer.clone(),
+            framebuffer: self.framebuffer.clone(),
+            invalidation_manager: self.invalidation_manager.clone(),
         }
     }
 }
@@ -2304,7 +2398,7 @@ impl FloatContext {
 }
 
 #[derive(Clone, Debug)]
-pub struct VisualPrimitive {
+pub struct DisplayItem {
     pub x: f32,
     pub y: f32,
     pub width: f32,
