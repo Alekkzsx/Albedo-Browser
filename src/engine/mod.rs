@@ -197,7 +197,7 @@ pub struct AceEngine {
 impl AceEngine {
     pub fn new() -> Self {
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
-        Self {
+        let engine = Self {
             dom: Some(Arc::new(Mutex::new(AceDOM::new()))),
             stylesheet: Arc::new(Mutex::new(crate::engine::style::get_user_agent_stylesheet())),
             primitives: Arc::new(Mutex::new(Vec::new())),
@@ -2298,6 +2298,7 @@ impl Clone for AceEngine {
             text_measurer: self.text_measurer.clone(),
             framebuffer: self.framebuffer.clone(),
             invalidation_manager: self.invalidation_manager.clone(),
+            gpu_compositor: self.gpu_compositor.clone(),
         }
     }
 }

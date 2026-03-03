@@ -373,8 +373,8 @@ impl GpuCompositor {
                     });
 
                     // Build Quad for Tile
-                    let x = tile.rect_x * scale_factor;
-                    let y = tile.rect_y * scale_factor;
+                    let x = (tile.x as f32) * scale_factor;
+                    let y = (tile.y as f32) * scale_factor;
                     let w = tile_w as f32;
                     let h = tile_h as f32;
 
@@ -427,9 +427,9 @@ impl GpuCompositor {
 
         // Map and Read
         let buffer_slice = output_buffer.slice(..);
-        let (tx, rx) = futures_channel::oneshot::channel();
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
-            tx.send(v).unwrap();
+            let _ = tx.send(v);
         });
 
         self.device.poll(wgpu::Maintain::Wait); // Block until done
