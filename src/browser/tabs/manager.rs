@@ -438,7 +438,7 @@ impl TabManager {
                     let mut current = Some(idx);
                     while let Some(current_idx) = current {
                         if let Some(geom) = geometry.get(&current_idx) {
-                            if (geom.overflow_y == "scroll" || geom.overflow_y == "auto") && geom.content_height > geom.height {
+                            if (geom.overflow_y == crate::engine::style::css_values::CssOverflow::Scroll || geom.overflow_y == crate::engine::style::css_values::CssOverflow::Auto) && geom.content_height > geom.height {
                                 // Encontramos um container scrollável internamente
                                 let current_scroll = scroll_map.get(&current_idx).copied().unwrap_or((0.0, 0.0));
                                 

@@ -291,7 +291,7 @@ impl AceDOM {
 
         // Notify observers
         self.notify_mutation(parent_idx, MutationRecord {
-            type_: "childList".to_string(),
+            type_: MutationType::ChildList,
             target: parent_idx,
             added_nodes: vec![child_idx],
             removed_nodes: vec![],
@@ -375,7 +375,7 @@ impl AceDOM {
 
             // Notify observers
             self.notify_mutation(p_idx, MutationRecord {
-                type_: "childList".to_string(),
+                type_: MutationType::ChildList,
                 target: p_idx,
                 added_nodes: vec![],
                 removed_nodes: vec![node_idx],
@@ -425,7 +425,7 @@ impl AceDOM {
         self.mark_dirty(child_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
 
         self.notify_mutation(parent_idx, MutationRecord {
-            type_: "childList".to_string(),
+            type_: MutationType::ChildList,
             target: parent_idx,
             added_nodes: vec![child_idx],
             removed_nodes: vec![],
@@ -466,7 +466,7 @@ impl AceDOM {
         }
 
         self.notify_mutation(parent_idx, MutationRecord {
-            type_: "childList".to_string(),
+            type_: MutationType::ChildList,
             target: parent_idx,
             added_nodes: self.get_node(parent_idx).map(|n| n.children.clone()).unwrap_or_default(),
             removed_nodes: old_children,
@@ -502,7 +502,7 @@ impl AceDOM {
         self.mark_dirty(node_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
 
         self.notify_mutation(node_idx, MutationRecord {
-            type_: "childList".to_string(),
+            type_: MutationType::ChildList,
             target: node_idx,
             added_nodes: vec![text_idx],
             removed_nodes: old_children,
@@ -608,7 +608,7 @@ impl AceDOM {
         }
         
         self.notify_mutation(node_idx, MutationRecord {
-            type_: "attributes".to_string(),
+            type_: MutationType::Attributes,
             target: node_idx,
             added_nodes: vec![],
             removed_nodes: vec![],
@@ -702,7 +702,7 @@ impl AceDOM {
         self.mark_dirty(node_idx, NodeDirtyFlags::STYLE | NodeDirtyFlags::LAYOUT);
 
         self.notify_mutation(node_idx, MutationRecord {
-            type_: "attributes".to_string(),
+            type_: MutationType::Attributes,
             target: node_idx,
             added_nodes: vec![],
             removed_nodes: vec![],

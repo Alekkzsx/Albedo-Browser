@@ -78,7 +78,7 @@ impl CssStyleDeclaration {
         
         if let Ok(dom) = self.dom.lock() {
             dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
-                type_: "attributes".to_string(),
+                type_: crate::engine::dom::MutationType::Attributes,
                 target: self.index,
                 added_nodes: vec![],
                 removed_nodes: vec![],
@@ -106,7 +106,7 @@ impl CssStyleDeclaration {
         
         if let Ok(dom) = self.dom.lock() {
             dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
-                type_: "attributes".to_string(),
+                type_: crate::engine::dom::MutationType::Attributes,
                 target: self.index,
                 added_nodes: vec![],
                 removed_nodes: vec![],
