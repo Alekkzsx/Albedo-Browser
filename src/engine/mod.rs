@@ -4,6 +4,7 @@ pub mod graphics;
 pub mod layer_tree;
 pub mod compositor;
 pub mod svg;
+pub mod types;
 pub mod text;
 pub mod inline;
 use std::sync::{Arc, Mutex};
@@ -42,8 +43,8 @@ pub struct ElementGeometry {
     pub content_height: f32,
     
     // Overflow style
-    pub overflow_x: String,
-    pub overflow_y: String,
+    pub overflow_x: crate::engine::style::css_values::CssOverflow,
+    pub overflow_y: crate::engine::style::css_values::CssOverflow,
     
     // Float & Clear context
     pub float: crate::engine::style::css_values::CssFloat,
@@ -69,8 +70,8 @@ impl ElementGeometry {
             scroll_y: 0.0,
             content_width: 0.0,
             content_height: 0.0,
-            overflow_x: "visible".to_string(),
-            overflow_y: "visible".to_string(),
+            overflow_x: crate::engine::style::css_values::CssOverflow::Visible,
+            overflow_y: crate::engine::style::css_values::CssOverflow::Visible,
             float: crate::engine::style::css_values::CssFloat::None,
             clear: crate::engine::style::css_values::CssClear::None,
         }
@@ -510,7 +511,7 @@ impl AceEngine {
                     }
                 }
 
-                style_cache.insert(idx, computed.clone());
+                style_cache.insert(idx, computed);
             }
             
             // Persistir estilos computados no cache da engine
@@ -612,12 +613,12 @@ impl AceEngine {
                         for &child_idx in &node.children {
                             if let Some(child_node) = dom.get_node(child_idx) {
                                 if let crate::engine::dom::AceNodeType::Text(text) = &child_node.node_type {
-                                    css_source.push_str(text);
+                                    css_source.push_str(text.as_ref());
                                     css_source.push_str("\n");
                                 }
                             }
                         }
-                    } else if el.tag == "link" && el.attributes.get("rel") == Some(&"stylesheet".to_string()) {
+                    } else if el.tag == "link" && el.attributes.get("rel").map(|s| s.as_str()) == Some("stylesheet") {
                         if let Some(href) = el.attributes.get("href") {
                             // Resolve relative URL
                             if let Ok(base_url) = url::Url::parse(&self.current_url) {
@@ -946,13 +947,8 @@ impl AceEngine {
             geom.border_left = resolve(&style.border_width_left);
             
             use crate::engine::style::css_values::CssOverflow;
-            geom.overflow_x = match style.overflow {
-                CssOverflow::Visible => "visible".to_string(),
-                CssOverflow::Hidden => "hidden".to_string(),
-                CssOverflow::Scroll => "scroll".to_string(),
-                CssOverflow::Auto => "auto".to_string(),
-            };
-            geom.overflow_y = geom.overflow_x.clone(); 
+            geom.overflow_x = style.overflow.clone();
+            geom.overflow_y = style.overflow.clone();
         }
         // ------------------------------------------
 
@@ -1184,7 +1180,7 @@ impl AceEngine {
                 return vec![taffy_node];
             }
         } else if let crate::engine::dom::AceNodeType::Text(text) = &node_type {
-            let transformed_text = crate::engine::inline::apply_text_transform(text, &style.text_transform);
+            let transformed_text = crate::engine::inline::apply_text_transform(text.as_ref(), &style.text_transform);
             // Text nodes need an intrinsic size estimate to be visible
             let font_size = style.font_size;
             let line_height = font_size * 1.2;
@@ -1648,14 +1644,14 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
     match css_color {
         CssColor::Rgba(r, g, b, a) => Some(tiny_skia::Color::from_rgba8(*r, *g, *b, (*a * 255.0) as u8)),
         CssColor::Named(name) => {
-            let name = name.to_lowercase();
-            if name == "transparent" { return None; }
+            if name.eq_ignore_ascii_case("transparent") { return None; }
             if name.starts_with("#") {
                 let hex = name.trim_start_matches('#');
                 if hex.len() == 3 {
-                    let r = u8::from_str_radix(&format!("{}{}", &hex[0..1], &hex[0..1]), 16).unwrap_or(0);
-                    let g = u8::from_str_radix(&format!("{}{}", &hex[1..2], &hex[1..2]), 16).unwrap_or(0);
-                    let b = u8::from_str_radix(&format!("{}{}", &hex[2..3], &hex[2..3]), 16).unwrap_or(0);
+                    // Expandir dígito hex: 0xA => 0xAA == A * 17 (zero alocações)
+                    let r = u8::from_str_radix(&hex[0..1], 16).unwrap_or(0) * 17;
+                    let g = u8::from_str_radix(&hex[1..2], 16).unwrap_or(0) * 17;
+                    let b = u8::from_str_radix(&hex[2..3], 16).unwrap_or(0) * 17;
                     Some(tiny_skia::Color::from_rgba8(r, g, b, 255))
                 } else {
                     let r = u8::from_str_radix(if hex.len() >= 2 { &hex[0..2] } else { hex }, 16).unwrap_or(0);
@@ -1669,7 +1665,8 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                     Some(tiny_skia::Color::from_rgba8(r, g, b, a))
                 }
             } else {
-                match name.as_str() {
+                let lower = name.to_ascii_lowercase();
+                match lower.as_str() {
                     "white" => Some(tiny_skia::Color::from_rgba8(255, 255, 255, 255)),
                     "black" | "currentcolor" => Some(tiny_skia::Color::from_rgba8(0, 0, 0, 255)),
                     "red" => Some(tiny_skia::Color::from_rgba8(255, 0, 0, 255)),
@@ -1709,9 +1706,9 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
             let element_styles = self.element_styles.lock().unwrap();
             
             for (node_idx, node) in dom.nodes.iter().enumerate() {
-                let (is_element, element_tag) = match &node.node_type {
-                    crate::engine::dom::AceNodeType::Element(el) => (true, el.tag.clone()),
-                    crate::engine::dom::AceNodeType::Text(_) => (false, "#text".to_string()),
+                let (is_element, element_tag): (bool, &str) = match &node.node_type {
+                    crate::engine::dom::AceNodeType::Element(el) => (true, el.tag.as_str()),
+                    crate::engine::dom::AceNodeType::Text(_) => (false, "#text"),
                     _ => continue,
                 };
 
@@ -1860,7 +1857,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
 
                     let mut text = match &node.node_type {
                         crate::engine::dom::AceNodeType::Text(t) => {
-                            crate::engine::inline::apply_text_transform(t, &computed_style.text_transform)
+                            crate::engine::inline::apply_text_transform(t.as_ref(), &computed_style.text_transform)
                         },
                         _ => String::new(),
                     };
@@ -1997,7 +1994,7 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                     let mut current_ancestor = node.parent;
                     while let Some(pidx) = current_ancestor {
                         if let Some(pgeom) = geometry.get(&pidx) {
-                            if pgeom.overflow_y != "visible" || pgeom.overflow_x != "visible" {
+                            if pgeom.overflow_y != crate::engine::style::css_values::CssOverflow::Visible || pgeom.overflow_x != crate::engine::style::css_values::CssOverflow::Visible {
                                 let cr = [pgeom.x, pgeom.y, pgeom.width, pgeom.height];
                                 clip_rect = Some(match clip_rect {
                                     Some(c) => {
@@ -2025,26 +2022,17 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         background_color,
                         border_width: geom.border_top.max(geom.border_right).max(geom.border_bottom).max(geom.border_left),
                         border_color,
-                        border_style: "solid".to_string(),
-                        text_content: if text.is_empty() { None } else { Some(text) },
+                        border_style: crate::engine::types::BorderStyle::Solid,
+                        text_content: if text.is_empty() { None } else { Some(std::sync::Arc::from(text.as_str())) },
                         text_color,
-                        text_overflow: match computed_style.text_overflow {
-                            crate::engine::style::css_values::CssTextOverflow::Ellipsis => "ellipsis".to_string(),
-                            _ => {
-                                if computed_style.white_space == crate::engine::style::css_values::CssWhiteSpace::NoWrap {
-                                    "clip-nowrap".to_string()
-                                } else {
-                                    "clip".to_string()
-                                }
-                            }
-                        },
+                        text_overflow: computed_style.text_overflow.clone(),
                         font_size: computed_style.font_size,
                         letter_spacing: crate::engine::style::css_values::resolve_length(&computed_style.letter_spacing, computed_style.font_size, 16.0, vw, vh),
                         word_spacing: crate::engine::style::css_values::resolve_length(&computed_style.word_spacing, computed_style.font_size, 16.0, vw, vh),
                         image_url: None,
                         link_url: None,
                         node_idx,
-                        element_type: element_tag.clone(),
+                        element_type: crate::engine::types::ElementRenderType::from_str(&element_tag),
                         is_fixed,
                         opacity: computed_style.opacity,
                         border_radius: [
@@ -2059,32 +2047,32 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                         canvas_data,
                         input_value: if element_tag == "input" || element_tag == "textarea" || element_tag == "select" {
                             if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                                el.attributes.get("value").cloned().unwrap_or_default()
-                            } else { String::new() }
-                        } else { String::new() },
+                                std::sync::Arc::from(el.attributes.get("value").map(|s| s.as_str()).unwrap_or_default())
+                            } else { std::sync::Arc::from("") }
+                        } else { std::sync::Arc::from("") },
                         placeholder: if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                            el.attributes.get("placeholder").cloned().unwrap_or_default()
-                        } else { String::new() },
+                            std::sync::Arc::from(el.attributes.get("placeholder").map(|s| s.as_str()).unwrap_or_default())
+                        } else { std::sync::Arc::from("") },
                         input_type: if element_tag == "input" {
                             if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                                el.attributes.get("type").cloned().unwrap_or("text".to_string())
-                            } else { String::new() }
-                        } else { String::new() },
+                                crate::engine::types::FormInputType::from_str(el.attributes.get("type").map(|s| s.as_str()).unwrap_or("text"))
+                            } else { crate::engine::types::FormInputType::None }
+                        } else { crate::engine::types::FormInputType::None },
                         input_min: if element_tag == "input" {
                             if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                                el.attributes.get("min").cloned().unwrap_or_default()
-                            } else { String::new() }
-                        } else { String::new() },
+                                std::sync::Arc::from(el.attributes.get("min").map(|s| s.as_str()).unwrap_or_default())
+                            } else { std::sync::Arc::from("") }
+                        } else { std::sync::Arc::from("") },
                         input_max: if element_tag == "input" {
                             if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                                el.attributes.get("max").cloned().unwrap_or_default()
-                            } else { String::new() }
-                        } else { String::new() },
+                                std::sync::Arc::from(el.attributes.get("max").map(|s| s.as_str()).unwrap_or_default())
+                            } else { std::sync::Arc::from("") }
+                        } else { std::sync::Arc::from("") },
                         input_step: if element_tag == "input" {
                             if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
-                                el.attributes.get("step").cloned().unwrap_or_default()
-                            } else { String::new() }
-                        } else { String::new() },
+                                std::sync::Arc::from(el.attributes.get("step").map(|s| s.as_str()).unwrap_or_default())
+                            } else { std::sync::Arc::from("") }
+                        } else { std::sync::Arc::from("") },
                         options: if element_tag == "select" {
                             let mut opts = Vec::new();
                             for &child_idx in &node.children {
@@ -2097,27 +2085,14 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                     }
                                 }
                             }
-                            opts.join("|")
-                        } else { String::new() },
+                            std::sync::Arc::from(opts.join("|").as_str())
+                        } else { std::sync::Arc::from("") },
                         padding_top: geom.padding_top,
                         padding_right: geom.padding_right,
                         padding_bottom: geom.padding_bottom,
                         padding_left: geom.padding_left,
-                        // text_color: computed_style.color.to_rgba_string(), // Removed duplicate and incorrect type
-                        font_weight: match &computed_style.font_weight {
-                            crate::engine::style::css_values::CssFontWeight::Normal => "normal".to_string(),
-                            crate::engine::style::css_values::CssFontWeight::Bold => "bold".to_string(),
-                            crate::engine::style::css_values::CssFontWeight::Lighter => "lighter".to_string(),
-                            crate::engine::style::css_values::CssFontWeight::Bolder => "bolder".to_string(),
-                            crate::engine::style::css_values::CssFontWeight::Weight(w) => format!("{}", *w as u32),
-                        },
-                        white_space: match &computed_style.white_space {
-                            crate::engine::style::css_values::CssWhiteSpace::Normal => "normal".to_string(),
-                            crate::engine::style::css_values::CssWhiteSpace::NoWrap => "nowrap".to_string(),
-                            crate::engine::style::css_values::CssWhiteSpace::Pre => "pre".to_string(),
-                            crate::engine::style::css_values::CssWhiteSpace::PreWrap => "pre-wrap".to_string(),
-                            crate::engine::style::css_values::CssWhiteSpace::PreLine => "pre-line".to_string(),
-                        },
+                        font_weight: computed_style.font_weight.clone(),
+                        white_space: computed_style.white_space.clone(),
                         is_hovered: self.hovered_element == Some(node_idx),
                         is_focused: self.focused_element == Some(node_idx),
                         clip_rect,
@@ -2136,15 +2111,15 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 background_color: None,
                                 border_width: outline.width,
                                 border_color: outline_color,
-                                border_style: outline.style.clone(),
+                                border_style: crate::engine::types::BorderStyle::from_str(&outline.style),
                                 text_content: None,
                                 text_color: tiny_skia::Color::BLACK,
-                                text_overflow: "clip".to_string(),
+                                text_overflow: crate::engine::style::css_values::CssTextOverflow::Clip,
                                 font_size: 0.0,
                                 letter_spacing: 0.0,
                                 word_spacing: 0.0,
                                 image_url: None, link_url: None, node_idx,
-                                element_type: format!("outline-{}", element_tag),
+                                element_type: crate::engine::types::ElementRenderType::Other,
                                 is_fixed: false, opacity: 1.0,
                                 border_radius: [
                                     (computed_style.border_radius_top_left + total_gap).max(0.0),
@@ -2153,14 +2128,14 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                     (computed_style.border_radius_bottom_left + total_gap).max(0.0),
                                 ],
                                 transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
-                                canvas_data: None, input_value: String::new(), placeholder: String::new(),
-                                input_type: String::new(), 
-                                input_min: String::new(),
-                                input_max: String::new(),
-                                input_step: String::new(),
-                                options: String::new(),
+                                canvas_data: None, input_value: std::sync::Arc::from(""), placeholder: std::sync::Arc::from(""),
+                                input_type: crate::engine::types::FormInputType::None, 
+                                input_min: std::sync::Arc::from(""),
+                                input_max: std::sync::Arc::from(""),
+                                input_step: std::sync::Arc::from(""),
+                                options: std::sync::Arc::from(""),
                                 padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
-                                font_weight: String::new(), white_space: String::new(),
+                                font_weight: crate::engine::style::css_values::CssFontWeight::Normal, white_space: crate::engine::style::css_values::CssWhiteSpace::Normal,
                                 is_hovered: false, is_focused: false,
                                 clip_rect: None,
                             };
@@ -2174,20 +2149,20 @@ pub fn css_color_to_skia(css_color: &crate::engine::style::css_values::CssColor)
                                 let backdrop = DisplayItem {
                                     x: 0.0, y: 0.0, width: vw, height: vh,
                                     background_color: Some(tiny_skia::Color::from_rgba8(0, 0, 0, 76)),
-                                    border_width: 0.0, border_color: None, border_style: "none".into(),
+                                    border_width: 0.0, border_color: None, border_style: crate::engine::types::BorderStyle::None,
                                     text_content: None, text_color: tiny_skia::Color::BLACK,
-                                    text_overflow: "clip".into(), font_size: 0.0,
+                                    text_overflow: crate::engine::style::css_values::CssTextOverflow::Clip, font_size: 0.0,
                                     letter_spacing: 0.0, word_spacing: 0.0,
                                     image_url: None, link_url: None, node_idx,
-                                    element_type: "dialog-backdrop".into(),
+                                    element_type: crate::engine::types::ElementRenderType::Other,
                                     is_fixed: true, opacity: 1.0, border_radius: [0.0; 4],
                                     transform_rotate: 0.0, transform_scale: (1.0, 1.0), transform_translate: (0.0, 0.0),
-                                    canvas_data: None, input_value: String::new(), placeholder: String::new(),
-                                    input_type: String::new(),
-                                    input_min: String::new(), input_max: String::new(), input_step: String::new(),
-                                    options: String::new(),
+                                    canvas_data: None, input_value: std::sync::Arc::from(""), placeholder: std::sync::Arc::from(""),
+                                    input_type: crate::engine::types::FormInputType::None,
+                                    input_min: std::sync::Arc::from(""), input_max: std::sync::Arc::from(""), input_step: std::sync::Arc::from(""),
+                                    options: std::sync::Arc::from(""),
                                     padding_top: 0.0, padding_right: 0.0, padding_bottom: 0.0, padding_left: 0.0,
-                                    font_weight: String::new(), white_space: String::new(),
+                                    font_weight: crate::engine::style::css_values::CssFontWeight::Normal, white_space: crate::engine::style::css_values::CssWhiteSpace::Normal,
                                     is_hovered: false, is_focused: false,
                                     clip_rect: None,
                                 };
@@ -2406,14 +2381,14 @@ pub struct DisplayItem {
     pub background_color: Option<tiny_skia::Color>,
     pub border_width: f32,
     pub border_color: Option<tiny_skia::Color>,
-    pub text_content: Option<String>,
+    pub text_content: Option<std::sync::Arc<str>>,
     pub text_color: tiny_skia::Color,
-    pub text_overflow: String,
+    pub text_overflow: crate::engine::style::css_values::CssTextOverflow,
     pub font_size: f32,
-    pub image_url: Option<String>,
-    pub link_url: Option<String>,
+    pub image_url: Option<std::sync::Arc<str>>,
+    pub link_url: Option<std::sync::Arc<str>>,
     pub node_idx: usize,
-    pub element_type: String,
+    pub element_type: crate::engine::types::ElementRenderType,
     pub is_fixed: bool,
     pub opacity: f32,
     pub border_radius: [f32; 4],
@@ -2427,13 +2402,13 @@ pub struct DisplayItem {
     pub word_spacing: f32,
     
     // Form Extensions
-    pub input_value: String,
-    pub placeholder: String,
-    pub input_type: String,
-    pub input_min: String,
-    pub input_max: String,
-    pub input_step: String,
-    pub options: String,
+    pub input_value: std::sync::Arc<str>,
+    pub placeholder: std::sync::Arc<str>,
+    pub input_type: crate::engine::types::FormInputType,
+    pub input_min: std::sync::Arc<str>,
+    pub input_max: std::sync::Arc<str>,
+    pub input_step: std::sync::Arc<str>,
+    pub options: std::sync::Arc<str>,
     
     // Padding for box model rendering
     pub padding_top: f32,
@@ -2443,11 +2418,11 @@ pub struct DisplayItem {
     
     // CSS text color mapped earlier
     // CSS font-weight ("normal", "bold", "100"-"900")
-    pub font_weight: String,
+    pub font_weight: crate::engine::style::css_values::CssFontWeight,
     // CSS white-space ("normal", "nowrap", "pre", etc.)
-    pub white_space: String,
+    pub white_space: crate::engine::style::css_values::CssWhiteSpace,
     // Border style ("solid", "dashed", "dotted", "none", etc.)
-    pub border_style: String,
+    pub border_style: crate::engine::types::BorderStyle,
     pub is_hovered: bool,
     pub is_focused: bool,
     

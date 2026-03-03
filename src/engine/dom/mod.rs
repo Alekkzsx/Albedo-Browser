@@ -35,9 +35,26 @@ pub struct MutationObserverInit {
     // attribute_filter not implemented yet for simplicity
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MutationType {
+    ChildList,
+    Attributes,
+    CharacterData,
+}
+
+impl MutationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MutationType::ChildList => "childList",
+            MutationType::Attributes => "attributes",
+            MutationType::CharacterData => "characterData",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MutationRecord {
-    pub type_: String, // "childList", "attributes", "characterData"
+    pub type_: MutationType,
     pub target: usize,
     pub added_nodes: Vec<usize>,
     pub removed_nodes: Vec<usize>,
@@ -72,7 +89,7 @@ pub struct AceNode {
 impl AceNode {
     pub fn get_text_content(&self) -> String {
         match &self.node_type {
-            AceNodeType::Text(text) => text.clone(),
+            AceNodeType::Text(text) => text.to_string(),
             _ => String::new(),
         }
     }
@@ -81,8 +98,8 @@ impl AceNode {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AceNodeType {
     Element(AceElement),
-    Text(String),
-    Comment(String),
+    Text(std::sync::Arc<str>),
+    Comment(std::sync::Arc<str>),
     Document,
     ShadowRoot, // FASE 5: Shadow DOM root
     DocumentFragment,
@@ -163,9 +180,9 @@ impl AceDOM {
 
             AceNodeType::Element(AceElement { tag, attributes })
         } else if let Some(text) = kuchiki_node.as_text() {
-            AceNodeType::Text(text.borrow().clone()) 
+            AceNodeType::Text(std::sync::Arc::from(text.borrow().as_str())) 
         } else if let Some(comment) = kuchiki_node.as_comment() {
-            AceNodeType::Comment(comment.borrow().clone())
+            AceNodeType::Comment(std::sync::Arc::from(comment.borrow().as_str()))
         } else {
             AceNodeType::Document
         };
@@ -469,7 +486,7 @@ impl AceDOM {
 
         let text_idx = self.nodes.len();
         self.nodes.push(AceNode {
-            node_type: AceNodeType::Text(text),
+            node_type: AceNodeType::Text(std::sync::Arc::from(text)),
             parent: Some(node_idx),
             children: Vec::new(),
             prev_sibling: None,
@@ -499,7 +516,7 @@ impl AceDOM {
     pub fn serialize_subtree_text(&self, node_idx: usize) -> String {
         if let Some(node) = self.get_node(node_idx) {
             match &node.node_type {
-                AceNodeType::Text(t) => return t.clone(),
+                AceNodeType::Text(t) => return t.to_string(),
                 _ => {
                     let mut s = String::new();
                     for &child_idx in &node.children {
@@ -619,11 +636,10 @@ impl AceDOM {
                     let match_subtree = obs.options.subtree;
                     
                     if match_target || match_subtree {
-                       match record.type_.as_str() {
-                           "childList" => if !obs.options.child_list { continue; },
-                           "attributes" => if !obs.options.attributes { continue; },
-                           "characterData" => if !obs.options.character_data { continue; },
-                           _ => {},
+                       match record.type_ {
+                           MutationType::ChildList => if !obs.options.child_list { continue; },
+                           MutationType::Attributes => if !obs.options.attributes { continue; },
+                           MutationType::CharacterData => if !obs.options.character_data { continue; },
                        }
                        
                        let mut pending = self.pending_mutations_mut();

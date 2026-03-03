@@ -82,7 +82,7 @@ impl MutationObserver {
             let arr = rquickjs::Array::new(ctx.clone())?;
             for (i, rec) in records.into_iter().enumerate() {
                 let obj = rquickjs::Object::new(ctx.clone())?;
-                obj.set("type", rec.type_)?;
+                obj.set("type", rec.type_.as_str())?;
                 obj.set("attributeName", rec.attribute_name)?;
                 obj.set("oldValue", rec.old_value)?;
                 

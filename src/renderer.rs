@@ -81,21 +81,21 @@ pub fn paint_layout_tree(
 
         // 1.5 Draw Borders
         if prim.border_width > 0.0 {
-            if prim.border_style == "none" {
+            if prim.border_style == crate::engine::types::BorderStyle::None {
                 // Não desenhar borda se estilo for none
             } else if let Some(mut color) = prim.border_color {
                 let mut stroke = tiny_skia::Stroke::default();
                 stroke.width = prim.border_width;
                 // Aplicar estilo de traço (dashed, dotted, etc.)
-                match prim.border_style.as_str() {
-                    "dashed" => {
+                match prim.border_style {
+                    crate::engine::types::BorderStyle::Dashed => {
                         stroke.dash = tiny_skia::StrokeDash::new(vec![prim.border_width * 3.0, prim.border_width * 2.0], 0.0);
                     },
-                    "dotted" => {
+                    crate::engine::types::BorderStyle::Dotted => {
                         stroke.dash = tiny_skia::StrokeDash::new(vec![prim.border_width, prim.border_width], 0.0);
                         stroke.line_cap = tiny_skia::LineCap::Round;
                     },
-                    _ => {} // "solid" e outros => traço contínuo default
+                    _ => {} // Solid e outros => traço contínuo default
                 }
                 let mut paint = Paint::default();
                 color.set_alpha(color.alpha() * prim.opacity);
@@ -311,9 +311,9 @@ pub fn paint_layout_tree(
         }
 
         // 4. Draw Form Controls (Specialized)
-        if prim.element_type == "input" {
-            match prim.input_type.as_str() {
-                "color" => {
+        if prim.element_type == crate::engine::types::ElementRenderType::Input {
+            match prim.input_type {
+                crate::engine::types::FormInputType::Color => {
                     // Premium Color Button: Rounded and with a "chip" look
                     if let Ok(color) = parse_hex_color(&prim.input_value) {
                         let mut paint = Paint::default();
@@ -338,9 +338,6 @@ pub fn paint_layout_tree(
                             (prim.height - inset * 2.0).max(0.0)
                         ) {
                             let path = PathBuilder::from_rect(inner_rect);
-                            // Simple way to get rounded corners if we had a proper rounded rect tool, 
-                            // but in tiny-skia we use PathBuilder for complex shapes. 
-                            // For BREVITY in this task, we use Rect, but for "PERFECT" we use a real path.
                             pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::from_scale(scale_factor, scale_factor), None);
                             
                             // Highlight on hover
@@ -352,7 +349,7 @@ pub fn paint_layout_tree(
                         }
                     }
                 }
-                "range" => {
+                crate::engine::types::FormInputType::Range => {
                     // Modern Slider: Gradient track and circular thumb
                     let track_h = 6.0;
                     let track_y = local_y + (prim.height - track_h) / 2.0;
@@ -416,9 +413,9 @@ pub fn paint_layout_tree(
                          pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::from_scale(scale_factor, scale_factor), None);
                     }
                 }
-                "date" | "time" => {
+                crate::engine::types::FormInputType::Date | crate::engine::types::FormInputType::Time => {
                     // Date/Time with Icon and polished text
-                    let is_date = prim.input_type == "date";
+                    let is_date = prim.input_type == crate::engine::types::FormInputType::Date;
                     
                     // Draw Icon on the right
                     let icon_size = 14.0;
@@ -508,12 +505,10 @@ fn parse_hex_color(hex: &str) -> Result<tiny_skia::Color, ()> {
         let b = u8::from_str_radix(&hex[5..7], 16).map_err(|_| ())?;
         Ok(tiny_skia::Color::from_rgba8(r, g, b, 255))
     } else {
-        let r_hex = &hex[1..2];
-        let g_hex = &hex[2..3];
-        let b_hex = &hex[3..4];
-        let r = u8::from_str_radix(&format!("{}{}", r_hex, r_hex), 16).map_err(|_| ())?;
-        let g = u8::from_str_radix(&format!("{}{}", g_hex, g_hex), 16).map_err(|_| ())?;
-        let b = u8::from_str_radix(&format!("{}{}", b_hex, b_hex), 16).map_err(|_| ())?;
-        Ok(tiny_skia::Color::from_rgba8(r, g, b, 255))
+        let r_digit = u8::from_str_radix(&hex[1..2], 16).map_err(|_| ())?;
+        let g_digit = u8::from_str_radix(&hex[2..3], 16).map_err(|_| ())?;
+        let b_digit = u8::from_str_radix(&hex[3..4], 16).map_err(|_| ())?;
+        // Expandir dígito: 0xA => 0xAA == A * 17
+        Ok(tiny_skia::Color::from_rgba8(r_digit * 17, g_digit * 17, b_digit * 17, 255))
     }
 }
