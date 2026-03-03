@@ -49,7 +49,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                         let arr = rquickjs::Array::new(ctx.clone()).unwrap();
                                         for (i, rec) in records.into_iter().enumerate() {
                                             let obj = rquickjs::Object::new(ctx.clone()).unwrap();
-                                            let _ = obj.set("type", rec.type_);
+                                            let _ = obj.set("type", rec.type_.as_str());
                                             let _ = obj.set("attributeName", rec.attribute_name);
                                             let _ = obj.set("oldValue", rec.old_value);
                                             

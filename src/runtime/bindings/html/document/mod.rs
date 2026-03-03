@@ -187,7 +187,7 @@ impl Document {
         let idx = if let Ok(mut dom) = self.dom.lock() {
             let idx = dom.nodes.len();
             dom.nodes.push(AceNode {
-                node_type: AceNodeType::Text(text),
+                node_type: AceNodeType::Text(std::sync::Arc::from(text)),
                 parent: None,
                 children: Vec::new(),
                 prev_sibling: None,
@@ -221,7 +221,7 @@ impl Document {
         let idx = if let Ok(mut dom) = self.dom.lock() {
             let idx = dom.nodes.len();
             dom.nodes.push(AceNode {
-                node_type: AceNodeType::Comment(data),
+                node_type: AceNodeType::Comment(std::sync::Arc::from(data)),
                 parent: None,
                 children: Vec::new(),
                 prev_sibling: None,

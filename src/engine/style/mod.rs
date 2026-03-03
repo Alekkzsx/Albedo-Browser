@@ -373,7 +373,7 @@ impl<'a> selectors::Element for AceElement<'a> {
                 if let Some(child) = self.dom.get_node(child_idx) {
                     match &child.node_type {
                         AceNodeType::Element(_) => return false,
-                        AceNodeType::Text(t) if !t.trim().is_empty() => return false,
+                        AceNodeType::Text(t) if !t.as_ref().trim().is_empty() => return false,
                         _ => {}
                     }
                 }

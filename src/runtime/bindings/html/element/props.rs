@@ -213,7 +213,7 @@ pub fn inner_html(el: &Element) -> String {
 fn serialize_node(dom: &AceDOM, node_idx: usize) -> String {
     if let Some(node) = dom.get_node(node_idx) {
         match &node.node_type {
-            AceNodeType::Text(t) => return t.clone(),
+            AceNodeType::Text(t) => return t.to_string(),
             AceNodeType::Element(el) => {
                 let mut s = format!("<{}", el.tag);
                 for (k, v) in &el.attributes {
