@@ -88,6 +88,8 @@ pub struct JsRuntime {
     pub module_registry: Arc<Mutex<crate::runtime::core::module_loader::ModuleRegistry>>,
     #[qjs(skip_trace)]
     pub import_map: Arc<Mutex<Option<crate::runtime::core::module_loader::ImportMap>>>,
+    #[qjs(skip_trace)]
+    pub screen_size: Arc<Mutex<(i32, i32)>>,
 }
 
 use super::event_loop::EventLoop;
@@ -124,6 +126,7 @@ impl JsRuntime {
             iframe_projected_geometry: Arc::new(Mutex::new(HashMap::new())),
             module_registry: Arc::new(Mutex::new(crate::runtime::core::module_loader::ModuleRegistry::new(""))),
             import_map: Arc::new(Mutex::new(None)),
+            screen_size: Arc::new(Mutex::new((1920, 1080))), // Engine alimentará via winit/OS
         };
 
         // Store self in userdata for access from within JS callbacks

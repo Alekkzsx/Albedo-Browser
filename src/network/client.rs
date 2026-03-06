@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 use crate::network::http3::Http3Client;
+use crate::network::security::{Origin, AccessControl};
 
 // Erros Específicos do Fetch
 #[derive(thiserror::Error, Debug)]
@@ -18,6 +19,25 @@ pub enum FetchError {
     InvalidMethod,
     #[error("Falha ao processar corpo")]
     BodyError,
+    #[error("Segurança Same-Origin bloqueou a requisição")]
+    SameOriginBlocked,
+    #[error("CORS Bloqueado: Acesso cross-origin negado")]
+    CorsBlocked,
+}
+
+// Modos de Segurança de Fetch
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FetchMode {
+    Cors,
+    NoCors,
+    SameOrigin,
+}
+
+impl Default for FetchMode {
+    fn default() -> Self {
+        FetchMode::Cors
+    }
 }
 
 // Configuração da Requisição (Espelha o objeto 'init' do JS)
@@ -26,7 +46,7 @@ pub struct FetchOptions {
     pub method: String, // GET, POST, PUT...
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
-    pub mode: String,   // cors, no-cors (por enquanto placeholder)
+    pub mode: FetchMode,
     pub timeout_ms: u64,
 }
 
@@ -37,7 +57,7 @@ impl Default for FetchOptions {
             method: "GET".to_string(),
             headers: HashMap::new(),
             body: None,
-            mode: "cors".to_string(),
+            mode: FetchMode::Cors,
             timeout_ms: 10_000, // 10 segundos timeout padrão
         }
     }
@@ -51,16 +71,19 @@ pub struct FetchResponse {
     pub headers: HashMap<String, String>,
     pub body_bytes: Vec<u8>, // Mantemos cru para suportar Imagem ou Texto
     pub url: String,
+    pub opaque: bool, // OPAQUE (Bloqueia leitura por código web cross-origin sem CORS)
 }
 
 impl FetchResponse {
-    // Retorna o corpo como String (Text)
+    // Retorna o corpo como String (Text) - Fails if opaque e cross origin (Simulamos devolvendo vazio para a engine)
     pub fn text(&self) -> String {
+        if self.opaque { return "".to_string(); }
         String::from_utf8_lossy(&self.body_bytes).to_string()
     }
 
     // Tenta retornar o corpo como JSON
     pub fn json(&self) -> Result<Value, serde_json::Error> {
+        if self.opaque { return serde_json::from_str("{}") }
         serde_json::from_slice(&self.body_bytes)
     }
 
@@ -122,9 +145,22 @@ impl FetchClient {
     }
 
     /// Executa o fetch de forma síncrona (no MVP blocking, no futuro Async)
-    pub fn fetch(&self, url: &str, options: Option<FetchOptions>) -> Result<FetchResponse, FetchError> {
+    pub fn fetch(&self, url: &str, options: Option<FetchOptions>, parent_origin: Option<Origin>) -> Result<FetchResponse, FetchError> {
         let opts = options.unwrap_or_default();
         
+        let target_origin = Origin::from_url(url);
+        let is_cross_origin = if let (Some(parent), Some(target)) = (&parent_origin, &target_origin) {
+            !parent.is_same_origin(target)
+        } else {
+            false
+        };
+
+        // Regra Rigorosa: Bloquear na largada se for cross-origin em modo strict same-origin
+        if is_cross_origin && opts.mode == FetchMode::SameOrigin {
+            println!("🛑 [Security] Rejeitado Same-Origin: de {:?} para {}", parent_origin, url);
+            return Err(FetchError::SameOriginBlocked);
+        }
+
         // 1. Validar Método
         let method = match opts.method.to_uppercase().as_str() {
             "GET" => reqwest::Method::GET,
@@ -138,6 +174,13 @@ impl FetchClient {
         // 2. Construir Requisição
         let mut builder = self.client.request(method, url)
             .timeout(Duration::from_millis(opts.timeout_ms));
+
+        // Injetar Header Origin agressivamente se for requests cross-origin (em modo Cors)
+        if is_cross_origin && opts.mode == FetchMode::Cors {
+            if let Some(parent) = &parent_origin {
+                builder = builder.header("Origin", parent.to_string());
+            }
+        }
 
         // 3. Injetar Headers
         let mut header_map = HeaderMap::new();
@@ -154,7 +197,7 @@ impl FetchClient {
         }
 
         // 5. Enviar e Processar
-        println!("FETCH: Enviando {} para {}", opts.method, url);
+        println!("FETCH: Enviando {} para {} (origin: {:?})", opts.method, url, parent_origin.as_ref().map(|o| o.to_string()));
         match builder.send() {
             Ok(resp) => {
                 let status = resp.status();
@@ -166,15 +209,36 @@ impl FetchClient {
                     resp_headers.insert(k.to_string(), v.to_str().unwrap_or("").to_string());
                 }
 
+                // VALIDAÇÃO IMPLACÁVEL DE CORS AQUI
+                let mut opaque = false;
+
+                if is_cross_origin {
+                    if opts.mode == FetchMode::Cors {
+                        let access_control = AccessControl::new();
+                        // Precisamos checar se é Válido. Se não for, ERRO OPACA DE REDE (Bloqueia leitura).
+                        // O origin da request
+                        if let Some(parent) = &parent_origin {
+                            if !access_control.validate_cors(parent, url, &resp_headers) {
+                                eprintln!("🛑 [Security] CORS Negado pela API {} para a origin {}", url, parent);
+                                return Err(FetchError::CorsBlocked);
+                            }
+                        }
+                    } else if opts.mode == FetchMode::NoCors {
+                        // Passa e baixa, mas a resposta DEVE ser marcada como Opaque. Javascript lá no fundo não lê.
+                        opaque = true;
+                    }
+                }
+
                 // Baixar corpo
                 let body_bytes = resp.bytes().map_err(|_| FetchError::BodyError)?.to_vec();
 
                 Ok(FetchResponse {
-                    status: status.as_u16(),
-                    status_text: status.canonical_reason().unwrap_or("Unknown").to_string(),
-                    headers: resp_headers,
+                    status: if opaque { 0 } else { status.as_u16() }, // Opaque responses mostram status 0
+                    status_text: if opaque { "".to_string() } else { status.canonical_reason().unwrap_or("Unknown").to_string() },
+                    headers: if opaque { HashMap::new() } else { resp_headers }, // Esconde headers se opaque
                     body_bytes,
                     url: final_url,
+                    opaque,
                 })
             },
             Err(e) => Err(FetchError::Network(e))

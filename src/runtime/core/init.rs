@@ -111,7 +111,7 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::navigator::register(&rt.context.lock().unwrap())?;
     // `navigator` and `clipboard` bindings are registered by their modules.
     crate::runtime::bindings::webapi::location::register(&rt.context.lock().unwrap(), url, rt.pending_navigation.clone())?;
-    crate::runtime::bindings::utils::shims::register(&rt.context.lock().unwrap())?;
+    crate::runtime::bindings::utils::shims::register(rt)?;
     
     {
         let ctx = rt.context.lock().unwrap();
@@ -159,8 +159,8 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
                 globalThis.matchMedia = function() { return { matches: true, media: '', onchange: null, addListener: function(){}, removeListener: function(){} }; };
                 globalThis.scrollTo = function() {};
                 globalThis.scrollBy = function() {};
-                globalThis.alert = function(msg) { /* stub */ };
-                globalThis.confirm = function(msg) { return true; };
+                globalThis.alert = function(msg) { console.warn('ALERT:', msg); };
+                globalThis.confirm = function(msg) { console.warn('CONFIRM:', msg); return true; };
                 globalThis.customElements = { define: function(){}, get: function(){ return null; }, whenDefined: function(){ return null; } };
             "#)?;
 
