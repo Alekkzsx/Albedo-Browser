@@ -359,11 +359,11 @@
   ✅  Virtual Scrolling / Culling (não renderizar elementos fora do viewport)
          ✅ engine/mod.rs (render_visual) ignorando elementos fora de `(0, -viewport_y, vw, vh)` + buffer 1.5x
          ✅ position:fixed elements consists explicitly exempt from skip.
-  [ ]  GPU compositing / layer tree (wgpu — renderização por camadas)
-         → engine/compositor.rs (CRIAR)
-  [ ]  Font caching (não recarregar fontes a cada render)
-         → engine/text.rs
-  [ ]  Image decoding em thread separada (não bloquear o render thread)
+  ✅  GPU compositing / layer tree (wgpu — renderização por camadas)
+         ✅ engine/compositor.rs
+  ✅  Font caching (não recarregar fontes a cada render)
+         ✅ engine/text.rs (measure_cache + SwashCache)
+  ---[ ]  Image decoding em thread separada (não bloquear o render thread)
          → network/resources.rs
 
   [C] JAVASCRIPT — COMPLETUDE MÍNIMA

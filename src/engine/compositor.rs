@@ -225,7 +225,8 @@ impl GpuCompositor {
         physical_w: u32,
         physical_h: u32,
         scale_factor: f32,
-        font_system: &mut cosmic_text::FontSystem,
+        font_system_arc: std::sync::Arc<std::sync::Mutex<cosmic_text::FontSystem>>,
+        swash_cache_arc: std::sync::Arc<std::sync::Mutex<cosmic_text::SwashCache>>,
     ) -> Option<Vec<u8>> {
         if physical_w == 0 || physical_h == 0 { return None; }
 
@@ -320,15 +321,20 @@ impl GpuCompositor {
                     let mut pixmap = tiny_skia::Pixmap::new(tile_w, tile_h).unwrap();
                     let mut fb_lock = Some(pixmap);
                     
-                    crate::renderer::paint_layout_tree(
-                        &tile,
-                        physical_w,
-                        physical_h,
-                        scale_factor,
-                        font_system,
-                        &mut fb_lock,
-                        &[]
-                    );
+                    {   
+                        let mut font_system_lock = font_system_arc.lock().unwrap();
+                        let mut swash_cache_lock = swash_cache_arc.lock().unwrap();
+                        crate::renderer::paint_layout_tree(
+                            &tile,
+                            physical_w,
+                            physical_h,
+                            scale_factor,
+                            &mut font_system_lock,
+                            &mut swash_cache_lock,
+                            &mut fb_lock,
+                            &[]
+                        );
+                    }
                     
                     let rasterized = fb_lock.unwrap();
 

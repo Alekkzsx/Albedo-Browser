@@ -191,12 +191,15 @@ pub struct AceEngine {
     pub text_measurer: TextMeasurer,
     pub framebuffer: Arc<Mutex<Option<tiny_skia::Pixmap>>>,
     pub invalidation_manager: Arc<Mutex<InvalidationManager>>,
-    pub gpu_compositor: Arc<Mutex<Option<compositor::GpuCompositor>>>,
+    pub font_system: Arc<Mutex<cosmic_text::FontSystem>>,
+    pub swash_cache: Arc<Mutex<cosmic_text::SwashCache>>,
+    pub gpu_compositor: std::sync::Arc<tokio::sync::Mutex<Option<compositor::GpuCompositor>>>,
 }
 
 impl AceEngine {
     pub fn new() -> Self {
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
+        let swash_cache = Arc::new(Mutex::new(cosmic_text::SwashCache::new()));
         let engine = Self {
             dom: Some(Arc::new(Mutex::new(AceDOM::new()))),
             stylesheet: Arc::new(Mutex::new(crate::engine::style::get_user_agent_stylesheet())),
@@ -220,10 +223,12 @@ impl AceEngine {
             pending_resources: Arc::new(Mutex::new(std::collections::HashSet::new())),
             element_styles: Arc::new(Mutex::new(std::collections::HashMap::new())),
             node_to_taffy: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            text_measurer: TextMeasurer::new(font_system),
+            text_measurer: TextMeasurer::new(font_system.clone()),
             framebuffer: Arc::new(Mutex::new(None)),
             invalidation_manager: Arc::new(Mutex::new(InvalidationManager::new())),
-            gpu_compositor: Arc::new(Mutex::new(None)),
+            font_system: font_system,
+            swash_cache,
+            gpu_compositor: Arc::new(tokio::sync::Mutex::new(None)),
         };
         engine.init_gpu();
         engine
@@ -234,7 +239,8 @@ impl AceEngine {
         tokio::spawn(async move {
             println!("[AceEngine] Initializing GPU Compositor (WGPU)...");
             if let Some(comp) = compositor::GpuCompositor::new().await {
-                *comp_arc.lock().unwrap() = Some(comp);
+                let mut lock = comp_arc.lock().await;
+                *lock = Some(comp);
                 println!("[AceEngine] GPU Compositor initialized successfully!");
             } else {
                 println!("[AceEngine] WARNING: Failed to initialize GPU Compositor. Falling back to CPU bounds.");
@@ -2298,6 +2304,8 @@ impl Clone for AceEngine {
             text_measurer: self.text_measurer.clone(),
             framebuffer: self.framebuffer.clone(),
             invalidation_manager: self.invalidation_manager.clone(),
+            font_system: self.font_system.clone(),
+            swash_cache: self.swash_cache.clone(),
             gpu_compositor: self.gpu_compositor.clone(),
         }
     }
