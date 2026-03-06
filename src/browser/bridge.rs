@@ -3,13 +3,7 @@ use crate::browser::tabs::manager::TabManager;
 use slint::{Image, SharedPixelBuffer, Rgba8Pixel, ComponentHandle};
 use tiny_skia::Pixmap;
 
-/// Converts a 100% Rust memory buffer (tiny-skia Pixmap) into a natively compatible
-/// Slint Image via SharedPixelBuffer.
-pub fn skia_to_slint_buffer(pixmap: &Pixmap) -> SharedPixelBuffer<Rgba8Pixel> {
-    let width = pixmap.width();
-    let height = pixmap.height();
-    let data = pixmap.data();
-
+pub fn bytes_to_slint_buffer(data: &[u8], width: u32, height: u32) -> SharedPixelBuffer<Rgba8Pixel> {
     let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
     let slint_pixels = pixel_buffer.make_mut_slice();
     
@@ -89,30 +83,60 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
         }
 
         let ui_clone = ui.as_weak();
+        let font_system_arc = engine.font_system.clone();
+        let swash_cache_arc = engine.swash_cache.clone();
         
         tokio::spawn(async move {
-            let mut font_system = cosmic_text::FontSystem::new();
-            let mut fb_lock = framebuffer.lock().unwrap();
-            
-            // Temporary Bridge for Phase 2: Paint all Tiles to the single CPU Pixmap
-            // until the WGPU compositor is wired up.
-            for layer in primitives.get_all_layers_sorted() {
-                let tiles = layer.build_tiles(512);
-                for tile in tiles {
-                    crate::renderer::paint_layout_tree(
-                        &tile, 
+            // 1. Try WGPU Compositor firsthand
+            let mut gpu_success = false;
+            let mut final_pixels = None;
+
+            {
+                let mut comp_opt = engine.gpu_compositor.lock().await;
+                if let Some(comp) = comp_opt.as_mut() {
+                    // Call the async compositor rendering pass
+                    if let Some(pixels) = comp.render_tree(
+                        &primitives, 
                         physical_w, 
                         physical_h, 
                         scale_factor, 
-                        &mut font_system,
-                        &mut fb_lock,
-                        &dirty_rects
-                    );
+                        font_system_arc.clone(),
+                        swash_cache_arc.clone()
+                    ).await {
+                        final_pixels = Some(pixels);
+                        gpu_success = true;
+                    }
                 }
             }
             
-            if let Some(ref pixmap) = *fb_lock {
-                let pixel_buffer = skia_to_slint_buffer(pixmap);
+            // 2. Fallback: CPU Rasterization (Tiny-Skia)
+            if !gpu_success {
+                let mut font_system_lock = font_system_arc.lock().unwrap();
+                let mut swash_cache_lock = swash_cache_arc.lock().unwrap();
+                let mut fb_lock = framebuffer.lock().unwrap();
+                for layer in primitives.get_all_layers_sorted() {
+                    let tiles = layer.build_tiles(512);
+                    for tile in tiles {
+                        crate::renderer::paint_layout_tree(
+                            &tile, 
+                            physical_w, 
+                            physical_h, 
+                            scale_factor, 
+                            &mut font_system_lock,
+                            &mut swash_cache_lock,
+                            &mut fb_lock,
+                            &dirty_rects
+                        );
+                    }
+                }
+                
+                if let Some(ref pixmap) = *fb_lock {
+                    final_pixels = Some(pixmap.data().to_vec());
+                }
+            }
+            
+            if let Some(pixels) = final_pixels {
+                let pixel_buffer = bytes_to_slint_buffer(&pixels, physical_w, physical_h);
                 
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_clone.upgrade() {

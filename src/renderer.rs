@@ -8,6 +8,7 @@ pub fn paint_layout_tree(
     height: u32, 
     scale_factor: f32, 
     font_system: &mut FontSystem,
+    swash_cache: &mut SwashCache,
     framebuffer: &mut Option<Pixmap>,
     dirty_rects: &[Rect] // dirty rects are relative to the Tile's logical coordinates
 ) {
@@ -33,8 +34,6 @@ pub fn paint_layout_tree(
             pixmap.fill_rect(scaled_dirty, &clear_paint, Transform::identity(), None);
         }
     }
-
-    let mut swash_cache = SwashCache::new();
 
     // To prevent checking the intersection for all sub-commands, we can precompute the bounds.
     for prim in &tile.display_items {
@@ -211,7 +210,7 @@ pub fn paint_layout_tree(
                 for run in buffer.layout_runs() {
                     for glyph in run.glyphs.iter() {
                         let physical_glyph = glyph.physical((local_x * scale_factor, local_y * scale_factor), 1.0);
-                        render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
+                        render_glyph_image(swash_cache, font_system, physical_glyph, pixmap);
                     }
                 }
             } else {
@@ -267,7 +266,7 @@ pub fn paint_layout_tree(
                             for run in buffer.layout_runs() {
                                 for glyph in run.glyphs.iter() {
                                     let physical_glyph = glyph.physical(((local_x + cx) * scale_factor, (local_y + current_y) * scale_factor), 1.0);
-                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
+                                    render_glyph_image(swash_cache, font_system, physical_glyph, pixmap);
                                 }
                             }
                             cx += buffer.layout_runs().next().map_or(0.0, |r| r.line_w) + letter_spacing;
@@ -279,7 +278,7 @@ pub fn paint_layout_tree(
                         for run in buffer.layout_runs() {
                             for glyph in run.glyphs.iter() {
                                 let physical_glyph = glyph.physical((local_x * scale_factor + current_x, local_y * scale_factor + current_y), 1.0);
-                                render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
+                                render_glyph_image(swash_cache, font_system, physical_glyph, pixmap);
                             }
                         }
                         current_x += word_w;
@@ -297,7 +296,7 @@ pub fn paint_layout_tree(
                             for run in buffer.layout_runs() {
                                 for glyph in run.glyphs.iter() {
                                     let physical_glyph = glyph.physical((local_x * scale_factor + current_x, local_y * scale_factor + current_y), 1.0);
-                                    render_glyph_image(&mut swash_cache, font_system, physical_glyph, pixmap);
+                                    render_glyph_image(swash_cache, font_system, physical_glyph, pixmap);
                                 }
                             }
                             spc_adv = buffer.layout_runs().next().map_or(0.0, |r| r.line_w);

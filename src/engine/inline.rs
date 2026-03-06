@@ -512,8 +512,7 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        
-        let mut ifc = InlineFormattingContext::new(50.0, measurer, crate::engine::style::css_values::CssTextOverflow::Ellipsis);
+        let mut ifc = InlineFormattingContext::new(120.0, measurer, crate::engine::style::css_values::CssTextOverflow::Ellipsis);
 
         let boxes = vec![
             InlineBox::Text {
@@ -548,7 +547,6 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        
         let mut ifc = InlineFormattingContext::new(50.0, measurer, crate::engine::style::css_values::CssTextOverflow::Clip);
 
         let boxes = vec![

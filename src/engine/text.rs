@@ -13,15 +13,32 @@ pub struct TextMetrics {
 #[derive(Clone)]
 pub struct TextMeasurer {
     pub font_system: Arc<Mutex<FontSystem>>,
+    pub measure_cache: Arc<Mutex<std::collections::HashMap<String, (f32, f32)>>>,
 }
 
 impl TextMeasurer {
     pub fn new(font_system: Arc<Mutex<FontSystem>>) -> Self {
-        Self { font_system }
+        Self { 
+            font_system,
+            measure_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
     }
 
     pub fn measure_text(&self, text: &str, font_size: f32, line_height: f32, family: Option<&str>, weight: cosmic_text::Weight, max_width: Option<f32>, letter_spacing: f32, word_spacing: f32) -> (f32, f32) {
         if text.is_empty() { return (0.0, 0.0); }
+        
+        let cache_key = format!(
+            "{}_{}_{}_{:?}_{:?}_{:?}_{}_{}",
+            text, font_size, line_height, family, weight.0, max_width, letter_spacing, word_spacing
+        );
+
+        {
+            let cache = self.measure_cache.lock().unwrap();
+            if let Some(&metrics) = cache.get(&cache_key) {
+                return metrics;
+            }
+        }
+
         let mut font_system = self.font_system.lock().unwrap();
         
         let mut attrs = Attrs::new().weight(weight);
@@ -45,7 +62,9 @@ impl TextMeasurer {
                 width = width.max(run.line_w);
                 height += run.line_height;
             }
-            return (width, height);
+            let result = (width, height);
+            self.measure_cache.lock().unwrap().insert(cache_key, result);
+            return result;
         }
 
         // Spaced Path (Tokenized Greedy Wrapping)
@@ -116,6 +135,8 @@ impl TextMeasurer {
             first_word_in_line = false;
         }
 
-        (max_x, current_y)
+        let result = (max_x, current_y);
+        self.measure_cache.lock().unwrap().insert(cache_key, result);
+        result
     }
 }
