@@ -53,5 +53,14 @@ lazy_static = "1.5.0"
 bitflags = "2.11.0"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 
+# HTTP/3 via QUIC (Implementação real)
+quinn = "0.11"
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "0.8"
+http = "1.2"
+bytes = "1.11"
+
 [build-dependencies]
 slint-build = "1.9"

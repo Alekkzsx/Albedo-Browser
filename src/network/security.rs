@@ -110,9 +110,21 @@ impl AccessControl {
     }
 
     pub fn validate_cors(&self, origin: &Origin, _target_url: &str, resp_headers: &std::collections::HashMap<String, String>) -> bool {
-        if let Some(allow_origin) = resp_headers.get("access-control-allow-origin") {
-            if allow_origin == "*" { return true; }
-            if allow_origin == &origin.to_string() { return true; }
+        let allow_origin = resp_headers.get("access-control-allow-origin").map(|s| s.as_str());
+        let allow_credentials = resp_headers.get("access-control-allow-credentials").map(|s| s.as_str()) == Some("true");
+
+        if let Some(mut origin_val) = allow_origin {
+            origin_val = origin_val.trim();
+            if allow_credentials && origin_val == "*" {
+                // Segurança W3C: Se Credentials=true, wildcard '*' não é permitido no Allow-Origin
+                return false;
+            }
+            if origin_val == "*" {
+                return true;
+            }
+            if origin_val == origin.to_string().as_str() {
+                return true;
+            }
         }
         false
     }

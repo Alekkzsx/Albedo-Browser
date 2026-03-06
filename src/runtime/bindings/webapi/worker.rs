@@ -123,24 +123,28 @@ impl Worker {
         });
 
         // Fetch user script logic
-        if let Some(rm) = resource_manager {
-             let url_str = url.clone();
-             let worker_rt_id_fetch = worker_rt_id;
-             let tx_arc_clone = tx_arc.clone();
+        let url_str = url.clone();
+        let worker_rt_id_fetch = worker_rt_id;
+        let origin = parent_rt.origin.lock().unwrap().clone();
+        
+        thread::spawn(move || {
+             // O script do Worker DEVE respeitar Same-Origin e passa pelo pipeline FetchClient (HTTP/3 + Seguranças)
+             let client = crate::network::client::FetchClient::new();
+             let mut opts = crate::network::client::FetchOptions::default();
+             opts.mode = crate::network::client::FetchMode::SameOrigin;
              
-             thread::spawn(move || {
-                 // Hack: Wait for a bit and fetch async if we can, or just do blocking reqwest here.
-                 // Resource manager fetch is async. For simple sync, we'll try to execute script later if possible.
-                 // This falls outside direct synchronous JS execution but simulates worker start.
-                 // A real worker fetches the script synchronously from its own thread blockingly.
-                 if let Ok(content) = reqwest::blocking::get(&url_str).and_then(|res| res.text()) {
-                      if let Some(w_arc) = crate::runtime::core::registry::get_runtime(worker_rt_id_fetch) {
-                          let w_rt = w_arc.lock().unwrap();
-                          let _ = w_rt.execute_script(&content);
-                      }
+             if let Ok(response) = client.fetch(&url_str, Some(opts), origin) {
+                 if response.ok() && !response.opaque {
+                     let content = response.text();
+                     if let Some(w_arc) = crate::runtime::core::registry::get_runtime(worker_rt_id_fetch) {
+                         let w_rt = w_arc.lock().unwrap();
+                         let _ = w_rt.execute_script(&content);
+                     }
+                 } else {
+                     eprintln!("🛑 [Worker] Recusado iniciar script em {} (SOP/Network bloqueou)", url_str);
                  }
-             });
-        }
+             }
+        });
 
         Ok(Self { 
              parent_rt_id,

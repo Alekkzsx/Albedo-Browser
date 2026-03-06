@@ -1,4 +1,6 @@
 use rquickjs::{Context, Result, Class, Ctx};
+use std::sync::{Arc, Mutex};
+use crate::runtime::core::runtime::JsRuntime;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -26,18 +28,21 @@ impl History {
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
-pub struct Screen {}
+pub struct Screen {
+    #[qjs(skip_trace)]
+    pub size: Arc<Mutex<(i32, i32)>>,
+}
 
 #[rquickjs::methods]
 impl Screen {
     #[qjs(get)]
-    pub fn width(&self) -> i32 { 1920 }
+    pub fn width(&self) -> i32 { self.size.lock().unwrap().0 }
     #[qjs(get)]
-    pub fn height(&self) -> i32 { 1080 }
+    pub fn height(&self) -> i32 { self.size.lock().unwrap().1 }
     #[qjs(get)]
-    pub fn availWidth(&self) -> i32 { 1920 }
+    pub fn availWidth(&self) -> i32 { self.size.lock().unwrap().0 }
     #[qjs(get)]
-    pub fn availHeight(&self) -> i32 { 1040 }
+    pub fn availHeight(&self) -> i32 { self.size.lock().unwrap().1 }
     #[qjs(get)]
     pub fn colorDepth(&self) -> i32 { 24 }
     #[qjs(get)]
@@ -58,19 +63,21 @@ impl Performance {
     }
 }
 
-pub fn register(ctx: &Context) -> Result<()> {
-    ctx.with(|ctx| {
-        let global = ctx.globals();
-        
-        let history = Class::instance(ctx.clone(), History {})?;
-        global.set("history", history)?;
-        
-        let screen = Class::instance(ctx.clone(), Screen {})?;
-        global.set("screen", screen)?;
-        
-        let performance = Class::instance(ctx.clone(), Performance {})?;
-        global.set("performance", performance)?;
-        
-        Ok(())
+pub fn register(rt: &JsRuntime) -> Result<()> {
+    rt.with_context(|context| {
+        context.with(|ctx| {
+            let global = ctx.globals();
+            
+            let history = Class::instance(ctx.clone(), History {})?;
+            global.set("history", history)?;
+            
+            let screen = Class::instance(ctx.clone(), Screen { size: rt.screen_size.clone() })?;
+            global.set("screen", screen)?;
+            
+            let performance = Class::instance(ctx.clone(), Performance {})?;
+            global.set("performance", performance)?;
+            
+            Ok(())
+        })
     })
 }
