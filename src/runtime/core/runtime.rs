@@ -90,6 +90,8 @@ pub struct JsRuntime {
     pub import_map: Arc<Mutex<Option<crate::runtime::core::module_loader::ImportMap>>>,
     #[qjs(skip_trace)]
     pub screen_size: Arc<Mutex<(i32, i32)>>,
+    #[qjs(skip_trace)]
+    pub idb_worker: Arc<Mutex<crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker>>,
 }
 
 use super::event_loop::EventLoop;
@@ -99,6 +101,8 @@ impl JsRuntime {
     pub fn new() -> JsResult<Self> {
         let runtime = Runtime::new()?;
         let context = Context::full(&runtime)?;
+        let mut event_loop = EventLoop::new();
+        let idb_worker = crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker::new(event_loop.idb_sender.clone());
         
         let rt = Self {
             id: NEXT_RUNTIME_ID.fetch_add(1, Ordering::SeqCst),
@@ -127,6 +131,7 @@ impl JsRuntime {
             module_registry: Arc::new(Mutex::new(crate::runtime::core::module_loader::ModuleRegistry::new(""))),
             import_map: Arc::new(Mutex::new(None)),
             screen_size: Arc::new(Mutex::new((1920, 1080))), // Engine alimentará via winit/OS
+            idb_worker: Arc::new(Mutex::new(idb_worker)),
         };
 
         // Store self in userdata for access from within JS callbacks

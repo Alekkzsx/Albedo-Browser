@@ -34,6 +34,24 @@ pub struct PendingMessage {
     pub source_runtime_id: Option<usize>,
 }
 
+pub enum IDBEventMessage {
+    Success {
+        callback_id: usize, 
+        result_json: String,
+    },
+    Error {
+        callback_id: usize,
+        error_name: String,
+        error_message: String,
+    },
+    UpgradeNeeded {
+        request_callback_id: usize,
+        transaction_id: usize,
+        old_version: u32,
+        new_version: u32,
+    }
+}
+
 pub struct EventLoop {
     macro_tasks: VecDeque<Box<dyn FnOnce() + Send>>,
     timers: HashMap<u32, TimerTask>,
@@ -47,12 +65,19 @@ pub struct EventLoop {
     raf_callbacks: Vec<UnsafeSendVal<Persistent<Function<'static>>>>,
     /// Cross-runtime messages queued via postMessage
     pub pending_messages: VecDeque<PendingMessage>,
+    
+    // IndexedDB Event Bridge
+    pub idb_sender: Sender<IDBEventMessage>,
+    idb_receiver: Receiver<IDBEventMessage>,
+    pub next_idb_callback_id: usize,
 }
 
 
 impl EventLoop {
     pub fn new() -> Self {
         let (tx, rx) = channel();
+        let (idb_tx, idb_rx) = channel();
+        
         Self {
             macro_tasks: VecDeque::new(),
             timers: HashMap::new(),
@@ -64,6 +89,9 @@ impl EventLoop {
             next_observer_id: 0,
             raf_callbacks: Vec::new(),
             pending_messages: VecDeque::new(),
+            idb_sender: idb_tx,
+            idb_receiver: idb_rx,
+            next_idb_callback_id: 1,
         }
     }
 
@@ -95,6 +123,20 @@ impl EventLoop {
             results.push(res);
         }
         results
+    }
+
+    pub fn receive_idb_events(&mut self) -> Vec<IDBEventMessage> {
+        let mut events = Vec::new();
+        while let Ok(event) = self.idb_receiver.try_recv() {
+            events.push(event);
+        }
+        events
+    }
+
+    pub fn get_next_idb_callback_id(&mut self) -> usize {
+        let id = self.next_idb_callback_id;
+        self.next_idb_callback_id += 1;
+        id
     }
 
     pub fn queue_macro_task<F>(&mut self, task: F)

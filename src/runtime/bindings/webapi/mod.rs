@@ -4,6 +4,7 @@ pub mod fetch;
 pub mod file_api;
 pub mod geolocation;
 pub mod history;
+pub mod idb_service;
 pub mod indexeddb;
 pub mod location;
 pub mod navigator;

@@ -140,16 +140,32 @@ impl TabManager {
                     }
                     
                     if is_favicon && tab.favicon_data.is_none() {
-                        if let Ok(img) = image::load_from_memory(&response.data) {
-                            let rgba = img.to_rgba8();
+                        if let Some((width, height, ref rgba_data)) = response.decoded_image {
                             let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                                rgba.as_raw(), 
-                                rgba.width(), 
-                                rgba.height()
+                                rgba_data, 
+                                width, 
+                                height
                             );
-                            tab.favicon_data = Some(buffer);
+                            tab.favicon_data = Some(buffer.clone());
+                            
+                            // Também adicionar globalmente
+                            let slint_image = slint::Image::from_rgba8(buffer);
+                            tab.engine.image_cache.lock().unwrap().insert(response.url.clone(), slint_image);
+                            tab.engine.mark_styles_dirty();
+                            
                             did_update = true;
                         }
+                    } else if let Some((width, height, ref rgba_data)) = response.decoded_image {
+                        // Imagens genéricas processadas em background
+                        let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                            rgba_data, 
+                            width, 
+                            height
+                        );
+                        let slint_image = slint::Image::from_rgba8(buffer);
+                        tab.engine.image_cache.lock().unwrap().insert(response.url.clone(), slint_image);
+                        tab.engine.mark_styles_dirty();
+                        did_update = true;
                     }
 
                     if tab.engine.handle_resource_response(response) {
