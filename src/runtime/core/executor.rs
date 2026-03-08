@@ -152,6 +152,61 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
         });
     }
 
+    // 2.5 Handle IndexedDB Events
+    let idb_events = {
+        let mut el = rt.event_loop.lock().unwrap();
+        el.receive_idb_events()
+    };
+
+    if !idb_events.is_empty() {
+        rt.with_context(|ctx| {
+            ctx.with(|ctx| {
+                let mut registry = rt.observer_registry.lock().unwrap();
+                for event in idb_events {
+                    match event {
+                        crate::runtime::core::event_loop::IDBEventMessage::Success { callback_id, result_json } => {
+                            if let Some(cb_persistent) = registry.remove(&callback_id) {
+                                if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
+                                    // Parse JSON back to JS Value using QuickJS eval
+                                    let val: Value = ctx.eval(format!("({})", result_json)).unwrap_or_else(|_| rquickjs::Value::new_null(ctx.clone()));
+                                    let _: rquickjs::Result<Value> = callback.call((val,));
+                                    executed = true;
+                                }
+                            }
+                        },
+                        crate::runtime::core::event_loop::IDBEventMessage::Error { callback_id, error_name, error_message } => {
+                            if let Some(cb_persistent) = registry.remove(&callback_id) {
+                                if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
+                                    let err_obj = rquickjs::Object::new(ctx.clone()).unwrap();
+                                    let _ = err_obj.set("name", error_name);
+                                    let _ = err_obj.set("message", error_message);
+                                    let _: rquickjs::Result<Value> = callback.call((err_obj,));
+                                    executed = true;
+                                }
+                            }
+                        },
+                        crate::runtime::core::event_loop::IDBEventMessage::UpgradeNeeded { request_callback_id, transaction_id: _, old_version, new_version } => {
+                            // Upgrade events shouldn't remove the callback as Success will follow
+                            if let Some(cb_persistent) = registry.get(&request_callback_id) {
+                                if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
+                                   let upgrade_evt = rquickjs::Object::new(ctx.clone()).unwrap();
+                                   let _ = upgrade_evt.set("oldVersion", old_version);
+                                   let _ = upgrade_evt.set("newVersion", new_version);
+                                   let _: rquickjs::Result<Value> = callback.call((upgrade_evt,));
+                                   executed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                while ctx.execute_pending_job() {
+                    executed = true;
+                }
+            })
+        });
+    }
+
     // 3. Run EventLoop tasks (timers, etc)
     let (timers, macros) = {
         let mut el = rt.event_loop.lock().unwrap();

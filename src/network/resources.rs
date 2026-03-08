@@ -6,7 +6,7 @@ use url::Url;
 use super::security::{Origin, CookieJar, AccessControl};
 use super::http3::Http3Client;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ResourceType {
     Html,
     Css,
@@ -30,6 +30,8 @@ pub struct ResourceResponse {
     pub status_code: u16,
     pub original_size: usize,
     pub compressed_with: crate::network::cache::CompressionMethod,
+    // Buffer RGBA decodificado em background (largura, altura, rgba)
+    pub decoded_image: Option<(u32, u32, Vec<u8>)>,
 }
 
 impl ResourceResponse {
@@ -121,6 +123,27 @@ impl ResourceManager {
         }
     }
 
+    /// Envia a resposta pelo canal. Se for uma imagem, faz a decodificação
+    /// no pool do tokio (background thread) antes de enviar para não travar a UI.
+    pub fn send_response(tx: &mpsc::UnboundedSender<ResourceResponse>, mut response: ResourceResponse) {
+        let tx = tx.clone();
+        
+        let is_image = response.resource_type == ResourceType::Image || 
+                       response.content_type.starts_with("image/");
+                       
+        if is_image && response.decoded_image.is_none() && !response.data.is_empty() {
+            tokio::task::spawn_blocking(move || {
+                if let Ok(img) = image::load_from_memory(&response.data) {
+                    let rgba = img.to_rgba8();
+                    response.decoded_image = Some((rgba.width(), rgba.height(), rgba.into_raw()));
+                }
+                let _ = tx.send(response);
+            });
+        } else {
+            let _ = tx.send(response);
+        }
+    }
+
     pub fn fetch(&self, url: String, resource_type: ResourceType, parent_origin: Option<Origin>) {
         let client = self.client.clone();
         let tx = self.tx.clone();
@@ -184,9 +207,10 @@ impl ResourceManager {
                         status_code: 200,
                         original_size: 0, // data URLs don't have original size in the same concept
                         compressed_with: crate::network::cache::CompressionMethod::None,
+                        decoded_image: None,
                     };
                     
-                    let _ = tx.send(response);
+                    Self::send_response(&tx, response);
                 }
             });
             return;
@@ -213,8 +237,9 @@ impl ResourceManager {
                         status_code: 200,
                         original_size: blob.size,
                         compressed_with: crate::network::cache::CompressionMethod::None,
+                        decoded_image: None,
                     };
-                    let _ = tx.send(response);
+                    Self::send_response(&tx, response);
                 } else {
                     // Blob not found (404)
                     let response = ResourceResponse {
@@ -230,8 +255,9 @@ impl ResourceManager {
                         status_code: 404,
                         original_size: 0,
                         compressed_with: crate::network::cache::CompressionMethod::None,
+                        decoded_image: None,
                     };
-                    let _ = tx.send(response);
+                    Self::send_response(&tx, response);
                 }
             });
             return;
@@ -300,9 +326,10 @@ impl ResourceManager {
                             status_code: 200,
                             original_size: data.len(),
                             compressed_with: crate::network::cache::CompressionMethod::None,
+                            decoded_image: None,
                         };
                         
-                        let _ = tx.send(response);
+                        Self::send_response(&tx, response);
                     },
                     Err(e) => {
                          eprintln!("[ResourceManager] Erro ao ler arquivo {}: {}", path.display(), e);
@@ -319,8 +346,9 @@ impl ResourceManager {
                             status_code: 404,
                             original_size: 0,
                             compressed_with: crate::network::cache::CompressionMethod::None,
+                            decoded_image: None,
                         };
-                        let _ = tx.send(response);
+                        Self::send_response(&tx, response);
                     }
                 }
             });
@@ -340,7 +368,7 @@ impl ResourceManager {
                 if let Some(cached) = cache.get(&url_clone) {
                     if cached.is_cache_valid() {
                         // Cache ainda é válido, usar imediatamente
-                        let _ = tx.send(cached.clone());
+                        Self::send_response(&tx, cached.clone());
                         return;
                     } else {
                         // Cache expirou, mas podemos revalidar
@@ -373,7 +401,7 @@ impl ResourceManager {
                             // Handle 304 Not Modified (revalidação via cache)
                             if status_code == 304 {
                                 if let Some(cached) = cached_response {
-                                    let _ = tx.send(cached);
+                                    Self::send_response(&tx, cached);
                                 }
                                 return;
                             }
@@ -406,6 +434,7 @@ impl ResourceManager {
                                     status_code,
                                     original_size: body_len,
                                     compressed_with: crate::network::cache::CompressionMethod::None,
+                                    decoded_image: None,
                                 };
 
                                 // Armazenar em cache
@@ -419,7 +448,7 @@ impl ResourceManager {
                                     cache.insert(url_clone, response.clone());
                                 }
 
-                                let _ = tx.send(response);
+                                Self::send_response(&tx, response);
                                 return;
                             }
                             // Se status não é sucesso (4xx, 5xx), tentar fallback HTTP/2
@@ -466,7 +495,7 @@ impl ResourceManager {
                         if status == 304 {
                             // Usar cached response
                             if let Some(cached) = cached_response {
-                                let _ = tx.send(cached);
+                                Self::send_response(&tx, cached);
                             }
                             return;
                         }
@@ -515,6 +544,7 @@ impl ResourceManager {
                                     status_code,
                                     original_size: bytes.len(),
                                     compressed_with: crate::network::cache::CompressionMethod::None,
+                                    decoded_image: None,
                                 };
                                 
                                 // 6. Armazenar em cache
@@ -529,7 +559,7 @@ impl ResourceManager {
                                 }
                                 
                                 // 7. Enviar resposta
-                                let _ = tx.send(response);
+                                Self::send_response(&tx, response);
                             }
                         }
                     }

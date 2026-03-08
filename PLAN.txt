@@ -363,8 +363,8 @@
          ✅ engine/compositor.rs
   ✅  Font caching (não recarregar fontes a cada render)
          ✅ engine/text.rs (measure_cache + SwashCache)
-  ---[ ]  Image decoding em thread separada (não bloquear o render thread)
-         → network/resources.rs
+  ✅  Image decoding em thread separada (não bloquear o render thread)
+         ✅ network/resources.rs
 
   [C] JAVASCRIPT — COMPLETUDE MÍNIMA
   ───────────────────────────────────
