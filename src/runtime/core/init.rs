@@ -7,6 +7,10 @@ type JsResult<T> = Result<T, rquickjs::Error>;
 
 pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
     if let Ok(mut rt) = JsRuntime::new() {
+        // ... (existing code omitted for brevity in thought, but I will provide the full block)
+        // Actually I should provide the full block as per rules.
+        // Wait, I'm using replace_file_content, so I need to match the block.
+        // I'll use a smaller range.
         println!("[init_js_for_url] START for url={}", url);
         rt.context.lock().unwrap().with(|ctx| {
             let _ = ctx.globals().set("__albedo_rt__", rt.clone());
@@ -18,9 +22,7 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(url);
         let origin_str = get_origin(url); 
 
-        // ═══════════════════════════════════════════════════════════════
         // ES Modules: Configurar ModuleRegistry e registrar Loader/Resolver
-        // ═══════════════════════════════════════════════════════════════
         {
             let mut registry = rt.module_registry.lock().unwrap();
             *registry = crate::runtime::core::module_loader::ModuleRegistry::new(url);
@@ -38,36 +40,89 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
             let runtime = rt.runtime.lock().unwrap();
             runtime.set_loader(resolver, loader);
         }
-        println!("[init_js_for_url] ES Module loader registered");
-        // ═══════════════════════════════════════════════════════════════
 
-        println!("[init_js_for_url] origin set, calling init_storage");
         if let Err(e) = init_storage(&rt, origin_str) {
             eprintln!("Failed to initialize storage for {}: {}", origin_str, e);
         }
-        println!("[init_js_for_url] storage done, registering in registry");
         crate::runtime::core::registry::register_runtime(rt.id, Arc::new(Mutex::new(rt.clone())));
-        println!("[init_js_for_url] registered, checking dom");
         if let Some(dom) = &engine.dom {
-            println!("[init_js_for_url] registering document API");
             if let Err(e) = crate::runtime::bindings::html::document::register(&rt, dom.clone(), engine.stylesheet.clone(), engine.primitives.clone(), engine.canvas_contexts.clone(), url.to_string(), "".to_string(), engine.resource_manager.clone()) {
                     eprintln!("Failed to register document API: {}", e);
             }
-            println!("[init_js_for_url] document API done");
         }
-        println!("[init_js_for_url] registering console");
         if let Err(e) = crate::runtime::bindings::utils::console::Console::register(&rt) {
                 eprintln!("Failed to register console: {}", e);
         }
-        println!("[init_js_for_url] registering events");
         if let Err(e) = register_events(&rt) {
             eprintln!("Failed to register events: {}", e);
         }
-        println!("[init_js_for_url] calling init_stdlib");
         if let Err(e) = init_stdlib(&rt, &url) {
             eprintln!("Failed to init stdlib: {}", e);
         }
-        println!("[init_js_for_url] DONE for url={}", url);
+        return Some(rt);
+    }
+    None
+}
+
+pub fn init_sw_runtime(url: &str, origin: &str) -> Option<JsRuntime> {
+    if let Ok(rt) = JsRuntime::new() {
+        rt.context.lock().unwrap().with(|ctx| {
+            let _ = ctx.globals().set("__albedo_rt__", rt.clone());
+        });
+        *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(origin);
+        
+        // Initialize basic stdlib for SW (subset of full stdlib)
+        let _ = register_events(&rt);
+        let _ = crate::runtime::bindings::utils::console::Console::register(&rt);
+        let _ = crate::runtime::bindings::webapi::timers::register(&rt);
+        let _ = crate::runtime::bindings::webapi::fetch::register(&rt);
+        let _ = crate::runtime::bindings::webapi::indexeddb::register(&rt);
+        let _ = crate::runtime::bindings::webapi::crypto::register(&rt);
+        let _ = crate::runtime::bindings::webapi::url::register(&rt);
+        
+        // Circular global for ServiceWorkerGlobalScope
+        rt.context.lock().unwrap().with(|ctx| {
+            let global = ctx.globals();
+            let _ = global.set("self", global.clone());
+            let _ = global.set("globalThis", global.clone());
+            
+            // SW specific Polyfills
+            let _ = ctx.eval::<(), _>(r#"
+                globalThis._listeners = {};
+                globalThis.addEventListener = function(type, listener) {
+                    if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
+                    globalThis._listeners[type].push(listener);
+                };
+                globalThis.dispatchEvent = function(event) {
+                    var ls = globalThis._listeners[event.type];
+                    if (ls) for (var i = 0; i < ls.length; i++) ls[i](event);
+                    return true;
+                };
+
+                // Stub for registration objects
+                if (!globalThis.registration) {
+                    globalThis.registration = {
+                        scope: '',
+                        update: function() { return Promise.resolve(); },
+                        unregister: function() { return Promise.resolve(true); },
+                        showNotification: function() { return Promise.resolve(); }
+                    };
+                }
+
+                // Global scope aliases
+                globalThis.caches = globalThis.caches || {};
+                globalThis.clients = globalThis.clients || {
+                    claim: function() { return Promise.resolve(); },
+                    matchAll: function() { return Promise.resolve([]); }
+                };
+            "#);
+        });
+
+        // Register core SW bindings
+        let _ = crate::runtime::bindings::webapi::cache::register_cache_storage(&rt);
+        let _ = crate::runtime::bindings::webapi::sync::register_sync_events(&rt);
+        let _ = crate::runtime::bindings::webapi::service_worker_container::register_service_worker_container(&rt);
+
         return Some(rt);
     }
     None

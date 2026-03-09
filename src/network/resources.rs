@@ -3,8 +3,10 @@ use std::time::Duration;
 use reqwest::Client;
 use tokio::sync::mpsc;
 use url::Url;
+use std::collections::HashMap;
 use super::security::{Origin, CookieJar, AccessControl};
 use super::http3::Http3Client;
+use crate::runtime::core::service_worker::InterceptResult;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResourceType {
@@ -73,6 +75,7 @@ pub struct ResourceManager {
     pub cookie_jar: Arc<Mutex<CookieJar>>,
     pub access_control: Arc<Mutex<AccessControl>>,
     pub response_cache: Arc<Mutex<std::collections::HashMap<String, ResourceResponse>>>,
+    pub sw_manager: Arc<crate::runtime::core::service_worker::ServiceWorkerManager>,
 }
 
 impl ResourceManager {
@@ -105,6 +108,9 @@ impl ResourceManager {
         //   1. HTTPS URLs → Tenta HTTP/3 primeiro
         //   2. Se HTTP/3 falhar → Usa HTTP/2 (reqwest)
         //   3. Se HTTP/2 falhar → Usa HTTP/1.1 (reqwest fallback)
+        let sw_db = Arc::new(crate::runtime::core::sw_db::ServiceWorkerDatabase::new(std::path::PathBuf::from("sw.db")).unwrap());
+        let sw_manager = Arc::new(crate::runtime::core::service_worker::ServiceWorkerManager::new(sw_db));
+        
         Self {
             client: Client::builder()
                 .user_agent("AlbedoBrowser/0.1 (Async)")
@@ -120,6 +126,7 @@ impl ResourceManager {
             cookie_jar: Arc::new(Mutex::new(CookieJar::new())),
             access_control: Arc::new(Mutex::new(AccessControl::new())),
             response_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            sw_manager,
         }
     }
 
@@ -145,11 +152,63 @@ impl ResourceManager {
     }
 
     pub fn fetch(&self, url: String, resource_type: ResourceType, parent_origin: Option<Origin>) {
+        let url_clone = url.clone();
         let client = self.client.clone();
         let tx = self.tx.clone();
-        let url_clone = url.clone();
         let cookie_jar = self.cookie_jar.clone();
         let response_cache = self.response_cache.clone();
+        let sw_manager = self.sw_manager.clone();
+        
+        // 0. Service Worker Interception
+        // Convert URL to string for safety
+        let url_str = url.clone();
+        let origin_str = if let Ok(parsed) = url::Url::parse(&url_str) {
+            parsed.origin().unicode_serialization()
+        } else {
+            String::new()
+        };
+
+        if !origin_str.is_empty() {
+             if let Ok(Some(reg)) = sw_manager.find_for_url(&origin_str, &url_str) {
+                 if let Ok(Some(active)) = reg.get_active() {
+                     // Dispatch fetch event to Service Worker
+                     // This is a simplified version of dispatch_fetch_event that handles the 
+                     // interception logic as requested in the plan.
+                     let req_ctx = crate::runtime::core::service_worker::RequestContext {
+                         method: "GET".to_string(), // ResourceManager mostly does GET
+                         url: url_str.clone(),
+                         headers: HashMap::new(),
+                         body: None,
+                         mode: "navigate".to_string(),
+                         credentials: "omit".to_string(),
+                         cache_mode: crate::runtime::core::service_worker::CacheMode::Default,
+                         redirect: crate::runtime::core::service_worker::RedirectMode::Follow,
+                     };
+                     
+                     // Try to intercept
+                     if let Ok(InterceptResult::Handled(res_ctx)) = sw_manager.dispatch_fetch_event(&active, req_ctx) {
+                         println!("[ResourceManager] Intercepted by Service Worker: {}", url_str);
+                         let response = ResourceResponse {
+                             url: url_str.clone(),
+                             data: res_ctx.body,
+                             resource_type: resource_type.clone(),
+                             etag: res_ctx.headers.get("etag").cloned(),
+                             cache_control: res_ctx.headers.get("cache-control").cloned(),
+                             last_modified: res_ctx.headers.get("last-modified").cloned(),
+                             expires: res_ctx.headers.get("expires").cloned(),
+                             timestamp: std::time::SystemTime::now(),
+                             content_type: res_ctx.headers.get("content-type").cloned().unwrap_or_else(|| "text/html".to_string()),
+                             status_code: res_ctx.status,
+                             original_size: 0,
+                             compressed_with: crate::network::cache::CompressionMethod::None,
+                             decoded_image: None,
+                         };
+                         Self::send_response(&tx, response);
+                         return;
+                     }
+                 }
+             }
+        }
 
         // 1. Mixed Content Blocking
         if let Some(ref parent) = parent_origin {
@@ -265,7 +324,6 @@ impl ResourceManager {
 
         // 4. Handle file: URLs
         if url.starts_with("file://") {
-            let url_clone = url.clone();
             let resource_type = resource_type.clone();
             
             tokio::spawn(async move {

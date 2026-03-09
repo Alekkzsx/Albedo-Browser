@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use rquickjs::{Ctx, Class, Result, Value, Object, Function, Persistent, prelude::*};
+use crate::runtime::core::service_worker::{RequestContext, InterceptResult, CacheMode, RedirectMode};
+use crate::runtime::core::event_loop::AsyncResult;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -133,7 +135,6 @@ impl Response {
 
 use crate::network::security::Origin;
 use crate::runtime::core::runtime::JsRuntime;
-use crate::runtime::core::event_loop::AsyncResult;
 use crate::runtime::core::event_loop::UnsafeSendVal;
 
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
@@ -176,13 +177,48 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                     (id, el.async_sender.clone())
                 };
 
-                let origin = rt_clone.origin.clone();
+                let origin_arc = rt_clone.origin.clone();
                 let resource_manager = rt_clone.resource_manager.clone();
+                let sw_manager = rt_clone.sw_manager.clone();
+                let url_captured = url.clone();
+                let method_captured = method.clone();
 
                 tokio::spawn(async move {
+                    let origin_str = {
+                         let lock = origin_arc.lock().unwrap();
+                         lock.as_ref().map(|o| o.to_string()).unwrap_or_else(|| "null".to_string())
+                    };
+
+                    // Check for Service Worker Interception
+                    if let Ok(Some(reg)) = sw_manager.find_for_url(&origin_str, &url_captured) {
+                        if let Ok(Some(active)) = reg.get_active() {
+                            let req_ctx = RequestContext {
+                                method: method_captured.clone(),
+                                url: url_captured.clone(),
+                                headers: headers_map.clone(),
+                                body: None,
+                                mode: "cors".to_string(),
+                                credentials: "omit".to_string(),
+                                cache_mode: CacheMode::Default,
+                                redirect: RedirectMode::Follow,
+                            };
+
+                            match sw_manager.dispatch_fetch_event(&active, req_ctx) {
+                                Ok(InterceptResult::Handled(sw_resp)) => {
+                                    let _ = sender.send(AsyncResult {
+                                        id,
+                                        result: Ok((sw_resp.status, String::from_utf8_lossy(&sw_resp.body).to_string())),
+                                    });
+                                    return;
+                                }
+                                _ => { /* Fallback to network */ }
+                            }
+                        }
+                    }
+
                     let (rm_opt, org_opt) = {
                         let rm_lock = resource_manager.lock().unwrap();
-                        let org_lock = origin.lock().unwrap();
+                        let org_lock = origin_arc.lock().unwrap();
                         ((*rm_lock).clone(), (*org_lock).clone())
                     };
                     

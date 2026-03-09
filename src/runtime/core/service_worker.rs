@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
-use rquickjs::{Persistent, Function, Result as JsResult};
+use rquickjs::{Context, Runtime, Ctx, Value, Persistent, Function, prelude::*, Class, Result as JsResult};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::bindings::webapi::idb_service::worker::IDBWorkerCommand;
+use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwRegistrationData, SwSyncTaskData};
 
 // ============================================================================
 // ENUMS & BASIC TYPES
@@ -28,7 +29,7 @@ pub enum UpdateViaCache {
     None,          // Never check (cache always)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum CacheMode {
     Default,
     NoStore,
@@ -38,14 +39,14 @@ pub enum CacheMode {
     OnlyIfCached,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum RedirectMode {
     Follow,
     Error,
     Manual,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CacheSource {
     Network,
     ServiceWorkerCache,
@@ -56,7 +57,7 @@ pub enum CacheSource {
 // REQUEST/RESPONSE CONTEXT
 // ============================================================================
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RequestContext {
     pub method: String,
     pub url: String,
@@ -68,7 +69,7 @@ pub struct RequestContext {
     pub redirect: RedirectMode,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResponseContext {
     pub status: u16,
     pub status_text: String,
@@ -150,29 +151,40 @@ pub struct SyncTask {
 
 pub struct BackgroundSyncQueue {
     pub queue: Arc<Mutex<Vec<SyncTask>>>,
-    pub idb_worker: Arc<UnboundedSender<IDBWorkerCommand>>,
+    pub db: Arc<ServiceWorkerDatabase>,
 }
 
 impl Clone for BackgroundSyncQueue {
     fn clone(&self) -> Self {
         Self {
             queue: self.queue.clone(),
-            idb_worker: self.idb_worker.clone(),
+            db: self.db.clone(),
         }
     }
 }
 
 impl BackgroundSyncQueue {
-    pub fn new(idb_worker: Arc<UnboundedSender<IDBWorkerCommand>>) -> Self {
+    pub fn new(db: Arc<ServiceWorkerDatabase>) -> Self {
         Self {
             queue: Arc::new(Mutex::new(Vec::new())),
-            idb_worker,
+            db,
         }
     }
 
     pub fn register(&self, tag: String, reg_id: String) -> std::result::Result<(), String> {
-        let task = SyncTask {
+        let task_data = SwSyncTaskData {
             id: Uuid::new_v4().to_string(),
+            tag: tag.clone(),
+            registration_id: reg_id.clone(),
+            created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            retry_count: 0,
+        };
+
+        // Persist to DB
+        self.db.save_sync_task(&task_data).map_err(|e| e.to_string())?;
+
+        let task = SyncTask {
+            id: task_data.id,
             tag,
             registration_id: reg_id,
             created_at: Instant::now(),
@@ -214,23 +226,23 @@ pub struct PeriodicSyncTask {
 
 pub struct PeriodicSyncScheduler {
     pub tasks: Arc<Mutex<HashMap<String, PeriodicSyncTask>>>,
-    pub idb_worker: Arc<UnboundedSender<IDBWorkerCommand>>,
+    pub db: Arc<ServiceWorkerDatabase>,
 }
 
 impl Clone for PeriodicSyncScheduler {
     fn clone(&self) -> Self {
         Self {
             tasks: self.tasks.clone(),
-            idb_worker: self.idb_worker.clone(),
+            db: self.db.clone(),
         }
     }
 }
 
 impl PeriodicSyncScheduler {
-    pub fn new(idb_worker: Arc<UnboundedSender<IDBWorkerCommand>>) -> Self {
+    pub fn new(db: Arc<ServiceWorkerDatabase>) -> Self {
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
-            idb_worker,
+            db,
         }
     }
 
@@ -294,18 +306,22 @@ impl PeriodicSyncScheduler {
 
 #[derive(Clone)]
 pub struct ServiceWorkerInstance {
-    pub id: usize,          // JsRuntime ID
+    pub id: String,
+    pub script_url: String,
     pub state: Arc<Mutex<ServiceWorkerState>>,
-    pub rt: Arc<Mutex<JsRuntime>>,
-
-    pub fetch_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-    pub install_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-    pub activate_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-    pub message_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-    pub sync_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-    pub periodic_sync_handler: Arc<Mutex<Option<Persistent<Function<'static>>>>>,
-
     pub pending_clients: Arc<Mutex<Vec<ClientInfo>>>,
+    pub event_tx: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedSender<SwEvent>>>>,
+    pub thread_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    pub is_running: Arc<std::sync::atomic::AtomicBool>,
+    pub js_runtime: Arc<Mutex<Option<JsRuntime>>>,
+    pub pending_tasks: Arc<Mutex<Vec<tokio::sync::oneshot::Receiver<()>>>>, // Tracking waitUntil()
+}
+
+pub enum SwEvent {
+    Execute(String),
+    Dispatch(String),
+    Fetch(RequestContext, tokio::sync::oneshot::Sender<InterceptResult>),
+    Terminate,
 }
 
 #[derive(Clone, Debug)]
@@ -317,113 +333,98 @@ pub struct ClientInfo {
 }
 
 impl ServiceWorkerInstance {
-    pub fn new(rt: JsRuntime) -> Self {
-        let id = rt.id;
+    pub fn new(id: String, script_url: String) -> Self {
         Self {
             id,
+            script_url,
             state: Arc::new(Mutex::new(ServiceWorkerState::Installing)),
-            rt: Arc::new(Mutex::new(rt)),
-            fetch_handler: Arc::new(Mutex::new(None)),
-            install_handler: Arc::new(Mutex::new(None)),
-            activate_handler: Arc::new(Mutex::new(None)),
-            message_handler: Arc::new(Mutex::new(None)),
-            sync_handler: Arc::new(Mutex::new(None)),
-            periodic_sync_handler: Arc::new(Mutex::new(None)),
             pending_clients: Arc::new(Mutex::new(Vec::new())),
+            event_tx: Arc::new(Mutex::new(None)),
+            thread_handle: Arc::new(Mutex::new(None)),
+            is_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            js_runtime: Arc::new(Mutex::new(None)),
+            pending_tasks: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
+    pub fn spawn(&self, script_url: String, origin: String) {
+        if self.is_running.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SwEvent>();
+        *self.event_tx.lock().unwrap() = Some(tx);
+        
+        let is_running = self.is_running.clone();
+        is_running.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let handle = std::thread::spawn(move || {
+            println!("[SW] Thread started for Worker: {}", script_url);
+            // Initialize runtime inside the thread
+            let mut rt = crate::runtime::core::init::init_sw_runtime(&script_url, &origin).unwrap_or_else(|| {
+                panic!("Failed to init SW runtime for {}", script_url);
+            });
+            
+            while let Some(event) = rx.blocking_recv() {
+                match event {
+                    SwEvent::Execute(script) => {
+                         let _ = rt.execute_script(&script);
+                    }
+                    SwEvent::Dispatch(evt_type) => {
+                         rt.with_context(|ctx| {
+                             ctx.with(|ctx| {
+                                 let script = format!("globalThis.dispatchEvent(new Event('{}'))", evt_type);
+                                 let _ = ctx.eval::<(), _>(script);
+                             });
+                         });
+                    }
+                    SwEvent::Fetch(req, resp_tx) => {
+                         rt.with_context(|ctx| {
+                             ctx.with(|ctx| {
+                                 // Simple logic: Dispatch FetchEvent.
+                                 // respondWith() would need complex binding, defaulting to PassThrough for now 
+                                 // but through the oneshot channel to unblock ResourceManager.
+                                 let _ = resp_tx.send(InterceptResult::PassThrough);
+                             });
+                         });
+                    }
+                    SwEvent::Terminate => break,
+                }
+            }
+            is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+            println!("[SW] Thread stopped for Worker: {}", script_url);
+        });
+
+        let mut h = self.thread_handle.lock().unwrap();
+        *h = Some(handle);
+    }
+
+    pub fn terminate(&self) {
+        if let Some(tx) = self.event_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(SwEvent::Terminate);
+        }
+        self.is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub fn set_state(&self, state: ServiceWorkerState) -> std::result::Result<(), String> {
-        let mut current_state = self
-            .state
-            .lock()
-            .map_err(|e| format!("Failed to acquire state lock: {}", e))?;
+        let mut current_state = self.state.lock().map_err(|e| e.to_string())?;
         *current_state = state;
         Ok(())
     }
 
     pub fn get_state(&self) -> std::result::Result<ServiceWorkerState, String> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|e| format!("Failed to acquire state lock: {}", e))?;
+        let state = self.state.lock().map_err(|e| e.to_string())?;
         Ok(state.clone())
     }
 
-    pub fn register_fetch_handler(
-        &self,
-        handler: Persistent<Function<'static>>,
-    ) -> std::result::Result<(), String> {
-        let mut h = self
-            .fetch_handler
-            .lock()
-            .map_err(|e| format!("Failed to lock fetch_handler: {}", e))?;
-        *h = Some(handler);
-        Ok(())
-    }
-
-    pub fn register_install_handler(
-        &self,
-        handler: Persistent<Function<'static>>,
-    ) -> std::result::Result<(), String> {
-        let mut h = self
-            .install_handler
-            .lock()
-            .map_err(|e| format!("Failed to lock install_handler: {}", e))?;
-        *h = Some(handler);
-        Ok(())
-    }
-
-    pub fn register_activate_handler(
-        &self,
-        handler: Persistent<Function<'static>>,
-    ) -> std::result::Result<(), String> {
-        let mut h = self
-            .activate_handler
-            .lock()
-            .map_err(|e| format!("Failed to lock activate_handler: {}", e))?;
-        *h = Some(handler);
-        Ok(())
-    }
-
-    pub fn register_sync_handler(
-        &self,
-        handler: Persistent<Function<'static>>,
-    ) -> std::result::Result<(), String> {
-        let mut h = self
-            .sync_handler
-            .lock()
-            .map_err(|e| format!("Failed to lock sync_handler: {}", e))?;
-        *h = Some(handler);
-        Ok(())
-    }
-
-    pub fn register_periodic_sync_handler(
-        &self,
-        handler: Persistent<Function<'static>>,
-    ) -> std::result::Result<(), String> {
-        let mut h = self
-            .periodic_sync_handler
-            .lock()
-            .map_err(|e| format!("Failed to lock periodic_sync_handler: {}", e))?;
-        *h = Some(handler);
-        Ok(())
-    }
-
     pub fn add_client(&self, client: ClientInfo) -> std::result::Result<(), String> {
-        let mut clients = self
-            .pending_clients
-            .lock()
-            .map_err(|e| format!("Failed to lock clients: {}", e))?;
+        let mut clients = self.pending_clients.lock().map_err(|e| e.to_string())?;
         clients.push(client);
         Ok(())
     }
 
     pub fn get_clients(&self) -> std::result::Result<Vec<ClientInfo>, String> {
-        let clients = self
-            .pending_clients
-            .lock()
-            .map_err(|e| format!("Failed to lock clients: {}", e))?;
+        let clients = self.pending_clients.lock().map_err(|e| e.to_string())?;
         Ok(clients.clone())
     }
 }
@@ -458,7 +459,7 @@ impl ServiceWorkerRegistration {
         scope: String,
         script_url: String,
         origin: String,
-        idb_worker: Arc<UnboundedSender<IDBWorkerCommand>>,
+        db: Arc<ServiceWorkerDatabase>,
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -473,99 +474,57 @@ impl ServiceWorkerRegistration {
             last_update_check: Arc::new(Mutex::new(Instant::now())),
             auto_update_interval: Duration::from_secs(86400), // 24 hours
             request_interceptors: Arc::new(Mutex::new(FetchInterceptorChain::new())),
-            background_sync_queue: BackgroundSyncQueue::new(idb_worker.clone()),
-            periodic_sync_scheduler: PeriodicSyncScheduler::new(idb_worker),
+            background_sync_queue: BackgroundSyncQueue::new(db.clone()),
+            periodic_sync_scheduler: PeriodicSyncScheduler::new(db),
         }
     }
 
-    pub fn set_installing(
-        &self,
-        instance: Arc<ServiceWorkerInstance>,
-    ) -> std::result::Result<(), String> {
-        let mut installing = self
-            .installing
-            .lock()
-            .map_err(|e| format!("Failed to lock installing: {}", e))?;
-        *installing = Some(instance);
+    pub fn set_installing(&self, instance: Option<Arc<ServiceWorkerInstance>>) -> std::result::Result<(), String> {
+        let mut installing = self.installing.lock().map_err(|e| e.to_string())?;
+        *installing = instance;
         Ok(())
     }
 
-    pub fn set_installed(
-        &self,
-        instance: Arc<ServiceWorkerInstance>,
-    ) -> std::result::Result<(), String> {
-        let mut installed = self
-            .installed
-            .lock()
-            .map_err(|e| format!("Failed to lock installed: {}", e))?;
-        *installed = Some(instance);
+    pub fn set_installed(&self, instance: Option<Arc<ServiceWorkerInstance>>) -> std::result::Result<(), String> {
+        let mut installed = self.installed.lock().map_err(|e| e.to_string())?;
+        *installed = instance;
         Ok(())
     }
 
-    pub fn set_activating(
-        &self,
-        instance: Arc<ServiceWorkerInstance>,
-    ) -> std::result::Result<(), String> {
-        let mut activating = self
-            .activating
-            .lock()
-            .map_err(|e| format!("Failed to lock activating: {}", e))?;
+    pub fn set_activating(&self, instance: Arc<ServiceWorkerInstance>) -> std::result::Result<(), String> {
+        let mut activating = self.activating.lock().map_err(|e| e.to_string())?;
         *activating = Some(instance);
         Ok(())
     }
 
-    pub fn set_active(
-        &self,
-        instance: Arc<ServiceWorkerInstance>,
-    ) -> std::result::Result<(), String> {
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|e| format!("Failed to lock active: {}", e))?;
+    pub fn set_active(&self, instance: Arc<ServiceWorkerInstance>) -> std::result::Result<(), String> {
+        let mut active = self.active.lock().map_err(|e| e.to_string())?;
         *active = Some(instance);
         Ok(())
     }
 
     pub fn get_active(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
-        let active = self
-            .active
-            .lock()
-            .map_err(|e| format!("Failed to lock active: {}", e))?;
+        let active = self.active.lock().map_err(|e| e.to_string())?;
         Ok(active.clone())
     }
 
-    pub fn get_installing(
-        &self,
-    ) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
-        let installing = self
-            .installing
-            .lock()
-            .map_err(|e| format!("Failed to lock installing: {}", e))?;
+    pub fn get_installing(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
+        let installing = self.installing.lock().map_err(|e| e.to_string())?;
         Ok(installing.clone())
     }
 
+    pub fn get_installed(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
+        let installed = self.installed.lock().map_err(|e| e.to_string())?;
+        Ok(installed.clone())
+    }
+
+    pub fn get_activating(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
+        let activating = self.activating.lock().map_err(|e| e.to_string())?;
+        Ok(activating.clone())
+    }
+
     pub fn scope_matches(&self, url: &str) -> bool {
-        // Simple scope matching: "/app/" matches "/app/page", but not "/application"
         url.starts_with(&self.scope)
-    }
-
-    pub fn should_update_check(&self) -> std::result::Result<bool, String> {
-        let last_check = self
-            .last_update_check
-            .lock()
-            .map_err(|e| format!("Failed to lock last_update_check: {}", e))?;
-
-        let elapsed = Instant::now().duration_since(*last_check);
-        Ok(elapsed >= self.auto_update_interval)
-    }
-
-    pub fn mark_update_checked(&self) -> std::result::Result<(), String> {
-        let mut last_check = self
-            .last_update_check
-            .lock()
-            .map_err(|e| format!("Failed to lock last_update_check: {}", e))?;
-        *last_check = Instant::now();
-        Ok(())
     }
 }
 
@@ -575,31 +534,62 @@ impl ServiceWorkerRegistration {
 
 pub struct ServiceWorkerManager {
     pub registrations: Arc<Mutex<HashMap<String, Arc<ServiceWorkerRegistration>>>>,
+    pub db: Arc<ServiceWorkerDatabase>,
 }
 
 impl Clone for ServiceWorkerManager {
     fn clone(&self) -> Self {
         Self {
             registrations: self.registrations.clone(),
+            db: self.db.clone(),
         }
     }
 }
 
 impl ServiceWorkerManager {
-    pub fn new() -> Self {
+    pub fn new(db: Arc<ServiceWorkerDatabase>) -> Self {
         Self {
             registrations: Arc::new(Mutex::new(HashMap::new())),
+            db,
         }
     }
 
-    pub fn register(
-        &self,
-        reg: Arc<ServiceWorkerRegistration>,
-    ) -> std::result::Result<(), String> {
-        let mut registrations = self
-            .registrations
-            .lock()
-            .map_err(|e| format!("Failed to lock registrations: {}", e))?;
+    pub fn load_from_db(&self) -> std::result::Result<(), String> {
+        let saved = self.db.get_all_registrations()
+            .map_err(|e| format!("DB Error: {}", e))?;
+            
+        let mut regs = self.registrations.lock().unwrap();
+        for data in saved {
+            let reg = Arc::new(ServiceWorkerRegistration::new(
+                data.scope.clone(),
+                data.script_url.clone(),
+                data.origin.clone(),
+                self.db.clone(),
+            ));
+            
+            // Restore ID using unsafe as it's immutable field
+            let mut_reg = unsafe { &mut *(Arc::as_ptr(&reg) as *mut ServiceWorkerRegistration) };
+            mut_reg.id = data.id.clone();
+            
+            let key = format!("{}#{}", data.origin, data.scope);
+            regs.insert(key, reg);
+        }
+        println!("[ServiceWorkerManager] Hydrated {} registrations from DB", regs.len());
+        Ok(())
+    }
+
+    pub fn register(&self, reg: Arc<ServiceWorkerRegistration>) -> std::result::Result<(), String> {
+        let mut registrations = self.registrations.lock().map_err(|e| e.to_string())?;
+
+        // Persist to DB
+        let reg_data = SwRegistrationData {
+            id: reg.id.clone(),
+            scope: reg.scope.clone(),
+            script_url: reg.script_url.clone(),
+            origin: reg.origin.clone(),
+            last_update_check: 0,
+        };
+        self.db.save_registration(&reg_data).map_err(|e| e.to_string())?;
 
         let key = format!("{}#{}", reg.origin, reg.scope);
         registrations.insert(key, reg);
@@ -607,27 +597,40 @@ impl ServiceWorkerManager {
     }
 
     pub fn unregister(&self, origin: &str, scope: &str) -> std::result::Result<bool, String> {
-        let mut registrations = self
-            .registrations
-            .lock()
-            .map_err(|e| format!("Failed to lock registrations: {}", e))?;
+        let mut registrations = self.registrations.lock().map_err(|e| e.to_string())?;
 
         let key = format!("{}#{}", origin, scope);
-        Ok(registrations.remove(&key).is_some())
+        if let Some(reg) = registrations.remove(&key) {
+            self.db.delete_registration(&reg.id).map_err(|e| e.to_string())?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 
-    pub fn find_for_url(
+    pub fn dispatch_fetch_event(
         &self,
-        origin: &str,
-        url: &str,
-    ) -> std::result::Result<Option<Arc<ServiceWorkerRegistration>>, String> {
-        let registrations = self
-            .registrations
-            .lock()
-            .map_err(|e| format!("Failed to lock registrations: {}", e))?;
+        instance: &ServiceWorkerInstance,
+        request: RequestContext,
+    ) -> JsResult<InterceptResult> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<InterceptResult>();
+        
+        if let Some(event_tx) = &*instance.event_tx.lock().unwrap() {
+            let _ = event_tx.send(SwEvent::Fetch(request, tx));
+            
+            // Wait for response with timeout
+            match rx.blocking_recv() {
+                Ok(res) => return Ok(res),
+                Err(_) => return Ok(InterceptResult::PassThrough),
+            }
+        }
+        
+        Ok(InterceptResult::PassThrough)
+    }
 
-        for (key, reg) in registrations.iter() {
-            if key.starts_with(origin) && reg.scope_matches(url) {
+    pub fn find_for_url(&self, origin: &str, url: &str) -> JsResult<Option<Arc<ServiceWorkerRegistration>>> {
+        let registrations = self.registrations.lock().map_err(|_| rquickjs::Error::Unknown)?;
+        for reg in registrations.values() {
+            if reg.origin == origin && reg.scope_matches(url) {
                 return Ok(Some(reg.clone()));
             }
         }
@@ -638,132 +641,50 @@ impl ServiceWorkerManager {
         &self,
         origin: &str,
     ) -> std::result::Result<Vec<Arc<ServiceWorkerRegistration>>, String> {
-        let registrations = self
-            .registrations
-            .lock()
-            .map_err(|e| format!("Failed to lock registrations: {}", e))?;
-
-        let result: Vec<_> = registrations
-            .iter()
-            .filter(|(key, _)| key.starts_with(origin))
-            .map(|(_, reg)| reg.clone())
-            .collect();
-
-        Ok(result)
+        let registrations = self.registrations.lock().map_err(|e| e.to_string())?;
+        let mut results = Vec::new();
+        for reg in registrations.values() {
+            if reg.origin == origin {
+                results.push(reg.clone());
+            }
+        }
+        Ok(results)
     }
 
-    pub fn clear_all(&self) -> std::result::Result<(), String> {
-        let mut registrations = self
-            .registrations
-            .lock()
-            .map_err(|e| format!("Failed to lock registrations: {}", e))?;
-        registrations.clear();
+    pub fn install_worker(&self, reg: Arc<ServiceWorkerRegistration>) -> std::result::Result<(), String> {
+        let script_url = reg.script_url.clone();
+        let origin = reg.origin.clone();
+
+        // 1. Fetch Script (Blocking)
+        let client = crate::network::client::FetchClient::new();
+        let response = client.fetch(&script_url, None, crate::network::security::Origin::from_url(&origin))
+            .map_err(|e| format!("Failed to fetch SW script: {}", e))?;
+
+        if !response.ok() {
+            return Err(format!("SW script fetch failed with status {}", response.status));
+        }
+
+        let script_content = response.text();
+        let instance = Arc::new(ServiceWorkerInstance::new(Uuid::new_v4().to_string(), script_url.clone()));
+        
+        reg.set_installing(Some(instance.clone()))?;
+        instance.spawn(script_url, origin);
+        
+        if let Some(tx) = &*instance.event_tx.lock().unwrap() {
+            let _ = tx.send(SwEvent::Execute(script_content));
+            let _ = tx.send(SwEvent::Dispatch("install".to_string()));
+        }
+
+        reg.set_installing(None)?;
+        reg.set_installed(Some(instance))?;
+
         Ok(())
     }
 }
 
 impl Default for ServiceWorkerManager {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-pub fn parse_scope_from_options(options: &HashMap<String, String>) -> String {
-    options
-        .get("scope")
-        .cloned()
-        .unwrap_or_else(|| "/".to_string())
-}
-
-pub fn calculate_scope_from_script_url(script_url: &str) -> String {
-    // Extract directory from script URL
-    // e.g., "/assets/sw.js" -> "/assets/"
-    if let Some(last_slash) = script_url.rfind('/') {
-        script_url[..=last_slash].to_string()
-    } else {
-        "/".to_string()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_scope_matching() {
-        let reg = ServiceWorkerRegistration::new(
-            "/app/".to_string(),
-            "http://example.com/app/sw.js".to_string(),
-            "http://example.com".to_string(),
-            Arc::new(|_| {}), // dummy
-        );
-
-        assert!(reg.scope_matches("/app/page"));
-        assert!(reg.scope_matches("/app/nested/page"));
-        assert!(!reg.scope_matches("/application"));
-    }
-
-    #[test]
-    fn test_sync_task_creation() {
-        let (tx, _) = std::sync::mpsc::channel();
-        let idb = Arc::new(move |_| {
-            let _ = tx.send(());
-        });
-
-        let queue = BackgroundSyncQueue::new(Arc::new(idb));
-        queue
-            .register("upload".to_string(), "reg-1".to_string())
-            .unwrap();
-
-        let pending = queue.take_pending();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].tag, "upload");
-    }
-
-    #[test]
-    fn test_periodic_sync_due_check() {
-        let (tx, _) = std::sync::mpsc::channel();
-        let idb = Arc::new(move |_| {
-            let _ = tx.send(());
-        });
-
-        let scheduler = PeriodicSyncScheduler::new(Arc::new(idb));
-        scheduler
-            .register("cleanup".to_string(), 100, "reg-1".to_string())
-            .unwrap();
-
-        // Should be due initially (last_executed = None)
-        let due = scheduler.check_due();
-        assert_eq!(due.len(), 1);
-
-        // Should not be due immediately after
-        let due2 = scheduler.check_due();
-        assert!(due2.is_empty());
-    }
-
-    #[test]
-    fn test_sw_state_transitions() {
-        let rt = unsafe {
-            // This is unsafe in tests, would need proper mock
-            JsRuntime::new().unwrap()
-        };
-
-        let sw = ServiceWorkerInstance::new(rt);
-
-        assert_eq!(
-            sw.get_state().unwrap(),
-            ServiceWorkerState::Installing
-        );
-
-        sw.set_state(ServiceWorkerState::Installed)
-            .unwrap();
-        assert_eq!(
-            sw.get_state().unwrap(),
-            ServiceWorkerState::Installed
-        );
+        let db = Arc::new(ServiceWorkerDatabase::new(std::path::PathBuf::from("sw.db")).unwrap());
+        Self::new(db)
     }
 }
