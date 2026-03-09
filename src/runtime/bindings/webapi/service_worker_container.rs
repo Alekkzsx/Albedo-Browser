@@ -1,0 +1,483 @@
+use rquickjs::{Class, Ctx, Function, Persistent, Result as JsResult, Value, Object, prelude::*};
+use crate::runtime::core::runtime::JsRuntime;
+use crate::runtime::core::service_worker::{
+    ServiceWorkerRegistration, ServiceWorkerInstance, ServiceWorkerManager,
+    ServiceWorkerState, UpdateViaCache, ClientInfo,
+};
+use crate::runtime::bindings::webapi::sync::{SyncManager, PeriodicSyncManager};
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+
+// ============================================================================
+// SERVICE WORKER CLIENT INFO (for clients.matchAll, etc)
+// ============================================================================
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct ServiceWorkerClient {
+    pub id: String,
+    pub url: String,
+    pub frame_type: String,  // "top-level", "nested", "iframe", "worker"
+    pub focused: bool,
+}
+
+#[rquickjs::methods]
+impl ServiceWorkerClient {
+    #[qjs(get)]
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    #[qjs(get)]
+    pub fn url(&self) -> String {
+        self.url.clone()
+    }
+
+    #[qjs(get)]
+    pub fn frame_type(&self) -> String {
+        self.frame_type.clone()
+    }
+
+    #[qjs(get)]
+    pub fn focused(&self) -> bool {
+        self.focused
+    }
+
+    pub fn post_message<'js>(
+        &self,
+        _ctx: Ctx<'js>,
+        _message: Value<'js>,
+    ) -> JsResult<()> {
+        // TODO: Post message to client window/tab
+        Ok(())
+    }
+}
+
+// ============================================================================
+// CLIENTS INTERFACE (sw.clients.matchAll, etc)
+// ============================================================================
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct Clients {
+    #[qjs(skip_trace)]
+    pub sw_instance: Arc<ServiceWorkerInstance>,
+}
+
+#[rquickjs::methods]
+impl Clients {
+    /// clients.matchAll(options): Get all client windows/tabs
+    pub fn match_all<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        _options: rquickjs::prelude::Opt<Object<'js>>,
+    ) -> JsResult<Value<'js>> {
+        // TODO: Return actual clients
+        let arr = ctx.create_array()?;
+        let promise = ctx.create_promise::<Vec<ServiceWorkerClient>>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(Vec::new());
+        Ok(promise.promise.into_value())
+    }
+
+    /// clients.get(id): Get specific client by ID
+    pub fn get<'js>(&self, ctx: Ctx<'js>, _id: String) -> JsResult<Value<'js>> {
+        // TODO: Return specific client or null
+        Ok(ctx.null().into_value())
+    }
+
+    /// clients.openWindow(url): Open new window
+    pub fn open_window<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        _url: String,
+    ) -> JsResult<Value<'js>> {
+        // TODO: Request tab manager to open new window
+        let promise = ctx.create_promise::<ServiceWorkerClient>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(ServiceWorkerClient {
+            id: "client-1".to_string(),
+            url: "http://example.com".to_string(),
+            frame_type: "top-level".to_string(),
+            focused: true,
+        });
+        Ok(promise.promise.into_value())
+    }
+
+    /// clients.claim(): Take control of all matched clients
+    pub fn claim<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        let promise = ctx.create_promise::<()>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(());
+        Ok(promise.promise.into_value())
+    }
+}
+
+// ============================================================================
+// SERVICE WORKER REGISTRATION (JS binding)
+// ============================================================================
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct ServiceWorkerRegistrationJS {
+    #[qjs(skip_trace)]
+    pub registration: Arc<ServiceWorkerRegistration>,
+}
+
+#[rquickjs::methods]
+impl ServiceWorkerRegistrationJS {
+    #[qjs(get)]
+    pub fn scope(&self) -> String {
+        self.registration.scope.clone()
+    }
+
+    #[qjs(get)]
+    pub fn script_url(&self) -> String {
+        self.registration.script_url.clone()
+    }
+
+    #[qjs(get)]
+    pub fn installing<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        match self.registration.get_installing() {
+            Ok(Some(_sw)) => {
+                // TODO: Return ServiceWorker object
+                Ok(ctx.null().into_value())
+            }
+            _ => Ok(ctx.null().into_value()),
+        }
+    }
+
+    #[qjs(get)]
+    pub fn waiting<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        match self.registration.installed.lock() {
+            Ok(installed) => {
+                if installed.is_some() {
+                    // TODO: Return ServiceWorker object
+                    Ok(ctx.null().into_value())
+                } else {
+                    Ok(ctx.null().into_value())
+                }
+            }
+            _ => Ok(ctx.null().into_value()),
+        }
+    }
+
+    #[qjs(get)]
+    pub fn active<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        match self.registration.get_active() {
+            Ok(Some(_sw)) => {
+                // TODO: Return ServiceWorker object
+                Ok(ctx.null().into_value())
+            }
+            _ => Ok(ctx.null().into_value()),
+        }
+    }
+
+    /// registration.update(): Check for SW script updates
+    pub fn update<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        // TODO: Fetch script again, compare, update if changed
+        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(self.clone());
+        Ok(promise.promise.into_value())
+    }
+
+    /// registration.unregister(): Uninstall this SW
+    pub fn unregister<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        // TODO: Mark as redundant, remove from manager
+        let promise = ctx.create_promise::<bool>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(true);
+        Ok(promise.promise.into_value())
+    }
+
+    /// registration.showNotification(title, options)
+    pub fn show_notification<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        _title: String,
+        _options: rquickjs::prelude::Opt<Object<'js>>,
+    ) -> JsResult<Value<'js>> {
+        // TODO: Show browser notification
+        let promise = ctx.create_promise::<()>()?;
+        let resolve = promise.resolve.clone();
+        let _ = resolve.call::<_, ()>(());
+        Ok(promise.promise.into_value())
+    }
+
+    /// registration.sync (background sync manager)
+    pub fn sync<'js>(&self, _ctx: Ctx<'js>) -> JsResult<Object<'js>> {
+        // Return SyncManager instance
+        let sync_mgr = SyncManager {
+            registration_id: self.registration.id.clone(),
+            background_sync_queue: Arc::new(
+                self.registration.background_sync_queue.clone()
+            ),
+        };
+
+        // This would be converted to JS object
+        Err(rquickjs::Error::new_from_js("ServiceWorkerRegistration", "sync access not yet implemented"))
+    }
+
+    /// registration.periodicSync (periodic background sync manager)
+    pub fn periodic_sync<'js>(&self, _ctx: Ctx<'js>) -> JsResult<Object<'js>> {
+        // Return PeriodicSyncManager instance
+        let periodic_mgr = PeriodicSyncManager {
+            registration_id: self.registration.id.clone(),
+            periodic_sync_scheduler: Arc::new(
+                self.registration.periodic_sync_scheduler.clone()
+            ),
+        };
+
+        // This would be converted to JS object
+        Err(rquickjs::Error::new_from_js("ServiceWorkerRegistration", "periodicSync access not yet implemented"))
+    }
+}
+
+// ============================================================================
+// SERVICE WORKER CONTAINER (navigator.serviceWorker)
+// ============================================================================
+
+#[derive(Clone, rquickjs::class::Trace)]
+#[rquickjs::class]
+pub struct ServiceWorkerContainer {
+    #[qjs(skip_trace)]
+    pub rt: Arc<Mutex<JsRuntime>>,
+    #[qjs(skip_trace)]
+    pub manager: Arc<ServiceWorkerManager>,
+    #[qjs(skip_trace)]
+    pub controller: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>,
+}
+
+#[rquickjs::methods]
+impl ServiceWorkerContainer {
+    /// navigator.serviceWorker.register(scriptURL, options)
+    pub fn register<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        script_url: String,
+        options: rquickjs::prelude::Opt<Object<'js>>,
+    ) -> JsResult<Value<'js>> {
+        // Extract scope from options
+        let scope = if let Some(opts) = options.0 {
+            opts.get::<_, String>("scope").unwrap_or_else(|_| "/".to_string())
+        } else {
+            "/".to_string()
+        };
+
+        // Validate same-origin
+        let rt_lock = self.rt.lock().unwrap();
+        let origin = rt_lock
+            .origin
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|o| o.to_string())
+            .unwrap_or_else(|| "null".to_string());
+
+        // Create registration
+        let idb_worker = rt_lock.idb_worker.lock().unwrap().tx.clone();
+        drop(rt_lock);
+
+        let reg = Arc::new(ServiceWorkerRegistration::new(
+            scope.clone(),
+            script_url.clone(),
+            origin.clone(),
+            Arc::new(idb_worker),
+        ));
+
+        // Register in manager
+        let _ = self.manager.register(reg.clone());
+
+        // TODO: Fetch script, parse, create SW instance
+        // For now, return promise that resolves to registration
+
+        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
+        let resolve = promise.resolve.clone();
+
+        let reg_js = ServiceWorkerRegistrationJS {
+            registration: reg,
+        };
+
+        let _ = resolve.call::<_, ()>(reg_js);
+
+        Ok(promise.promise.into_value())
+    }
+
+    /// navigator.serviceWorker.getRegistrations()
+    pub fn get_registrations<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        let rt_lock = self.rt.lock().unwrap();
+        let origin = rt_lock
+            .origin
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|o| o.to_string())
+            .unwrap_or_else(|| "null".to_string());
+        drop(rt_lock);
+
+        match self.manager.get_all_for_origin(&origin) {
+            Ok(registrations) => {
+                let arr = ctx.create_array()?;
+                for (i, reg) in registrations.iter().enumerate() {
+                    let reg_js = ServiceWorkerRegistrationJS {
+                        registration: reg.clone(),
+                    };
+                    arr.set(i, reg_js)?;
+                }
+
+                let promise = ctx.create_promise::<Vec<ServiceWorkerRegistrationJS>>()?;
+                let resolve = promise.resolve.clone();
+                let reg_js_vec: Vec<_> = registrations
+                    .iter()
+                    .map(|r| ServiceWorkerRegistrationJS { registration: r.clone() })
+                    .collect();
+                let _ = resolve.call::<_, ()>(reg_js_vec);
+
+                Ok(promise.promise.into_value())
+            }
+            Err(_) => {
+                let arr = ctx.create_array()?;
+                Ok(arr.into_value())
+            }
+        }
+    }
+
+    /// navigator.serviceWorker.getRegistration(clientURL)
+    pub fn get_registration<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        client_url: String,
+    ) -> JsResult<Value<'js>> {
+        let rt_lock = self.rt.lock().unwrap();
+        let origin = rt_lock
+            .origin
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|o| o.to_string())
+            .unwrap_or_else(|| "null".to_string());
+        drop(rt_lock);
+
+        match self.manager.find_for_url(&origin, &client_url) {
+            Ok(Some(reg)) => {
+                let reg_js = ServiceWorkerRegistrationJS {
+                    registration: reg,
+                };
+
+                let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
+                let resolve = promise.resolve.clone();
+                let _ = resolve.call::<_, ()>(reg_js);
+
+                Ok(promise.promise.into_value())
+            }
+            _ => {
+                let promise = ctx.create_promise::<Option<ServiceWorkerRegistrationJS>>()?;
+                let resolve = promise.resolve.clone();
+                let _ = resolve.call::<_, ()>(None);
+
+                Ok(promise.promise.into_value())
+            }
+        }
+    }
+
+    /// navigator.serviceWorker.controller (read-only)
+    #[qjs(get)]
+    pub fn controller<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        match self.controller.lock() {
+            Ok(controller) => {
+                if controller.is_some() {
+                    // TODO: Return ServiceWorker object
+                    Ok(ctx.null().into_value())
+                } else {
+                    Ok(ctx.null().into_value())
+                }
+            }
+            _ => Ok(ctx.null().into_value()),
+        }
+    }
+
+    /// navigator.serviceWorker.ready (read-only Promise)
+    #[qjs(get)]
+    pub fn ready<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
+        // Return promise that resolves when a SW is activated
+        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
+
+        // TODO: Resolve when controller is set to activated state
+        // For now, resolve immediately
+
+        let rt_lock = self.rt.lock().unwrap();
+        let origin = rt_lock
+            .origin
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|o| o.to_string())
+            .unwrap_or_else(|| "null".to_string());
+        drop(rt_lock);
+
+        if let Ok(Some(reg)) = self.manager.find_for_url(&origin, "/") {
+            let resolve = promise.resolve.clone();
+            let reg_js = ServiceWorkerRegistrationJS { registration: reg };
+            let _ = resolve.call::<_, ()>(reg_js);
+        }
+
+        Ok(promise.promise.into_value())
+    }
+
+    /// navigator.serviceWorker.oncontrollerchange (event)
+    pub fn oncontrollerchange<'js>(
+        &self,
+        _ctx: Ctx<'js>,
+    ) -> JsResult<Option<Persistent<Function<'js>>>> {
+        Ok(None)
+    }
+}
+
+// ============================================================================
+// PUBLIC API REGISTRATION
+// ============================================================================
+
+pub fn register_service_worker_container(rt: &JsRuntime) -> JsResult<()> {
+    let manager = Arc::new(ServiceWorkerManager::new());
+
+    let container = ServiceWorkerContainer {
+        rt: Arc::new(Mutex::new(rt.clone())),
+        manager,
+        controller: Arc::new(Mutex::new(None)),
+    };
+
+    rt.with_context(|ctx| {
+        ctx.with(|ctx| {
+            // Register class definitions
+            Class::define(ctx)?;
+            Class::define(ctx)?;
+            Class::define(ctx)?;
+
+            // Create navigator.serviceWorker
+            let navigator = ctx.globals().get::<_, Object>("navigator")?;
+            let container_obj = Class::instance(ctx, container)?;
+            navigator.set("serviceWorker", container_obj)?;
+
+            Ok(())
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sw_client_creation() {
+        let client = ServiceWorkerClient {
+            id: "client-1".to_string(),
+            url: "http://example.com".to_string(),
+            frame_type: "top-level".to_string(),
+            focused: true,
+        };
+
+        assert_eq!(client.id, "client-1");
+        assert_eq!(client.frame_type, "top-level");
+    }
+}

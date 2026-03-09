@@ -95,7 +95,12 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::indexeddb::register(rt)?;
     crate::runtime::bindings::webapi::file_api::register(rt)?;
     crate::runtime::bindings::webapi::crypto::register(rt)?;
-    
+
+    // Service Worker, Cache, and Background Sync APIs (NEW)
+    crate::runtime::bindings::webapi::cache::register_cache_storage(rt)?;
+    crate::runtime::bindings::webapi::sync::register_sync_events(rt)?;
+    crate::runtime::bindings::webapi::service_worker_container::register_service_worker_container(rt)?;
+
     // Register window proxy and post message using the context
     {
         let ctx = rt.context.lock().unwrap();

@@ -125,6 +125,7 @@
   ✅  FormData: append, get, getAll, has, delete, entries
   ✅  MutationObserver: observe, disconnect, takeRecords (COMPLETO)
   ✅  StyleDeclaration / getComputedStyle para JS
+  ✅  IndexedDB API: IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor (backend SQLite robusto com Savepoints)
 
 ─── 🌐  NETWORKING (network/) ───────────────────────────────────────────────────
 
@@ -231,13 +232,6 @@
         ❌ surroundContents, extractContents, cloneContents não verificados
         ❌ Integração com clipboard (copy/cut/paste via selection) ausente
 
-  🟡  IndexedDB (indexeddb.rs — 96 linhas — estrutura stub)
-        ✅ Classes registradas: IndexedDB, IDBRequest, IDBOpenDBRequest
-        ✅ API surface: indexedDB.open() retorna objeto
-        ⚠️ Callbacks onsuccess/onerror são no-ops (não armazenam callbacks)
-        ❌ Nenhum backend persistente (rusqlite, sled, etc.)
-        ❌ IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor AUSENTES
-        ❌ CRUD (put, get, delete, getAll, openCursor) não implementado
 
   🟡  Geolocation (geolocation.rs — 32 linhas — parcialmente funcional)
         ✅ getCurrentPosition registrado e chamável
@@ -377,9 +371,9 @@
          ✅ Pipeline de execução em 5 fases: importmaps → clássicos sync → defer → módulos ES → microtasks
          ✅ execute_module() + execute_module_from_url() em eval.rs via Module::evaluate do rquickjs
          ✅ Runtime::set_loader registrado em init_js_for_url com resolver+loader do Albedo
-  [ ]  IndexedDB funcional (backend: rusqlite ou sled)
-         → runtime/bindings/webapi/indexeddb.rs (reescrever do zero)
-         Implementar: IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor
+  ✅   IndexedDB funcional (backend: rusqlite)
+         ✅ runtime/bindings/webapi/indexeddb.rs (implementação robusta)
+         ✅ IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor
   [ ]  Service Workers (offline, Cache API, background sync)
          → runtime/core/service_worker.rs (CRIAR)
   [ ]  requestIdleCallback / cancelIdleCallback

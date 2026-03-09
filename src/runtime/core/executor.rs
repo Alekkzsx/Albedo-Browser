@@ -1,6 +1,7 @@
 use super::runtime::JsRuntime;
-use rquickjs::{Value, Ctx};
+use rquickjs::{Value, Ctx, Class};
 use std::collections::HashMap;
+use crate::runtime::bindings::webapi::indexeddb::IDBDatabase;
 
 pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     let mut executed = false;
@@ -174,6 +175,26 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                 }
                             }
                         },
+                         crate::runtime::core::event_loop::IDBEventMessage::DatabaseSuccess { callback_id, db_name, version } => {
+                            if let Some(cb_persistent) = registry.remove(&callback_id) {
+                                if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
+                                    let db = IDBDatabase {
+                                        name: db_name,
+                                        version,
+                                        worker_tx: rt.idb_worker.lock().unwrap().tx.clone(),
+                                        observer_registry: rt.observer_registry.clone(),
+                                    };
+                                    if let Ok(db_instance) = Class::instance(ctx.clone(), db) {
+                                        let evt = rquickjs::Object::new(ctx.clone()).unwrap();
+                                        let target = rquickjs::Object::new(ctx.clone()).unwrap();
+                                        let _ = target.set("result", db_instance);
+                                        let _ = evt.set("target", target);
+                                        let _: rquickjs::Result<Value> = callback.call((evt,));
+                                        executed = true;
+                                    }
+                                }
+                            }
+                        },
                         crate::runtime::core::event_loop::IDBEventMessage::Error { callback_id, error_name, error_message } => {
                             if let Some(cb_persistent) = registry.remove(&callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
@@ -185,15 +206,27 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                 }
                             }
                         },
-                        crate::runtime::core::event_loop::IDBEventMessage::UpgradeNeeded { request_callback_id, transaction_id: _, old_version, new_version } => {
-                            // Upgrade events shouldn't remove the callback as Success will follow
+                        crate::runtime::core::event_loop::IDBEventMessage::UpgradeNeeded { request_callback_id, transaction_id: _, db_name, old_version, new_version } => {
                             if let Some(cb_persistent) = registry.get(&request_callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
-                                   let upgrade_evt = rquickjs::Object::new(ctx.clone()).unwrap();
-                                   let _ = upgrade_evt.set("oldVersion", old_version);
-                                   let _ = upgrade_evt.set("newVersion", new_version);
-                                   let _: rquickjs::Result<Value> = callback.call((upgrade_evt,));
-                                   executed = true;
+                                   let db = IDBDatabase {
+                                       name: db_name,
+                                       version: new_version,
+                                       worker_tx: rt.idb_worker.lock().unwrap().tx.clone(),
+                                       observer_registry: rt.observer_registry.clone(),
+                                   };
+                                   if let Ok(db_instance) = Class::instance(ctx.clone(), db) {
+                                       let upgrade_evt = rquickjs::Object::new(ctx.clone()).unwrap();
+                                       let _ = upgrade_evt.set("target", {
+                                           let target = rquickjs::Object::new(ctx.clone()).unwrap();
+                                           let _ = target.set("result", db_instance);
+                                           target
+                                       });
+                                       let _ = upgrade_evt.set("oldVersion", old_version);
+                                       let _ = upgrade_evt.set("newVersion", new_version);
+                                       let _: rquickjs::Result<Value> = callback.call((upgrade_evt,));
+                                       executed = true;
+                                   }
                                 }
                             }
                         }
@@ -234,6 +267,62 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     for task in macros {
         task();
         executed = true;
+    }
+
+    // 3b. Background Sync & Periodic Sync (NEW)
+    {
+        let el = rt.event_loop.lock().unwrap();
+
+        // Check if online
+        if let Ok(is_online) = el.is_online() {
+            if is_online {
+                // Get pending background sync tasks
+                let background_sync_tasks = el.take_pending_background_sync();
+                if !background_sync_tasks.is_empty() {
+                    rt.with_context(|ctx| {
+                        ctx.with(|ctx| {
+                            for task in background_sync_tasks {
+                                // Create SyncEvent
+                                if let Ok(sync_event_obj) = rquickjs::Object::new(ctx.clone()) {
+                                    let _ = sync_event_obj.set("tag", task.tag.clone());
+                                    let _ = sync_event_obj.set("lastChance", false);
+
+                                    // Dispatch 'sync' event to active SW
+                                    let script = format!(
+                                        "if (globalThis.onsync) globalThis.dispatchEvent(new Event('sync'))"
+                                    );
+                                    let _ = ctx.eval::<(), _>(script);
+                                    executed = true;
+                                }
+                            }
+                        })
+                    });
+                }
+            }
+        }
+
+        // Check periodic sync tasks
+        let periodic_sync_tasks = el.take_pending_periodic_sync();
+        if !periodic_sync_tasks.is_empty() {
+            rt.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    for task in periodic_sync_tasks {
+                        // Create PeriodicSyncEvent
+                        if let Ok(periodic_event_obj) = rquickjs::Object::new(ctx.clone()) {
+                            let _ = periodic_event_obj.set("tag", task.tag.clone());
+                            let _ = periodic_event_obj.set("minInterval", task.min_interval_ms);
+
+                            // Dispatch 'periodicsync' event to SW
+                            let script = format!(
+                                "if (globalThis.onperiodicsync) globalThis.dispatchEvent(new Event('periodicsync'))"
+                            );
+                            let _ = ctx.eval::<(), _>(script);
+                            executed = true;
+                        }
+                    }
+                })
+            });
+        }
     }
 
     // 4. Stylesheet dirty check
