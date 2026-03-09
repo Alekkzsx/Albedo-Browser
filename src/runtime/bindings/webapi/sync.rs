@@ -96,14 +96,14 @@ impl SyncManager {
         match queue.register(tag.clone(), reg_id) {
             Ok(_) => {
                 // Return resolved Promise<void>
-                let promise = ctx.create_promise::<()>()?;
-                let resolve = promise.resolve.clone();
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let _ = resolve.call::<_, ()>(());
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
             Err(e) => {
                 // Return rejected Promise
-                Err(rquickjs::Error::new_from_js("SyncManager", &format!("Failed to register sync: {}", e)))
+                let msg = Box::leak(format!("Failed to register sync: {}", e).into_boxed_str());
+                Err(rquickjs::Error::new_from_js("SyncManager", msg))
             }
         }
     }
@@ -113,7 +113,7 @@ impl SyncManager {
         let queue = self.background_sync_queue.queue.lock().unwrap();
         let tags: Vec<String> = queue.iter().map(|t| t.tag.clone()).collect();
 
-        let arr = ctx.create_array()?;
+        let arr = rquickjs::Array::new(ctx.clone())?;
         for (i, tag) in tags.iter().enumerate() {
             arr.set(i, tag.clone())?;
         }
@@ -159,13 +159,13 @@ impl PeriodicSyncManager {
         match scheduler.register(tag.clone(), min_interval, reg_id) {
             Ok(_) => {
                 // Return resolved Promise<void>
-                let promise = ctx.create_promise::<()>()?;
-                let resolve = promise.resolve.clone();
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let _ = resolve.call::<_, ()>(());
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
             Err(e) => {
-                Err(rquickjs::Error::new_from_js("PeriodicSyncManager", &format!("Failed to register periodic sync: {}", e)))
+                let msg = Box::leak(format!("Failed to register periodic sync: {}", e).into_boxed_str());
+                Err(rquickjs::Error::new_from_js("PeriodicSyncManager", msg))
             }
         }
     }
@@ -175,7 +175,7 @@ impl PeriodicSyncManager {
         let tasks = self.periodic_sync_scheduler.tasks.lock().unwrap();
         let tags: Vec<String> = tasks.keys().cloned().collect();
 
-        let arr = ctx.create_array()?;
+        let arr = rquickjs::Array::new(ctx.clone())?;
         for (i, tag) in tags.iter().enumerate() {
             arr.set(i, tag.clone())?;
         }
@@ -193,13 +193,13 @@ impl PeriodicSyncManager {
 
         match scheduler.unregister(&tag) {
             Ok(_) => {
-                let promise = ctx.create_promise::<()>()?;
-                let resolve = promise.resolve.clone();
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let _ = resolve.call::<_, ()>(());
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
             Err(e) => {
-                Err(rquickjs::Error::new_from_js("PeriodicSyncManager", &format!("Failed to unregister: {}", e)))
+                let msg = Box::leak(format!("Failed to unregister: {}", e).into_boxed_str());
+                Err(rquickjs::Error::new_from_js("PeriodicSyncManager", msg))
             }
         }
     }
@@ -246,11 +246,12 @@ pub struct PeriodicSyncTaskPersisted {
 pub fn register_sync_events(rt: &JsRuntime) -> JsResult<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
-            // Register class definitions
-            Class::define(ctx)?;
-            Class::define(ctx)?;
-            Class::define(ctx)?;
-            Class::define(ctx)?;
+            // Register class definitions with globals object
+            let globals = ctx.globals();
+            Class::<SyncEvent>::define(&globals)?;
+            Class::<PeriodicSyncEvent>::define(&globals)?;
+            Class::<SyncManager>::define(&globals)?;
+            Class::<PeriodicSyncManager>::define(&globals)?;
 
             // Define global polyfill for sync support (if no SW)
             ctx.eval::<(), _>(

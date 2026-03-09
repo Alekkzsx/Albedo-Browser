@@ -58,13 +58,12 @@ impl Cache {
     pub fn add<'js>(&self, ctx: Ctx<'js>, url: String) -> JsResult<Value<'js>> {
         // TODO: Implement actual fetch + cache storage
         // For now, return resolved promise
-        let promise = ctx.create_promise::<serde_json::Value>()?;
-        let resolve = promise.resolve.clone();
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
 
         // Placeholder: immediately resolve
-        let _ = resolve.call::<_, ()>(());
+        let _ = resolve.call::<(), ()>(());
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// cache.put(request, response): Explicitly cache request/response pair
@@ -76,10 +75,9 @@ impl Cache {
     ) -> JsResult<Value<'js>> {
         // TODO: Parse request and response objects
         // Store in IndexedDB with proper serialization
-        let promise = ctx.create_promise::<serde_json::Value>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(());
-        Ok(promise.promise.into_value())
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(), ()>(());
+        Ok(promise.into_value())
     }
 
     /// cache.match(request, options): Look up request in cache
@@ -91,22 +89,21 @@ impl Cache {
     ) -> JsResult<Value<'js>> {
         // TODO: Query IndexedDB for cached entry
         // Return Response object or null
-        Ok(ctx.null().into_value())
+        Ok(Value::new_null(ctx))
     }
 
     /// cache.delete(request): Delete entry from cache
     pub fn delete<'js>(&self, ctx: Ctx<'js>, url: String) -> JsResult<Value<'js>> {
         // TODO: Remove from IndexedDB
-        let promise = ctx.create_promise::<bool>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(true);
-        Ok(promise.promise.into_value())
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(bool,), ()>((true,));
+        Ok(promise.into_value())
     }
 
     /// cache.keys(request, options): List all URLs in cache
     pub fn keys<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         // TODO: Query IndexedDB for all URLs in this cache
-        let arr = ctx.create_array()?;
+        let arr = rquickjs::Array::new(ctx.clone())?;
         Ok(arr.into_value())
     }
 }
@@ -136,10 +133,9 @@ impl CacheStorage {
             .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
 
         if let Some(cache) = cache_list.get(&name) {
-            let promise = ctx.create_promise::<Cache>()?;
-            let resolve = promise.resolve.clone();
-            let _ = resolve.call::<_, ()>(cache.clone());
-            return Ok(promise.promise.into_value());
+            let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+            let _ = resolve.call::<(Cache,), ()>((cache.clone(),));
+            return Ok(promise.into_value());
         }
 
         // Create new cache
@@ -153,11 +149,10 @@ impl CacheStorage {
         cache_list.insert(name, cache.clone());
 
         // Return resolved Promise<Cache>
-        let promise = ctx.create_promise::<Cache>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(cache);
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(Cache,), ()>((cache,));
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// caches.keys(): List all cache names
@@ -167,16 +162,15 @@ impl CacheStorage {
             .lock()
             .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
 
-        let arr = ctx.create_array()?;
+        let arr = rquickjs::Array::new(ctx.clone())?;
         for (i, name) in cache_list.keys().enumerate() {
             arr.set(i, name.clone())?;
         }
 
-        let promise = ctx.create_promise::<Vec<String>>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(cache_list.keys().cloned().collect::<Vec<_>>());
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(Vec<String>,), ()>((cache_list.keys().cloned().collect::<Vec<_>>(),));
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// caches.delete(name): Delete entire cache
@@ -188,21 +182,18 @@ impl CacheStorage {
 
         let existed = cache_list.remove(&name).is_some();
 
-        let promise = ctx.create_promise::<bool>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(existed);
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(bool,), ()>((existed,));
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// caches.has(name): Check if cache exists
-    pub fn has<'js>(&self, ctx: Ctx<'js>, name: String) -> JsResult<Value<'js>> {
-        let cache_list = self
-            .cache_list
-            .lock()
-            .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
-
-        Ok((cache_list.contains_key(&name)).into_value(ctx))
+    pub fn has(&self, name: String) -> bool {
+        match self.cache_list.lock() {
+            Ok(cache_list) => cache_list.contains_key(&name),
+            Err(_) => false,
+        }
     }
 }
 
@@ -237,7 +228,7 @@ impl Request {
 
     #[qjs(get)]
     pub fn headers<'js>(&self, ctx: Ctx<'js>) -> JsResult<Object<'js>> {
-        let obj = ctx.create_object()?;
+        let obj = rquickjs::Object::new(ctx.clone())?;
         for (k, v) in &self.headers {
             obj.set(k.clone(), v.clone())?;
         }
@@ -303,7 +294,7 @@ impl Response {
 
     #[qjs(get)]
     pub fn headers<'js>(&self, ctx: Ctx<'js>) -> JsResult<Object<'js>> {
-        let obj = ctx.create_object()?;
+        let obj = rquickjs::Object::new(ctx.clone())?;
         for (k, v) in &self.headers {
             obj.set(k.clone(), v.clone())?;
         }
@@ -317,10 +308,11 @@ impl Response {
     pub async fn json<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         let json_str = String::from_utf8_lossy(&self.body);
         let json_val: serde_json::Value = serde_json::from_str(&json_str)
-            .map_err(|e| rquickjs::Error::new_from_js("Response", &format!("JSON parse error: {}", e)))?;
+            .map_err(|_| rquickjs::Error::new_from_js("Response", "JSON parse error"))?;
 
         // Convert serde_json::Value to rquickjs Value
-        ctx.json_parse(&serde_json::to_string(&json_val).unwrap())
+        let json_bytes = serde_json::to_string(&json_val).unwrap().into_bytes();
+        ctx.json_parse(json_bytes)
     }
 
     pub fn clone_response(&self) -> Response {
@@ -351,12 +343,12 @@ pub fn register_cache_storage(rt: &JsRuntime) -> JsResult<()> {
 
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
-            let cs = Class::instance(ctx, cache_storage)?;
+            let cs = Class::instance(ctx.clone(), cache_storage)?;
             ctx.globals().set("caches", cs)?;
 
             // Also register Request and Response classes
-            Class::define(ctx)?;
-            Class::define(ctx)?;
+            Class::<Request>::register(&ctx)?;
+            Class::<Response>::register(&ctx)?;
 
             Ok(())
         })

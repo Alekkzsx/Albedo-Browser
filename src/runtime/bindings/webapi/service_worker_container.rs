@@ -73,17 +73,16 @@ impl Clients {
         _options: rquickjs::prelude::Opt<Object<'js>>,
     ) -> JsResult<Value<'js>> {
         // TODO: Return actual clients
-        let arr = ctx.create_array()?;
-        let promise = ctx.create_promise::<Vec<ServiceWorkerClient>>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(Vec::new());
-        Ok(promise.promise.into_value())
+        let arr = rquickjs::Array::new(ctx.clone())?;
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<(Vec<ServiceWorkerClient>,), ()>((Vec::new(),));
+        Ok(promise.into_value())
     }
 
     /// clients.get(id): Get specific client by ID
     pub fn get<'js>(&self, ctx: Ctx<'js>, _id: String) -> JsResult<Value<'js>> {
         // TODO: Return specific client or null
-        Ok(ctx.null().into_value())
+        Ok(Value::new_null(ctx))
     }
 
     /// clients.openWindow(url): Open new window
@@ -93,23 +92,21 @@ impl Clients {
         _url: String,
     ) -> JsResult<Value<'js>> {
         // TODO: Request tab manager to open new window
-        let promise = ctx.create_promise::<ServiceWorkerClient>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(ServiceWorkerClient {
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<_, ()>((ServiceWorkerClient {
             id: "client-1".to_string(),
             url: "http://example.com".to_string(),
             frame_type: "top-level".to_string(),
             focused: true,
-        });
-        Ok(promise.promise.into_value())
+        },));
+        Ok(promise.into_value())
     }
 
     /// clients.claim(): Take control of all matched clients
     pub fn claim<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
-        let promise = ctx.create_promise::<()>()?;
-        let resolve = promise.resolve.clone();
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<_, ()>(());
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 }
 
@@ -141,9 +138,9 @@ impl ServiceWorkerRegistrationJS {
         match self.registration.get_installing() {
             Ok(Some(_sw)) => {
                 // TODO: Return ServiceWorker object
-                Ok(ctx.null().into_value())
+                Ok(Value::new_null(ctx))
             }
-            _ => Ok(ctx.null().into_value()),
+            _ => Ok(Value::new_null(ctx)),
         }
     }
 
@@ -153,12 +150,12 @@ impl ServiceWorkerRegistrationJS {
             Ok(installed) => {
                 if installed.is_some() {
                     // TODO: Return ServiceWorker object
-                    Ok(ctx.null().into_value())
+                    Ok(Value::new_null(ctx))
                 } else {
-                    Ok(ctx.null().into_value())
+                    Ok(Value::new_null(ctx))
                 }
             }
-            _ => Ok(ctx.null().into_value()),
+            _ => Ok(Value::new_null(ctx)),
         }
     }
 
@@ -167,28 +164,26 @@ impl ServiceWorkerRegistrationJS {
         match self.registration.get_active() {
             Ok(Some(_sw)) => {
                 // TODO: Return ServiceWorker object
-                Ok(ctx.null().into_value())
+                Ok(Value::new_null(ctx))
             }
-            _ => Ok(ctx.null().into_value()),
+            _ => Ok(Value::new_null(ctx)),
         }
     }
 
     /// registration.update(): Check for SW script updates
     pub fn update<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         // TODO: Fetch script again, compare, update if changed
-        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(self.clone());
-        Ok(promise.promise.into_value())
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<_, ()>((self.clone(),));
+        Ok(promise.into_value())
     }
 
     /// registration.unregister(): Uninstall this SW
     pub fn unregister<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         // TODO: Mark as redundant, remove from manager
-        let promise = ctx.create_promise::<bool>()?;
-        let resolve = promise.resolve.clone();
-        let _ = resolve.call::<_, ()>(true);
-        Ok(promise.promise.into_value())
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = resolve.call::<_, ()>((true,));
+        Ok(promise.into_value())
     }
 
     /// registration.showNotification(title, options)
@@ -199,10 +194,9 @@ impl ServiceWorkerRegistrationJS {
         _options: rquickjs::prelude::Opt<Object<'js>>,
     ) -> JsResult<Value<'js>> {
         // TODO: Show browser notification
-        let promise = ctx.create_promise::<()>()?;
-        let resolve = promise.resolve.clone();
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<_, ()>(());
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// registration.sync (background sync manager)
@@ -292,16 +286,15 @@ impl ServiceWorkerContainer {
         // TODO: Fetch script, parse, create SW instance
         // For now, return promise that resolves to registration
 
-        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
-        let resolve = promise.resolve.clone();
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
 
         let reg_js = ServiceWorkerRegistrationJS {
             registration: reg,
         };
 
-        let _ = resolve.call::<_, ()>(reg_js);
+        let _ = resolve.call::<_, ()>((reg_js,));
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// navigator.serviceWorker.getRegistrations()
@@ -318,7 +311,7 @@ impl ServiceWorkerContainer {
 
         match self.manager.get_all_for_origin(&origin) {
             Ok(registrations) => {
-                let arr = ctx.create_array()?;
+                let arr = rquickjs::Array::new(ctx.clone())?;
                 for (i, reg) in registrations.iter().enumerate() {
                     let reg_js = ServiceWorkerRegistrationJS {
                         registration: reg.clone(),
@@ -326,18 +319,17 @@ impl ServiceWorkerContainer {
                     arr.set(i, reg_js)?;
                 }
 
-                let promise = ctx.create_promise::<Vec<ServiceWorkerRegistrationJS>>()?;
-                let resolve = promise.resolve.clone();
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let reg_js_vec: Vec<_> = registrations
                     .iter()
                     .map(|r| ServiceWorkerRegistrationJS { registration: r.clone() })
                     .collect();
-                let _ = resolve.call::<_, ()>(reg_js_vec);
+                let _ = resolve.call::<(Vec<ServiceWorkerRegistrationJS>,), ()>((reg_js_vec,));
 
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
             Err(_) => {
-                let arr = ctx.create_array()?;
+                let arr = rquickjs::Array::new(ctx.clone())?;
                 Ok(arr.into_value())
             }
         }
@@ -365,18 +357,16 @@ impl ServiceWorkerContainer {
                     registration: reg,
                 };
 
-                let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
-                let resolve = promise.resolve.clone();
-                let _ = resolve.call::<_, ()>(reg_js);
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+                let _ = resolve.call::<_, ()>((reg_js,));
 
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
             _ => {
-                let promise = ctx.create_promise::<Option<ServiceWorkerRegistrationJS>>()?;
-                let resolve = promise.resolve.clone();
-                let _ = resolve.call::<_, ()>(None);
+                let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+                let _ = resolve.call::<_, ()>((None::<ServiceWorkerRegistrationJS>,));
 
-                Ok(promise.promise.into_value())
+                Ok(promise.into_value())
             }
         }
     }
@@ -388,12 +378,12 @@ impl ServiceWorkerContainer {
             Ok(controller) => {
                 if controller.is_some() {
                     // TODO: Return ServiceWorker object
-                    Ok(ctx.null().into_value())
+                    Ok(Value::new_null(ctx))
                 } else {
-                    Ok(ctx.null().into_value())
+                    Ok(Value::new_null(ctx))
                 }
             }
-            _ => Ok(ctx.null().into_value()),
+            _ => Ok(Value::new_null(ctx)),
         }
     }
 
@@ -401,7 +391,7 @@ impl ServiceWorkerContainer {
     #[qjs(get)]
     pub fn ready<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         // Return promise that resolves when a SW is activated
-        let promise = ctx.create_promise::<ServiceWorkerRegistrationJS>()?;
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
 
         // TODO: Resolve when controller is set to activated state
         // For now, resolve immediately
@@ -417,20 +407,20 @@ impl ServiceWorkerContainer {
         drop(rt_lock);
 
         if let Ok(Some(reg)) = self.manager.find_for_url(&origin, "/") {
-            let resolve = promise.resolve.clone();
             let reg_js = ServiceWorkerRegistrationJS { registration: reg };
-            let _ = resolve.call::<_, ()>(reg_js);
+            let _ = resolve.call::<_, ()>((reg_js,));
         }
 
-        Ok(promise.promise.into_value())
+        Ok(promise.into_value())
     }
 
     /// navigator.serviceWorker.oncontrollerchange (event)
     pub fn oncontrollerchange<'js>(
         &self,
         _ctx: Ctx<'js>,
-    ) -> JsResult<Option<Persistent<Function<'js>>>> {
-        Ok(None)
+    ) -> JsResult<Value<'js>> {
+        // Return null for now - event handlers would be set via property assignment
+        Ok(Value::new_null(_ctx))
     }
 }
 
@@ -449,10 +439,11 @@ pub fn register_service_worker_container(rt: &JsRuntime) -> JsResult<()> {
 
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
-            // Register class definitions
-            Class::define(ctx)?;
-            Class::define(ctx)?;
-            Class::define(ctx)?;
+            // Register class definitions with globals object
+            let globals = ctx.globals();
+            Class::<ServiceWorkerClient>::define(&globals)?;
+            Class::<Clients>::define(&globals)?;
+            Class::<ServiceWorkerRegistrationJS>::define(&globals)?;
 
             // Create navigator.serviceWorker
             let navigator = ctx.globals().get::<_, Object>("navigator")?;

@@ -187,7 +187,7 @@ impl BackgroundSyncQueue {
     }
 
     pub fn take_pending(&self) -> Vec<SyncTask> {
-        let mut queue = self.queue.lock().unwrap_or_default();
+        let mut queue = self.queue.lock().unwrap();
         std::mem::take(&mut *queue)
     }
 
@@ -255,7 +255,7 @@ impl PeriodicSyncScheduler {
     }
 
     pub fn check_due(&self) -> Vec<PeriodicSyncTask> {
-        let mut tasks = self.tasks.lock().unwrap_or_default();
+        let mut tasks = self.tasks.lock().unwrap();
         let mut due = Vec::new();
         let now = Instant::now();
 
