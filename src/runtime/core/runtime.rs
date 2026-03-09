@@ -92,6 +92,8 @@ pub struct JsRuntime {
     pub screen_size: Arc<Mutex<(i32, i32)>>,
     #[qjs(skip_trace)]
     pub idb_worker: Arc<Mutex<crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker>>,
+    #[qjs(skip_trace)]
+    pub sw_manager: Arc<crate::runtime::core::service_worker::ServiceWorkerManager>,
 }
 
 use super::event_loop::EventLoop;
@@ -104,6 +106,9 @@ impl JsRuntime {
         let mut event_loop = EventLoop::new();
         let idb_worker = crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker::new(event_loop.idb_sender.clone());
         
+        let sw_db = Arc::new(crate::runtime::core::sw_db::ServiceWorkerDatabase::new(std::path::PathBuf::from("sw.db")).unwrap());
+        let sw_manager = Arc::new(crate::runtime::core::service_worker::ServiceWorkerManager::new(sw_db));
+
         let rt = Self {
             id: NEXT_RUNTIME_ID.fetch_add(1, Ordering::SeqCst),
             context: Arc::new(Mutex::new(context)),
@@ -132,6 +137,7 @@ impl JsRuntime {
             import_map: Arc::new(Mutex::new(None)),
             screen_size: Arc::new(Mutex::new((1920, 1080))), // Engine alimentará via winit/OS
             idb_worker: Arc::new(Mutex::new(idb_worker)),
+            sw_manager,
         };
 
         // Store self in userdata for access from within JS callbacks
@@ -349,6 +355,56 @@ impl JsRuntime {
                     }
                 }
             });
+        });
+
+        true
+    }
+
+    pub fn run_idle_callbacks(&self, frame_deadline: std::time::Instant) -> bool {
+        let callbacks = {
+             let mut el = self.event_loop.lock().unwrap();
+             el.take_idle_callbacks(frame_deadline)
+        };
+        
+        if callbacks.is_empty() {
+             return false;
+        }
+
+        self.with_context(|ctx| {
+            ctx.with(|ctx| {
+                for task in callbacks {
+                    let now = std::time::Instant::now();
+                    
+                    // Calcular timeRemaining em double (ms)
+                    let time_remaining_ms = if frame_deadline > now {
+                        frame_deadline.duration_since(now).as_secs_f64() * 1000.0
+                    } else {
+                        0.0
+                    };
+                    
+                    // Verificar se foi timeout
+                    let did_timeout = task.timeout_deadline.map(|d| now >= d).unwrap_or(false);
+
+                    // Criar um IdleDeadline faked com JS wrapper
+                    let script = format!(
+                        "(function(cb) {{ 
+                            var deadline = {{ 
+                                timeRemaining: function() {{ return {:.3}; }}, 
+                                didTimeout: {} 
+                            }};
+                            cb(deadline);
+                        }})",
+                        time_remaining_ms.max(0.0),
+                        did_timeout
+                    );
+
+                    if let Ok(wrapper_fn) = ctx.eval::<rquickjs::Function, _>(script) {
+                        if let Ok(cb) = task.callback.0.restore(&ctx) {
+                            let _: rquickjs::Result<Value> = wrapper_fn.call((cb,));
+                        }
+                    }
+                }
+            })
         });
 
         true

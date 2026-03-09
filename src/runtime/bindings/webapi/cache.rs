@@ -1,6 +1,6 @@
 use rquickjs::{Class, Ctx, Function, Persistent, Result as JsResult, Value, Object, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
-use crate::runtime::bindings::webapi::idb_service::worker::IDBWorkerCommand;
+use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwCacheEntryData};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
@@ -38,9 +38,7 @@ pub struct Cache {
     pub name: String,
     pub origin: String,
     #[qjs(skip_trace)]
-    pub idb_worker: Arc<tokio::sync::mpsc::UnboundedSender<IDBWorkerCommand>>,
-    #[qjs(skip_trace)]
-    pub pending_requests: Arc<Mutex<HashMap<u32, CacheOperation>>>,
+    pub db: Arc<ServiceWorkerDatabase>,
 }
 
 #[derive(Clone, Debug)]
@@ -56,27 +54,61 @@ enum CacheOperation {
 impl Cache {
     /// cache.add(url): Fetch from network and store in cache
     pub fn add<'js>(&self, ctx: Ctx<'js>, url: String) -> JsResult<Value<'js>> {
-        // TODO: Implement actual fetch + cache storage
-        // For now, return resolved promise
-        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let (promise, resolve, reject) = rquickjs::Promise::new(&ctx)?;
+        
+        // Use JsRuntime to register promise in event loop
+        let globals = ctx.globals();
+        let rt: JsRuntime = globals.get("__albedo_rt__").unwrap();
+        
+        let (id, sender) = {
+            let mut el = rt.event_loop.lock().unwrap();
+            let id = el.register_promise(
+                Persistent::save(&ctx, resolve),
+                Persistent::save(&ctx, reject)
+            );
+            (id, el.async_sender.clone())
+        };
 
-        // Placeholder: immediately resolve
-        let _ = resolve.call::<(), ()>(());
+        let db = self.db.clone();
+        let cache_name = self.name.clone();
+        let origin = self.origin.clone();
+        let url_clone = url.clone();
 
-        Ok(promise.into_value())
-    }
+        tokio::spawn(async move {
+            let client = crate::network::client::FetchClient::new();
+            match client.fetch(&url_clone, None, crate::network::security::Origin::from_url(&origin)) {
+                Ok(resp) => {
+                    let entry = SwCacheEntryData {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        cache_name,
+                        origin,
+                        url: url_clone,
+                        status: resp.status,
+                        headers: serde_json::to_string(&resp.headers).unwrap_or_default(),
+                        body: resp.body_bytes,
+                        created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                    };
+                    if let Ok(_) = db.save_cache_entry(&entry) {
+                         let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                             id,
+                             result: Ok((200, "".to_string())), // Resolve void with 200 OK
+                         });
+                    } else {
+                         let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                             id,
+                             result: Err("Database error".to_string()),
+                         });
+                    }
+                }
+                Err(e) => {
+                     let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                         id,
+                         result: Err(e.to_string()),
+                     });
+                }
+            }
+        });
 
-    /// cache.put(request, response): Explicitly cache request/response pair
-    pub fn put<'js>(
-        &self,
-        ctx: Ctx<'js>,
-        _request: Object<'js>,
-        _response: Object<'js>,
-    ) -> JsResult<Value<'js>> {
-        // TODO: Parse request and response objects
-        // Store in IndexedDB with proper serialization
-        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
-        let _ = resolve.call::<(), ()>(());
         Ok(promise.into_value())
     }
 
@@ -87,24 +119,31 @@ impl Cache {
         url: String,
         _options: rquickjs::prelude::Opt<Object<'js>>,
     ) -> JsResult<Value<'js>> {
-        // TODO: Query IndexedDB for cached entry
-        // Return Response object or null
-        Ok(Value::new_null(ctx))
+        let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        
+        if let Ok(Some(entry)) = self.db.get_cache_entry(&self.name, &url) {
+            let resp = Response {
+                status: entry.status,
+                status_text: "OK".to_string(),
+                headers: serde_json::from_str(&entry.headers).unwrap_or_default(),
+                body: entry.body,
+                url,
+                redirected: false,
+            };
+            let _ = resolve.call::<(Response,), ()>((resp,));
+        } else {
+            let _ = resolve.call::<(Option<Response>,), ()>((None,));
+        }
+
+        Ok(promise.into_value())
     }
 
     /// cache.delete(request): Delete entry from cache
     pub fn delete<'js>(&self, ctx: Ctx<'js>, url: String) -> JsResult<Value<'js>> {
-        // TODO: Remove from IndexedDB
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
+        let _ = self.db.delete_cache_entry(&self.name, &url);
         let _ = resolve.call::<(bool,), ()>((true,));
         Ok(promise.into_value())
-    }
-
-    /// cache.keys(request, options): List all URLs in cache
-    pub fn keys<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
-        // TODO: Query IndexedDB for all URLs in this cache
-        let arr = rquickjs::Array::new(ctx.clone())?;
-        Ok(arr.into_value())
     }
 }
 
@@ -117,7 +156,7 @@ impl Cache {
 pub struct CacheStorage {
     pub origin: String,
     #[qjs(skip_trace)]
-    pub idb_worker: Arc<tokio::sync::mpsc::UnboundedSender<IDBWorkerCommand>>,
+    pub db: Arc<ServiceWorkerDatabase>,
     #[qjs(skip_trace)]
     pub cache_list: Arc<Mutex<HashMap<String, Cache>>>,
 }
@@ -142,11 +181,12 @@ impl CacheStorage {
         let cache = Cache {
             name: name.clone(),
             origin: self.origin.clone(),
-            idb_worker: self.idb_worker.clone(),
-            pending_requests: Arc::new(Mutex::new(HashMap::new())),
+            db: self.db.clone(),
         };
 
-        cache_list.insert(name, cache.clone());
+        if let Ok(_) = self.db.save_cache(name.clone(), self.origin.clone()) {
+            cache_list.insert(name.clone(), cache.clone());
+        }
 
         // Return resolved Promise<Cache>
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
@@ -333,11 +373,11 @@ pub fn register_cache_storage(rt: &JsRuntime) -> JsResult<()> {
         .map(|o| o.to_string())
         .unwrap_or_else(|| "null".to_string());
 
-    let idb_worker = rt.idb_worker.lock().unwrap().tx.clone();
+    let sw_db = rt.sw_manager.db.clone();
 
     let cache_storage = CacheStorage {
         origin,
-        idb_worker: Arc::new(idb_worker),
+        db: sw_db,
         cache_list: Arc::new(Mutex::new(HashMap::new())),
     };
 
@@ -367,8 +407,7 @@ mod tests {
         let cache = Cache {
             name: "v1".to_string(),
             origin,
-            idb_worker: Arc::new(|| {}),
-            pending_requests: Arc::new(Mutex::new(HashMap::new())),
+            db: Arc::new(ServiceWorkerDatabase::new(std::path::PathBuf::from(":memory:")).unwrap()),
         };
 
         assert_eq!(cache.name, "v1");

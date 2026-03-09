@@ -374,10 +374,18 @@
   ✅   IndexedDB funcional (backend: rusqlite)
          ✅ runtime/bindings/webapi/indexeddb.rs (implementação robusta)
          ✅ IDBDatabase, IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor
-  [ ]  Service Workers (offline, Cache API, background sync)
-         → runtime/core/service_worker.rs (CRIAR)
-  [ ]  requestIdleCallback / cancelIdleCallback
-         → runtime/bindings/webapi/timers.rs
+  ✅   Service Workers (offline, Cache API, background sync)
+         ✅ runtime/core/service_worker.rs (ServiceWorkerManager, BackgroundSyncQueue, PeriodicSyncScheduler, FetchInterceptorChain)
+         ✅ runtime/bindings/webapi/service_worker_container.rs (navigator.serviceWorker — register, getRegistration, ready)
+         ✅ runtime/bindings/webapi/sync.rs (SyncManager, PeriodicSyncManager — bindings JS)
+         ✅ runtime/bindings/webapi/cache.rs (Cache API — caches.open, cache.put, cache.match)
+         ✅ runtime/core/sw_db.rs (persistência SQLite — registrations, sync tasks, cache entries)
+         ✅ Integração no pipeline de rede (resources.rs + fetch.rs) e init_sw_runtime()
+  ✅  requestIdleCallback / cancelIdleCallback
+         ✅ runtime/bindings/webapi/timers.rs (bindings JS com suporte a options.timeout)
+         ✅ runtime/core/event_loop.rs (IdleCallbackTask, push/cancel/take_idle_callbacks)
+         ✅ runtime/core/runtime.rs (run_idle_callbacks com IdleDeadline.timeRemaining e didTimeout)
+         ✅ runtime/core/runtime_tests.rs (testes unitários cobrindo idle time e timeout)
   [ ]  matchMedia() para @media queries programáticas
          → runtime/bindings/webapi/match_media.rs (CRIAR)
   [ ]  Pointer Events (pointermove, pointerdown, pointerup, pointercancel)

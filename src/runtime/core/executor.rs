@@ -269,7 +269,60 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
         executed = true;
     }
 
-    // 3b. Background Sync & Periodic Sync (NEW)
+    // 3c. Idle Callbacks (requestIdleCallback)
+    // Usamos um budget de 4ms (conservador) para o restante do frame.
+    let frame_deadline = std::time::Instant::now() + std::time::Duration::from_millis(4);
+    let idle_tasks = {
+        let mut el = rt.event_loop.lock().unwrap();
+        el.take_idle_callbacks(frame_deadline)
+    };
+
+    if !idle_tasks.is_empty() {
+        rt.with_context(|ctx| {
+            ctx.with(|ctx| {
+                for task in idle_tasks {
+                    let now = std::time::Instant::now();
+                    
+                    // Calcular timeRemaining em double (ms)
+                    let time_remaining_ms = if frame_deadline > now {
+                        frame_deadline.duration_since(now).as_secs_f64() * 1000.0
+                    } else {
+                        0.0
+                    };
+                    
+                    // Verificar se foi timeout
+                    let did_timeout = task.timeout_deadline.map(|d| now >= d).unwrap_or(false);
+
+                    // Criar um IdleDeadline faked com JS wrapper
+                    let script = format!(
+                        "(function(cb) {{ 
+                            var deadline = {{ 
+                                timeRemaining: function() {{ return {:.3}; }}, 
+                                didTimeout: {} 
+                            }};
+                            cb(deadline);
+                        }})",
+                        time_remaining_ms.max(0.0),
+                        did_timeout
+                    );
+
+                    if let Ok(wrapper_fn) = ctx.eval::<rquickjs::Function, _>(script) {
+                        if let Ok(cb) = task.callback.0.restore(&ctx) {
+                            let _: rquickjs::Result<Value> = wrapper_fn.call((cb,));
+                            executed = true;
+                        }
+                    }
+                }
+                
+                // Processar microtasks agendadas pelos idle callbacks
+                while ctx.execute_pending_job() {
+                    executed = true;
+                }
+            })
+        });
+    }
+
+    // 3d. Background Sync & Periodic Sync (NEW)
     {
         let el = rt.event_loop.lock().unwrap();
 

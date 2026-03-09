@@ -200,31 +200,25 @@ impl ServiceWorkerRegistrationJS {
     }
 
     /// registration.sync (background sync manager)
-    pub fn sync<'js>(&self, _ctx: Ctx<'js>) -> JsResult<Object<'js>> {
-        // Return SyncManager instance
+    pub fn sync<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         let sync_mgr = SyncManager {
             registration_id: self.registration.id.clone(),
             background_sync_queue: Arc::new(
                 self.registration.background_sync_queue.clone()
             ),
         };
-
-        // This would be converted to JS object
-        Err(rquickjs::Error::new_from_js("ServiceWorkerRegistration", "sync access not yet implemented"))
+        Ok(Class::instance(ctx, sync_mgr)?.into_value())
     }
 
     /// registration.periodicSync (periodic background sync manager)
-    pub fn periodic_sync<'js>(&self, _ctx: Ctx<'js>) -> JsResult<Object<'js>> {
-        // Return PeriodicSyncManager instance
+    pub fn periodic_sync<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         let periodic_mgr = PeriodicSyncManager {
             registration_id: self.registration.id.clone(),
             periodic_sync_scheduler: Arc::new(
                 self.registration.periodic_sync_scheduler.clone()
             ),
         };
-
-        // This would be converted to JS object
-        Err(rquickjs::Error::new_from_js("ServiceWorkerRegistration", "periodicSync access not yet implemented"))
+        Ok(Class::instance(ctx, periodic_mgr)?.into_value())
     }
 }
 
@@ -270,18 +264,27 @@ impl ServiceWorkerContainer {
             .unwrap_or_else(|| "null".to_string());
 
         // Create registration
-        let idb_worker = rt_lock.idb_worker.lock().unwrap().tx.clone();
+        let sw_db = self.manager.db.clone();
         drop(rt_lock);
 
         let reg = Arc::new(ServiceWorkerRegistration::new(
-            scope.clone(),
+            scope,
             script_url.clone(),
             origin.clone(),
-            Arc::new(idb_worker),
+            sw_db,
         ));
 
         // Register in manager
         let _ = self.manager.register(reg.clone());
+
+        // Trigger installation (Asynchronous)
+        let mgr_clone = self.manager.clone();
+        let reg_clone = reg.clone();
+        std::thread::spawn(move || {
+            // This would normally be handled by a more robust scheduler
+            // For now, let's just trigger it.
+            let _ = mgr_clone.install_worker(reg_clone);
+        });
 
         // TODO: Fetch script, parse, create SW instance
         // For now, return promise that resolves to registration
@@ -320,7 +323,7 @@ impl ServiceWorkerContainer {
                 }
 
                 let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
-                let reg_js_vec: Vec<_> = registrations
+                let reg_js_vec: Vec<ServiceWorkerRegistrationJS> = registrations
                     .iter()
                     .map(|r| ServiceWorkerRegistrationJS { registration: r.clone() })
                     .collect();
@@ -429,11 +432,9 @@ impl ServiceWorkerContainer {
 // ============================================================================
 
 pub fn register_service_worker_container(rt: &JsRuntime) -> JsResult<()> {
-    let manager = Arc::new(ServiceWorkerManager::new());
-
     let container = ServiceWorkerContainer {
         rt: Arc::new(Mutex::new(rt.clone())),
-        manager,
+        manager: rt.sw_manager.clone(),
         controller: Arc::new(Mutex::new(None)),
     };
 

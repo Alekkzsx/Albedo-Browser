@@ -359,3 +359,71 @@ fn test_iframe_post_message() {
     assert_eq!(data, "\"Hello from parent\"",
         "Dado da mensagem incorreto: {}", data);
 }
+
+#[tokio::test]
+async fn test_request_idle_callback() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::timers::register(&rt).unwrap();
+
+    // 1. Verificar se o IdleDeadline e didTimeout chegam corretamente no normal run
+    let script = r#"
+        globalThis.idleData = null;
+        let id = requestIdleCallback(function(deadline) {
+            globalThis.idleData = {
+                timeRemaining: deadline.timeRemaining(),
+                didTimeout: deadline.didTimeout
+            };
+        });
+        id
+    "#;
+    let handle: u32 = rt.execute_script(script).unwrap().parse().unwrap();
+    assert!(handle > 0);
+
+    // Initial check (not run yet)
+    let idle_data = rt.execute_script("globalThis.idleData").unwrap();
+    assert_eq!(idle_data, "null");
+
+    // Simulamos a execução de idle callbacks com deadline daqui a 10ms
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(10);
+    rt.run_idle_callbacks(deadline);
+
+    // Verificar se rodou
+    let idle_data = rt.execute_script("JSON.stringify(globalThis.idleData)").unwrap();
+    assert!(idle_data.contains("timeRemaining"));
+    assert!(idle_data.contains("\"didTimeout\":false"));
+
+    // 2. Testar cancelIdleCallback
+    rt.execute_script(r#"
+        globalThis.canceledRan = false;
+        let cid = requestIdleCallback(function(deadline) {
+            globalThis.canceledRan = true;
+        });
+        cancelIdleCallback(cid);
+    "#).unwrap();
+    
+    rt.run_idle_callbacks(deadline);
+    let canceled_ran = rt.execute_script("globalThis.canceledRan").unwrap();
+    assert_eq!(canceled_ran, "false");
+
+    // 3. Testar timeout
+    let script_timeout = r#"
+        globalThis.timeoutData = null;
+        requestIdleCallback(function(deadline) {
+            globalThis.timeoutData = {
+                didTimeout: deadline.didTimeout
+            };
+        }, { timeout: 1 });
+    "#;
+    rt.execute_script(script_timeout).unwrap();
+
+    // Aguardar o timeout expirar
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    
+    // Passar Instant::now() (0ms restantes) como deadline para forçar que execute só pelo timeout
+    let expired_deadline = std::time::Instant::now() - std::time::Duration::from_millis(1);
+    rt.run_idle_callbacks(expired_deadline);
+
+    let timeout_data = rt.execute_script("JSON.stringify(globalThis.timeoutData)").unwrap();
+    assert!(timeout_data.contains("\"didTimeout\":true"));
+}
+
