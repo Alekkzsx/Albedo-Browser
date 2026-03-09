@@ -3183,7 +3183,7 @@ pub fn apply_single_declaration(
 }
 
 // Media Query Helpers
-fn matches_media_query(query: &str, vw: f32, vh: f32, color_scheme: &str) -> bool {
+pub fn matches_media_query(query: &str, vw: f32, vh: f32, color_scheme: &str) -> bool {
     let query = query.trim();
     if query.is_empty() { return true; }
     

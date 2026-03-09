@@ -144,6 +144,7 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     register_events(rt)?;
     crate::runtime::bindings::utils::console::Console::register(rt)?;
     crate::runtime::bindings::webapi::timers::register(rt)?;
+    crate::runtime::bindings::webapi::match_media::register(rt)?;
     crate::runtime::bindings::webapi::fetch::register(rt)?;
     crate::runtime::bindings::webapi::websocket::register(rt)?;
     crate::runtime::bindings::webapi::worker::register(rt)?;
@@ -216,7 +217,6 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
                 globalThis.scrollY = 0.0;
                 globalThis.pageXOffset = 0.0;
                 globalThis.pageYOffset = 0.0;
-                globalThis.matchMedia = function() { return { matches: true, media: '', onchange: null, addListener: function(){}, removeListener: function(){} }; };
                 globalThis.scrollTo = function() {};
                 globalThis.scrollBy = function() {};
                 globalThis.alert = function(msg) { console.warn('ALERT:', msg); };

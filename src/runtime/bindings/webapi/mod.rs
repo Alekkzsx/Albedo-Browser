@@ -22,3 +22,4 @@ pub mod post_message;
 pub mod cache;
 pub mod sync;
 pub mod service_worker_container;
+pub mod match_media;

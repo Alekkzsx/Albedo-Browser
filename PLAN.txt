@@ -386,8 +386,10 @@
          ✅ runtime/core/event_loop.rs (IdleCallbackTask, push/cancel/take_idle_callbacks)
          ✅ runtime/core/runtime.rs (run_idle_callbacks com IdleDeadline.timeRemaining e didTimeout)
          ✅ runtime/core/runtime_tests.rs (testes unitários cobrindo idle time e timeout)
-  [ ]  matchMedia() para @media queries programáticas
-         → runtime/bindings/webapi/match_media.rs (CRIAR)
+  ✅  matchMedia() para @media queries programáticas
+         ✅ runtime/bindings/webapi/match_media.rs (MediaQueryList, matches, media, addEventListener, addListener)
+         ✅ runtime/core/executor.rs (disparo de change events no resize do viewport via mql_registry)
+         ✅ runtime/core/runtime.rs (mql_registry integrado ao JsRuntime)
   [ ]  Pointer Events (pointermove, pointerdown, pointerup, pointercancel)
          → runtime/bindings/html/event_subclasses.rs
   [ ]  Touch Events (touchstart, touchmove, touchend)
