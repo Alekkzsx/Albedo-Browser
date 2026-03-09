@@ -389,8 +389,49 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
 
     // 5. Layout Observers (Resize & Intersection)
     check_layout_observers(rt);
+    check_media_query_changes(rt);
     
     (executed, stylesheet_dirty)
+}
+
+// ── MQL change event dispatch ─────────────────────────────────────────────
+fn check_media_query_changes(rt: &JsRuntime) {
+    let (current_vw, current_vh) = {
+        let ss = rt.screen_size.lock().unwrap();
+        (ss.0 as f32, ss.1 as f32)
+    };
+
+    let mut registry = rt.mql_registry.lock().unwrap();
+    for entry in registry.iter_mut() {
+        let new_matches = crate::engine::style::matches_media_query(
+            &entry.query, current_vw, current_vh, "light"
+        );
+
+        if new_matches != entry.last_matches {
+            entry.last_matches = new_matches;
+
+            // Disparar todos os listeners registrados
+            let listeners = entry.listeners.lock().unwrap();
+            if !listeners.is_empty() {
+                rt.with_context(|ctx| {
+                    ctx.with(|ctx| {
+                        // Criar MediaQueryListEvent simples via Object JS
+                        if let Ok(event_obj) = rquickjs::Object::new(ctx.clone()) {
+                            let _ = event_obj.set("type", "change");
+                            let _ = event_obj.set("matches", new_matches);
+                            let _ = event_obj.set("media", entry.query.clone());
+
+                            for persistent_fn in listeners.iter() {
+                                if let Ok(f) = persistent_fn.clone().restore(&ctx) {
+                                    let _ = f.call::<_, ()>((event_obj.clone(),));
+                                }
+                            }
+                        }
+                    })
+                });
+            }
+        }
+    }
 }
 
 fn check_layout_observers(rt: &JsRuntime) {

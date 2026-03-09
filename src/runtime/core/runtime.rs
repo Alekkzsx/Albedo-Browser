@@ -94,6 +94,8 @@ pub struct JsRuntime {
     pub idb_worker: Arc<Mutex<crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker>>,
     #[qjs(skip_trace)]
     pub sw_manager: Arc<crate::runtime::core::service_worker::ServiceWorkerManager>,
+    #[qjs(skip_trace)]
+    pub mql_registry: Arc<Mutex<Vec<crate::runtime::bindings::webapi::match_media::MqlEntry>>>,
 }
 
 use super::event_loop::EventLoop;
@@ -138,6 +140,7 @@ impl JsRuntime {
             screen_size: Arc::new(Mutex::new((1920, 1080))), // Engine alimentará via winit/OS
             idb_worker: Arc::new(Mutex::new(idb_worker)),
             sw_manager,
+            mql_registry: Arc::new(Mutex::new(Vec::new())),
         };
 
         // Store self in userdata for access from within JS callbacks
