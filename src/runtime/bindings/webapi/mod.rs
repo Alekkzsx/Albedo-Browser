@@ -17,3 +17,8 @@ pub mod websocket;
 pub mod worker;
 pub mod window_proxy;
 pub mod post_message;
+
+// Service Worker APIs (NEW)
+pub mod cache;
+pub mod sync;
+pub mod service_worker_container;

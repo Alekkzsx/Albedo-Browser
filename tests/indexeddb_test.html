@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Albedo IndexedDB Test</title>
+</head>
+<body>
+    <h1>Testing IndexedDB</h1>
+    <div id="status">Starting test...</div>
+    <script>
+        const status = document.getElementById('status');
+        const dbName = 'AlbedoTestDB';
+        const request = indexedDB.open(dbName, 1);
+
+        request.onupgradeneeded = function(e) {
+            console.log('Upgrade needed!');
+            status.innerText = 'Upgrading...';
+            const db = e.target.result;
+            // No Albedo MVP, createObjectStore envia comando pro worker
+            const store = db.createObjectStore('testStore', { keyPath: 'id' });
+            console.log('Store created:', store.name);
+        };
+
+        request.onsuccess = function(e) {
+            console.log('Success!');
+            status.innerText = 'Connected!';
+            const db = e.target.result;
+            // No Albedo MVP, IDBDatabase ainda é um stub limitado mas a conexão existe
+            console.log('Database open:', db.name);
+        };
+
+        request.onerror = function(e) {
+            console.error('Error!', e);
+            status.innerText = 'Error: ' + JSON.stringify(e);
+        };
+    </script>
+</body>
+</html>
