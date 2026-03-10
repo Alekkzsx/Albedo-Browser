@@ -296,6 +296,7 @@ impl TabManager {
                  if let Some(old_idx) = old_hover {
                      if let Some(ref rt) = tab.engine.js_runtime {
                          if let Some(ref dom) = tab.engine.dom {
+                             rt.dispatch_pointer_event(old_idx, "pointerout", x, y, 0, 1, "mouse", true);
                              rt.dispatch_event(dom.clone(), old_idx, "mouseout");
                          }
                      }
@@ -305,12 +306,23 @@ impl TabManager {
                  if let Some(new_idx) = node_id {
                      if let Some(ref rt) = tab.engine.js_runtime {
                          if let Some(ref dom) = tab.engine.dom {
+                             rt.dispatch_pointer_event(new_idx, "pointerover", x, y, 0, 1, "mouse", true);
                              rt.dispatch_event(dom.clone(), new_idx, "mouseover");
                          }
                      }
                  }
                  
                  tab.engine.set_hover(node_id);
+                 return true;
+             } else {
+                 // Disparar mousemove/pointermove no elemento atual se a posição mudou e continua nele
+                 if let Some(idx) = node_id {
+                     if let Some(ref rt) = tab.engine.js_runtime {
+                         rt.dispatch_touch_event(idx, "touchmove", x, y, 1);
+                         rt.dispatch_pointer_event(idx, "pointermove", x, y, 0, 1, "mouse", true);
+                         // rt.dispatch_event(dom.clone(), idx, "mousemove"); // mousemove pode ser implementado depois
+                     }
+                 }
                  return true;
              }
         }
@@ -351,6 +363,8 @@ impl TabManager {
                 
                 if let Some(idx) = node_id {
                     if let Some(ref rt) = tab.engine.js_runtime {
+                        rt.dispatch_touch_event(idx, "touchstart", x, y, 1);
+                        rt.dispatch_pointer_event(idx, "pointerdown", x, y, 0, 1, "mouse", true);
                         if let Some(ref dom) = tab.engine.dom {
                             rt.dispatch_event(dom.clone(), idx, "mousedown");
                         }
@@ -374,9 +388,32 @@ impl TabManager {
                  // For CSS :active, it clears when mouse is released.
                  if let Some(idx) = old_active {
                      if let Some(ref rt) = tab.engine.js_runtime {
+                         rt.dispatch_touch_event(idx, "touchend", x, y, 1);
+                         rt.dispatch_pointer_event(idx, "pointerup", x, y, 0, 1, "mouse", true);
                          if let Some(ref dom) = tab.engine.dom {
                              rt.dispatch_event(dom.clone(), idx, "mouseup");
                          }
+                     }
+                 }
+                 return true;
+             }
+        }
+        false
+    }
+
+    pub fn handle_pointer_cancel(&self, x: f32, y: f32) -> bool {
+        let mut col = self.collection.borrow_mut();
+        if let Some(tab) = col.get_active_mut() {
+             // On interaction cancel (e.g., system alert, drag cancelled)
+             if tab.engine.active_element.is_some() {
+                 let old_active = tab.engine.active_element;
+                 tab.engine.set_active(None);
+                 
+                 // Dispatch pointercancel. Only pointercancel is fired, no mouse counterpart.
+                 if let Some(idx) = old_active {
+                     if let Some(ref rt) = tab.engine.js_runtime {
+                         rt.dispatch_touch_event(idx, "touchcancel", x, y, 1);
+                         rt.dispatch_pointer_event(idx, "pointercancel", x, y, 0, 1, "mouse", true);
                      }
                  }
                  return true;
@@ -405,11 +442,25 @@ impl TabManager {
                         }
                     }
                     
+                    
                     if let Some(idx) = modal_idx {
                         // Disparar evento "cancel" (cancelável pela spec, mas simplificado aqui)
                         // Fechar o dialog
                         dom.remove_attribute_notify(idx, "open".into());
                         dom.remove_attribute_notify(idx, "data-ace-modal".into());
+                        
+                        // Drop dom lock before trying to mutate tab
+                        drop(dom);
+                        
+                        // Cancelar pointers ativos também
+                        if let Some(idx_active) = tab.engine.active_element {
+                            if let Some(ref rt) = tab.engine.js_runtime {
+                                rt.dispatch_touch_event(idx_active, "touchcancel", 0.0, 0.0, 1);
+                                rt.dispatch_pointer_event(idx_active, "pointercancel", 0.0, 0.0, 0, 1, "mouse", true);
+                            }
+                            tab.engine.set_active(None);
+                        }
+
                         return true;
                     }
                 }

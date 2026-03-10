@@ -84,6 +84,18 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             })?;
             global.set("cancelIdleCallback", cancel_idle_callback)?;
 
+            // queueMicrotask polyfill
+            ctx.eval::<(), _>(r#"
+                if (!globalThis.queueMicrotask) {
+                    globalThis.queueMicrotask = function(callback) {
+                        if (typeof callback !== 'function') {
+                            throw new TypeError('queueMicrotask requires a function argument');
+                        }
+                        Promise.resolve().then(callback);
+                    };
+                }
+            "#)?;
+
             Ok(())
         })
     })

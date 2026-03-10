@@ -293,6 +293,95 @@ impl JsRuntime {
         }
     }
 
+    pub fn dispatch_pointer_event(&self, index: usize, type_: &str, x: f32, y: f32, button: i32, pointer_id: i32, pointer_type: &str, is_primary: bool) {
+        if let Some(ref dom_arc) = *self.dom.lock().unwrap() {
+            let dom = dom_arc.clone();
+            self.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    use crate::runtime::bindings::html::element::Element;
+                    use crate::runtime::bindings::html::event_subclasses::PointerEvent;
+                    
+                    let element = Element { 
+                        dom,
+                        index, 
+                        mutations: self.mutations.clone(),
+                        stylesheet_dirty: self.stylesheet_dirty.clone(),
+                        primitives: self.primitives.clone(),
+                        canvas_contexts: self.canvas_contexts.clone(),
+                        pending_scroll: self.pending_scroll.clone(),
+                        element_geometry: self.element_geometry.clone(),
+                        element_scroll: self.element_scroll.clone(),
+                    };
+                    
+                    if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
+                        let instance_val = instance.into_value();
+                        
+                        // Create PointerEvent options object
+                        let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = opts.set("clientX", x as f64);
+                        let _ = opts.set("clientY", y as f64);
+                        let _ = opts.set("button", button);
+                        let _ = opts.set("pointerId", pointer_id);
+                        let _ = opts.set("pointerType", pointer_type);
+                        let _ = opts.set("isPrimary", is_primary);
+                        let _ = opts.set("bubbles", true);
+                        
+                        if let Ok(pointer_event) = rquickjs::Class::instance(ctx.clone(), PointerEvent::new(type_.to_string(), Some(opts.into_value()))) {
+                             if let Some(obj) = instance_val.as_object() {
+                                 if let Ok(dispatch) = obj.get::<_, rquickjs::Function>("dispatchEvent") {
+                                     let _: rquickjs::Result<rquickjs::Value> = dispatch.call((pointer_event,));
+                                 }
+                             }
+                        }
+                    }
+                })
+            });
+        }
+    }
+
+    pub fn dispatch_touch_event(&self, index: usize, type_: &str, x: f32, y: f32, identifier: i32) {
+        if let Some(ref dom_arc) = *self.dom.lock().unwrap() {
+            let dom = dom_arc.clone();
+            self.with_context(|ctx| {
+                ctx.with(|ctx| {
+                    use crate::runtime::bindings::html::element::Element;
+                    use crate::runtime::bindings::html::event_subclasses::TouchEvent;
+                    
+                    let element = Element { 
+                        dom,
+                        index, 
+                        mutations: self.mutations.clone(),
+                        stylesheet_dirty: self.stylesheet_dirty.clone(),
+                        primitives: self.primitives.clone(),
+                        canvas_contexts: self.canvas_contexts.clone(),
+                        pending_scroll: self.pending_scroll.clone(),
+                        element_geometry: self.element_geometry.clone(),
+                        element_scroll: self.element_scroll.clone(),
+                    };
+                    
+                    if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), element) {
+                        let instance_val = instance.into_value();
+                        
+                        // Create TouchEvent options object
+                        let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
+                        let _ = opts.set("clientX", x as f64);
+                        let _ = opts.set("clientY", y as f64);
+                        let _ = opts.set("identifier", identifier);
+                        let _ = opts.set("bubbles", true);
+                        let _ = opts.set("cancelable", true);
+                        
+                        if let Ok(touch_event) = rquickjs::Class::instance(ctx.clone(), TouchEvent::new(type_.to_string(), Some(opts.into_value()))) {
+                             if let Some(obj) = instance_val.as_object() {
+                                 if let Ok(dispatch) = obj.get::<_, rquickjs::Function>("dispatchEvent") {
+                                     let _: rquickjs::Result<rquickjs::Value> = dispatch.call((touch_event,));
+                                 }
+                             }
+                        }
+                    }
+                })
+            });
+        }
+    }
 
     pub fn dispatch_message_event(&self, message_json: String, origin: String, source_rt_id: Option<usize>) {
         println!("[JsRuntime::dispatch_message_event] Entering (ID {})", self.id);
