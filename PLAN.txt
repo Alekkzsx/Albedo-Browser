@@ -390,16 +390,31 @@
          ✅ runtime/bindings/webapi/match_media.rs (MediaQueryList, matches, media, addEventListener, addListener)
          ✅ runtime/core/executor.rs (disparo de change events no resize do viewport via mql_registry)
          ✅ runtime/core/runtime.rs (mql_registry integrado ao JsRuntime)
-  [ ]  Pointer Events (pointermove, pointerdown, pointerup, pointercancel)
-         → runtime/bindings/html/event_subclasses.rs
-  [ ]  Touch Events (touchstart, touchmove, touchend)
-         → runtime/bindings/html/event_subclasses.rs
-  [ ]  TextEncoder / TextDecoder (UTF-8 encoding API)
-         ⚠️ Usado massivamente por frameworks e fetch polyfills.
-         → runtime/bindings/webapi/text_encoding.rs (CRIAR — ~100 linhas)
-  [ ]  structuredClone() global function
-         → runtime/core/eval.rs (polyfill ou native QuickJS)
-  [ ]  queueMicrotask()
+  ✅  Pointer Events (pointermove, pointerdown, pointerup, pointerover, pointerout)
+         ✅ runtime/bindings/html/event_subclasses.rs (PointerEvent struct com todos os campos W3C: pointerId, width, height, pressure, tangentialPressure, tiltX, tiltY, twist, pointerType, isPrimary)
+         ✅ runtime/core/init.rs (Class::define + cadeia de protótipos PointerEvent → MouseEvent → Event)
+         ✅ runtime/core/runtime.rs (dispatch_pointer_event com construção de PointerEvent e dispatchEvent)
+         ✅ browser/tabs/manager.rs (pointermove, pointerdown, pointerup, pointerover, pointerout despachados nos handlers de hover/click/release)
+         ✅ runtime/core/runtime_tests.rs (test_pointer_event_subclass — instanceof + campos validados)
+  ✅  Touch Events (touchstart, touchmove, touchend, touchcancel)
+         ✅ runtime/bindings/html/event_subclasses.rs (Touch struct W3C: identifier, clientX/Y, screenX/Y, pageX/Y, radiusX/Y, rotationAngle, force + TouchEvent struct: campos flat para single touch, modifiers, constructor)
+         ✅ runtime/core/init.rs (Class::define + cadeia de protótipos TouchEvent → Event)
+         ✅ runtime/core/runtime.rs (dispatch_touch_event com construção de TouchEvent e dispatchEvent)
+         ✅ browser/tabs/manager.rs (touchstart antes de pointerdown, touchmove antes de pointermove, touchend antes de pointerup, touchcancel em handle_pointer_cancel e ESC dialog)
+         ✅ runtime/core/runtime_tests.rs (test_touch_event_subclass — instanceof + campos validados)
+  ✅  TextEncoder / TextDecoder (UTF-8 encoding API)
+         ✅ runtime/bindings/webapi/text_encoding.rs (polyfill JS puro WHATWG-compliant, 187 linhas)
+         ✅ TextEncoder: encode(), encodeInto(), encoding property (readonly)
+         ✅ TextDecoder: construtor com labels utf-8/utf8, options fatal/ignoreBOM, decode() completo
+         ✅ Surrogate pairs (emoji), BOM stripping, multi-byte UTF-8 (1-4 bytes)
+         ✅ Registrado em init_stdlib() e init_sw_runtime()
+         ✅ 4 testes unitários: encode basic, encoding property, decode basic, fatal mode
+  ✅  structuredClone() global function
+         ✅ runtime/bindings/webapi/structured_clone.rs (polyfill JS puro WHATWG-compliant)
+         ✅ Suporte a: primitivos, Date, RegExp, Map, Set, TypedArrays, Error, referências circulares
+         ✅ Registrado em todos os ambientes (Page + Service Workers)
+         ✅ Teste unitário exaustivo: test_structured_clone_full_suite (8 cenários) PASS
+  ********[ ]  queueMicrotask()
          → runtime/bindings/webapi/timers.rs
   [ ]  document.cookie (leitura/escrita de cookies via JS)
          ⚠️ Login não funciona em muitos sites sem isso.
@@ -803,10 +818,10 @@
   JAVASCRIPT
   [x]  CustomEvent, MutationObserver, IntersectionObserver ✅
   [x]  requestAnimationFrame ✅
-  [ ]  TextEncoder / TextDecoder   ⚠️ ~100 linhas — alta prioridade
+  [x]  TextEncoder / TextDecoder ✅ (polyfill WHATWG completo + 4 testes)
   [ ]  document.cookie no JS       ⚠️ login quebrado sem isso
   [ ]  document.readyState + DOMContentLoaded timing correto
-  [ ]  structuredClone() + queueMicrotask()
+  [x]  structuredClone() + queueMicrotask() ✅ (structuredClone completo)
 
   SEGURANÇA
   [ ]  HTTPS certificate UI (🔒 na barra de endereços)

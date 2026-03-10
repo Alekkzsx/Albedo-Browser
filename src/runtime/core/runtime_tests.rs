@@ -6,40 +6,103 @@ use crate::engine::style::Stylesheet;
 use crate::engine::AceEngine;
 use crate::runtime::bindings::html::document;
 
-#[test]
-fn test_basic_execution() {
+#[tokio::test]
+async fn test_basic_execution() {
     let rt = JsRuntime::new().unwrap();
     let _ = rt.execute_script("2 + 2").unwrap();
 }
 
-#[test]
-fn test_variables() {
+#[tokio::test]
+async fn test_variables() {
     let rt = JsRuntime::new().unwrap();
     rt.execute_script("var x = 10; var y = 20;").unwrap();
     let _ = rt.execute_script("x + y").unwrap();
 }
 
-#[test]
-fn test_function_definition() {
+#[tokio::test]
+async fn test_function_definition() {
     let rt = JsRuntime::new().unwrap();
     rt.execute_script("function multiply(a, b) { return a * b; }").unwrap();
 }
 
-#[test]
-fn test_event_subclasses() {
+#[tokio::test]
+async fn test_pointer_event_subclass() {
     let rt = JsRuntime::new().unwrap();
-    // Register events manually if needed, or rely on built-in if they are
-    // But runtime.rs doesn't seem to have register_events publiclyexposed?
-    // It's not in JsRuntime::new().
-    // We need to check if we can register them.
-    // Assuming for now they are not registered by default?
-    // Let's assume they are not needed for basic tests or we skip this test if register_events is missing.
-    // The previous code called rt.register_events().
-    // I'll skip this test for now as I verified event listeners in document/tests.rs
+    crate::runtime::core::init::register_events(&rt).unwrap();
+    let ctx = rt.context.lock().unwrap();
+    let result = ctx.with(|ctx| {
+        use crate::runtime::bindings::html::event_subclasses::PointerEvent;
+        
+        let global = ctx.globals();
+        
+        let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
+        let _ = opts.set("pointerId", 42);
+        let _ = opts.set("clientX", 100.0);
+        let _ = opts.set("pointerType", "touch");
+        let _ = opts.set("isPrimary", true);
+        
+        let pointer_event = rquickjs::Class::instance(ctx.clone(), PointerEvent::new("pointerdown".to_string(), Some(opts.into_value()))).unwrap();
+        
+        global.set("ev", pointer_event).unwrap();
+        
+        ctx.eval::<String, _>(r#"
+            [
+                ev instanceof PointerEvent,
+                ev instanceof MouseEvent,
+                ev instanceof Event,
+                ev.type,
+                ev.pointerId,
+                ev.clientX,
+                ev.pointerType,
+                ev.isPrimary,
+                ev.width // Default deve ser 1.0
+            ].join('|')
+        "#).unwrap()
+    });
+
+    assert_eq!(result, "true|true|true|pointerdown|42|100|touch|true|1");
 }
 
-#[test]
-fn test_set_timeout() {
+#[tokio::test]
+async fn test_touch_event_subclass() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::core::init::register_events(&rt).unwrap();
+
+    let ctx = rt.context.lock().unwrap();
+    let result = ctx.with(|ctx| {
+        use crate::runtime::bindings::html::event_subclasses::TouchEvent;
+        
+        // Define no ambiente
+        let global = ctx.globals();
+        
+        let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
+        let _ = opts.set("clientX", 200.0);
+        let _ = opts.set("identifier", 1);
+        let _ = opts.set("bubbles", true);
+        let _ = opts.set("cancelable", true);
+        
+        let touch_event = rquickjs::Class::instance(ctx.clone(), TouchEvent::new("touchstart".to_string(), Some(opts.into_value()))).unwrap();
+        
+        global.set("ev", touch_event).unwrap();
+        
+        ctx.eval::<String, _>(r#"
+            [
+                ev instanceof TouchEvent,
+                ev instanceof Event,
+                ev.type,
+                ev.clientX,
+                ev.identifier,
+                ev.bubbles,
+                ev.cancelable
+            ].join('|')
+        "#).unwrap()
+    });
+    
+    assert_eq!(result, "true|true|touchstart|200|1|true|true");
+}
+
+#[tokio::test]
+async fn test_set_timeout() {
     let rt = JsRuntime::new().unwrap();
     // rt.init_stdlib("http://test.com").unwrap(); // Removed
     
@@ -74,8 +137,8 @@ fn test_set_timeout() {
     assert_eq!(result, "true");
 }
 
-#[test]
-fn test_dom_sync_with_timers() {
+#[tokio::test]
+async fn test_dom_sync_with_timers() {
     let mut engine = AceEngine::new();
     let html = r#"<div id="target">Initial</div>"#;
     engine.load_html(html);
@@ -107,8 +170,8 @@ fn test_dom_sync_with_timers() {
     assert_eq!(updated, "Updated");
 }
 
-#[test]
-fn test_computed_style() {
+#[tokio::test]
+async fn test_computed_style() {
     let mut engine = AceEngine::new();
     let html = r#"
         <style>
@@ -133,8 +196,8 @@ fn test_computed_style() {
     assert_eq!(result, "red|20px");
 }
 
-#[test]
-fn test_dom_traversal() {
+#[tokio::test]
+async fn test_dom_traversal() {
     let mut engine = AceEngine::new();
     let html = r#"
         <div id="parent">
@@ -171,8 +234,8 @@ fn test_dom_traversal() {
     assert_eq!(result, "3|child1|child3|child2|child2");
 }
 
-#[test]
-fn test_dom_attribute_manipulation() {
+#[tokio::test]
+async fn test_dom_attribute_manipulation() {
     let mut engine = AceEngine::new();
     let html = r#"<div id="target" class="foo"></div>"#;
     engine.load_html(html);
@@ -219,8 +282,8 @@ fn test_dom_attribute_manipulation() {
     assert!(found);
 }
 
-#[test]
-fn test_iframe_post_message() {
+#[tokio::test]
+async fn test_iframe_post_message() {
     // Usa iframe sem src para evitar que init_subframe_runtimes() tente
     // criar um JsRuntime (que rodaria init_stdlib com tokio e poderia bloquear).
     // O runtime filho é criado e injetado manualmente logo abaixo.
@@ -427,3 +490,212 @@ async fn test_request_idle_callback() {
     assert!(timeout_data.contains("\"didTimeout\":true"));
 }
 
+
+#[tokio::test]
+async fn test_text_encoder_basic() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
+    
+    let result = rt.execute_script(r#"
+        const enc = new TextEncoder();
+        const bytes = enc.encode('abc');
+        [bytes[0], bytes[1], bytes[2]].join(',')
+    "#).unwrap();
+    
+    assert_eq!(result, "97,98,99");
+}
+
+#[tokio::test]
+async fn test_text_encoder_encoding_property() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
+    
+    let result = rt.execute_script(r#"
+        new TextEncoder().encoding
+    "#).unwrap();
+    
+    assert_eq!(result, "utf-8");
+}
+
+#[tokio::test]
+async fn test_text_decoder_basic() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
+    
+    let result = rt.execute_script(r#"
+        const dec = new TextDecoder();
+        const bytes = new Uint8Array([104, 101, 108, 108, 111]); // hello
+        dec.decode(bytes)
+    "#).unwrap();
+    
+    assert_eq!(result, "hello");
+}
+
+#[tokio::test]
+async fn test_text_decoder_fatal() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
+    
+    let result = rt.execute_script(r#"
+        try {
+            const dec = new TextDecoder('utf-8', { fatal: true });
+            const bad = new Uint8Array([0xFF, 0xFE]);
+            dec.decode(bad);
+            'fail';
+        } catch(e) {
+            e.name;
+        }
+    "#).unwrap();
+    
+    assert_eq!(result, "TypeError");
+}
+
+#[tokio::test]
+async fn test_structured_clone_full_suite() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::structured_clone::register(&rt).unwrap();
+    
+    let ctx = rt.context.lock().unwrap();
+    ctx.with(|ctx| {
+        let script = r#"
+            (function() {
+                const results = [];
+                
+                // 1. Primitivos
+                results.push(structuredClone(42) === 42);
+                results.push(structuredClone("albedo") === "albedo");
+                results.push(structuredClone(null) === null);
+                
+                // 2. Objetos e Arrays (Clone Profundo)
+                const obj = { a: 1, b: [2, 3], c: { d: 4 } };
+                const objClone = structuredClone(obj);
+                results.push(obj !== objClone);
+                results.push(obj.b !== objClone.b);
+                results.push(objClone.c.d === 4);
+                objClone.b.push(4);
+                results.push(obj.b.length === 2); // Original não alterado
+                
+                // 3. Referências Circulares
+                const circ = { name: 'circular' };
+                circ.self = circ;
+                const circClone = structuredClone(circ);
+                results.push(circClone !== circ);
+                results.push(circClone.self === circClone);
+                
+                // 4. Built-ins (Date, RegExp)
+                const date = new Date(1741639800000);
+                const dateClone = structuredClone(date);
+                results.push(dateClone instanceof Date);
+                results.push(dateClone.getTime() === date.getTime());
+                results.push(dateClone !== date);
+                
+                const re = /abc/gi;
+                const reClone = structuredClone(re);
+                results.push(reClone.source === 'abc');
+                results.push(reClone.flags === 'gi');
+                results.push(reClone !== re);
+                
+                // 5. Map e Set
+                const map = new Map([['key', 'val']]);
+                const mapClone = structuredClone(map);
+                results.push(mapClone.get('key') === 'val');
+                results.push(mapClone !== map);
+                
+                const set = new Set([1, 2, 3]);
+                const setClone = structuredClone(set);
+                results.push(setClone.has(2));
+                results.push(setClone.size === 3);
+                results.push(setClone !== set);
+                
+                // 6. typedArrays e ArrayBuffer
+                const buffer = new ArrayBuffer(8);
+                const view = new Uint8Array(buffer);
+                view[0] = 255;
+                const viewClone = structuredClone(view);
+                results.push(viewClone instanceof Uint8Array);
+                results.push(viewClone[0] === 255);
+                results.push(viewClone.buffer !== buffer);
+                
+                // 7. Errors
+                const err = new TypeError("test error");
+                const errClone = structuredClone(err);
+                results.push(errClone instanceof TypeError);
+                results.push(errClone.message === "test error");
+                results.push(errClone.name === "TypeError");
+                
+                // 8. DataCloneError
+                let throwed = false;
+                try {
+                    structuredClone(() => {});
+                } catch(e) {
+                    if (e.name === 'DataCloneError') throwed = true;
+                }
+                results.push(throwed);
+                
+                return results.findIndex(x => x === false);
+            })()
+        "#;
+        let fail_index = ctx.eval::<i32, _>(script).unwrap();
+        assert_eq!(fail_index, -1, "Teste de structuredClone falhou no índice {}", fail_index);
+    });
+}
+
+#[tokio::test]
+async fn test_queue_microtask_basic() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::timers::register(&rt).unwrap();
+
+    let script = r#"
+        globalThis.executed = false;
+        queueMicrotask(() => {
+            globalThis.executed = true;
+        });
+    "#;
+    rt.execute_script(script).unwrap();
+
+    // Ainda não executou
+    assert_eq!(rt.execute_script("globalThis.executed").unwrap(), "false");
+
+    // Drena jobs (microtasks)
+    rt.run_pending();
+
+    // Agora deve ter executado
+    assert_eq!(rt.execute_script("globalThis.executed").unwrap(), "true");
+}
+
+#[tokio::test]
+async fn test_queue_microtask_order() {
+    let rt = JsRuntime::new().unwrap();
+    crate::runtime::bindings::webapi::timers::register(&rt).unwrap();
+
+    let script = r#"
+        globalThis.order = [];
+        setTimeout(() => {
+            globalThis.order.push("macrotask");
+        }, 0);
+        queueMicrotask(() => {
+            globalThis.order.push("microtask");
+        });
+        Promise.resolve().then(() => {
+            globalThis.order.push("promise");
+        });
+    "#;
+    rt.execute_script(script).unwrap();
+
+    // Microtasks (queueMicrotask e Promise) devem executar antes de macrotasks (setTimeout 0)
+    // Precisamos aguardar um pouco para o timer ser "engatado" no event loop se necessário, 
+    // mas run_pending processa microtasks primeiro.
+    
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    rt.run_pending();
+
+    let result = rt.execute_script("globalThis.order.join('|')").unwrap();
+    // A ordem deve ser microtask|promise|macrotask (ou promise|microtask|macrotask, ambas são válidas microtasks)
+    // mas microtask sempre antes de macrotask.
+    assert!(result.contains("microtask"));
+    assert!(result.contains("promise"));
+    assert!(result.contains("macrotask"));
+    
+    // Garantir que macrotask é o último
+    assert!(result.ends_with("macrotask"));
+}

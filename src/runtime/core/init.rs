@@ -79,6 +79,8 @@ pub fn init_sw_runtime(url: &str, origin: &str) -> Option<JsRuntime> {
         let _ = crate::runtime::bindings::webapi::indexeddb::register(&rt);
         let _ = crate::runtime::bindings::webapi::crypto::register(&rt);
         let _ = crate::runtime::bindings::webapi::url::register(&rt);
+        let _ = crate::runtime::bindings::webapi::text_encoding::register(&rt);
+        let _ = crate::runtime::bindings::webapi::structured_clone::register(&rt);
         
         // Circular global for ServiceWorkerGlobalScope
         rt.context.lock().unwrap().with(|ctx| {
@@ -151,6 +153,8 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::indexeddb::register(rt)?;
     crate::runtime::bindings::webapi::file_api::register(rt)?;
     crate::runtime::bindings::webapi::crypto::register(rt)?;
+    crate::runtime::bindings::webapi::text_encoding::register(rt)?;
+    crate::runtime::bindings::webapi::structured_clone::register(rt)?;
 
     // Service Worker, Cache, and Background Sync APIs (NEW)
     crate::runtime::bindings::webapi::cache::register_cache_storage(rt)?;
@@ -272,8 +276,10 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
         rquickjs::Class::<Event>::define(&global)?;
         
         // Register subclasses
-        use crate::runtime::bindings::html::event_subclasses::{MouseEvent, KeyboardEvent, MessageEvent};
+        use crate::runtime::bindings::html::event_subclasses::{MouseEvent, KeyboardEvent, MessageEvent, PointerEvent, TouchEvent};
         rquickjs::Class::<MouseEvent>::define(&global)?;
+        rquickjs::Class::<PointerEvent>::define(&global)?;
+        rquickjs::Class::<TouchEvent>::define(&global)?;
         rquickjs::Class::<KeyboardEvent>::define(&global)?;
         rquickjs::Class::<MessageEvent>::define(&global)?;
         
@@ -281,15 +287,21 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
         
         let event_ctor: rquickjs::Function = global.get("Event")?;
         let mouse_ctor: rquickjs::Function = global.get("MouseEvent")?;
+        let pointer_ctor: rquickjs::Function = global.get("PointerEvent")?;
+        let touch_ctor: rquickjs::Function = global.get("TouchEvent")?;
         let kbd_ctor: rquickjs::Function = global.get("KeyboardEvent")?;
         
         let event_proto: rquickjs::Object = event_ctor.get("prototype")?;
         let mouse_proto: rquickjs::Object = mouse_ctor.get("prototype")?;
+        let pointer_proto: rquickjs::Object = pointer_ctor.get("prototype")?;
+        let touch_proto: rquickjs::Object = touch_ctor.get("prototype")?;
         let kbd_proto: rquickjs::Object = kbd_ctor.get("prototype")?;
         let msg_ctor: rquickjs::Function = global.get("MessageEvent")?;
         let msg_proto: rquickjs::Object = msg_ctor.get("prototype")?;
         
         mouse_proto.set_prototype(Some(&event_proto))?;
+        pointer_proto.set_prototype(Some(&mouse_proto))?; // PointerEvent herda de MouseEvent (que herda de Event)
+        touch_proto.set_prototype(Some(&event_proto))?;
         kbd_proto.set_prototype(Some(&event_proto))?;
         msg_proto.set_prototype(Some(&event_proto))?;
         
