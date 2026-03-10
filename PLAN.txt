@@ -414,7 +414,7 @@
          ✅ Suporte a: primitivos, Date, RegExp, Map, Set, TypedArrays, Error, referências circulares
          ✅ Registrado em todos os ambientes (Page + Service Workers)
          ✅ Teste unitário exaustivo: test_structured_clone_full_suite (8 cenários) PASS
-  ********[ ]  queueMicrotask()
+  ****[ ]  queueMicrotask()
          → runtime/bindings/webapi/timers.rs
   [ ]  document.cookie (leitura/escrita de cookies via JS)
          ⚠️ Login não funciona em muitos sites sem isso.
