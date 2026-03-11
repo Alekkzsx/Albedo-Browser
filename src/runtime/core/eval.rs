@@ -3,6 +3,25 @@ use rquickjs::Value;
 
 pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
     println!("[JS] Executing script ({} bytes)...", code.len());
+
+    // AlbedoJIT Profiler Hook (Top-level script invocation)
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    code.hash(&mut hasher);
+    let script_id = albedo_jit::FunctionId(format!("script_{}", hasher.finish()));
+    rt.profiler.record_call(script_id.clone());
+    
+    // AlbedoJIT Bridge: Tenta rodar código nativo
+    rt.jit_bridge.compile_pending(&albedo_jit::BytecodeRegistry::new()); // Stub registry p/ teste
+    if let Some(ptr) = rt.jit_bridge.try_native(&script_id) {
+        println!("[JIT] Executando versão NATIVA acelerada para {:?}", script_id);
+        // SAFETY: Execução direta de função JIT sem argumentos (top-level script)
+        let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };
+        func();
+        return Ok("JIT_NATIVE_EXECUTION_SUCCESS".to_string());
+    }
+
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx| {
         match ctx.eval::<Value, _>(code) {
@@ -59,6 +78,18 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
 /// * `module_name` - Nome canônico do módulo (URL absoluta ou nome inline)
 pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult<String> {
     println!("[JS] Executing ES Module '{}' ({} bytes)...", module_name, code.len());
+
+    // AlbedoJIT Profiler Hook (Módulos usando o nome canônico)
+    let mod_id = albedo_jit::FunctionId(format!("module_{}", module_name));
+    rt.profiler.record_call(mod_id.clone());
+    
+    if let Some(ptr) = rt.jit_bridge.try_native(&mod_id) {
+        println!("[JIT] Executando versão NATIVA acelerada para módulo {:?}", mod_id);
+        let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };
+        func();
+        return Ok("JIT_NATIVE_MODULE_SUCCESS".to_string());
+    }
+
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx| {
         // Module::evaluate é o método estático que declara E avalia o módulo

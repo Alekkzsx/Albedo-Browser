@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "albedo-jit"]
+resolver = "2"
+
 [package]
 name = "albedo"
 version = "0.1.0"
@@ -23,6 +27,7 @@ selectors = "0.35.0"
 precomputed-hash = "0.1.1"
 url = "2.5"
 cosmic-text = "0.12.1"
+albedo-jit = { path = "albedo-jit" }
 resvg = "0.45.0"
 usvg = "0.45.0"
 tiny-skia = "0.11.4"
