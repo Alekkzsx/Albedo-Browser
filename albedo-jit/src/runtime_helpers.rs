@@ -9,6 +9,7 @@
 
 use crate::js_value::{JsValue, TAG_MASK};
 use crate::type_feedback::TypeFeedbackRegistry;
+use crate::builtins::{BuiltinId, call_builtin};
 use crate::object_model;
 
 // ---------------------------------------------------------------------------
@@ -149,12 +150,66 @@ pub extern "C" fn js_get_prop_ic(obj: u64, prop: u64, slot: u64) -> u64 {
     object_model::get_prop(o, p).0
 }
 
-/// Call com IC slot (stub no baseline atual).
+/// Call com IC slot (agora despacha builtins rápidos).
 #[no_mangle]
-pub extern "C" fn js_call_ic(func: u64, slot: u64) -> u64 {
+pub extern "C" fn js_call_ic(func: u64, args_ptr: u64, num_args: u64, slot: u64) -> u64 {
     let f = JsValue(func);
     TypeFeedbackRegistry::record_call(slot as u32, f);
+    if f.is_builtin() {
+        let id = f.as_builtin_id() as u32;
+        if let Some(bid) = builtin_from_id(id) {
+            let args = unsafe { std::slice::from_raw_parts(args_ptr as *const u64, num_args as usize) };
+            let vals: Vec<JsValue> = args.iter().map(|v| JsValue(*v)).collect();
+            return call_builtin(bid, &vals).0;
+        }
+    }
     JsValue::undefined().0
+}
+
+fn builtin_from_id(id: u32) -> Option<BuiltinId> {
+    use BuiltinId::*;
+    Some(match id {
+        x if x == MathAbs as u32 => MathAbs,
+        x if x == MathAcos as u32 => MathAcos,
+        x if x == MathAcosh as u32 => MathAcosh,
+        x if x == MathAsin as u32 => MathAsin,
+        x if x == MathAsinh as u32 => MathAsinh,
+        x if x == MathAtan as u32 => MathAtan,
+        x if x == MathAtan2 as u32 => MathAtan2,
+        x if x == MathAtanh as u32 => MathAtanh,
+        x if x == MathCbrt as u32 => MathCbrt,
+        x if x == MathCeil as u32 => MathCeil,
+        x if x == MathClz32 as u32 => MathClz32,
+        x if x == MathCos as u32 => MathCos,
+        x if x == MathCosh as u32 => MathCosh,
+        x if x == MathExp as u32 => MathExp,
+        x if x == MathExpm1 as u32 => MathExpm1,
+        x if x == MathFloor as u32 => MathFloor,
+        x if x == MathFround as u32 => MathFround,
+        x if x == MathHypot as u32 => MathHypot,
+        x if x == MathImul as u32 => MathImul,
+        x if x == MathLog as u32 => MathLog,
+        x if x == MathLog1p as u32 => MathLog1p,
+        x if x == MathLog10 as u32 => MathLog10,
+        x if x == MathLog2 as u32 => MathLog2,
+        x if x == MathMax as u32 => MathMax,
+        x if x == MathMin as u32 => MathMin,
+        x if x == MathPow as u32 => MathPow,
+        x if x == MathRandom as u32 => MathRandom,
+        x if x == MathRound as u32 => MathRound,
+        x if x == MathSign as u32 => MathSign,
+        x if x == MathSin as u32 => MathSin,
+        x if x == MathSinh as u32 => MathSinh,
+        x if x == MathSqrt as u32 => MathSqrt,
+        x if x == MathTan as u32 => MathTan,
+        x if x == MathTanh as u32 => MathTanh,
+        x if x == MathTrunc as u32 => MathTrunc,
+        x if x == ArrayPush as u32 => ArrayPush,
+        x if x == ArrayPop as u32 => ArrayPop,
+        x if x == StringCharAt as u32 => StringCharAt,
+        x if x == JsonParse as u32 => JsonParse,
+        _ => return None,
+    })
 }
 
 // ---------------------------------------------------------------------------

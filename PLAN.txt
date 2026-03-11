@@ -1316,11 +1316,11 @@
                gerar FADD (FPU add) direto, sem boxing
              → Se IC diz get_prop monomorphic (shape/hidden class conhecida):
                gerar load direto por offset de memória (elimina hash lookup)
-  [ ]  2.3  Hidden Classes / Shapes
+  [x]  2.3  Hidden Classes / Shapes
              → Cada objeto JS recebe um Shape ID (hash da estrutura {keys+order})
              → Transições de shape formam uma árvore (shape tree)
              → JIT usa shape para acesso O(1) a propriedades por offset
-  [ ]  2.4  Guards e Deoptimization v1
+  [x]  2.4  Guards e Deoptimization v1
              → Inserir type guards antes de código especializado
              → Se guard falhar em runtime: bailout → voltar para Tier 0
              → Safepoint map: para cada instrução JIT, saber onde estão os valores
