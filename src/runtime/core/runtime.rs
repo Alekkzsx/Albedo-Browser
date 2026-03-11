@@ -93,9 +93,13 @@ pub struct JsRuntime {
     #[qjs(skip_trace)]
     pub idb_worker: Arc<Mutex<crate::runtime::bindings::webapi::idb_service::worker::IDBServiceWorker>>,
     #[qjs(skip_trace)]
+    pub mql_registry: Arc<Mutex<Vec<crate::runtime::bindings::webapi::match_media::MqlEntry>>>,
+    #[qjs(skip_trace)]
     pub sw_manager: Arc<crate::runtime::core::service_worker::ServiceWorkerManager>,
     #[qjs(skip_trace)]
-    pub mql_registry: Arc<Mutex<Vec<crate::runtime::bindings::webapi::match_media::MqlEntry>>>,
+    pub profiler: Arc<albedo_jit::JitProfiler>,
+    #[qjs(skip_trace)]
+    pub jit_bridge: Arc<albedo_jit::JitBridge>,
 }
 
 use super::event_loop::EventLoop;
@@ -110,6 +114,9 @@ impl JsRuntime {
         
         let sw_db = Arc::new(crate::runtime::core::sw_db::ServiceWorkerDatabase::new(std::path::PathBuf::from("sw.db")).unwrap());
         let sw_manager = Arc::new(crate::runtime::core::service_worker::ServiceWorkerManager::new(sw_db));
+
+        let profiler = Arc::new(albedo_jit::JitProfiler::new(albedo_jit::ProfilerConfig::default()));
+        let jit_bridge = Arc::new(albedo_jit::JitBridge::new(Arc::clone(&profiler)).unwrap());
 
         let rt = Self {
             id: NEXT_RUNTIME_ID.fetch_add(1, Ordering::SeqCst),
@@ -139,8 +146,10 @@ impl JsRuntime {
             import_map: Arc::new(Mutex::new(None)),
             screen_size: Arc::new(Mutex::new((1920, 1080))), // Engine alimentará via winit/OS
             idb_worker: Arc::new(Mutex::new(idb_worker)),
-            sw_manager,
             mql_registry: Arc::new(Mutex::new(Vec::new())),
+            sw_manager,
+            profiler,
+            jit_bridge,
         };
 
         // Store self in userdata for access from within JS callbacks

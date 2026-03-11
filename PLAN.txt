@@ -880,7 +880,7 @@
   [ ]  WebExtensions API completa
   [ ]  Acessibilidade completa (screen readers, keyboard nav, ARIA)
   [ ]  Private browsing, Auto-update system, fingerprint protection
-  [ ]  JIT JavaScript (migrar para V8 ou SpiderMonkey se QuickJS insuficiente)
+  [ ]  AlbedoJIT — Motor JIT próprio em Rust puro (Cranelift backend) — ver seção dedicada
   [ ]  HTTPS-Only mode, Reader mode, Tab discarding / memory budget
   [ ]  CI/CD completo + fuzzing + benchmark regression
   [ ]  Telemetry opt-in + crash reporting
@@ -1116,6 +1116,403 @@
     gamepad.rs, web_share.rs, speech.rs, credentials.rs, event_source.rs, web_transport.rs
   → network/: privacy.rs, safe_browsing.rs
   → devtools/: inspector.rs, console.rs, network.rs, profiler.rs (diretório inteiro)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              🔥⚡  ALBEDO JIT — MOTOR JAVASCRIPT JIT EM RUST PURO  ⚡🔥
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  📅 Início Planejado       →  2026-Q2
+  🎯 Objetivo               →  Motor JS com JIT nativo que SUPERE o V8 em
+                                tempo de resposta (Time-to-Interactive) e rivalize
+                                em throughput computacional puro, mantendo uso de
+                                memória 5-10x menor que o V8.
+  🦀 Linguagem              →  100% Rust (zero C/C++)
+  🔧 Backend de Codegen     →  Cranelift (Bytecode Alliance)
+  📦 Crate                  →  albedo-jit (workspace member)
+  ⚡ Meta de Performance    →  ≥80% da velocidade do V8 TurboFan em benchmarks
+                                sintéticos (SunSpider, Octane, JetStream)
+                                ≥100% em Time-to-Interactive (startup + first frame)
+
+  ⚠️  NOTA ESTRATÉGICA:
+  O AlbedoJIT não substitui o QuickJS imediatamente. A arquitetura é HÍBRIDA:
+  QuickJS continua como interpretador Tier-0 (cold code), e o AlbedoJIT compila
+  hot paths para código de máquina nativo via Cranelift. Migração gradual.
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  📐  ARQUITETURA GERAL DO ALBEDOJIT                                              │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  O motor opera em 4 Tiers (camadas de execução), inspirado no pipeline do V8
+  (Ignition → Sparkplug → Maglev → TurboFan), mas otimizado para leveza:
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                                                                         │
+  │   JS Source Code                                                        │
+  │        │                                                                │
+  │        ▼                                                                │
+  │   ┌──────────────┐                                                      │
+  │   │  TIER 0      │  QuickJS Interpreter (existente)                     │
+  │   │  Interpretador│  → Executa bytecode QuickJS como hoje               │
+  │   │  (Cold Code)  │  → Profiler conta execuções por função              │
+  │   └──────┬───────┘  → Overhead: ZERO (já existe e funciona)             │
+  │          │                                                              │
+  │          │  Função chamada ≥50 vezes (threshold configurável)           │
+  │          ▼                                                              │
+  │   ┌──────────────┐                                                      │
+  │   │  TIER 1      │  Baseline JIT (compilação rápida, sem otimizações)   │
+  │   │  Baseline    │  → Traduz bytecode QuickJS → Cranelift IR → Nativo  │
+  │   │  Compiler    │  → Sem inlining, sem type specialization             │
+  │   └──────┬───────┘  → Compile time: <1ms por função                     │
+  │          │                                                              │
+  │          │  Função chamada ≥5.000 vezes + type profile estável          │
+  │          ▼                                                              │
+  │   ┌──────────────┐                                                      │
+  │   │  TIER 2      │  Optimizing JIT (compilação lenta, máxima speed)     │
+  │   │  AlbedoTurbo │  → Type speculation + Inline caching                 │
+  │   │  Compiler    │  → Function inlining + Loop unrolling               │
+  │   │              │  → Dead code elimination + Escape analysis           │
+  │   └──────┬───────┘  → Compile time: 5-50ms por função                   │
+  │          │                                                              │
+  │          │  Type guard falhou! (deoptimization trigger)                  │
+  │          ▼                                                              │
+  │   ┌──────────────┐                                                      │
+  │   │  BAILOUT     │  On-Stack Replacement (OSR)                          │
+  │   │  Deopt Path  │  → Reverte para Tier 0/1 sem crash                  │
+  │   │              │  → Invalida código nativo, marca função como         │
+  │   └──────────────┘    "megamorphic" (nunca mais otimiza agressivamente) │
+  │                                                                         │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🗂️  ESTRUTURA DE ARQUIVOS DO ALBEDOJIT                                         │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  src/jit/                              AlbedoJIT — Motor JIT em Rust
+  ├── mod.rs                            Entry point do módulo JIT
+  ├── bytecode/
+  │   ├── mod.rs                        Albedo Bytecode (AIR — Albedo IR)
+  │   ├── opcodes.rs                    Definição de todos os opcodes AIR
+  │   ├── decoder.rs                    QuickJS bytecode → AIR translator
+  │   └── builder.rs                    Builder API para construir AIR
+  │
+  ├── profiler/
+  │   ├── mod.rs                        Profiler principal
+  │   ├── counter.rs                    Contadores de execução por função
+  │   ├── type_feedback.rs              Type feedback collector (IC slots)
+  │   ├── heuristics.rs                 Heurísticas de tiering (quando compilar)
+  │   └── inline_cache.rs              Inline Caching (monomorphic/polymorphic)
+  │
+  ├── baseline/
+  │   ├── mod.rs                        Tier 1 — Baseline Compiler
+  │   ├── lowering.rs                   AIR → Cranelift IR (tradução direta)
+  │   └── codegen.rs                    Cranelift IR → código de máquina nativo
+  │
+  ├── optimizing/
+  │   ├── mod.rs                        Tier 2 — AlbedoTurbo Compiler
+  │   ├── ir.rs                         Sea-of-Nodes IR (grafo de dependências)
+  │   ├── type_specialize.rs            Type specialization (int32/float64/string)
+  │   ├── inlining.rs                   Function inlining + call site analysis
+  │   ├── loop_opts.rs                  Loop invariant code motion + unrolling
+  │   ├── escape_analysis.rs            Escape analysis (stack allocation)
+  │   ├── dead_code.rs                  Dead code elimination + constant folding
+  │   ├── range_analysis.rs             Integer range analysis (bounds check elim)
+  │   ├── scheduler.rs                  Instruction scheduling para pipelines CPU
+  │   └── codegen.rs                    Cranelift IR otimizado → nativo
+  │
+  ├── runtime/
+  │   ├── mod.rs                        Runtime support do JIT
+  │   ├── trampolines.rs               Entry/exit stubs (JS ↔ JIT ↔ Rust)
+  │   ├── osr.rs                        On-Stack Replacement (tier-up em loops)
+  │   ├── deopt.rs                      Deoptimization (bailout para interpretador)
+  │   ├── code_cache.rs                 Cache de código compilado em memória
+  │   └── memory.rs                     mmap/VirtualAlloc para código executável
+  │
+  ├── gc/
+  │   ├── mod.rs                        Garbage Collector geracional
+  │   ├── heap.rs                       Heap segmentada (Young Gen + Old Gen)
+  │   ├── young_gen.rs                  Semi-space copying collector (nursery)
+  │   ├── old_gen.rs                    Mark-Compact collector (tenured)
+  │   ├── write_barrier.rs              Write barriers para referências inter-gen
+  │   ├── roots.rs                      Root scanning (stack + globals)
+  │   ├── safepoints.rs                 Safepoints para pausa de GC no JIT code
+  │   └── concurrent.rs                 GC concorrente (marking em background)
+  │
+  ├── builtins/
+  │   ├── mod.rs                        Builtins otimizados em Rust nativo
+  │   ├── array.rs                      Array.map/filter/reduce/forEach em Rust
+  │   ├── string.rs                     String.split/replace/match em Rust
+  │   ├── math.rs                       Math.* (chamadas diretas à CPU via intrinsics)
+  │   ├── json.rs                       JSON.parse/stringify (simd-json backend)
+  │   ├── regexp.rs                     RegExp engine (crate regex em Rust)
+  │   └── promise.rs                    Promise resolution em Rust nativo
+  │
+  ├── bridge/
+  │   ├── mod.rs                        Ponte QuickJS ↔ AlbedoJIT
+  │   ├── quickjs_intercept.rs          Hook no dispatch loop do QuickJS
+  │   ├── value_marshal.rs              Conversão JSValue (QuickJS) ↔ JitValue
+  │   └── dom_fast_path.rs              Fast path: DOM ops sem cruzar FFI
+  │
+  └── tests/
+      ├── baseline_tests.rs             Testes do Tier 1
+      ├── optimizing_tests.rs           Testes do Tier 2
+      ├── deopt_tests.rs                Testes de deoptimization
+      ├── gc_tests.rs                   Testes do Garbage Collector
+      ├── benchmark_suite.rs            SunSpider/Octane/JetStream micro-benchmarks
+      └── conformance_tests.rs          Test262 (ECMAScript conformance)
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  📋  ROADMAP DE IMPLEMENTAÇÃO DO ALBEDOJIT                                       │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+─── FASE JIT-1: FUNDAÇÃO (Meses 1-3) ─────────────────────────────────────────────
+
+  Objetivo: Profiler funcional + Baseline JIT compilando funções triviais.
+
+  [x]  1.1  Criar workspace member `albedo-jit` no Cargo.toml
+             → Dependências: cranelift-codegen, cranelift-frontend, cranelift-module,
+               cranelift-jit, target-lexicon
+  [x]  1.2  Definir Albedo IR (AIR) — bytecode intermediário
+             → Opcodes tipados: LoadInt32, LoadFloat64, LoadString, LoadUndefined,
+               LoadNull, LoadBool, Add, Sub, Mul, Div, Mod, Cmp, Jump, JumpIf,
+               Call, Return, GetProp, SetProp, GetElem, SetElem, CreateObj,
+               CreateArray, TypeOf, InstanceOf, ToNumber, ToString, ToBool
+  [x]  1.3  Decoder: QuickJS bytecode → AIR
+             → Mapear cada opcode do QuickJS (OP_push_i32, OP_add, OP_get_field,
+               OP_call, etc.) para o equivalente AIR
+             → Manter mapeamento 1:1 de source maps para debug
+  [x]  1.4  Profiler v1 — contadores de execução
+             → Instrumentar o dispatch loop do QuickJS (JS_CallInternal)
+             → HashMap<FunctionId, ExecutionCounter> thread-safe
+             → Threshold: 50 chamadas → marcar para Tier 1
+  [x]  1.5  Baseline Compiler v1 — AIR → Cranelift IR → x86-64/ARM64
+             → Tradução 1:1 sem otimizações
+             → Todas as operações tratadas como "any type" (boxed values)
+             → Gerar trampolines de entrada/saída (calling convention Rust ↔ JIT)
+  [x]  1.6  Runtime: mmap/VirtualAlloc para alocar memória executável (RWX → RX)
+             → Windows: VirtualAlloc + VirtualProtect
+             → Linux: mmap + mprotect
+  [x]  1.7  Code Cache v1 — armazenar código compilado por FunctionId
+             → Evitar recompilação desnecessária
+  [x]  1.8  Ponte QuickJS → JIT: quando profiler marca função como hot,
+             redirecionar próxima chamada para código nativo compilado
+  [x]  1.9  Testes: compile + execute funções puras (fibonacci, factorial, soma)
+             → Comparar resultado QuickJS vs JIT — devem ser idênticos
+
+  Entregável: Albedo rodando com JIT transparente. Funções hot compilam
+  automaticamente. Speedup estimado: 3-5x sobre QuickJS puro.
+
+─── FASE JIT-2: TYPE SPECIALIZATION (Meses 4-6) ──────────────────────────────────
+
+  Objetivo: Type feedback + Tier 2 com especialização de tipos.
+
+  [x]  2.1  Type Feedback Collector
+             → Inline Cache (IC) slots em cada operação (add, get_prop, call)
+             → Registrar tipos observados: int32, float64, string, object, array
+             → Estados: uninitialized → monomorphic → polymorphic → megamorphic
+  [x]  2.2  Type Specialization no Tier 2
+             → Se IC diz add(int32, int32) 100% do tempo:
+               gerar instrução nativa IADD (CPU integer add) + overflow guard
+             → Se IC diz add(float64, float64):
+               gerar FADD (FPU add) direto, sem boxing
+             → Se IC diz get_prop monomorphic (shape/hidden class conhecida):
+               gerar load direto por offset de memória (elimina hash lookup)
+  [ ]  2.3  Hidden Classes / Shapes
+             → Cada objeto JS recebe um Shape ID (hash da estrutura {keys+order})
+             → Transições de shape formam uma árvore (shape tree)
+             → JIT usa shape para acesso O(1) a propriedades por offset
+  [ ]  2.4  Guards e Deoptimization v1
+             → Inserir type guards antes de código especializado
+             → Se guard falhar em runtime: bailout → voltar para Tier 0
+             → Safepoint map: para cada instrução JIT, saber onde estão os valores
+               no stack frame para reconstruir o frame do interpretador
+  [ ]  2.5  On-Stack Replacement (OSR) — tier-up dentro de loops
+             → Se um loop longo está rodando no Tier 0, compilar o loop body
+               para Tier 2 e transferir a execução mid-loop para código nativo
+  [ ]  2.6  Builtins rápidos: Math.*, Array.push/pop, String.charAt, JSON.parse
+             → Implementar em Rust puro com chamada direta (sem passa pelo JS)
+  [ ]  2.7  Testes: type specialization correctness
+             → Testar deopt: função que muda tipos no meio da execução
+             → Benchmark: Fibonacci, N-Body, Richards, DeltaBlue
+
+  Entregável: Hot paths com tipos estáveis rodam em velocidade próxima a C/Rust.
+  Speedup estimado: 15-30x sobre QuickJS puro. ~60-70% do V8.
+
+─── FASE JIT-3: OTIMIZAÇÕES AVANÇADAS (Meses 7-10) ───────────────────────────────
+
+  Objetivo: Alcançar/superar performance do V8 em benchmarks.
+
+  [ ]  3.1  Function Inlining
+             → Inline funções pequenas (≤50 AIR ops) em call sites monomorphic
+             → Inlining budget: máximo 3 níveis de profundidade por default
+  [ ]  3.2  Loop Optimizations
+             → Loop Invariant Code Motion (LICM): mover computações constantes
+               para fora do loop
+             → Loop Unrolling: desenrolar loops pequenos (≤8 iterações)
+             → Strength Reduction: multiplicação → shift quando possível
+  [ ]  3.3  Escape Analysis
+             → Objetos que não escapam da função → alocar no stack (não no heap)
+             → Scalar Replacement: substituir objeto por variáveis individuais
+             → Elimina pressão no GC para objetos temporários
+  [ ]  3.4  Dead Code Elimination + Constant Folding
+             → Remover código inalcançável após inlining
+             → Avaliar expressões constantes em compile time
+  [ ]  3.5  Range Analysis e Bounds Check Elimination
+             → Provar que índices de array estão sempre em bounds
+             → Eliminar verificações de bounds em loops numéricos
+  [ ]  3.6  Allocation Sinking
+             → Postergar alocações de objetos até o ponto onde são necessários
+             → Eliminar alocações em branches não tomados
+  [ ]  3.7  SIMD Auto-vectorization (via Cranelift)
+             → Array.map com operações numéricas → SSE/AVX em x86, NEON em ARM
+  [ ]  3.8  RegExp JIT
+             → Compilar expressões regulares diretamente para código de máquina
+             → Usar o crate `regex` do Rust como backend (já é otimizado com SIMD)
+
+  Entregável: Performance competitiva com V8 TurboFan em benchmarks padrão.
+  Speedup estimado: 50-100x sobre QuickJS. ~80-100% do V8.
+
+─── FASE JIT-4: GARBAGE COLLECTOR (Meses 8-12, paralelo à Fase 3) ────────────────
+
+  Objetivo: GC geracional concorrente que não cause pausas visíveis (< 1ms).
+
+  [ ]  4.1  Heap Layout
+             → Young Generation (Nursery): 4-8 MB, semi-space copying
+             → Old Generation (Tenured): Mark-Compact, crescimento dinâmico
+             → Large Object Space: objetos >8KB direto no Old Gen
+  [ ]  4.2  Young Gen — Semi-Space Copying Collector
+             → Dois semi-spaces: from-space e to-space
+             → Alocação: bump pointer (ultra rápido, 1 instrução)
+             → Collection: copiar sobreviventes de from→to, swap spaces
+             → Promoção: objetos que sobrevivem N coletas → Old Gen
+  [ ]  4.3  Old Gen — Mark-Compact Collector
+             → Tri-color marking (white/gray/black) para GC incremental
+             → Compactação para eliminar fragmentação
+             → Pode rodar em background thread (concurrent marking)
+  [ ]  4.4  Write Barriers
+             → Inserir barriers no código JIT: quando Old Gen aponta para Young Gen
+             → Remembered Set: lista de ponteiros inter-geracionais
+  [ ]  4.5  Safepoints no JIT Code
+             → Cada ponto de GC no código nativo deve ter metadata:
+               "quais registradores contêm ponteiros para o heap?"
+             → Stack maps gerados pelo Cranelift
+  [ ]  4.6  GC Concorrente
+             → Marking phase em thread separada (concurrent marking)
+             → Sweep/compact em pausas incrementais (≤1ms cada)
+             → Write barrier Dijkstra-style para manter invariantes
+  [ ]  4.7  GC Handshake com o QuickJS
+             → QuickJS tem seu próprio GC (reference counting + cycle detector)
+             → Bridge: quando JIT object é passado para QuickJS, criar ref handle
+             → Quando QuickJS object entra no JIT heap, criar weak reference
+
+  Entregável: GC que permite zero jank visual (sem pausas >1ms durante animação).
+
+─── FASE JIT-5: DOM FAST PATH (Meses 11-14) ──────────────────────────────────────
+
+  Objetivo: Integração JIT ↔ AceDOM sem overhead de FFI.
+
+  [ ]  5.1  DOM Fast Path — acesso direto ao AceDOM sem cruzar ponte FFI
+             → getElementById/querySelector: hash lookup direto no DomTree Rust
+             → setAttribute/textContent: write direto na memória do DOM node
+             → Elimina: JS → QuickJS → FFI → Rust (4 hops) → vira JS JIT → Rust (1 hop)
+  [ ]  5.2  Layout Invalidation Tracking no JIT
+             → JIT sabe quais nós DOM foram modificados → dirty flags automáticos
+             → Batch DOM writes: acumular modificações, aplicar antes do próximo frame
+  [ ]  5.3  Event Dispatch Otimizado
+             → Event listeners compilados pelo JIT → dispatch direto sem interpretador
+             → Inline listener code em hot paths (ex: scroll handlers)
+  [ ]  5.4  Style Recalc Fast Path
+             → Se JIT muda className/style → recalcular apenas subárvore afetada
+             → Integração direta com o Stylesheet cache (style_sharing_cache)
+
+  Entregável: Manipulação de DOM mais rápida que QUALQUER outro browser,
+  porque não há barreira de linguagem (Rust JIT → Rust DOM = mesma memória).
+  ESTA É A VANTAGEM COMPETITIVA QUE O V8/BLINK NUNCA TERÃO.
+
+─── FASE JIT-6: POLIMENTO E PRODUÇÃO (Meses 13-18) ───────────────────────────────
+
+  [ ]  6.1  Warmup Strategy — pré-compilar frameworks conhecidos
+             → React, Vue, Angular core: compilar na instalação do Albedo
+             → Cache de JIT code em disco (serializar código nativo + metadata)
+  [ ]  6.2  Wasm Integration — rodar WebAssembly no mesmo Cranelift backend
+             → Reusar infra de codegen para Wasm (elimina duplicação)
+             → JS ↔ Wasm interop sem cópias de memória
+  [ ]  6.3  Profiling Tools
+             → Flamegraphs nativos do JIT (quais funções estão compiladas/interpretadas)
+             → Métricas: compile time, deopt count, IC hit rate, GC pause times
+  [ ]  6.4  Test262 Conformance — suíte oficial de testes do ECMAScript
+             → Rodar e passar ≥95% dos testes relevantes
+  [ ]  6.5  Fuzzing com cargo-fuzz
+             → Fuzz do decoder (bytecode malformado)
+             → Fuzz das otimizações (deopt correctness)
+             → Fuzz do GC (heap corruption detection)
+  [ ]  6.6  Security Hardening
+             → W^X enforcement (código compilado: Write XOR Execute)
+             → Stack canaries no código JIT
+             → Control-Flow Integrity (CFI) nos trampolines
+             → Guard pages entre code regions
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  📊  MÉTRICAS TARGET DO ALBEDOJIT                                                │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────┬────────────┬────────────┬────────────┬───────────┐
+  │ Benchmark                  │ QuickJS    │ Fase JIT-2 │ Fase JIT-3 │ V8 (ref)  │
+  ├────────────────────────────┼────────────┼────────────┼────────────┼───────────┤
+  │ Fibonacci(40) recursivo    │ ~3500ms    │ ~200ms     │ ~80ms      │ ~60ms     │
+  │ SunSpider (total)          │ ~8000ms    │ ~800ms     │ ~300ms     │ ~200ms    │
+  │ Richards                   │ ~2000ms    │ ~150ms     │ ~50ms      │ ~35ms     │
+  │ DeltaBlue                  │ ~3000ms    │ ~200ms     │ ~60ms      │ ~40ms     │
+  │ N-Body simulation          │ ~5000ms    │ ~400ms     │ ~120ms     │ ~90ms     │
+  │ React re-render 10k nodes  │ ~4000ms    │ ~500ms     │ ~150ms     │ ~100ms    │
+  ├────────────────────────────┼────────────┼────────────┼────────────┼───────────┤
+  │ Startup (cold)             │ ~5ms  ✅   │ ~8ms       │ ~10ms      │ ~80ms     │
+  │ RAM por aba (idle)         │ ~3MB  ✅   │ ~8MB       │ ~12MB      │ ~50-80MB  │
+  │ Tamanho do binário         │ +0.5MB ✅  │ +3MB       │ +5MB       │ +30MB     │
+  └────────────────────────────┴────────────┴────────────┴────────────┴───────────┘
+
+  → Meta: Ser ≤1.5x mais lento que V8 em throughput COM 5-10x menos RAM.
+  → Meta: Ser ≥2x mais rápido que V8 em startup (cold start) e Time-to-First-Frame.
+  → Meta: DOM manipulation mais rápido que V8 (vantagem Rust → Rust sem FFI).
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  🔧  DEPENDÊNCIAS DO ALBEDOJIT (Cargo.toml)                                     │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  [dependencies]
+  cranelift-codegen    = "0.113"    # Geração de código de máquina
+  cranelift-frontend   = "0.113"    # API de alto nível para construir IR
+  cranelift-module     = "0.113"    # Módulos de código compilado
+  cranelift-jit        = "0.113"    # JIT backend (mmap + link em memória)
+  cranelift-native     = "0.113"    # Autodetect ISA (x86-64 / ARM64)
+  target-lexicon       = "0.13"     # Target triple parsing
+  memmap2              = "0.9"      # mmap cross-platform
+  parking_lot          = "0.12"     # Mutex/RwLock rápidos para code cache
+  hashbrown            = "0.15"     # HashMap otimizado para IC/shapes
+
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  ⏱️  ESTIMATIVA DE ESFORÇO DO ALBEDOJIT                                          │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+  Fase JIT-1 (Fundação)              →    800 - 1.200h   (~3 meses, 1 dev)
+  Fase JIT-2 (Type Specialization)   →  1.000 - 1.500h   (~3 meses, 1 dev)
+  Fase JIT-3 (Otimizações Avançadas) →  1.500 - 2.500h   (~4 meses, 1 dev)
+  Fase JIT-4 (Garbage Collector)     →  1.200 - 2.000h   (~4 meses, 1 dev)
+  Fase JIT-5 (DOM Fast Path)         →    800 - 1.200h   (~3 meses, 1 dev)
+  Fase JIT-6 (Polimento/Produção)    →    500 - 1.000h   (~2 meses, 1 dev)
+  ──────────────────────────────────────────────────────────────────────────
+  TOTAL AlbedoJIT:                   →  5.800 - 9.400h   (~15-18 meses, 1 dev)
+
+  Com equipe de 2 devs JIT:   ~8-10 meses
+  Com equipe de 3 devs JIT:   ~6-8 meses
+
+  LOC estimado: ~25.000 - 40.000 linhas de Rust puro.
+
+  Referências de escala:
+  → V8 TurboFan: ~500.000 LOC C++ (15+ anos, 50+ engenheiros)
+  → SpiderMonkey: ~400.000 LOC C++/Rust
+  → JavaScriptCore (Safari): ~300.000 LOC C++
+  → HermeJS (Meta/React Native): ~80.000 LOC C++ (JIT recente)
+  → AlbedoJIT target: ~30.000 LOC Rust (Cranelift faz o trabalho pesado)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                           💡  PRINCÍPIOS DO PROJETO

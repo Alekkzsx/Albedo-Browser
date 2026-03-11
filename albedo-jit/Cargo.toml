@@ -1,0 +1,27 @@
+[package]
+name = "albedo-jit"
+version = "0.1.0"
+edition = "2021"
+authors = ["AlbedoUser"]
+description = "AlbedoJIT — Motor JavaScript JIT em Rust puro (Cranelift backend)"
+
+[dependencies]
+cranelift-codegen  = "0.129.1"
+cranelift-frontend = "0.129.1"
+cranelift-module   = "0.129.1"
+cranelift-jit      = "0.129.1"
+cranelift-native   = "0.129.1"
+target-lexicon     = "0.13.5"
+parking_lot        = "0.12"
+hashbrown          = "0.15"
+thiserror          = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Memory",
+    "Win32_Foundation",
+    "Win32_System_SystemInformation",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
