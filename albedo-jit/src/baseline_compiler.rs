@@ -8,7 +8,7 @@
 //! de 64 bits implícitos através de chamadas C nativas (runtime helpers).
 
 use cranelift_codegen::ir::types::I64;
-use cranelift_codegen::ir::{AbiParam, InstBuilder, Type as ClType};
+use cranelift_codegen::ir::{AbiParam, InstBuilder, StackSlotData, StackSlotKind, Type as ClType};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
@@ -79,7 +79,7 @@ impl<'a> BaselineCompiler<'a> {
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_lt", 2, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_to_bool", 1, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_get_prop_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_call_ic", 2, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_call_ic", 4, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_obj", 0, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_array", 0, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_set_prop", 3, &mut ext_funcs)?;
@@ -211,11 +211,29 @@ impl<'a> BaselineCompiler<'a> {
                         let func_ref = *ext_funcs.get("js_set_prop").unwrap();
                         let _call = builder.ins().call(func_ref, &[o, p, v]);
                     }
-                    AirOpcode::Call { dst, func, arg_start: _, num_args: _, ic_slot } => {
+                    AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
                         let f = builder.use_var(vars[func.0 as usize]);
-                        let slot = builder.ins().iconst(I64, *ic_slot as i64);
+                        let args_ptr = if *num_args == 0 {
+                            builder.ins().iconst(I64, 0)
+                        } else {
+                            let size = (*num_args as u32) * 8;
+                            let slot = builder.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                size,
+                                8,
+                            ));
+                            for i in 0..*num_args {
+                                let reg = crate::bytecode::AirReg(arg_start.0 + i);
+                                let val = builder.use_var(vars[reg.0 as usize]);
+                                let offset = (i * 8) as i32;
+                                builder.ins().stack_store(val, slot, offset);
+                            }
+                            builder.ins().stack_addr(I64, slot, 0)
+                        };
+                        let num_args_val = builder.ins().iconst(I64, *num_args as i64);
+                        let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
                         let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[f, slot]);
+                        let call = builder.ins().call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }

@@ -250,6 +250,16 @@ impl AlbedoJitEngine {
         self.code_cache.len()
     }
 
+    pub fn finalize_definitions(&mut self) -> Result<(), JitError> {
+        self.module
+            .finalize_definitions()
+            .map_err(|e| JitError::Compilation(e.to_string()))
+    }
+
+    pub fn get_finalized_function(&self, id: FuncId) -> *const u8 {
+        self.module.get_finalized_function(id)
+    }
+
     /// Aloca uma nova região de memória executável no pool do engine.
     /// Útil para trampolines, stubs e código gerado manualmente.
     pub fn allocate_code_region(&self, size: usize) -> Result<*const u8, JitError> {

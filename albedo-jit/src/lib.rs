@@ -26,6 +26,7 @@ pub mod tier2_compiler;
 pub mod jit_bridge;
 pub mod air_interpreter;
 pub mod deopt;
+pub mod builtins;
 
 // Re-exports públicos
 pub use bytecode::{AirBuilder, AirFunction, AirOpcode};#[cfg(test)]
@@ -40,3 +41,4 @@ pub use executable_memory::{CodePool, CodeRegion, CodePoolStats};
 pub use code_cache::{CodeCache, CachedCode, CacheStatsSnapshot, JitTier};
 pub use jit_bridge::{JitBridge, BytecodeRegistry, JitBridgeStats};
 pub use deopt::{DeoptMeta, DeoptPoint};
+pub use builtins::{BuiltinId};
