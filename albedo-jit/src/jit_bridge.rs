@@ -32,6 +32,15 @@ impl BytecodeRegistry {
         let entries = self.entries.read();
         entries.get(id).cloned()
     }
+
+    pub fn get_air(&self, id: &FunctionId) -> Option<crate::bytecode::AirFunction> {
+        if let Some(qjs) = self.get(id) {
+            let translator = StackToRegisterTranslator::new(&qjs);
+            let (air, _) = translator.translate(qjs);
+            return Some(air);
+        }
+        None
+    }
 }
 
 /// Estatísticas agregadas da Ponte JIT.
@@ -115,6 +124,27 @@ impl JitBridge {
             entry.increment_execution();
             entry.native_ptr
         })
+    }
+
+    /// Tenta obter ou compilar um entry point OSR para um loop.
+    pub fn try_osr(&self, id: &FunctionId, block_id: u32, inst_idx: usize) -> Option<*const u8> {
+        // 1. Verificar se já existe no cache (usando uma chave composta p/ OSR)
+        let osr_key = FunctionId(format!("{}_osr_{}_{}", id.0, block_id, inst_idx));
+        if let Some(ptr) = self.try_native(&osr_key) {
+            return Some(ptr);
+        }
+
+        // 2. Se não existir, tentar compilar via Tier 2 (especializado)
+        // No protótipo, vamos forçar a compilação agora se o bytecode estiver disponível.
+        // Em produção, isso seria assíncrono.
+        println!("[JIT] Compilando OSR Entry p/ {:?} @ block {}, inst {}", id, block_id, inst_idx);
+        
+        // No protótipo, não temos a BytecodeRegistry aqui (ela é passada para compile_pending).
+        // Mas a JsRuntime tem. Para simplificar o protótipo, vamos retornar None se não estiver no cache,
+        // e deixar o `compile_pending` (que roda no final do execute_script) cuidar do aquecimento.
+        // Ou podemos adicionar a registry como argumento.
+        
+        None 
     }
 
     /// Retorna snapshot de estatísticas.

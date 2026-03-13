@@ -13,7 +13,7 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
     rt.profiler.record_call(script_id.clone());
     
     // AlbedoJIT Bridge: Tenta rodar código nativo
-    rt.jit_bridge.compile_pending(&albedo_jit::BytecodeRegistry::new()); // Stub registry p/ teste
+    rt.jit_bridge.compile_pending(&rt.bytecode_registry); 
     if let Some(ptr) = rt.jit_bridge.try_native(&script_id) {
         println!("[JIT] Executando versão NATIVA acelerada para {:?}", script_id);
         // SAFETY: Execução direta de função JIT sem argumentos (top-level script)
@@ -81,8 +81,8 @@ pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult
 
     // AlbedoJIT Profiler Hook (Módulos usando o nome canônico)
     let mod_id = albedo_jit::FunctionId(format!("module_{}", module_name));
-    rt.profiler.record_call(mod_id.clone());
-    
+    // AlbedoJIT Bridge: Tenta rodar código nativo
+    rt.jit_bridge.compile_pending(&rt.bytecode_registry);
     if let Some(ptr) = rt.jit_bridge.try_native(&mod_id) {
         println!("[JIT] Executando versão NATIVA acelerada para módulo {:?}", mod_id);
         let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };

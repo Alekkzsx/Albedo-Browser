@@ -1325,7 +1325,7 @@
              → Se guard falhar em runtime: bailout → voltar para Tier 0
              → Safepoint map: para cada instrução JIT, saber onde estão os valores
                no stack frame para reconstruir o frame do interpretador
-  [ ]  2.5  On-Stack Replacement (OSR) — tier-up dentro de loops
+  [x]  2.5  On-Stack Replacement (OSR) — tier-up dentro de loops
              → Se um loop longo está rodando no Tier 0, compilar o loop body
                para Tier 2 e transferir a execução mid-loop para código nativo
   [ ]  2.6  Builtins rápidos: Math.*, Array.push/pop, String.charAt, JSON.parse

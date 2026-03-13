@@ -100,6 +100,10 @@ pub struct JsRuntime {
     pub profiler: Arc<albedo_jit::JitProfiler>,
     #[qjs(skip_trace)]
     pub jit_bridge: Arc<albedo_jit::JitBridge>,
+    #[qjs(skip_trace)]
+    pub bytecode_registry: Arc<albedo_jit::BytecodeRegistry>,
+    #[qjs(skip_trace)]
+    pub interceptor: Arc<crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor>,
 }
 
 use super::event_loop::EventLoop;
@@ -117,6 +121,12 @@ impl JsRuntime {
 
         let profiler = Arc::new(albedo_jit::JitProfiler::new(albedo_jit::ProfilerConfig::default()));
         let jit_bridge = Arc::new(albedo_jit::JitBridge::new(Arc::clone(&profiler)).unwrap());
+        let bytecode_registry = Arc::new(albedo_jit::BytecodeRegistry::new());
+        let interceptor = Arc::new(crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor::new(
+            Arc::clone(&jit_bridge),
+            Arc::clone(&profiler),
+            Arc::clone(&bytecode_registry),
+        ));
 
         let rt = Self {
             id: NEXT_RUNTIME_ID.fetch_add(1, Ordering::SeqCst),
@@ -150,7 +160,18 @@ impl JsRuntime {
             sw_manager,
             profiler,
             jit_bridge,
+            bytecode_registry,
+            interceptor,
         };
+
+        // Configure OSR Interrupt Handler
+        {
+            let interceptor_clone: Arc<crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor> = Arc::clone(&rt.interceptor);
+            let runtime = rt.runtime.lock().unwrap();
+            runtime.set_interrupt_handler(Some(Box::new(move || {
+                interceptor_clone.handle_interrupt_no_ctx()
+            })));
+        }
 
         // Store self in userdata for access from within JS callbacks
         // Note: set_userdata was removed from rquickjs API
