@@ -9,7 +9,7 @@ use crate::runtime_helpers;
 use crate::builtins::{BuiltinId, call_builtin};
 use crate::tier2_compiler::Tier2Compiler;
 use crate::jit_engine::AlbedoJitEngine;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct AirInterpreter;
 
@@ -40,9 +40,25 @@ impl AirInterpreter {
     ) -> JsValue {
         let mut block_idx = find_block_index(air, start_block_id);
         let mut inst_idx = start_inst;
+        let loop_headers = if osr.is_some() {
+            compute_loop_headers(air)
+        } else {
+            HashSet::new()
+        };
 
         loop {
             let block = &air.blocks[block_idx];
+            if let Some(osr_ctx) = osr.as_deref_mut() {
+                if loop_headers.contains(&block.id.0) {
+                    if osr_ctx.bump(air, block.id.0) {
+                        let spill: Vec<u64> = regs.iter().map(|v| v.0).collect();
+                        let ptr = osr_ctx.get_or_compile(air, block.id.0, 0);
+                        let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+                        let res = func(spill.as_ptr() as u64);
+                        return JsValue(res);
+                    }
+                }
+            }
             let mut i = inst_idx;
             while i < block.insts.len() {
                 match &block.insts[i] {
@@ -138,17 +154,6 @@ impl AirInterpreter {
                 }
                 Some(AirTerminator::Jump(target)) => {
                     let target_idx = find_block_index(air, target.0);
-                    if let Some(osr_ctx) = osr.as_deref_mut() {
-                        if target_idx <= block_idx {
-                            if osr_ctx.bump(air, target.0) {
-                                let spill: Vec<u64> = regs.iter().map(|v| v.0).collect();
-                                let ptr = osr_ctx.get_or_compile(air, target.0, 0);
-                                let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-                                let res = func(spill.as_ptr() as u64);
-                                return JsValue(res);
-                            }
-                        }
-                    }
                     block_idx = target_idx;
                     inst_idx = 0;
                 }
@@ -157,17 +162,6 @@ impl AirInterpreter {
                     let b = JsValue(runtime_helpers::js_to_bool(cv.0)).as_bool();
                     let next = if b { then_blk.0 } else { else_blk.0 };
                     let target_idx = find_block_index(air, next);
-                    if let Some(osr_ctx) = osr.as_deref_mut() {
-                        if target_idx <= block_idx {
-                            if osr_ctx.bump(air, next) {
-                                let spill: Vec<u64> = regs.iter().map(|v| v.0).collect();
-                                let ptr = osr_ctx.get_or_compile(air, next, 0);
-                                let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-                                let res = func(spill.as_ptr() as u64);
-                                return JsValue(res);
-                            }
-                        }
-                    }
                     block_idx = target_idx;
                     inst_idx = 0;
                 }
@@ -184,6 +178,43 @@ fn find_block_index(air: &AirFunction, id: u32) -> usize {
         .iter()
         .position(|b| b.id.0 == id)
         .unwrap_or(0)
+}
+
+fn compute_loop_headers(air: &AirFunction) -> HashSet<u32> {
+    let mut headers = HashSet::new();
+    let mut index_map: HashMap<u32, usize> = HashMap::new();
+    for (idx, block) in air.blocks.iter().enumerate() {
+        index_map.insert(block.id.0, idx);
+    }
+
+    for (from_idx, block) in air.blocks.iter().enumerate() {
+        if let Some(term) = &block.terminator {
+            match term {
+                AirTerminator::Jump(target) => {
+                    if let Some(&to_idx) = index_map.get(&target.0) {
+                        if to_idx <= from_idx {
+                            headers.insert(target.0);
+                        }
+                    }
+                }
+                AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                    if let Some(&to_idx) = index_map.get(&then_blk.0) {
+                        if to_idx <= from_idx {
+                            headers.insert(then_blk.0);
+                        }
+                    }
+                    if let Some(&to_idx) = index_map.get(&else_blk.0) {
+                        if to_idx <= from_idx {
+                            headers.insert(else_blk.0);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    headers
 }
 
 fn builtin_from_id(id: u32) -> Option<BuiltinId> {
@@ -236,7 +267,7 @@ pub struct OsrManager {
     engine: AlbedoJitEngine,
     threshold: u32,
     counters: HashMap<(String, u32), u32>,
-    cache: HashMap<(String, u32), *const u8>,
+    cache: HashMap<(String, u32, usize), *const u8>,
 }
 
 impl OsrManager {
@@ -253,11 +284,11 @@ impl OsrManager {
         let key = (air.name.clone(), block_id);
         let count = self.counters.entry(key).or_insert(0);
         *count += 1;
-        *count >= self.threshold
+        *count == self.threshold
     }
 
     pub fn get_or_compile(&mut self, air: &AirFunction, block_id: u32, inst_index: usize) -> *const u8 {
-        let key = (air.name.clone(), block_id);
+        let key = (air.name.clone(), block_id, inst_index);
         if let Some(ptr) = self.cache.get(&key) {
             return *ptr;
         }
