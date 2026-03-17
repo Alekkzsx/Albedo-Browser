@@ -18,7 +18,7 @@ use crate::object_model::{JSOBJ_SHAPE_OFFSET, JSOBJ_PROPS_OFFSET};
 use crate::type_feedback::{AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair, ValueType};
 use crate::deopt::{DeoptMeta, DeoptPoint, register_meta};
 
-const MIN_FEEDBACK_SAMPLES: u64 = 32;
+const MIN_FEEDBACK_SAMPLES: u64 = 1;
 
 pub struct Tier2Compiler<'a> {
     engine: &'a mut AlbedoJitEngine,
@@ -90,6 +90,17 @@ impl<'a> Tier2Compiler<'a> {
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_set_prop", 3, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_deopt_bailout", 3, &mut ext_funcs)?;
         Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_unimplemented", 0, &mut ext_funcs)?;
+        
+        // Fast Builtins symbols
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_floor", 1, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_ceil", 1, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_abs", 1, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_sqrt", 1, &mut ext_funcs)?;
+        
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_array_push", 2, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_array_pop", 1, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_string_char_at", 2, &mut ext_funcs)?;
+        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_json_parse", 1, &mut ext_funcs)?;
 
         let mut block_map = HashMap::new();
         for air_block in &air.blocks {
@@ -265,6 +276,24 @@ impl<'a> Tier2Compiler<'a> {
                     }
                     AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
                         let f = builder.use_var(vars[func.0 as usize]);
+                        let slot = *ic_slot;
+                        if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
+                            if let Some(res) = Self::emit_specialized_call(
+                                &mut builder,
+                                &ext_funcs,
+                                f,
+                                *arg_start,
+                                *num_args,
+                                &snap,
+                                meta_id,
+                                deopt_id,
+                                spill_slot,
+                                &vars,
+                            ) {
+                                builder.def_var(vars[dst.0 as usize], res);
+                                continue;
+                            }
+                        }
                         let args_ptr = if *num_args == 0 {
                             builder.ins().iconst(I64, 0)
                         } else {
@@ -566,6 +595,24 @@ impl<'a> Tier2Compiler<'a> {
                     }
                     AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
                         let f = builder.use_var(vars[func.0 as usize]);
+                        let slot = *ic_slot;
+                        if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
+                            if let Some(res) = Self::emit_specialized_call(
+                                &mut builder,
+                                &ext_funcs,
+                                f,
+                                *arg_start,
+                                *num_args,
+                                &snap,
+                                meta_id,
+                                deopt_id,
+                                spill_slot,
+                                &vars,
+                            ) {
+                                builder.def_var(vars[dst.0 as usize], res);
+                                continue;
+                            }
+                        }
                         let args_ptr = if *num_args == 0 {
                             builder.ins().iconst(I64, 0)
                         } else {
@@ -850,6 +897,150 @@ impl<'a> Tier2Compiler<'a> {
         builder.seal_block(slow_block);
         let res = builder.block_params(cont_block)[0];
         Some(res)
+    }
+
+    fn emit_specialized_call(
+        builder: &mut FunctionBuilder,
+        ext_funcs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+        f: cranelift_codegen::ir::Value,
+        arg_start: crate::bytecode::AirReg,
+        num_args: u32,
+        snap: &crate::type_feedback::CallFeedbackSnapshot,
+        meta_id: u32,
+        deopt_id: u32,
+        spill_slot: StackSlot,
+        vars: &[cranelift_frontend::Variable],
+    ) -> Option<cranelift_codegen::ir::Value> {
+        if snap.state != IcState::Monomorphic || snap.total < MIN_FEEDBACK_SAMPLES {
+            return None;
+        }
+        let callee = snap.monomorphic.expect("Devia ser monomórfico");
+        println!("[TIER2-DEBUG] Call especializado para callee={:?} builtin={}", callee, callee.is_builtin());
+        if !callee.is_builtin() {
+            return None;
+        }
+        
+        let bid = callee.as_builtin_id() as u32;
+        use crate::builtins::BuiltinId;
+        
+        // Guard: callee must match monomorphic value exactly
+        let slow_block = builder.create_block();
+        let fast_block = builder.create_block();
+        let expected_f = builder.ins().iconst(I64, callee.0 as i64);
+        let f_ok = builder.ins().icmp(IntCC::Equal, f, expected_f);
+        builder.ins().brif(f_ok, fast_block, &[], slow_block, &[]);
+        
+        builder.switch_to_block(fast_block);
+        let res = match bid {
+            x if x == BuiltinId::MathAbs as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                // Inlining puramente via Cranelift (FABS) para Float64
+                // Para Int32 usamos a chamada rápida que lida com abs(MIN_INT)
+                let func_ref = *ext_funcs.get("fast_math_abs").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathSqrt as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                // Inlining v2: fsqrt direto se for Float64
+                let is_f64 = builder.ins().icmp_imm(IntCC::UnsignedLessThan, arg, TAG_MIN as i64);
+                let f_sqrt_block = builder.create_block();
+                let f_slow_block = builder.create_block();
+                let f_cont_block = builder.create_block();
+                builder.append_block_param(f_cont_block, I64);
+                
+                builder.ins().brif(is_f64, f_sqrt_block, &[], f_slow_block, &[]);
+                
+                builder.switch_to_block(f_sqrt_block);
+                let f_val = builder.ins().bitcast(F64, MemFlags::new(), arg);
+                let f_res = builder.ins().sqrt(f_val);
+                let res_bits = builder.ins().bitcast(I64, MemFlags::new(), f_res);
+                let jump_args = [res_bits.into()];
+                builder.ins().jump(f_cont_block, &jump_args);
+                
+                builder.switch_to_block(f_slow_block);
+                let func_ref = *ext_funcs.get("fast_math_sqrt").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                let res_call = builder.inst_results(call)[0];
+                let jump_args = [res_call.into()];
+                builder.ins().jump(f_cont_block, &jump_args);
+                
+                builder.switch_to_block(f_cont_block);
+                builder.seal_block(f_sqrt_block);
+                builder.seal_block(f_slow_block);
+                Some(builder.block_params(f_cont_block)[0])
+            }
+            x if x == BuiltinId::MathFloor as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_floor").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathCeil as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_ceil").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::ArrayPush as u32 && num_args >= 1 => {
+                let arr = builder.use_var(vars[arg_start.0 as usize]);
+                let val = if num_args >= 2 {
+                    builder.use_var(vars[arg_start.0 as usize + 1])
+                } else {
+                    builder.ins().iconst(I64, JsValue::undefined().0 as i64)
+                };
+                let func_ref = *ext_funcs.get("fast_array_push").unwrap();
+                let call = builder.ins().call(func_ref, &[arr, val]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::ArrayPop as u32 && num_args >= 1 => {
+                let arr = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_array_pop").unwrap();
+                let call = builder.ins().call(func_ref, &[arr]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::StringCharAt as u32 && num_args >= 1 => {
+                let s = builder.use_var(vars[arg_start.0 as usize]);
+                let idx = if num_args >= 2 {
+                    builder.use_var(vars[arg_start.0 as usize + 1])
+                } else {
+                    builder.ins().iconst(I64, JsValue::int32(0).0 as i64)
+                };
+                let func_ref = *ext_funcs.get("fast_string_char_at").unwrap();
+                let call = builder.ins().call(func_ref, &[s, idx]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::JsonParse as u32 && num_args >= 1 => {
+                let s = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_json_parse").unwrap();
+                let call = builder.ins().call(func_ref, &[s]);
+                Some(builder.inst_results(call)[0])
+            }
+            _ => None,
+        };
+        
+        if let Some(result) = res {
+            let next_block = builder.create_block();
+            builder.ins().jump(next_block, &[]);
+            
+            builder.switch_to_block(slow_block);
+            let deopt_res = Self::emit_deopt_call(builder, ext_funcs, meta_id, deopt_id, spill_slot, vars);
+            builder.ins().return_(&[deopt_res]);
+            
+            builder.switch_to_block(next_block);
+            builder.seal_block(fast_block);
+            builder.seal_block(slow_block);
+            builder.seal_block(next_block);
+            Some(result)
+        } else {
+            // Se não conseguimos especializar esse builtin específico, voltamos ao normal
+            // Mas precisamos fechar o bloco aberto pelo guard
+            builder.ins().jump(slow_block, &[]);
+            builder.switch_to_block(slow_block);
+            builder.seal_block(fast_block);
+            builder.seal_block(slow_block);
+            None
+        }
     }
 
     fn spill_all(

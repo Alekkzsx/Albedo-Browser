@@ -23,6 +23,7 @@ pub mod code_cache;
 pub mod type_feedback;
 pub mod object_model;
 pub mod tier2_compiler;
+pub mod fast_builtins;
 pub mod jit_bridge;
 pub mod air_interpreter;
 pub mod deopt;

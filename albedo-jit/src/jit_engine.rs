@@ -117,6 +117,17 @@ impl AlbedoJitEngine {
         builder.symbol("js_set_prop", crate::runtime_helpers::js_set_prop as *const u8);
         builder.symbol("js_deopt_bailout", crate::deopt::js_deopt_bailout as *const u8);
         
+        // Builtins Rápidos (Fase 1)
+        builder.symbol("fast_math_abs", crate::fast_builtins::fast_math_abs as *const u8);
+        builder.symbol("fast_math_sqrt", crate::fast_builtins::fast_math_sqrt as *const u8);
+        builder.symbol("fast_math_floor", crate::fast_builtins::fast_math_floor as *const u8);
+        builder.symbol("fast_math_ceil", crate::fast_builtins::fast_math_ceil as *const u8);
+        
+        builder.symbol("fast_array_push", crate::fast_builtins::fast_array_push as *const u8);
+        builder.symbol("fast_array_pop", crate::fast_builtins::fast_array_pop as *const u8);
+        builder.symbol("fast_string_char_at", crate::fast_builtins::fast_string_char_at as *const u8);
+        builder.symbol("fast_json_parse", crate::fast_builtins::fast_json_parse as *const u8);
+        
         // Dummy placeholder pra coisas não-feitas que crashariam de unresolved symbol exception
         extern "C" fn js_unimplemented_mock() -> u64 { crate::js_value::JsValue::undefined().0 }
         builder.symbol("js_unimplemented", js_unimplemented_mock as *const u8);

@@ -160,12 +160,12 @@ pub struct GetPropFeedbackSnapshot {
 #[derive(Debug, Default, Clone)]
 struct CallFeedback {
     total: u64,
-    counts: HashMap<ValueType, u64>,
+    counts: HashMap<u64, u64>, // JsValue bits
 }
 
 impl CallFeedback {
-    fn record(&mut self, callee: ValueType) {
-        *self.counts.entry(callee).or_insert(0) += 1;
+    fn record(&mut self, callee: JsValue) {
+        *self.counts.entry(callee.0).or_insert(0) += 1;
         self.total += 1;
     }
 
@@ -177,9 +177,15 @@ impl CallFeedback {
             2..=4 => IcState::Polymorphic,
             _ => IcState::Megamorphic,
         };
+        let mono = if unique == 1 {
+            self.counts.keys().next().copied().map(JsValue)
+        } else {
+            None
+        };
         CallFeedbackSnapshot {
             total: self.total,
             state,
+            monomorphic: mono,
         }
     }
 }
@@ -188,6 +194,7 @@ impl CallFeedback {
 pub struct CallFeedbackSnapshot {
     pub total: u64,
     pub state: IcState,
+    pub monomorphic: Option<JsValue>,
 }
 
 // ---------------------------------------------------------------------------
@@ -264,9 +271,12 @@ impl TypeFeedbackRegistry {
             if entry.kind != IcKind::Call {
                 return;
             }
-            let callee_t = value_type(callee);
-            entry.call.write().record(callee_t);
+            entry.call.write().record(callee);
         }
+    }
+
+    pub fn call_snapshot(slot: u32) -> Option<CallFeedbackSnapshot> {
+        Self::global().slots.read().get(slot as usize).map(|e| e.call.read().snapshot())
     }
 
     pub fn add_snapshot(slot: u32) -> Option<AddFeedbackSnapshot> {
