@@ -64,6 +64,9 @@
   ✅  Detecção de hover (find_element_at_position)
   ✅  Pseudo-elementos ::before / ::after com content
   ✅  IFC (Inline Formatting Context) — layout de texto inline
+  ❌  Data-Oriented Layout (SoA - Structure of Arrays)
+         → Vetorização do cálculo de Flex/Grid via SIMD (Instruction-Level Parallelism)
+         → Minimização de saltos de memória para processamento massivo de nós
 
 ─── 🎨  CSS ENGINE (engine/style/) ──────────────────────────────────────────────
 
@@ -96,6 +99,9 @@
   ✅  Visibilidade: visibility, pointer-events, cursor
   ✅  White-space: normal, pre, nowrap, pre-wrap, pre-line
   ✅  Vertical-align: baseline, top, middle, bottom, text-top, text-bottom, sub, super
+  ❌  Bit-Parallel Selector Matching (SIMD)
+         → Matching em lotes de 64 nós via bitmasks para performance de elite
+         → Minimização de hashing de nomes de classes enviando máscaras de bits
 
 ─── ⚙️  JAVASCRIPT RUNTIME (runtime/) ──────────────────────────────────────────
 
@@ -359,6 +365,16 @@
          ✅ engine/text.rs (measure_cache + SwashCache)
   ✅  Image decoding em thread separada (não bloquear o render thread)
          ✅ network/resources.rs
+  ❌  DOM Graph Optimization (Flat/Contiguous Forest)
+         → Transição de `Vec<usize>` para First-Child/Next-Sibling (zero heap per-node)
+         → Minimiza cache misses (locality) e simplifica acesso direto pelo AlbedoJIT
+  ❌  Succinct Data Structures (Memory Locality)
+         → Uso de offsets compactos (16-bit) e remossão de ponteiros 64-bit
+         → 4x mais densidade no Cache L1/L2 e aumento drástico de throughput
+  ❌  Enum-mapped State (Tag/Attr enums)
+         → Substituição de Strings por Enums (U8/U16) para tags e atributos comuns
+         → Acelera matching de seletores CSS e elimina overhead de alocação de strings
+
 
   [C] JAVASCRIPT — COMPLETUDE MÍNIMA
   ───────────────────────────────────
