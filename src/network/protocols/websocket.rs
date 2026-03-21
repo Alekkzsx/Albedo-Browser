@@ -1,8 +1,7 @@
 // ARQUIVO: src/net/websocket.rs
 
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
-use tokio::task;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use url::Url;
 
@@ -29,7 +28,7 @@ pub enum WsCommand {
 pub struct WebSocketClient {
     command_sender: mpsc::Sender<WsCommand>,
     // O ID ajuda a saber qual aba é dona desse socket se precisarmos no futuro
-    pub id: String, 
+    pub id: String,
 }
 
 impl WebSocketClient {
@@ -64,11 +63,11 @@ impl WebSocketClient {
                             msg = read_stream.next() => {
                                 match msg {
                                     Some(Ok(message)) => match message {
-                                        Message::Text(text) => { 
-                                            let _ = event_tx_clone.send(WsEvent::Message(text)).await; 
+                                        Message::Text(text) => {
+                                            let _ = event_tx_clone.send(WsEvent::Message(text)).await;
                                         },
-                                        Message::Binary(bin) => { 
-                                            let _ = event_tx_clone.send(WsEvent::Binary(bin)).await; 
+                                        Message::Binary(bin) => {
+                                            let _ = event_tx_clone.send(WsEvent::Binary(bin)).await;
                                         },
                                         Message::Close(_) => {
                                             let _ = event_tx_clone.send(WsEvent::Disconnected).await;
@@ -95,7 +94,7 @@ impl WebSocketClient {
                                     },
                                     Some(WsCommand::Close) | None => {
                                         let _ = write_stream.close().await;
-                                        break; 
+                                        break;
                                     }
                                 }
                             }
@@ -103,14 +102,22 @@ impl WebSocketClient {
                     }
                 }
                 Err(e) => {
-                    let _ = event_tx_clone.send(WsEvent::Error(format!("Falha na conexão: {}", e))).await;
+                    let _ = event_tx_clone
+                        .send(WsEvent::Error(format!("Falha na conexão: {}", e)))
+                        .await;
                 }
             };
             // Cleanup final
             let _ = event_tx_clone.send(WsEvent::Disconnected).await;
         });
 
-        (Some(Self { command_sender: cmd_tx, id }), event_rx)
+        (
+            Some(Self {
+                command_sender: cmd_tx,
+                id,
+            }),
+            event_rx,
+        )
     }
 
     // Métodos públicos fáceis para a Engine usar

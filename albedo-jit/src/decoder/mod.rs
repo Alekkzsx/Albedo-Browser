@@ -10,7 +10,7 @@ pub use translator::StackToRegisterTranslator;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::{AirOpcode, AirTerminator, AirReg};
+    use crate::bytecode::{AirOpcode, AirReg, AirTerminator};
 
     #[test]
     fn test_translate_simple_add() {
@@ -21,10 +21,10 @@ mod tests {
             num_locals: 0,
             constant_pool_strings: vec![],
             opcodes: vec![
-                QjsOpcode::GetArg(0),     // push_arg(0)
-                QjsOpcode::PushI32(20),   // push_i32(20)
-                QjsOpcode::Add,           // add
-                QjsOpcode::Return,        // return
+                QjsOpcode::GetArg(0),   // push_arg(0)
+                QjsOpcode::PushI32(20), // push_i32(20)
+                QjsOpcode::Add,         // add
+                QjsOpcode::Return,      // return
             ],
         };
 
@@ -37,11 +37,22 @@ mod tests {
         let entry_blk = &air_func.blocks[0];
         // v0=arg[0]. v1=LoadInt32(20). v2=Add(v0, v1). Return(v2)
         assert_eq!(entry_blk.insts.len(), 2);
-        
+
         // Verifica as instruções traduzidas
-        assert_eq!(entry_blk.insts[0], AirOpcode::LoadInt32 { dst: AirReg(1), value: 20 });
+        assert_eq!(
+            entry_blk.insts[0],
+            AirOpcode::LoadInt32 {
+                dst: AirReg(1),
+                value: 20
+            }
+        );
         match &entry_blk.insts[1] {
-            AirOpcode::Add { dst, lhs, rhs, ic_slot: _ } => {
+            AirOpcode::Add {
+                dst,
+                lhs,
+                rhs,
+                ic_slot: _,
+            } => {
                 assert_eq!(*dst, AirReg(2));
                 assert_eq!(*lhs, AirReg(0));
                 assert_eq!(*rhs, AirReg(1));
@@ -63,9 +74,9 @@ mod tests {
             num_locals: 1,
             constant_pool_strings: vec![],
             opcodes: vec![
-                QjsOpcode::PushI32(5),  
-                QjsOpcode::PutLoc(0),    
-                QjsOpcode::GetLoc(0),  // recupera x
+                QjsOpcode::PushI32(5),
+                QjsOpcode::PutLoc(0),
+                QjsOpcode::GetLoc(0), // recupera x
                 QjsOpcode::Return,
             ],
         };
@@ -77,7 +88,13 @@ mod tests {
         // Com num_locals=1, AirReg(0) é local[0].
         // PushI32(5) aloca AirReg(1) temporário, PutLoc(0) faz Move(AirReg(0), AirReg(1)).
         // GetLoc(0) faz Move(AirReg(2), AirReg(0)), e Return(AirReg(2)).
-        assert_eq!(blk.insts[0], AirOpcode::LoadInt32 { dst: AirReg(1), value: 5 });
+        assert_eq!(
+            blk.insts[0],
+            AirOpcode::LoadInt32 {
+                dst: AirReg(1),
+                value: 5
+            }
+        );
         // O Return deve ser sobre o registrador que leu o local[0].
         // Move(dst=AirReg(0), src=AirReg(1)) → Move(dst=AirReg(2), src=AirReg(0)) → Return(AirReg(2))
         assert_eq!(blk.terminator, Some(AirTerminator::Return(AirReg(2))));
@@ -98,12 +115,12 @@ mod tests {
             num_locals: 0,
             constant_pool_strings: vec![],
             opcodes: vec![
-                QjsOpcode::PushBool(false),     // 0
-                QjsOpcode::IfFalse(3),          // 1 (pula 3 opcodes -> alvo é 4)
-                QjsOpcode::PushI32(10),         // 2 (Then)
-                QjsOpcode::Goto(2),             // 3 (Termina o Then pulando Else -> alvo 5)
-                QjsOpcode::PushI32(20),         // 4 (Else/Target do Jump)
-                QjsOpcode::Return               // 5 (Merge Block)
+                QjsOpcode::PushBool(false), // 0
+                QjsOpcode::IfFalse(3),      // 1 (pula 3 opcodes -> alvo é 4)
+                QjsOpcode::PushI32(10),     // 2 (Then)
+                QjsOpcode::Goto(2),         // 3 (Termina o Then pulando Else -> alvo 5)
+                QjsOpcode::PushI32(20),     // 4 (Else/Target do Jump)
+                QjsOpcode::Return,          // 5 (Merge Block)
             ],
         };
 
@@ -113,18 +130,26 @@ mod tests {
         // O Translator deve ter criado 4 blocos Básicos:
         // Entry -> (Then, Else) -> Merge Block
         assert_eq!(air_func.blocks.len(), 4);
-        
+
         let entry_blk = &air_func.blocks[0];
-        
+
         // Em vez de hardcodar index de block, testamos pelo source map targets!
         // Achar qual block ID foi gerado para o offset 4 (Else)
-        let id_else = air_func.blocks.iter()
+        let id_else = air_func
+            .blocks
+            .iter()
             .find(|b| src_map.block_to_qjs_offset.get(&b.id.0) == Some(&4))
-            .expect("Deveria haver um bloco mapado pro offset 4").id;
-        
+            .expect("Deveria haver um bloco mapado pro offset 4")
+            .id;
+
         // Verifica o Terminator gerado na entry (index 0)
         // Lembre-se q o air_func.blocks index não garante ID
-        if let Some(AirTerminator::JumpIf { cond: _, then_blk: _, else_blk }) = &entry_blk.terminator {
+        if let Some(AirTerminator::JumpIf {
+            cond: _,
+            then_blk: _,
+            else_blk,
+        }) = &entry_blk.terminator
+        {
             assert_eq!(*else_blk, id_else);
         } else {
             panic!("Faltando JumpIf terminator!");

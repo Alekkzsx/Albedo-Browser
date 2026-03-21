@@ -1,5 +1,5 @@
-use rquickjs::{Ctx, Value, Result, Function, prelude::This};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::This, Ctx, Function, Result, Value};
 
 /// postMessage(message, targetOrigin, [transfer])
 pub fn post_message<'js>(
@@ -7,28 +7,37 @@ pub fn post_message<'js>(
     This(this): This<Value<'js>>,
     message: Value<'js>,
     target_origin: String,
-    _transfer: Option<Value<'js>>
+    _transfer: Option<Value<'js>>,
 ) -> Result<()> {
     let caller_rt: JsRuntime = ctx.globals().get("__albedo_rt__")?;
-    
+
     // Determine the target runtime.
     let mut target_rt_id = caller_rt.id;
-    
+
     if let Some(obj) = this.as_object() {
         if let Ok(rt_instance) = obj.get::<_, JsRuntime>("__albedo_rt__") {
             target_rt_id = rt_instance.id;
         }
     }
 
-    let message_json = ctx.json_stringify(message)?
+    let message_json = ctx
+        .json_stringify(message)?
         .ok_or_else(|| rquickjs::Error::Exception)?
-        .as_string().unwrap().to_string()?;
-    
-    let caller_origin = caller_rt.origin.lock().unwrap().as_ref().map(|o: &crate::network::security::Origin| o.to_string()).unwrap_or_else(|| "null".to_string());
+        .as_string()
+        .unwrap()
+        .to_string()?;
+
+    let caller_origin = caller_rt
+        .origin
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|o: &crate::network::security::Origin| o.to_string())
+        .unwrap_or_else(|| "null".to_string());
 
     if let Some(target_rt_arc) = crate::runtime::core::registry::get_runtime(target_rt_id) {
         let target_rt = target_rt_arc.lock().unwrap();
-        
+
         // Origin Check
         let mut allowed = true;
         if target_origin == "/" {
@@ -53,7 +62,7 @@ pub fn post_message<'js>(
         // Dispatch in target runtime
         target_rt.dispatch_message_event(message_json, caller_origin, Some(caller_rt.id));
     }
-    
+
     Ok(())
 }
 

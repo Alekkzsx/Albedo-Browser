@@ -1,5 +1,4 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, Persistent, Function};
-use std::sync::{Arc, Mutex};
+use rquickjs::{Class, Ctx, Object, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]

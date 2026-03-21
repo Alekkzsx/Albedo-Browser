@@ -1,7 +1,7 @@
+use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use parking_lot::{RwLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Identificador único para uma função JavaScript.
@@ -29,7 +29,8 @@ impl ExecutionCounter {
 
     pub fn increment(&self) -> usize {
         let count = self.call_count.fetch_add(1, Ordering::Relaxed) + 1;
-        self.last_call_timestamp_ms.store(current_timestamp_ms() as usize, Ordering::Relaxed);
+        self.last_call_timestamp_ms
+            .store(current_timestamp_ms() as usize, Ordering::Relaxed);
         count
     }
 
@@ -65,7 +66,7 @@ pub struct ExecutionStats {
 /// Monitora a frequência de chamadas das funções JavaScript puras para
 /// determinar quais são os "Hot Paths" que devem ser compilados para
 /// código de máquina nativo.
-/// 
+///
 /// Projetado para ser thread-safe, minimizando bloqueios através do uso
 /// de `AtomicUsize` dentro de um `RwLock`.
 pub struct JitProfiler {
@@ -84,12 +85,12 @@ impl JitProfiler {
     }
 
     /// Registra a chamada de uma função.
-    /// 
+    ///
     /// Se a contagem atingir o limiar (hot_threshold) exatamente nesta chamada,
     /// a função é adicionada à fila de pré-compilação JIT (`hot_queue`).
     pub fn record_call(&self, id: FunctionId) {
         let current_count;
-        
+
         // Fast path: A função já existe no mapa?
         // Usamos read lock para alta concorrência.
         let counter_arc = {
@@ -103,8 +104,10 @@ impl JitProfiler {
             // Slow path: Primeira vez que a função é chamada (precisa de write lock)
             let mut map = self.counters.write();
             // Checagem dupla (outra thread pode ter inserido enquanto esperávamos)
-            let counter = map.entry(id.clone()).or_insert_with(|| Arc::new(ExecutionCounter::new()));
-            
+            let counter = map
+                .entry(id.clone())
+                .or_insert_with(|| Arc::new(ExecutionCounter::new()));
+
             // Só incrementamos aqui se nós NÃO fomos quem criou (pq new() ja vem com 1)
             // Mas o or_insert_with já resolve isso implicitamente pela semântica de 1 na criação.
             current_count = counter.count();
@@ -129,7 +132,7 @@ impl JitProfiler {
     }
 
     /// Extrai e limpa a fila de funções prontas para compilação.
-    /// 
+    ///
     /// Deve ser consumido pela thread do JIT Compiler.
     pub fn drain_hot_queue(&self) -> Vec<FunctionId> {
         let mut queue = self.hot_queue.lock();
@@ -144,7 +147,8 @@ impl JitProfiler {
             ExecutionStats {
                 call_count: count,
                 is_hot: count >= self.config.hot_threshold,
-                time_since_first_call_ms: current_timestamp_ms().saturating_sub(c.first_call_timestamp_ms),
+                time_since_first_call_ms: current_timestamp_ms()
+                    .saturating_sub(c.first_call_timestamp_ms),
             }
         })
     }
@@ -202,7 +206,7 @@ mod tests {
         // Aqui bate o threshold exato (15)
         profiler.record_call(id.clone());
         assert!(profiler.is_hot(&id));
-        
+
         // Verifica se tá na queue
         let mut queue = profiler.drain_hot_queue();
         assert_eq!(queue.len(), 1);
@@ -211,7 +215,7 @@ mod tests {
         // Ultrapassa
         profiler.record_call(id.clone());
         assert!(profiler.is_hot(&id));
-        
+
         // Não enfileira de novo
         queue = profiler.drain_hot_queue();
         assert_eq!(queue.len(), 0);

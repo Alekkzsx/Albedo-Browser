@@ -1,8 +1,6 @@
-use rquickjs::{Class, Ctx, Function, Persistent, Result as JsResult, Value, Object, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result as JsResult, Value};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
-use std::time::Instant;
 
 // ============================================================================
 // SYNC EVENT (Background Sync)
@@ -20,7 +18,7 @@ pub struct SyncEvent {
 #[rquickjs::methods]
 impl SyncEvent {
     /// event.waitUntil(promise): Queue promise for resolution before sync completes
-    pub fn wait_until<'js>(&self, _ctx: Ctx<'js>, promise: Value<'js>) -> JsResult<()> {
+    pub fn wait_until<'js>(&self, _ctx: Ctx<'js>, _promise: Value<'js>) -> JsResult<()> {
         // Store promise for tracking completion
         // In real implementation, would check if promise resolves
         Ok(())
@@ -45,7 +43,7 @@ impl SyncEvent {
 #[rquickjs::class]
 pub struct PeriodicSyncEvent {
     pub tag: String,
-    pub min_interval: u64,  // milliseconds
+    pub min_interval: u64, // milliseconds
     #[qjs(skip_trace)]
     pub pending_promises: Arc<Mutex<Vec<Persistent<Function<'static>>>>>,
 }
@@ -84,11 +82,7 @@ pub struct SyncManager {
 #[rquickjs::methods]
 impl SyncManager {
     /// registration.sync.register(tag): Register background sync task
-    pub fn register<'js>(
-        &self,
-        ctx: Ctx<'js>,
-        tag: String,
-    ) -> JsResult<Value<'js>> {
+    pub fn register<'js>(&self, ctx: Ctx<'js>, tag: String) -> JsResult<Value<'js>> {
         let reg_id = self.registration_id.clone();
         let queue = self.background_sync_queue.clone();
 
@@ -147,7 +141,7 @@ impl PeriodicSyncManager {
         // Extract minInterval from options (default 24 hours)
         let min_interval = if let Some(opts) = options.0 {
             opts.get::<_, u64>("minInterval")
-                .unwrap_or(24 * 60 * 60 * 1000)  // 24 hours in ms
+                .unwrap_or(24 * 60 * 60 * 1000) // 24 hours in ms
         } else {
             24 * 60 * 60 * 1000
         };
@@ -164,7 +158,8 @@ impl PeriodicSyncManager {
                 Ok(promise.into_value())
             }
             Err(e) => {
-                let msg = Box::leak(format!("Failed to register periodic sync: {}", e).into_boxed_str());
+                let msg =
+                    Box::leak(format!("Failed to register periodic sync: {}", e).into_boxed_str());
                 Err(rquickjs::Error::new_from_js("PeriodicSyncManager", msg))
             }
         }
@@ -184,11 +179,7 @@ impl PeriodicSyncManager {
     }
 
     /// registration.periodicSync.unregister(tag): Unregister periodic sync task
-    pub fn unregister<'js>(
-        &self,
-        ctx: Ctx<'js>,
-        tag: String,
-    ) -> JsResult<Value<'js>> {
+    pub fn unregister<'js>(&self, ctx: Ctx<'js>, tag: String) -> JsResult<Value<'js>> {
         let scheduler = self.periodic_sync_scheduler.clone();
 
         match scheduler.unregister(&tag) {

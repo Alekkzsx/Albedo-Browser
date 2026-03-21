@@ -4,7 +4,7 @@ use crate::runtime::bindings::html::token_list::DomTokenList;
 use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let decl = CssStyleDeclaration { 
+    let decl = CssStyleDeclaration {
         dom: el.dom.clone(),
         index: el.index,
         mutations: el.mutations.clone(),
@@ -15,7 +15,7 @@ pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 }
 
 pub fn class_list<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let list = DomTokenList { 
+    let list = DomTokenList {
         dom: el.dom.clone(),
         index: el.index,
         mutations: el.mutations.clone(),

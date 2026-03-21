@@ -1,12 +1,12 @@
 // ARQUIVO: src/net/fetch.rs
 
-use std::collections::HashMap;
+use crate::network::http3::Http3Client;
+use crate::network::security::{AccessControl, Origin};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::time::Duration;
-use crate::network::http3::Http3Client;
-use crate::network::security::{Origin, AccessControl};
 
 // Erros Específicos do Fetch
 #[derive(thiserror::Error, Debug)]
@@ -77,13 +77,17 @@ pub struct FetchResponse {
 impl FetchResponse {
     // Retorna o corpo como String (Text) - Fails if opaque e cross origin (Simulamos devolvendo vazio para a engine)
     pub fn text(&self) -> String {
-        if self.opaque { return "".to_string(); }
+        if self.opaque {
+            return "".to_string();
+        }
         String::from_utf8_lossy(&self.body_bytes).to_string()
     }
 
     // Tenta retornar o corpo como JSON
     pub fn json(&self) -> Result<Value, serde_json::Error> {
-        if self.opaque { return serde_json::from_str("{}") }
+        if self.opaque {
+            return serde_json::from_str("{}");
+        }
         serde_json::from_slice(&self.body_bytes)
     }
 
@@ -138,18 +142,24 @@ impl FetchClient {
         // Inicializar HTTP/3 client (fallback automático se falhar)
         let http3_client = Http3Client::new().ok();
 
-        Self { 
+        Self {
             client,
             http3_client,
         }
     }
 
     /// Executa o fetch de forma síncrona (no MVP blocking, no futuro Async)
-    pub fn fetch(&self, url: &str, options: Option<FetchOptions>, parent_origin: Option<Origin>) -> Result<FetchResponse, FetchError> {
+    pub fn fetch(
+        &self,
+        url: &str,
+        options: Option<FetchOptions>,
+        parent_origin: Option<Origin>,
+    ) -> Result<FetchResponse, FetchError> {
         let opts = options.unwrap_or_default();
-        
+
         let target_origin = Origin::from_url(url);
-        let is_cross_origin = if let (Some(parent), Some(target)) = (&parent_origin, &target_origin) {
+        let is_cross_origin = if let (Some(parent), Some(target)) = (&parent_origin, &target_origin)
+        {
             !parent.is_same_origin(target)
         } else {
             false
@@ -157,7 +167,10 @@ impl FetchClient {
 
         // Regra Rigorosa: Bloquear na largada se for cross-origin em modo strict same-origin
         if is_cross_origin && opts.mode == FetchMode::SameOrigin {
-            println!("🛑 [Security] Rejeitado Same-Origin: de {:?} para {}", parent_origin, url);
+            println!(
+                "🛑 [Security] Rejeitado Same-Origin: de {:?} para {}",
+                parent_origin, url
+            );
             return Err(FetchError::SameOriginBlocked);
         }
 
@@ -172,7 +185,9 @@ impl FetchClient {
         };
 
         // 2. Construir Requisição
-        let mut builder = self.client.request(method, url)
+        let mut builder = self
+            .client
+            .request(method, url)
             .timeout(Duration::from_millis(opts.timeout_ms));
 
         // Injetar Header Origin agressivamente se for requests cross-origin (em modo Cors)
@@ -185,7 +200,10 @@ impl FetchClient {
         // 3. Injetar Headers
         let mut header_map = HeaderMap::new();
         for (k, v) in opts.headers {
-            if let (Ok(k_name), Ok(v_val)) = (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v)) {
+            if let (Ok(k_name), Ok(v_val)) = (
+                HeaderName::from_bytes(k.as_bytes()),
+                HeaderValue::from_str(&v),
+            ) {
                 header_map.insert(k_name, v_val);
             }
         }
@@ -197,12 +215,17 @@ impl FetchClient {
         }
 
         // 5. Enviar e Processar
-        println!("FETCH: Enviando {} para {} (origin: {:?})", opts.method, url, parent_origin.as_ref().map(|o| o.to_string()));
+        println!(
+            "FETCH: Enviando {} para {} (origin: {:?})",
+            opts.method,
+            url,
+            parent_origin.as_ref().map(|o| o.to_string())
+        );
         match builder.send() {
             Ok(resp) => {
                 let status = resp.status();
                 let final_url = resp.url().to_string();
-                
+
                 // Converter headers de volta para HashMap
                 let mut resp_headers = HashMap::new();
                 for (k, v) in resp.headers() {
@@ -219,7 +242,10 @@ impl FetchClient {
                         // O origin da request
                         if let Some(parent) = &parent_origin {
                             if !access_control.validate_cors(parent, url, &resp_headers) {
-                                eprintln!("🛑 [Security] CORS Negado pela API {} para a origin {}", url, parent);
+                                eprintln!(
+                                    "🛑 [Security] CORS Negado pela API {} para a origin {}",
+                                    url, parent
+                                );
                                 return Err(FetchError::CorsBlocked);
                             }
                         }
@@ -234,14 +260,18 @@ impl FetchClient {
 
                 Ok(FetchResponse {
                     status: if opaque { 0 } else { status.as_u16() }, // Opaque responses mostram status 0
-                    status_text: if opaque { "".to_string() } else { status.canonical_reason().unwrap_or("Unknown").to_string() },
+                    status_text: if opaque {
+                        "".to_string()
+                    } else {
+                        status.canonical_reason().unwrap_or("Unknown").to_string()
+                    },
                     headers: if opaque { HashMap::new() } else { resp_headers }, // Esconde headers se opaque
                     body_bytes,
                     url: final_url,
                     opaque,
                 })
-            },
-            Err(e) => Err(FetchError::Network(e))
+            }
+            Err(e) => Err(FetchError::Network(e)),
         }
     }
 }

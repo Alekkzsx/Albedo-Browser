@@ -1,15 +1,10 @@
 #![allow(warnings)]
 
-mod browser;
-mod engine;
-mod runtime;
-mod network;
-mod ui;
-pub mod renderer;
+use albedo::browser;
+use albedo::ui;
 
+use albedo::browser::tabs::manager::TabManager;
 use slint::ComponentHandle;
-use browser::tabs::manager::TabManager;
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     browser::setup::set_panic_hook();
@@ -28,26 +23,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let system = std::rc::Rc::new(std::cell::RefCell::new(sysinfo::System::new_all()));
     let sys_clone = system.clone();
     let ui_handle_clone = ui_handle.clone();
-    
+
     let system_timer = slint::Timer::default();
-    system_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(2), move || {
-        browser::events::handle_system_monitor(&ui_handle_clone, &sys_clone);
-    });
-    
+    system_timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_secs(2),
+        move || {
+            browser::events::handle_system_monitor(&ui_handle_clone, &sys_clone);
+        },
+    );
+
     // Tab Sync Logic (Initialization only now)
     let tabs_model = std::rc::Rc::new(slint::VecModel::default());
     ui.set_tabs_model(tabs_model.clone().into());
-    
+
     // Initial Tab Creation
     let ui_handle_clone = ui_handle.clone();
     let tm_clone = tab_manager.clone();
     let tabs_model_clone = tabs_model.clone();
-    
+
     // Create first tab immediately
     let args: Vec<String> = std::env::args().collect();
     let start_url = if args.len() > 1 {
         // If it's a local file path, format it as file:// if not already
-        if args[1].starts_with("http") || args[1].starts_with("albedo:") || args[1].starts_with("file:") {
+        if args[1].starts_with("http")
+            || args[1].starts_with("albedo:")
+            || args[1].starts_with("file:")
+        {
             args[1].clone()
         } else {
             let path = std::env::current_dir().unwrap().join(&args[1]);
@@ -69,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tm_clone = tab_manager.clone();
     let ui_handle_clone = ui_handle.clone();
     let tabs_model_clone = tabs_model.clone();
-    
+
     ui.on_navigate(move |url| {
         browser::events::handle_navigate(&ui_handle_clone, &tm_clone, url, &tabs_model_clone);
     });
@@ -77,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tm_clone = tab_manager.clone();
     let tabs_model_clone = tabs_model.clone();
     let ui_handle_clone = ui_handle.clone();
-    
+
     ui.on_request_new_tab(move || {
         browser::events::handle_new_tab(&ui_handle_clone, &tm_clone, &tabs_model_clone);
     });
@@ -85,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tm_clone = tab_manager.clone();
     let tabs_model_clone = tabs_model.clone();
     let ui_handle_clone = ui_handle.clone();
-    
+
     ui.on_request_switch_tab(move |index| {
         browser::events::handle_switch_tab(&ui_handle_clone, &tm_clone, index, &tabs_model_clone);
     });
@@ -100,15 +102,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tm_pulse = tab_manager.clone();
     let ui_pulse = ui_handle.clone();
     let pulse_timer = slint::Timer::default();
-    pulse_timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(16), move || {
-        browser::events::handle_pulse(&ui_pulse, &tm_pulse);
-    });
-
+    pulse_timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(16),
+        move || {
+            browser::events::handle_pulse(&ui_pulse, &tm_pulse);
+        },
+    );
 
     let tm_click = tab_manager.clone();
     let ui_click = ui_handle.clone();
     ui.on_pointer_click(move |x, y| {
-        browser::events::handle_pointer_click(&ui_click, &tm_click, x, y); 
+        browser::events::handle_pointer_click(&ui_click, &tm_click, x, y);
     });
 
     let tm_move = tab_manager.clone();

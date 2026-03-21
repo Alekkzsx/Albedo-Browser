@@ -10,7 +10,12 @@ pub fn set_panic_hook() {
                 None => "Box<Any>",
             },
         };
-        eprintln!("\n[CRITICAL ERROR] App panicked at '{}', {}:{}", msg, location.file(), location.line());
+        eprintln!(
+            "\n[CRITICAL ERROR] App panicked at '{}', {}:{}",
+            msg,
+            location.file(),
+            location.line()
+        );
     }));
 }
 

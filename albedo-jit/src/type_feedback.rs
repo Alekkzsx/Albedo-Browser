@@ -2,8 +2,8 @@
 //!
 //! Coleta feedback de tipos em tempo de execução para guiar o Tier 2.
 
-use std::sync::OnceLock;
 use parking_lot::RwLock;
+use std::sync::OnceLock;
 
 use hashbrown::HashMap;
 
@@ -123,12 +123,10 @@ impl GetPropFeedback {
             None
         };
         let mono = mono_key.and_then(|k| {
-            object_model::shape_offset(k.shape_id, k.prop_id).map(|offset| {
-                GetPropMonomorphic {
-                    shape_id: k.shape_id,
-                    prop_id: k.prop_id,
-                    offset,
-                }
+            object_model::shape_offset(k.shape_id, k.prop_id).map(|offset| GetPropMonomorphic {
+                shape_id: k.shape_id,
+                prop_id: k.prop_id,
+                offset,
             })
         });
         GetPropFeedbackSnapshot {
@@ -276,15 +274,27 @@ impl TypeFeedbackRegistry {
     }
 
     pub fn call_snapshot(slot: u32) -> Option<CallFeedbackSnapshot> {
-        Self::global().slots.read().get(slot as usize).map(|e| e.call.read().snapshot())
+        Self::global()
+            .slots
+            .read()
+            .get(slot as usize)
+            .map(|e| e.call.read().snapshot())
     }
 
     pub fn add_snapshot(slot: u32) -> Option<AddFeedbackSnapshot> {
-        Self::global().slots.read().get(slot as usize).map(|e| e.add.read().snapshot())
+        Self::global()
+            .slots
+            .read()
+            .get(slot as usize)
+            .map(|e| e.add.read().snapshot())
     }
 
     pub fn get_prop_snapshot(slot: u32) -> Option<GetPropFeedbackSnapshot> {
-        Self::global().slots.read().get(slot as usize).map(|e| e.get_prop.read().snapshot())
+        Self::global()
+            .slots
+            .read()
+            .get(slot as usize)
+            .map(|e| e.get_prop.read().snapshot())
     }
 }
 
@@ -338,7 +348,10 @@ mod tests {
         let snap = fb.snapshot();
         assert_eq!(snap.state, IcState::Monomorphic);
         assert_eq!(snap.total, 10);
-        assert_eq!(snap.monomorphic, Some(TypePair(ValueType::Int32, ValueType::Int32)));
+        assert_eq!(
+            snap.monomorphic,
+            Some(TypePair(ValueType::Int32, ValueType::Int32))
+        );
     }
 
     #[test]
@@ -371,7 +384,10 @@ mod tests {
     #[test]
     fn test_getprop_feedback_monomorphic() {
         let mut fb = GetPropFeedback::default();
-        let key = PropKey { shape_id: 1, prop_id: 42 };
+        let key = PropKey {
+            shape_id: 1,
+            prop_id: 42,
+        };
         for _ in 0..5 {
             fb.record(key);
         }
@@ -385,9 +401,18 @@ mod tests {
     #[test]
     fn test_getprop_feedback_polymorphic() {
         let mut fb = GetPropFeedback::default();
-        fb.record(PropKey { shape_id: 1, prop_id: 10 });
-        fb.record(PropKey { shape_id: 2, prop_id: 10 });
-        fb.record(PropKey { shape_id: 3, prop_id: 10 });
+        fb.record(PropKey {
+            shape_id: 1,
+            prop_id: 10,
+        });
+        fb.record(PropKey {
+            shape_id: 2,
+            prop_id: 10,
+        });
+        fb.record(PropKey {
+            shape_id: 3,
+            prop_id: 10,
+        });
         let snap = fb.snapshot();
         assert_eq!(snap.state, IcState::Polymorphic);
     }

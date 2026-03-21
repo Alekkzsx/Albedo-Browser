@@ -25,11 +25,11 @@ mod form_validation_tests {
         // Valid email should have @ and .
         let valid_email = "user@example.com";
         assert!(valid_email.contains('@') && valid_email.contains('.'));
-        
+
         // Invalid emails should fail checks
         let invalid_email_no_at = "userexample.com";
         assert!(!invalid_email_no_at.contains('@'));
-        
+
         let invalid_email_no_dot = "user@example";
         assert!(!invalid_email_no_dot.contains('.'));
     }
@@ -42,21 +42,21 @@ mod form_validation_tests {
             "http://example.com",
             "www.example.com",
         ];
-        
+
         for url in valid_urls {
             assert!(
-                url.starts_with("https://") || 
-                url.starts_with("http://") || 
-                url.starts_with("www.")
+                url.starts_with("https://")
+                    || url.starts_with("http://")
+                    || url.starts_with("www.")
             );
         }
-        
+
         // Invalid URL
         let invalid_url = "example.com";
         assert!(
-            !invalid_url.starts_with("https://") && 
-            !invalid_url.starts_with("http://") && 
-            !invalid_url.starts_with("www.")
+            !invalid_url.starts_with("https://")
+                && !invalid_url.starts_with("http://")
+                && !invalid_url.starts_with("www.")
         );
     }
 
@@ -67,7 +67,7 @@ mod form_validation_tests {
         for num in numbers {
             assert!(num.parse::<f64>().is_ok());
         }
-        
+
         // Invalid numbers
         let invalid = "not a number";
         assert!(invalid.parse::<f64>().is_err());
@@ -79,7 +79,7 @@ mod form_validation_tests {
         let valid_tel = "+1-555-123-4567";
         let digit_count = valid_tel.chars().filter(|c| c.is_numeric()).count();
         assert!(digit_count >= 5);
-        
+
         let invalid_tel = "555";
         let digit_count = invalid_tel.chars().filter(|c| c.is_numeric()).count();
         assert!(digit_count < 5);
@@ -94,7 +94,7 @@ mod form_validation_tests {
         assert!(parts[0].parse::<u16>().is_ok()); // year
         assert!(parts[1].parse::<u32>().is_ok()); // month
         assert!(parts[2].parse::<u32>().is_ok()); // day
-        
+
         // Invalid formats
         let invalid_date = "18/02/2024";
         let parts_invalid: Vec<&str> = invalid_date.split('-').collect();
@@ -106,11 +106,11 @@ mod form_validation_tests {
         // Required attribute should enforce non-empty values
         let required_attr = Some("required");
         assert!(required_attr.is_some());
-        
+
         // Empty string should fail required check
         let empty = "";
         assert!(empty.trim().is_empty());
-        
+
         // Non-empty string should pass
         let filled = "some value";
         assert!(!filled.trim().is_empty());
@@ -122,14 +122,14 @@ mod form_validation_tests {
         let min_constraint = "10";
         let max_constraint = "100";
         let value = "50";
-        
+
         assert!(value.parse::<f64>().ok() >= min_constraint.parse::<f64>().ok());
         assert!(value.parse::<f64>().ok() <= max_constraint.parse::<f64>().ok());
-        
+
         // Out of range values
         let below_min = "5";
         assert!(below_min.parse::<f64>().ok() < min_constraint.parse::<f64>().ok());
-        
+
         let above_max = "150";
         assert!(above_max.parse::<f64>().ok() > max_constraint.parse::<f64>().ok());
     }

@@ -1,8 +1,7 @@
-use rusqlite::{Connection, Result as SqliteResult, params};
+use rusqlite::{params, Connection, Result as SqliteResult};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SwRegistrationData {
@@ -41,7 +40,7 @@ pub struct ServiceWorkerDatabase {
 impl ServiceWorkerDatabase {
     pub fn new(db_path: PathBuf) -> SqliteResult<Self> {
         let conn = Connection::open(db_path)?;
-        
+
         // Initialize tables
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS sw_registrations (
@@ -79,7 +78,7 @@ impl ServiceWorkerDatabase {
             );
             CREATE INDEX IF NOT EXISTS idx_sw_registrations_origin ON sw_registrations(origin);
             CREATE INDEX IF NOT EXISTS idx_sw_cache_entries_cache_id ON sw_cache_entries(cache_id);
-            CREATE INDEX IF NOT EXISTS idx_sw_cache_entries_url ON sw_cache_entries(url);"
+            CREATE INDEX IF NOT EXISTS idx_sw_cache_entries_url ON sw_cache_entries(url);",
         )?;
 
         Ok(Self {
@@ -101,7 +100,9 @@ impl ServiceWorkerDatabase {
 
     pub fn get_all_registrations(&self) -> SqliteResult<Vec<SwRegistrationData>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, scope, script_url, origin, last_update_check FROM sw_registrations")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, scope, script_url, origin, last_update_check FROM sw_registrations",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok(SwRegistrationData {
                 id: row.get(0)?,
@@ -119,7 +120,10 @@ impl ServiceWorkerDatabase {
         Ok(results)
     }
 
-    pub fn get_registrations_for_origin(&self, origin: &str) -> SqliteResult<Vec<SwRegistrationData>> {
+    pub fn get_registrations_for_origin(
+        &self,
+        origin: &str,
+    ) -> SqliteResult<Vec<SwRegistrationData>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT id, scope, script_url, origin, last_update_check FROM sw_registrations WHERE origin = ?1")?;
         let rows = stmt.query_map(params![origin], |row| {
@@ -159,7 +163,9 @@ impl ServiceWorkerDatabase {
 
     pub fn get_pending_sync_tasks(&self) -> SqliteResult<Vec<SwSyncTaskData>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, tag, registration_id, created_at, retry_count FROM sw_sync_tasks")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, tag, registration_id, created_at, retry_count FROM sw_sync_tasks",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok(SwSyncTaskData {
                 id: row.get(0)?,
@@ -188,7 +194,10 @@ impl ServiceWorkerDatabase {
     pub fn save_cache(&self, name: String, origin: String) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
         let id = uuid::Uuid::new_v4().to_string();
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         conn.execute(
             "INSERT OR IGNORE INTO sw_caches (id, name, origin, created_at) VALUES (?1, ?2, ?3, ?4)",
             params![id, name, origin, now],
@@ -216,15 +225,19 @@ impl ServiceWorkerDatabase {
         Ok(())
     }
 
-    pub fn get_cache_entry(&self, cache_name: &str, url: &str) -> SqliteResult<Option<SwCacheEntryData>> {
+    pub fn get_cache_entry(
+        &self,
+        cache_name: &str,
+        url: &str,
+    ) -> SqliteResult<Option<SwCacheEntryData>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT e.id, e.status, e.headers, e.body, e.timestamp, c.origin
              FROM sw_cache_entries e
              JOIN sw_caches c ON e.cache_id = c.id
-             WHERE c.name = ?1 AND e.url = ?2"
+             WHERE c.name = ?1 AND e.url = ?2",
         )?;
-        
+
         let result = stmt.query_row(params![cache_name, url], |row| {
             Ok(SwCacheEntryData {
                 id: row.get(0)?,

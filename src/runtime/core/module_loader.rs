@@ -134,7 +134,7 @@ pub fn resolve_module_specifier(specifier: &str, referrer: &str, base_url: &str)
 /// Retorna `None` se o download falhar.
 fn fetch_module_source(url: &str) -> Option<String> {
     println!("[ESModules] Fetching module: {}", url);
-    
+
     // Data URI handling
     if url.starts_with("data:") {
         if let Some(comma_pos) = url.find(',') {
@@ -142,10 +142,9 @@ fn fetch_module_source(url: &str) -> Option<String> {
             // Check if base64 encoded
             let prefix = &url[..comma_pos];
             if prefix.contains(";base64") {
-                if let Ok(decoded) = base64::Engine::decode(
-                    &base64::engine::general_purpose::STANDARD,
-                    data
-                ) {
+                if let Ok(decoded) =
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+                {
                     return String::from_utf8(decoded).ok();
                 }
             } else {
@@ -155,37 +154,38 @@ fn fetch_module_source(url: &str) -> Option<String> {
         return None;
     }
 
-    // HTTP fetch blocking  
+    // HTTP fetch blocking
     match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("Albedo/1.0")
         .build()
     {
-        Ok(client) => {
-            match client.get(url).send() {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        match response.text() {
-                            Ok(text) => {
-                                println!("[ESModules] Fetched {} bytes from {}", text.len(), url);
-                                Some(text)
-                            }
-                            Err(e) => {
-                                eprintln!("[ESModules] Failed to read response body from {}: {}", url, e);
-                                None
-                            }
+        Ok(client) => match client.get(url).send() {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.text() {
+                        Ok(text) => {
+                            println!("[ESModules] Fetched {} bytes from {}", text.len(), url);
+                            Some(text)
                         }
-                    } else {
-                        eprintln!("[ESModules] HTTP {} for module {}", response.status(), url);
-                        None
+                        Err(e) => {
+                            eprintln!(
+                                "[ESModules] Failed to read response body from {}: {}",
+                                url, e
+                            );
+                            None
+                        }
                     }
-                }
-                Err(e) => {
-                    eprintln!("[ESModules] Network error fetching {}: {}", url, e);
+                } else {
+                    eprintln!("[ESModules] HTTP {} for module {}", response.status(), url);
                     None
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("[ESModules] Network error fetching {}: {}", url, e);
+                None
+            }
+        },
         Err(e) => {
             eprintln!("[ESModules] Failed to create HTTP client: {}", e);
             None
@@ -210,7 +210,10 @@ impl rquickjs::loader::Resolver for AlbedoModuleResolver {
         base: &str,
         name: &str,
     ) -> rquickjs::Result<String> {
-        println!("[ESModules::Resolver] Resolving '{}' from base '{}'", name, base);
+        println!(
+            "[ESModules::Resolver] Resolving '{}' from base '{}'",
+            name, base
+        );
 
         let base_url = self.registry.base_url.lock().unwrap().clone();
 
@@ -220,7 +223,10 @@ impl rquickjs::loader::Resolver for AlbedoModuleResolver {
                 Ok(resolved)
             }
             None => {
-                eprintln!("[ESModules::Resolver] Failed to resolve '{}' from '{}'", name, base);
+                eprintln!(
+                    "[ESModules::Resolver] Failed to resolve '{}' from '{}'",
+                    name, base
+                );
                 Err(rquickjs::Error::new_resolving(base, name))
             }
         }
@@ -243,12 +249,17 @@ impl rquickjs::loader::Loader for AlbedoModuleLoader {
 
         // 1. Verificar se já existe no cache do registry
         if let Some(source) = self.registry.get_source(name) {
-            println!("[ESModules::Loader] Found in cache: {} ({} bytes)", name, source.len());
+            println!(
+                "[ESModules::Loader] Found in cache: {} ({} bytes)",
+                name,
+                source.len()
+            );
             return rquickjs::Module::declare(ctx.clone(), name, source);
         }
 
         // 2. Tentar fazer fetch externo
-        if name.starts_with("http://") || name.starts_with("https://") || name.starts_with("data:") {
+        if name.starts_with("http://") || name.starts_with("https://") || name.starts_with("data:")
+        {
             if let Some(source) = fetch_module_source(name) {
                 // Registrar no cache para evitar re-download
                 self.registry.register_external(name, source.clone());
@@ -346,8 +357,9 @@ impl ImportMap {
         let mut best_scope_match: Option<(&str, &HashMap<String, String>)> = None;
         for (scope_prefix, scope_map) in &self.scopes {
             if referrer.starts_with(scope_prefix.as_str()) {
-                if best_scope_match.is_none() ||
-                   scope_prefix.len() > best_scope_match.unwrap().0.len() {
+                if best_scope_match.is_none()
+                    || scope_prefix.len() > best_scope_match.unwrap().0.len()
+                {
                     best_scope_match = Some((scope_prefix, scope_map));
                 }
             }
@@ -401,25 +413,38 @@ mod tests {
 
     #[test]
     fn test_resolve_absolute_url() {
-        let result = resolve_module_specifier("https://cdn.example.com/mod.js", "", "https://example.com");
+        let result =
+            resolve_module_specifier("https://cdn.example.com/mod.js", "", "https://example.com");
         assert_eq!(result, Some("https://cdn.example.com/mod.js".to_string()));
     }
 
     #[test]
     fn test_resolve_relative_specifier() {
-        let result = resolve_module_specifier("./utils.js", "https://example.com/app/main.js", "https://example.com");
+        let result = resolve_module_specifier(
+            "./utils.js",
+            "https://example.com/app/main.js",
+            "https://example.com",
+        );
         assert_eq!(result, Some("https://example.com/app/utils.js".to_string()));
     }
 
     #[test]
     fn test_resolve_parent_relative() {
-        let result = resolve_module_specifier("../lib/helper.js", "https://example.com/app/main.js", "https://example.com");
-        assert_eq!(result, Some("https://example.com/lib/helper.js".to_string()));
+        let result = resolve_module_specifier(
+            "../lib/helper.js",
+            "https://example.com/app/main.js",
+            "https://example.com",
+        );
+        assert_eq!(
+            result,
+            Some("https://example.com/lib/helper.js".to_string())
+        );
     }
 
     #[test]
     fn test_resolve_absolute_path() {
-        let result = resolve_module_specifier("/lib/mod.js", "", "https://example.com/app/index.html");
+        let result =
+            resolve_module_specifier("/lib/mod.js", "", "https://example.com/app/index.html");
         assert_eq!(result, Some("https://example.com/lib/mod.js".to_string()));
     }
 
@@ -437,8 +462,15 @@ mod tests {
 
     #[test]
     fn test_data_uri() {
-        let result = resolve_module_specifier("data:text/javascript,export default 42", "", "https://example.com");
-        assert_eq!(result, Some("data:text/javascript,export default 42".to_string()));
+        let result = resolve_module_specifier(
+            "data:text/javascript,export default 42",
+            "",
+            "https://example.com",
+        );
+        assert_eq!(
+            result,
+            Some("data:text/javascript,export default 42".to_string())
+        );
     }
 
     #[test]
@@ -456,11 +488,23 @@ mod tests {
         }"#;
 
         let map = ImportMap::parse(json).unwrap();
-        assert_eq!(map.imports.get("react"), Some(&"https://esm.sh/react@18".to_string()));
-        assert_eq!(map.resolve("react", "https://example.com/index.js"), Some("https://esm.sh/react@18".to_string()));
+        assert_eq!(
+            map.imports.get("react"),
+            Some(&"https://esm.sh/react@18".to_string())
+        );
+        assert_eq!(
+            map.resolve("react", "https://example.com/index.js"),
+            Some("https://esm.sh/react@18".to_string())
+        );
         // Specifier com escopo deve usar a versão do escopo
-        assert_eq!(map.resolve("react", "/app/main.js"), Some("https://esm.sh/react@17".to_string()));
+        assert_eq!(
+            map.resolve("react", "/app/main.js"),
+            Some("https://esm.sh/react@17".to_string())
+        );
         // Prefix match
-        assert_eq!(map.resolve("lodash/fp", "https://example.com/index.js"), Some("https://esm.sh/lodash/fp".to_string()));
+        assert_eq!(
+            map.resolve("lodash/fp", "https://example.com/index.js"),
+            Some("https://esm.sh/lodash/fp".to_string())
+        );
     }
 }

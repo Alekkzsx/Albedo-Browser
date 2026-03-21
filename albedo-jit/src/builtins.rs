@@ -111,7 +111,9 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
         BuiltinId::MathAsin => JsValue::float64(to_number(arg(args, 0)).asin()),
         BuiltinId::MathAsinh => JsValue::float64(to_number(arg(args, 0)).asinh()),
         BuiltinId::MathAtan => JsValue::float64(to_number(arg(args, 0)).atan()),
-        BuiltinId::MathAtan2 => JsValue::float64(to_number(arg(args, 0)).atan2(to_number(arg(args, 1)))),
+        BuiltinId::MathAtan2 => {
+            JsValue::float64(to_number(arg(args, 0)).atan2(to_number(arg(args, 1))))
+        }
         BuiltinId::MathAtanh => JsValue::float64(to_number(arg(args, 0)).atanh()),
         BuiltinId::MathCbrt => JsValue::float64(to_number(arg(args, 0)).cbrt()),
         BuiltinId::MathCeil => JsValue::float64(to_number(arg(args, 0)).ceil()),
@@ -149,7 +151,9 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
                 let mut m = f64::NEG_INFINITY;
                 for v in args {
                     let n = to_number(*v);
-                    if n > m { m = n; }
+                    if n > m {
+                        m = n;
+                    }
                 }
                 JsValue::float64(m)
             }
@@ -161,15 +165,17 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
                 let mut m = f64::INFINITY;
                 for v in args {
                     let n = to_number(*v);
-                    if n < m { m = n; }
+                    if n < m {
+                        m = n;
+                    }
                 }
                 JsValue::float64(m)
             }
         }
-        BuiltinId::MathPow => JsValue::float64(to_number(arg(args, 0)).powf(to_number(arg(args, 1)))),
-        BuiltinId::MathRandom => {
-            JsValue::float64(rand::random::<f64>())
+        BuiltinId::MathPow => {
+            JsValue::float64(to_number(arg(args, 0)).powf(to_number(arg(args, 1))))
         }
+        BuiltinId::MathRandom => JsValue::float64(rand::random::<f64>()),
         BuiltinId::MathRound => {
             let x = to_number(arg(args, 0));
             let r = if x >= 0.0 {
@@ -203,13 +209,17 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
         }
 
         BuiltinId::ArrayPush => {
-            if args.is_empty() { return JsValue::undefined(); }
+            if args.is_empty() {
+                return JsValue::undefined();
+            }
             let arr = args[0];
             let items = &args[1..];
             object_model::array_push(arr, items)
         }
         BuiltinId::ArrayPop => {
-            if args.is_empty() { return JsValue::undefined(); }
+            if args.is_empty() {
+                return JsValue::undefined();
+            }
             object_model::array_pop(args[0])
         }
         BuiltinId::StringCharAt => {
@@ -234,7 +244,11 @@ fn to_number(v: JsValue) -> f64 {
     } else if v.is_float64() {
         v.as_float64()
     } else if v.is_bool() {
-        if v.as_bool() { 1.0 } else { 0.0 }
+        if v.as_bool() {
+            1.0
+        } else {
+            0.0
+        }
     } else if v.is_null() {
         0.0
     } else {

@@ -3,20 +3,25 @@
 //! Usa type feedback coletado via Inline Caches para gerar código especializado
 //! (IADD/FADD e acesso direto por offset de propriedade).
 
-use cranelift_codegen::ir::types::{I32, I64, F64};
-use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlags, StackSlot, StackSlotData, StackSlotKind};
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+use cranelift_codegen::ir::types::{F64, I32, I64};
+use cranelift_codegen::ir::{
+    AbiParam, InstBuilder, MemFlags, StackSlot, StackSlotData, StackSlotKind,
+};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::bytecode::{AirFunction, AirOpcode, AirTerminator, AirBlockId};
+use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator};
+use crate::deopt::{register_meta, DeoptMeta, DeoptPoint};
 use crate::jit_engine::{AlbedoJitEngine, JitError};
-use crate::js_value::{JsValue, TAG_INT32, TAG_MASK, TAG_MIN, PAYLOAD_MASK, FLOAT_NAN};
-use crate::object_model::{JSOBJ_SHAPE_OFFSET, JSOBJ_PROPS_OFFSET};
-use crate::type_feedback::{AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair, ValueType};
-use crate::deopt::{DeoptMeta, DeoptPoint, register_meta};
+use crate::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN};
+use crate::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET};
+use crate::type_feedback::{
+    AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair,
+    ValueType,
+};
 
 const MIN_FEEDBACK_SAMPLES: u64 = 1;
 
@@ -41,11 +46,10 @@ impl<'a> Tier2Compiler<'a> {
         sig.returns.push(AbiParam::new(I64));
 
         let func_name = format!("{}_tier2", air.name);
-        let func_id = self.engine.module.declare_function(
-            &func_name,
-            Linkage::Export,
-            &sig,
-        )?;
+        let func_id = self
+            .engine
+            .module
+            .declare_function(&func_name, Linkage::Export, &sig)?;
 
         // Pré-mapeamento de deopt points (1 por instrução AIR)
         let (deopt_points, deopt_map) = build_deopt_points(air);
@@ -76,31 +80,163 @@ impl<'a> Tier2Compiler<'a> {
         ));
 
         let mut ext_funcs = HashMap::new();
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_add_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_sub", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_mul", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_strict_eq", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_eq", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_lt", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_to_bool", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_get_prop_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_call_ic", 4, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_obj", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_array", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_set_prop", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_deopt_bailout", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_unimplemented", 0, &mut ext_funcs)?;
-        
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_add_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_sub",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_mul",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_strict_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_lt",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_to_bool",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_get_prop_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_call_ic",
+            4,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_obj",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_array",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_set_prop",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_deopt_bailout",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_unimplemented",
+            0,
+            &mut ext_funcs,
+        )?;
+
         // Fast Builtins symbols
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_floor", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_ceil", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_abs", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_math_sqrt", 1, &mut ext_funcs)?;
-        
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_array_push", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_array_pop", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_string_char_at", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "fast_json_parse", 1, &mut ext_funcs)?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_floor",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_ceil",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_abs",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_sqrt",
+            1,
+            &mut ext_funcs,
+        )?;
+
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_array_push",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_array_pop",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_string_char_at",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_json_parse",
+            1,
+            &mut ext_funcs,
+        )?;
 
         let mut block_map = HashMap::new();
         for air_block in &air.blocks {
@@ -163,7 +299,12 @@ impl<'a> Tier2Compiler<'a> {
                         let val = builder.use_var(vars[src.0 as usize]);
                         builder.def_var(vars[dst.0 as usize], val);
                     }
-                    AirOpcode::Add { dst, lhs, rhs, ic_slot } => {
+                    AirOpcode::Add {
+                        dst,
+                        lhs,
+                        rhs,
+                        ic_slot,
+                    } => {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
                         let slot = *ic_slot;
@@ -194,7 +335,16 @@ impl<'a> Tier2Compiler<'a> {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
                         // Tentar specialization int32 com deopt
-                        if let Some(res) = Self::emit_sub_int32(&mut builder, &ext_funcs, a, b, meta_id, deopt_id, spill_slot, &vars) {
+                        if let Some(res) = Self::emit_sub_int32(
+                            &mut builder,
+                            &ext_funcs,
+                            a,
+                            b,
+                            meta_id,
+                            deopt_id,
+                            spill_slot,
+                            &vars,
+                        ) {
                             builder.def_var(vars[dst.0 as usize], res);
                         } else {
                             let func_ref = *ext_funcs.get("js_sub").unwrap();
@@ -207,7 +357,16 @@ impl<'a> Tier2Compiler<'a> {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
                         // Tentar specialization int32 com deopt
-                        if let Some(res) = Self::emit_mul_int32(&mut builder, &ext_funcs, a, b, meta_id, deopt_id, spill_slot, &vars) {
+                        if let Some(res) = Self::emit_mul_int32(
+                            &mut builder,
+                            &ext_funcs,
+                            a,
+                            b,
+                            meta_id,
+                            deopt_id,
+                            spill_slot,
+                            &vars,
+                        ) {
                             builder.def_var(vars[dst.0 as usize], res);
                         } else {
                             let func_ref = *ext_funcs.get("js_mul").unwrap();
@@ -240,7 +399,12 @@ impl<'a> Tier2Compiler<'a> {
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
-                    AirOpcode::GetProp { dst, obj, prop, ic_slot } => {
+                    AirOpcode::GetProp {
+                        dst,
+                        obj,
+                        prop,
+                        ic_slot,
+                    } => {
                         let o = builder.use_var(vars[obj.0 as usize]);
                         let p = builder.use_var(vars[prop.0 as usize]);
                         let slot = *ic_slot;
@@ -274,7 +438,13 @@ impl<'a> Tier2Compiler<'a> {
                         let func_ref = *ext_funcs.get("js_set_prop").unwrap();
                         let _call = builder.ins().call(func_ref, &[o, p, v]);
                     }
-                    AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
+                    AirOpcode::Call {
+                        dst,
+                        func,
+                        arg_start,
+                        num_args,
+                        ic_slot,
+                    } => {
                         let f = builder.use_var(vars[func.0 as usize]);
                         let slot = *ic_slot;
                         if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
@@ -314,7 +484,9 @@ impl<'a> Tier2Compiler<'a> {
                         let num_args_val = builder.ins().iconst(I64, *num_args as i64);
                         let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
                         let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                        let call = builder
+                            .ins()
+                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
@@ -334,7 +506,10 @@ impl<'a> Tier2Compiler<'a> {
                         let func_ref = *ext_funcs.get("js_unimplemented").unwrap();
                         let call = builder.ins().call(func_ref, &[]);
                         let _res = builder.inst_results(call)[0];
-                        println!("[Tier2] Warning: Unsupported Opcode {:?} - fallback to undefined", inst);
+                        println!(
+                            "[Tier2] Warning: Unsupported Opcode {:?} - fallback to undefined",
+                            inst
+                        );
                     }
                 }
             }
@@ -349,7 +524,11 @@ impl<'a> Tier2Compiler<'a> {
                         let cl_target = block_map[target];
                         builder.ins().jump(cl_target, &[]);
                     }
-                    AirTerminator::JumpIf { cond, then_blk, else_blk } => {
+                    AirTerminator::JumpIf {
+                        cond,
+                        then_blk,
+                        else_blk,
+                    } => {
                         let cl_then = block_map[then_blk];
                         let cl_else = block_map[else_blk];
                         let cv = builder.use_var(vars[cond.0 as usize]);
@@ -361,7 +540,6 @@ impl<'a> Tier2Compiler<'a> {
                     }
                 }
             }
-
         }
 
         builder.seal_all_blocks();
@@ -389,7 +567,10 @@ impl<'a> Tier2Compiler<'a> {
         sig.returns.push(AbiParam::new(I64));
 
         let func_name = format!("{}_osr_b{}_i{}", air.name, entry_block_id, entry_inst);
-        let func_id = self.engine.module.declare_function(&func_name, Linkage::Export, &sig)?;
+        let func_id = self
+            .engine
+            .module
+            .declare_function(&func_name, Linkage::Export, &sig)?;
 
         let (deopt_points, deopt_map) = build_deopt_points(air);
         let meta_id = register_meta(DeoptMeta {
@@ -419,18 +600,90 @@ impl<'a> Tier2Compiler<'a> {
         ));
 
         let mut ext_funcs = HashMap::new();
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_add_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_sub", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_mul", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_strict_eq", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_to_bool", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_get_prop_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_call_ic", 4, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_obj", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_array", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_set_prop", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_deopt_bailout", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_unimplemented", 0, &mut ext_funcs)?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_add_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_sub",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_mul",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_strict_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_to_bool",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_get_prop_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_call_ic",
+            4,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_obj",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_array",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_set_prop",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_deopt_bailout",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_unimplemented",
+            0,
+            &mut ext_funcs,
+        )?;
 
         let mut block_map = HashMap::new();
         for air_block in &air.blocks {
@@ -459,7 +712,11 @@ impl<'a> Tier2Compiler<'a> {
             let cl_block = block_map[&air_block.id];
             builder.switch_to_block(cl_block);
 
-            let start = if air_block.id.0 == entry_block_id { entry_inst } else { 0 };
+            let start = if air_block.id.0 == entry_block_id {
+                entry_inst
+            } else {
+                0
+            };
             for (inst_index, inst) in air_block.insts.iter().enumerate() {
                 if inst_index < start {
                     continue;
@@ -500,7 +757,12 @@ impl<'a> Tier2Compiler<'a> {
                         let val = builder.use_var(vars[src.0 as usize]);
                         builder.def_var(vars[dst.0 as usize], val);
                     }
-                    AirOpcode::Add { dst, lhs, rhs, ic_slot } => {
+                    AirOpcode::Add {
+                        dst,
+                        lhs,
+                        rhs,
+                        ic_slot,
+                    } => {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
                         let slot = *ic_slot;
@@ -530,7 +792,16 @@ impl<'a> Tier2Compiler<'a> {
                     AirOpcode::Sub { dst, lhs, rhs } => {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
-                        if let Some(res) = Self::emit_sub_int32(&mut builder, &ext_funcs, a, b, meta_id, deopt_id, spill_slot, &vars) {
+                        if let Some(res) = Self::emit_sub_int32(
+                            &mut builder,
+                            &ext_funcs,
+                            a,
+                            b,
+                            meta_id,
+                            deopt_id,
+                            spill_slot,
+                            &vars,
+                        ) {
                             builder.def_var(vars[dst.0 as usize], res);
                         } else {
                             let func_ref = *ext_funcs.get("js_sub").unwrap();
@@ -542,7 +813,16 @@ impl<'a> Tier2Compiler<'a> {
                     AirOpcode::Mul { dst, lhs, rhs } => {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
-                        if let Some(res) = Self::emit_mul_int32(&mut builder, &ext_funcs, a, b, meta_id, deopt_id, spill_slot, &vars) {
+                        if let Some(res) = Self::emit_mul_int32(
+                            &mut builder,
+                            &ext_funcs,
+                            a,
+                            b,
+                            meta_id,
+                            deopt_id,
+                            spill_slot,
+                            &vars,
+                        ) {
                             builder.def_var(vars[dst.0 as usize], res);
                         } else {
                             let func_ref = *ext_funcs.get("js_mul").unwrap();
@@ -559,7 +839,12 @@ impl<'a> Tier2Compiler<'a> {
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
-                    AirOpcode::GetProp { dst, obj, prop, ic_slot } => {
+                    AirOpcode::GetProp {
+                        dst,
+                        obj,
+                        prop,
+                        ic_slot,
+                    } => {
                         let o = builder.use_var(vars[obj.0 as usize]);
                         let p = builder.use_var(vars[prop.0 as usize]);
                         let slot = *ic_slot;
@@ -593,7 +878,13 @@ impl<'a> Tier2Compiler<'a> {
                         let func_ref = *ext_funcs.get("js_set_prop").unwrap();
                         let _call = builder.ins().call(func_ref, &[o, p, v]);
                     }
-                    AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
+                    AirOpcode::Call {
+                        dst,
+                        func,
+                        arg_start,
+                        num_args,
+                        ic_slot,
+                    } => {
                         let f = builder.use_var(vars[func.0 as usize]);
                         let slot = *ic_slot;
                         if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
@@ -633,7 +924,9 @@ impl<'a> Tier2Compiler<'a> {
                         let num_args_val = builder.ins().iconst(I64, *num_args as i64);
                         let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
                         let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                        let call = builder
+                            .ins()
+                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
@@ -667,7 +960,11 @@ impl<'a> Tier2Compiler<'a> {
                         let cl_target = block_map[target];
                         builder.ins().jump(cl_target, &[]);
                     }
-                    AirTerminator::JumpIf { cond, then_blk, else_blk } => {
+                    AirTerminator::JumpIf {
+                        cond,
+                        then_blk,
+                        else_blk,
+                    } => {
                         let cl_then = block_map[then_blk];
                         let cl_else = block_map[else_blk];
                         let cv = builder.use_var(vars[cond.0 as usize]);
@@ -715,12 +1012,12 @@ impl<'a> Tier2Compiler<'a> {
         }
         let pair = snap.monomorphic?;
         match pair {
-            TypePair(ValueType::Int32, ValueType::Int32) => {
-                Some(Self::emit_add_int32(builder, ext_funcs, a, b, slot, meta_id, deopt_id, spill_slot, vars))
-            }
-            TypePair(ValueType::Float64, ValueType::Float64) => {
-                Some(Self::emit_add_float64(builder, ext_funcs, a, b, slot, meta_id, deopt_id, spill_slot, vars))
-            }
+            TypePair(ValueType::Int32, ValueType::Int32) => Some(Self::emit_add_int32(
+                builder, ext_funcs, a, b, slot, meta_id, deopt_id, spill_slot, vars,
+            )),
+            TypePair(ValueType::Float64, ValueType::Float64) => Some(Self::emit_add_float64(
+                builder, ext_funcs, a, b, slot, meta_id, deopt_id, spill_slot, vars,
+            )),
             _ => None,
         }
     }
@@ -749,7 +1046,9 @@ impl<'a> Tier2Compiler<'a> {
         let a_ok = builder.ins().icmp(IntCC::Equal, a_tag, tag_int);
         let b_ok = builder.ins().icmp(IntCC::Equal, b_tag, tag_int);
         let both_ok = builder.ins().band(a_ok, b_ok);
-        builder.ins().brif(both_ok, fast_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(both_ok, fast_block, &[], slow_block, &[]);
 
         builder.switch_to_block(fast_block);
         let a_payload = builder.ins().band_imm(a, 0xFFFF_FFFF);
@@ -758,7 +1057,9 @@ impl<'a> Tier2Compiler<'a> {
         let b_i32 = builder.ins().ireduce(I32, b_payload);
         let (sum, overflow) = builder.ins().sadd_overflow(a_i32, b_i32);
         let overflowed = builder.ins().icmp_imm(IntCC::NotEqual, overflow, 0);
-        builder.ins().brif(overflowed, slow_block, &[], fast_ok_block, &[]);
+        builder
+            .ins()
+            .brif(overflowed, slow_block, &[], fast_ok_block, &[]);
 
         builder.switch_to_block(fast_ok_block);
         let sum_i64 = builder.ins().uextend(I64, sum);
@@ -798,7 +1099,9 @@ impl<'a> Tier2Compiler<'a> {
         let a_ok = builder.ins().icmp(IntCC::UnsignedLessThan, a, tag_min);
         let b_ok = builder.ins().icmp(IntCC::UnsignedLessThan, b, tag_min);
         let both_ok = builder.ins().band(a_ok, b_ok);
-        builder.ins().brif(both_ok, fast_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(both_ok, fast_block, &[], slow_block, &[]);
 
         builder.switch_to_block(fast_block);
         let a_f = builder.ins().bitcast(F64, MemFlags::new(), a);
@@ -848,14 +1151,18 @@ impl<'a> Tier2Compiler<'a> {
         builder.append_block_param(cont_block, I64);
 
         let tag_mask = builder.ins().iconst(I64, TAG_MASK as i64);
-        let tag_obj = builder.ins().iconst(I64, crate::js_value::TAG_OBJECT as i64);
+        let tag_obj = builder
+            .ins()
+            .iconst(I64, crate::js_value::TAG_OBJECT as i64);
         let obj_tag = builder.ins().band(obj, tag_mask);
         let is_obj = builder.ins().icmp(IntCC::Equal, obj_tag, tag_obj);
         builder.ins().brif(is_obj, obj_block, &[], slow_block, &[]);
 
         builder.switch_to_block(obj_block);
         // Guard: prop id match (string id)
-        let tag_str = builder.ins().iconst(I64, crate::js_value::TAG_STRING as i64);
+        let tag_str = builder
+            .ins()
+            .iconst(I64, crate::js_value::TAG_STRING as i64);
         let prop_tag = builder.ins().band(prop, tag_mask);
         let is_str = builder.ins().icmp(IntCC::Equal, prop_tag, tag_str);
         builder.ins().brif(is_str, prop_block, &[], slow_block, &[]);
@@ -864,7 +1171,9 @@ impl<'a> Tier2Compiler<'a> {
         let prop_expected = builder.ins().iconst(I64, mono.prop_id as i64);
         let prop_id = builder.ins().band_imm(prop, PAYLOAD_MASK as i64);
         let prop_ok = builder.ins().icmp(IntCC::Equal, prop_id, prop_expected);
-        builder.ins().brif(prop_ok, shape_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(prop_ok, shape_block, &[], slow_block, &[]);
 
         builder.switch_to_block(shape_block);
         // Object ptr
@@ -875,10 +1184,15 @@ impl<'a> Tier2Compiler<'a> {
         let shape = builder.ins().load(I64, MemFlags::new(), shape_ptr, 0);
         let expected_shape = builder.ins().iconst(I64, mono.shape_id as i64);
         let shape_ok = builder.ins().icmp(IntCC::Equal, shape, expected_shape);
-        builder.ins().brif(shape_ok, load_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(shape_ok, load_block, &[], slow_block, &[]);
 
         builder.switch_to_block(load_block);
-        let props_ptr = builder.ins().load(I64, MemFlags::new(), obj_ptr, JSOBJ_PROPS_OFFSET as i32);
+        let props_ptr =
+            builder
+                .ins()
+                .load(I64, MemFlags::new(), obj_ptr, JSOBJ_PROPS_OFFSET as i32);
         let offset_bytes = (mono.offset as i64) * 8;
         let value_addr = builder.ins().iadd_imm(props_ptr, offset_bytes);
         let value = builder.ins().load(I64, MemFlags::new(), value_addr, 0);
@@ -915,21 +1229,25 @@ impl<'a> Tier2Compiler<'a> {
             return None;
         }
         let callee = snap.monomorphic.expect("Devia ser monomórfico");
-        println!("[TIER2-DEBUG] Call especializado para callee={:?} builtin={}", callee, callee.is_builtin());
+        println!(
+            "[TIER2-DEBUG] Call especializado para callee={:?} builtin={}",
+            callee,
+            callee.is_builtin()
+        );
         if !callee.is_builtin() {
             return None;
         }
-        
+
         let bid = callee.as_builtin_id() as u32;
         use crate::builtins::BuiltinId;
-        
+
         // Guard: callee must match monomorphic value exactly
         let slow_block = builder.create_block();
         let fast_block = builder.create_block();
         let expected_f = builder.ins().iconst(I64, callee.0 as i64);
         let f_ok = builder.ins().icmp(IntCC::Equal, f, expected_f);
         builder.ins().brif(f_ok, fast_block, &[], slow_block, &[]);
-        
+
         builder.switch_to_block(fast_block);
         let res = match bid {
             x if x == BuiltinId::MathAbs as u32 && num_args >= 1 => {
@@ -943,28 +1261,32 @@ impl<'a> Tier2Compiler<'a> {
             x if x == BuiltinId::MathSqrt as u32 && num_args >= 1 => {
                 let arg = builder.use_var(vars[arg_start.0 as usize]);
                 // Inlining v2: fsqrt direto se for Float64
-                let is_f64 = builder.ins().icmp_imm(IntCC::UnsignedLessThan, arg, TAG_MIN as i64);
+                let is_f64 = builder
+                    .ins()
+                    .icmp_imm(IntCC::UnsignedLessThan, arg, TAG_MIN as i64);
                 let f_sqrt_block = builder.create_block();
                 let f_slow_block = builder.create_block();
                 let f_cont_block = builder.create_block();
                 builder.append_block_param(f_cont_block, I64);
-                
-                builder.ins().brif(is_f64, f_sqrt_block, &[], f_slow_block, &[]);
-                
+
+                builder
+                    .ins()
+                    .brif(is_f64, f_sqrt_block, &[], f_slow_block, &[]);
+
                 builder.switch_to_block(f_sqrt_block);
                 let f_val = builder.ins().bitcast(F64, MemFlags::new(), arg);
                 let f_res = builder.ins().sqrt(f_val);
                 let res_bits = builder.ins().bitcast(I64, MemFlags::new(), f_res);
                 let jump_args = [res_bits.into()];
                 builder.ins().jump(f_cont_block, &jump_args);
-                
+
                 builder.switch_to_block(f_slow_block);
                 let func_ref = *ext_funcs.get("fast_math_sqrt").unwrap();
                 let call = builder.ins().call(func_ref, &[arg]);
                 let res_call = builder.inst_results(call)[0];
                 let jump_args = [res_call.into()];
                 builder.ins().jump(f_cont_block, &jump_args);
-                
+
                 builder.switch_to_block(f_cont_block);
                 builder.seal_block(f_sqrt_block);
                 builder.seal_block(f_slow_block);
@@ -1018,15 +1340,16 @@ impl<'a> Tier2Compiler<'a> {
             }
             _ => None,
         };
-        
+
         if let Some(result) = res {
             let next_block = builder.create_block();
             builder.ins().jump(next_block, &[]);
-            
+
             builder.switch_to_block(slow_block);
-            let deopt_res = Self::emit_deopt_call(builder, ext_funcs, meta_id, deopt_id, spill_slot, vars);
+            let deopt_res =
+                Self::emit_deopt_call(builder, ext_funcs, meta_id, deopt_id, spill_slot, vars);
             builder.ins().return_(&[deopt_res]);
-            
+
             builder.switch_to_block(next_block);
             builder.seal_block(fast_block);
             builder.seal_block(slow_block);
@@ -1068,7 +1391,9 @@ impl<'a> Tier2Compiler<'a> {
         let deopt_val = builder.ins().iconst(I64, deopt_id as i64);
         let spill_ptr = builder.ins().stack_addr(I64, spill_slot, 0);
         let func_ref = *ext_funcs.get("js_deopt_bailout").unwrap();
-        let call = builder.ins().call(func_ref, &[meta_val, deopt_val, spill_ptr]);
+        let call = builder
+            .ins()
+            .call(func_ref, &[meta_val, deopt_val, spill_ptr]);
         builder.inst_results(call)[0]
     }
 
@@ -1096,14 +1421,18 @@ impl<'a> Tier2Compiler<'a> {
         let a_ok = builder.ins().icmp(IntCC::Equal, a_tag, tag_int);
         let b_ok = builder.ins().icmp(IntCC::Equal, b_tag, tag_int);
         let both_ok = builder.ins().band(a_ok, b_ok);
-        builder.ins().brif(both_ok, fast_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(both_ok, fast_block, &[], slow_block, &[]);
 
         builder.switch_to_block(fast_block);
         let a_i32 = builder.ins().ireduce(I32, a);
         let b_i32 = builder.ins().ireduce(I32, b);
         let (diff, overflow) = builder.ins().ssub_overflow(a_i32, b_i32);
         let overflowed = builder.ins().icmp_imm(IntCC::NotEqual, overflow, 0);
-        builder.ins().brif(overflowed, slow_block, &[], fast_ok_block, &[]);
+        builder
+            .ins()
+            .brif(overflowed, slow_block, &[], fast_ok_block, &[]);
 
         builder.switch_to_block(fast_ok_block);
         let diff_i64 = builder.ins().uextend(I64, diff);
@@ -1147,14 +1476,18 @@ impl<'a> Tier2Compiler<'a> {
         let a_ok = builder.ins().icmp(IntCC::Equal, a_tag, tag_int);
         let b_ok = builder.ins().icmp(IntCC::Equal, b_tag, tag_int);
         let both_ok = builder.ins().band(a_ok, b_ok);
-        builder.ins().brif(both_ok, fast_block, &[], slow_block, &[]);
+        builder
+            .ins()
+            .brif(both_ok, fast_block, &[], slow_block, &[]);
 
         builder.switch_to_block(fast_block);
         let a_i32 = builder.ins().ireduce(I32, a);
         let b_i32 = builder.ins().ireduce(I32, b);
         let (prod, overflow) = builder.ins().smul_overflow(a_i32, b_i32);
         let overflowed = builder.ins().icmp_imm(IntCC::NotEqual, overflow, 0);
-        builder.ins().brif(overflowed, slow_block, &[], fast_ok_block, &[]);
+        builder
+            .ins()
+            .brif(overflowed, slow_block, &[], fast_ok_block, &[]);
 
         builder.switch_to_block(fast_ok_block);
         let prod_i64 = builder.ins().uextend(I64, prod);
@@ -1194,9 +1527,7 @@ impl<'a> Tier2Compiler<'a> {
     }
 }
 
-fn build_deopt_points(
-    air: &AirFunction,
-) -> (Vec<DeoptPoint>, HashMap<(u32, usize), u32>) {
+fn build_deopt_points(air: &AirFunction) -> (Vec<DeoptPoint>, HashMap<(u32, usize), u32>) {
     let mut points = Vec::new();
     let mut map = HashMap::new();
 
@@ -1217,8 +1548,8 @@ fn build_deopt_points(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::{AirBlock, AirOpcode, AirReg, AirTerminator, AirConstantPool};
     use crate::bytecode::opcodes::AirBlockId;
+    use crate::bytecode::{AirBlock, AirConstantPool, AirOpcode, AirReg, AirTerminator};
     use crate::jit_engine::AlbedoJitEngine;
     use crate::js_value::JsValue;
 
@@ -1249,18 +1580,28 @@ mod tests {
 
     #[test]
     fn test_tier2_sub_int32_specialization() {
-        let air = make_binary_air("sub_t2", AirOpcode::Sub {
-            dst: AirReg(2), lhs: AirReg(0), rhs: AirReg(1),
-        });
+        let air = make_binary_air(
+            "sub_t2",
+            AirOpcode::Sub {
+                dst: AirReg(2),
+                lhs: AirReg(0),
+                rhs: AirReg(1),
+            },
+        );
         let result = tier2_run_2(&air, JsValue::int32(10), JsValue::int32(3));
         assert_eq!(result.as_int32(), 7);
     }
 
     #[test]
     fn test_tier2_mul_int32_specialization() {
-        let air = make_binary_air("mul_t2", AirOpcode::Mul {
-            dst: AirReg(2), lhs: AirReg(0), rhs: AirReg(1),
-        });
+        let air = make_binary_air(
+            "mul_t2",
+            AirOpcode::Mul {
+                dst: AirReg(2),
+                lhs: AirReg(0),
+                rhs: AirReg(1),
+            },
+        );
         let result = tier2_run_2(&air, JsValue::int32(6), JsValue::int32(7));
         assert_eq!(result.as_int32(), 42);
     }
@@ -1268,9 +1609,14 @@ mod tests {
     #[test]
     fn test_tier2_sub_deopt_bailout() {
         // Float64 tipos → guard int32 falha → slow path via js_sub
-        let air = make_binary_air("sub_deopt", AirOpcode::Sub {
-            dst: AirReg(2), lhs: AirReg(0), rhs: AirReg(1),
-        });
+        let air = make_binary_air(
+            "sub_deopt",
+            AirOpcode::Sub {
+                dst: AirReg(2),
+                lhs: AirReg(0),
+                rhs: AirReg(1),
+            },
+        );
         let result = tier2_run_2(&air, JsValue::float64(10.5), JsValue::float64(3.5));
         assert_eq!(result.as_float64(), 7.0);
     }
@@ -1278,9 +1624,14 @@ mod tests {
     #[test]
     fn test_tier2_mul_deopt_bailout() {
         // Float64 tipos → guard int32 falha → slow path via js_mul
-        let air = make_binary_air("mul_deopt", AirOpcode::Mul {
-            dst: AirReg(2), lhs: AirReg(0), rhs: AirReg(1),
-        });
+        let air = make_binary_air(
+            "mul_deopt",
+            AirOpcode::Mul {
+                dst: AirReg(2),
+                lhs: AirReg(0),
+                rhs: AirReg(1),
+            },
+        );
         let result = tier2_run_2(&air, JsValue::float64(2.5), JsValue::float64(4.0));
         assert_eq!(result.as_float64(), 10.0);
     }
@@ -1294,14 +1645,12 @@ mod tests {
             registers_count: 3,
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
-                insts: vec![
-                    AirOpcode::Add {
-                        dst: AirReg(2),
-                        lhs: AirReg(0),
-                        rhs: AirReg(1),
-                        ic_slot: 999,
-                    },
-                ],
+                insts: vec![AirOpcode::Add {
+                    dst: AirReg(2),
+                    lhs: AirReg(0),
+                    rhs: AirReg(1),
+                    ic_slot: 999,
+                }],
                 terminator: Some(AirTerminator::Return(AirReg(2))),
             }],
             const_pool: AirConstantPool::default(),
@@ -1321,8 +1670,17 @@ mod tests {
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![
-                    AirOpcode::Add { dst: AirReg(2), lhs: AirReg(0), rhs: AirReg(1), ic_slot: 0 },
-                    AirOpcode::Mul { dst: AirReg(3), lhs: AirReg(2), rhs: AirReg(2) },
+                    AirOpcode::Add {
+                        dst: AirReg(2),
+                        lhs: AirReg(0),
+                        rhs: AirReg(1),
+                        ic_slot: 0,
+                    },
+                    AirOpcode::Mul {
+                        dst: AirReg(3),
+                        lhs: AirReg(2),
+                        rhs: AirReg(2),
+                    },
                 ],
                 terminator: Some(AirTerminator::Return(AirReg(3))),
             }],
@@ -1330,22 +1688,29 @@ mod tests {
         };
 
         // 2. Gravar feedback Monomorphic(Int32, Int32) para o slot 0
-        crate::type_feedback::TypeFeedbackRegistry::record_add(0, JsValue::int32(1), JsValue::int32(1));
-        
+        crate::type_feedback::TypeFeedbackRegistry::record_add(
+            0,
+            JsValue::int32(1),
+            JsValue::int32(1),
+        );
+
         // 3. Compilar no Tier 2 (vai especializar Add para Int32)
         let mut engine = AlbedoJitEngine::new().unwrap();
         let mut compiler = Tier2Compiler::new(&mut engine);
         let id = compiler.compile(&air).expect("Tier2 compile falhou");
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
-        
+
         // 4. Executar com Float64 (vai falhar o guard e dar bailout)
-        // No interpretador: 
+        // No interpretador:
         //   Add(1.5, 2.5) -> 4.0
         //   Mul(4.0, 4.0) -> 16.0
         let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        let result = JsValue(native_func(JsValue::float64(1.5).0, JsValue::float64(2.5).0));
-        
+        let result = JsValue(native_func(
+            JsValue::float64(1.5).0,
+            JsValue::float64(2.5).0,
+        ));
+
         assert_eq!(result.as_float64(), 16.0);
     }
 }

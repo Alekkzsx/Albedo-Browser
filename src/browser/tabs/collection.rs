@@ -52,9 +52,11 @@ impl TabCollection {
     }
 
     pub fn close(&mut self, index: usize) {
-        if index >= self.tabs.len() { return; }
+        if index >= self.tabs.len() {
+            return;
+        }
         self.tabs.remove(index);
-        
+
         if let Some(curr) = self.active_index {
             if self.tabs.is_empty() {
                 self.active_index = None;

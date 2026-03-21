@@ -27,13 +27,13 @@ pub fn dispatch_event<'js>(doc: &Document, event: Value<'js>) -> bool {
         dom.root
     };
     if let Some(obj) = event.as_object() {
-            if let Ok(type_val) = obj.get::<_, String>("type") {
-                let listeners_static = EventTargetImpl::get_listeners(ptr, &type_val);
-                let listeners: Vec<Function<'js>> = unsafe { std::mem::transmute(listeners_static) };
-                for listener in listeners {
-                    let _: Result<Value> = listener.call((event.clone(),));
-                }
+        if let Ok(type_val) = obj.get::<_, String>("type") {
+            let listeners_static = EventTargetImpl::get_listeners(ptr, &type_val);
+            let listeners: Vec<Function<'js>> = unsafe { std::mem::transmute(listeners_static) };
+            for listener in listeners {
+                let _: Result<Value> = listener.call((event.clone(),));
             }
+        }
     }
-    true 
+    true
 }

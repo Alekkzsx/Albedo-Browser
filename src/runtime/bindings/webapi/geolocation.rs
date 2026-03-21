@@ -1,4 +1,4 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, prelude::*};
+use rquickjs::{prelude::*, Class, Ctx, Object, Result};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -7,15 +7,22 @@ pub struct Geolocation {}
 #[rquickjs::methods]
 impl Geolocation {
     #[qjs(constructor)]
-    pub fn new() -> Self { Self {} }
+    pub fn new() -> Self {
+        Self {}
+    }
 
-    pub fn get_current_position<'js>(&self, ctx: Ctx<'js>, success: rquickjs::Function<'js>, _error: Option<rquickjs::Function<'js>>) -> Result<()> {
+    pub fn get_current_position<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        success: rquickjs::Function<'js>,
+        _error: Option<rquickjs::Function<'js>>,
+    ) -> Result<()> {
         let position = rquickjs::Object::new(ctx.clone())?;
         let coords = rquickjs::Object::new(ctx.clone())?;
         coords.set("latitude", 0.0)?;
         coords.set("longitude", 0.0)?;
         position.set("coords", coords)?;
-        
+
         let _ = success.call::<(Object,), ()>((position,));
         Ok(())
     }

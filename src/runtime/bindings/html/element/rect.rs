@@ -28,8 +28,8 @@ impl DOMRect {
     }
 }
 
-use rquickjs::{Ctx, Class, Result, Value};
 use super::Element;
+use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn get_bounding_client_rect<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let primitives = el.primitives.lock().unwrap();

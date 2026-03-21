@@ -1,5 +1,5 @@
-use rquickjs::{Ctx, Result, Value, Class, ArrayBuffer, TypedArray, Object, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::*, ArrayBuffer, Class, Ctx, Object, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -8,10 +8,18 @@ pub struct SubtleCrypto {}
 #[rquickjs::methods]
 impl SubtleCrypto {
     #[qjs(rename = "digest")]
-    pub fn digest<'js>(&self, ctx: Ctx<'js>, algorithm: String, data: Value<'js>) -> Result<Value<'js>> {
+    pub fn digest<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        algorithm: String,
+        data: Value<'js>,
+    ) -> Result<Value<'js>> {
         let (promise, resolve, _reject) = rquickjs::Promise::new(&ctx)?;
         let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
-        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap()).unwrap().borrow().clone();
+        let _rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap())
+            .unwrap()
+            .borrow()
+            .clone();
 
         let bytes_vec = if let Some(s) = data.as_string() {
             s.to_string()?.into_bytes()
@@ -29,7 +37,7 @@ impl SubtleCrypto {
         };
 
         // Compute hash synchronously (data is in memory) and resolve immediately
-        use sha2::{Sha256, Sha512, Digest};
+        use sha2::{Digest, Sha256, Sha512};
         let hash = if algorithm == "SHA-256" {
             let mut hasher = Sha256::new();
             hasher.update(&bytes_vec);
@@ -60,7 +68,9 @@ pub struct Crypto {
 impl Crypto {
     #[qjs(constructor)]
     pub fn new() -> Self {
-        Self { subtle: SubtleCrypto {} }
+        Self {
+            subtle: SubtleCrypto {},
+        }
     }
 
     #[qjs(get)]
@@ -75,7 +85,11 @@ impl Crypto {
             let _ = getrandom::getrandom(&mut buf);
             if let Some(raw) = ta.as_raw() {
                 unsafe {
-                    std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
                 }
             }
         } else if let Some(ta) = typed_array.as_typed_array::<u16>() {
@@ -83,7 +97,11 @@ impl Crypto {
             let _ = getrandom::getrandom(&mut buf);
             if let Some(raw) = ta.as_raw() {
                 unsafe {
-                    std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
                 }
             }
         } else if let Some(ta) = typed_array.as_typed_array::<u32>() {
@@ -91,33 +109,49 @@ impl Crypto {
             let _ = getrandom::getrandom(&mut buf);
             if let Some(raw) = ta.as_raw() {
                 unsafe {
-                    std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
                 }
             }
         } else if let Some(ta) = typed_array.as_typed_array::<i8>() {
-             let mut buf = vec![0u8; ta.len()];
-             let _ = getrandom::getrandom(&mut buf);
-             if let Some(raw) = ta.as_raw() {
-                 unsafe {
-                     std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
-                 }
-             }
+            let mut buf = vec![0u8; ta.len()];
+            let _ = getrandom::getrandom(&mut buf);
+            if let Some(raw) = ta.as_raw() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
+                }
+            }
         } else if let Some(ta) = typed_array.as_typed_array::<i16>() {
-             let mut buf = vec![0u8; ta.len() * 2];
-             let _ = getrandom::getrandom(&mut buf);
-             if let Some(raw) = ta.as_raw() {
-                 unsafe {
-                     std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
-                 }
-             }
+            let mut buf = vec![0u8; ta.len() * 2];
+            let _ = getrandom::getrandom(&mut buf);
+            if let Some(raw) = ta.as_raw() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
+                }
+            }
         } else if let Some(ta) = typed_array.as_typed_array::<i32>() {
-             let mut buf = vec![0u8; ta.len() * 4];
-             let _ = getrandom::getrandom(&mut buf);
-             if let Some(raw) = ta.as_raw() {
-                 unsafe {
-                     std::ptr::copy_nonoverlapping(buf.as_ptr(), raw.ptr.as_ptr() as *mut u8, buf.len());
-                 }
-             }
+            let mut buf = vec![0u8; ta.len() * 4];
+            let _ = getrandom::getrandom(&mut buf);
+            if let Some(raw) = ta.as_raw() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        buf.as_ptr(),
+                        raw.ptr.as_ptr() as *mut u8,
+                        buf.len(),
+                    );
+                }
+            }
         }
 
         Ok(typed_array)

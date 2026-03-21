@@ -1,8 +1,8 @@
-use rquickjs::{Class, Result, Ctx, Value};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
+use rquickjs::{Class, Ctx, Result};
 use serde_json;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -28,7 +28,10 @@ impl StorageData {
                 }
             }
         }
-        Self { items, persistence_path: path }
+        Self {
+            items,
+            persistence_path: path,
+        }
     }
 
     fn save(&self) {
@@ -105,19 +108,19 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rquickjs::{Runtime, Context};
+    use rquickjs::{Context, Runtime};
 
     #[test]
     fn test_storage_basic() {
         let rt = Runtime::new().unwrap();
         let ctx = Context::full(&rt).unwrap();
-        
+
         ctx.with(|ctx| {
             let storage = Storage::new_session();
             storage.set_item("foo".to_string(), "bar".to_string());
             assert_eq!(storage.get_item("foo".to_string()), Some("bar".to_string()));
             assert_eq!(storage.length(), 1);
-            
+
             storage.remove_item("foo".to_string());
             assert_eq!(storage.get_item("foo".to_string()), None);
             assert_eq!(storage.length(), 0);
@@ -128,7 +131,9 @@ mod tests {
     fn test_storage_persistence() {
         let temp_dir = std::env::temp_dir();
         let path = temp_dir.join("albedo_test_storage.json");
-        if path.exists() { std::fs::remove_file(&path).unwrap(); }
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
 
         {
             let storage = Storage::new_local(path.clone());
@@ -137,7 +142,10 @@ mod tests {
 
         {
             let storage = Storage::new_local(path.clone());
-            assert_eq!(storage.get_item("persistent".to_string()), Some("data".to_string()));
+            assert_eq!(
+                storage.get_item("persistent".to_string()),
+                Some("data".to_string())
+            );
         }
 
         std::fs::remove_file(path).unwrap();

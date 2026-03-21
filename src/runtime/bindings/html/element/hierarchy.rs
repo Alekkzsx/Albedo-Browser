@@ -1,7 +1,7 @@
-use super::Element;
-use crate::engine::dom::{AceNodeType};
-use rquickjs::{Class, Ctx, Result, Value, prelude::Rest};
 use super::mark_mutation;
+use super::Element;
+use crate::engine::dom::AceNodeType;
+use rquickjs::{prelude::Rest, Class, Ctx, Result, Value};
 use std::sync::{Arc, Mutex};
 
 pub fn append_child<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>) -> Result<Value<'js>> {
@@ -13,7 +13,7 @@ pub fn append_child_generic<'js>(
     parent_idx: usize,
     mutations: &Arc<Mutex<bool>>,
     _ctx: Ctx<'js>,
-    child: Value<'js>
+    child: Value<'js>,
 ) -> Result<Value<'js>> {
     if let Ok(child_el) = Class::<Element>::from_value(&child) {
         let child_borrow = child_el.borrow();
@@ -27,7 +27,10 @@ pub fn append_child_generic<'js>(
             *m = true;
         }
         return Ok(child);
-    } else if let Ok(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
+    } else if let Ok(fragment) = Class::<
+        crate::runtime::bindings::html::document::fragment::DocumentFragment,
+    >::from_value(&child)
+    {
         let fragment_borrow = fragment.borrow();
         let fragment_idx = fragment_borrow.index;
 
@@ -49,15 +52,24 @@ pub fn append_child_generic<'js>(
         return Ok(child);
     }
 
-    Err(rquickjs::Error::new_from_js("TypeError", "Argument 1 must be an Element or DocumentFragment"))
+    Err(rquickjs::Error::new_from_js(
+        "TypeError",
+        "Argument 1 must be an Element or DocumentFragment",
+    ))
 }
 
-pub fn remove_child<'js>(el: &Element, _ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
+pub fn remove_child<'js>(
+    el: &Element,
+    _ctx: Ctx<'js>,
+    child: Class<'js, Element>,
+) -> Result<Class<'js, Element>> {
     let child_borrow = child.borrow();
     let child_idx = child_borrow.index;
 
     if let Ok(mut dom) = el.dom.lock() {
-        let is_child = dom.nodes.get(child_idx)
+        let is_child = dom
+            .nodes
+            .get(child_idx)
             .map(|n| n.parent == Some(el.index))
             .unwrap_or(false);
 
@@ -67,15 +79,18 @@ pub fn remove_child<'js>(el: &Element, _ctx: Ctx<'js>, child: Class<'js, Element
             return Ok(child.clone());
         }
     }
-    
-    Err(rquickjs::Error::new_from_js("NotFoundError", "The node to be removed is not a child of this node"))
+
+    Err(rquickjs::Error::new_from_js(
+        "NotFoundError",
+        "The node to be removed is not a child of this node",
+    ))
 }
 
 pub fn parent_node<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(parent_idx) = node.parent {
-                let element = Element { 
+            if let Some(parent_idx) = node.parent {
+                let element = Element {
                     dom: el.dom.clone(),
                     index: parent_idx,
                     mutations: el.mutations.clone(),
@@ -88,7 +103,7 @@ pub fn parent_node<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
-             }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -97,8 +112,8 @@ pub fn parent_node<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn first_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(&child_idx) = node.children.first() {
-                let element = Element { 
+            if let Some(&child_idx) = node.children.first() {
+                let element = Element {
                     dom: el.dom.clone(),
                     index: child_idx, // This covers child_idx, parent_idx, sibling_idx since AllowMultiple matches the pattern
                     mutations: el.mutations.clone(),
@@ -111,7 +126,7 @@ pub fn first_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
-             }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -120,8 +135,8 @@ pub fn first_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn last_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(&child_idx) = node.children.last() {
-                let element = Element { 
+            if let Some(&child_idx) = node.children.last() {
+                let element = Element {
                     dom: el.dom.clone(),
                     index: child_idx, // This covers child_idx, parent_idx, sibling_idx since AllowMultiple matches the pattern
                     mutations: el.mutations.clone(),
@@ -134,7 +149,7 @@ pub fn last_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
-             }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -143,8 +158,8 @@ pub fn last_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn next_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(sibling_idx) = node.next_sibling {
-                let element = Element { 
+            if let Some(sibling_idx) = node.next_sibling {
+                let element = Element {
                     dom: el.dom.clone(),
                     index: sibling_idx,
                     mutations: el.mutations.clone(),
@@ -157,7 +172,7 @@ pub fn next_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
-             }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -166,8 +181,8 @@ pub fn next_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn previous_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(sibling_idx) = node.prev_sibling {
-                let element = Element { 
+            if let Some(sibling_idx) = node.prev_sibling {
+                let element = Element {
                     dom: el.dom.clone(),
                     index: sibling_idx,
                     mutations: el.mutations.clone(),
@@ -180,7 +195,7 @@ pub fn previous_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> 
                 };
                 let instance = Class::instance(ctx, element)?;
                 return Ok(instance.into_value());
-             }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -202,7 +217,7 @@ pub fn prepend<'js>(el: &Element, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Res
     }
 
     let ref_val = if let Some(idx) = ref_idx {
-        let element = Element { 
+        let element = Element {
             dom: el.dom.clone(),
             index: idx,
             mutations: el.mutations.clone(),
@@ -226,15 +241,15 @@ pub fn prepend<'js>(el: &Element, ctx: Ctx<'js>, nodes: Rest<Value<'js>>) -> Res
 
 pub fn children<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let array = rquickjs::Array::new(ctx.clone())?;
-    
+
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             let mut i = 0;
-             for &child_idx in &node.children {
-                 if let Some(child_node) = dom.get_node(child_idx) {
-                     // Check if Element type
-                     if let AceNodeType::Element(_) = child_node.node_type {
-                         let element = Element { 
+            let mut i = 0;
+            for &child_idx in &node.children {
+                if let Some(child_node) = dom.get_node(child_idx) {
+                    // Check if Element type
+                    if let AceNodeType::Element(_) = child_node.node_type {
+                        let element = Element {
                             dom: el.dom.clone(),
                             index: child_idx,
                             mutations: el.mutations.clone(),
@@ -248,9 +263,9 @@ pub fn children<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                         let instance = Class::instance(ctx.clone(), element)?;
                         array.set(i, instance)?;
                         i += 1;
-                     }
-                 }
-             }
+                    }
+                }
+            }
         }
     }
     Ok(array.into_value())
@@ -259,26 +274,26 @@ pub fn children<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn parent_element<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let Some(parent_idx) = node.parent {
-                 // Check if parent is element (usually yes, unless root #document)
-                 if let Some(parent_node) = dom.get_node(parent_idx) {
-                      if let AceNodeType::Element(_) = parent_node.node_type {
-                           let element = Element { 
-                                dom: el.dom.clone(),
-                                index: parent_idx, 
-                                mutations: el.mutations.clone(),
-                                stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                primitives: el.primitives.clone(),
-                                canvas_contexts: el.canvas_contexts.clone(),
-                                pending_scroll: el.pending_scroll.clone(),
-                                element_geometry: el.element_geometry.clone(),
-                                element_scroll: el.element_scroll.clone(),
-                           };
-                           let instance = Class::instance(ctx, element)?;
-                           return Ok(instance.into_value());
-                      }
-                 }
-             }
+            if let Some(parent_idx) = node.parent {
+                // Check if parent is element (usually yes, unless root #document)
+                if let Some(parent_node) = dom.get_node(parent_idx) {
+                    if let AceNodeType::Element(_) = parent_node.node_type {
+                        let element = Element {
+                            dom: el.dom.clone(),
+                            index: parent_idx,
+                            mutations: el.mutations.clone(),
+                            stylesheet_dirty: el.stylesheet_dirty.clone(),
+                            primitives: el.primitives.clone(),
+                            canvas_contexts: el.canvas_contexts.clone(),
+                            pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
+                        };
+                        let instance = Class::instance(ctx, element)?;
+                        return Ok(instance.into_value());
+                    }
+                }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -287,25 +302,25 @@ pub fn parent_element<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
 pub fn first_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             for &child_idx in &node.children {
-                 if let Some(child_node) = dom.get_node(child_idx) {
-                     if let AceNodeType::Element(_) = child_node.node_type {
-                          let element = Element { 
-                                dom: el.dom.clone(),
-                                index: child_idx,
-                                mutations: el.mutations.clone(),
-                                stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                primitives: el.primitives.clone(),
-                                canvas_contexts: el.canvas_contexts.clone(),
-                                 pending_scroll: el.pending_scroll.clone(),
-                                element_geometry: el.element_geometry.clone(),
-                                element_scroll: el.element_scroll.clone(),
-                           };
-                           let instance = Class::instance(ctx, element)?;
-                           return Ok(instance.into_value());
-                     }
-                 }
-             }
+            for &child_idx in &node.children {
+                if let Some(child_node) = dom.get_node(child_idx) {
+                    if let AceNodeType::Element(_) = child_node.node_type {
+                        let element = Element {
+                            dom: el.dom.clone(),
+                            index: child_idx,
+                            mutations: el.mutations.clone(),
+                            stylesheet_dirty: el.stylesheet_dirty.clone(),
+                            primitives: el.primitives.clone(),
+                            canvas_contexts: el.canvas_contexts.clone(),
+                            pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
+                        };
+                        let instance = Class::instance(ctx, element)?;
+                        return Ok(instance.into_value());
+                    }
+                }
+            }
         }
     }
     Ok(Value::new_null(ctx))
@@ -314,116 +329,126 @@ pub fn first_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js
 pub fn last_element_child<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             // Iterate reversed
-             for &child_idx in node.children.iter().rev() {
-                 if let Some(child_node) = dom.get_node(child_idx) {
-                     if let AceNodeType::Element(_) = child_node.node_type {
-                          let element = Element { 
-                                dom: el.dom.clone(),
-                                index: child_idx,
-                                mutations: el.mutations.clone(),
-                                stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                primitives: el.primitives.clone(),
-                                 pending_scroll: el.pending_scroll.clone(),
-                                 element_geometry: el.element_geometry.clone(),
-                                 element_scroll: el.element_scroll.clone(),
-                                canvas_contexts: el.canvas_contexts.clone(),
-                           };
-                           let instance = Class::instance(ctx, element)?;
-                           return Ok(instance.into_value());
-                     }
-                 }
-             }
+            // Iterate reversed
+            for &child_idx in node.children.iter().rev() {
+                if let Some(child_node) = dom.get_node(child_idx) {
+                    if let AceNodeType::Element(_) = child_node.node_type {
+                        let element = Element {
+                            dom: el.dom.clone(),
+                            index: child_idx,
+                            mutations: el.mutations.clone(),
+                            stylesheet_dirty: el.stylesheet_dirty.clone(),
+                            primitives: el.primitives.clone(),
+                            pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
+                            canvas_contexts: el.canvas_contexts.clone(),
+                        };
+                        let instance = Class::instance(ctx, element)?;
+                        return Ok(instance.into_value());
+                    }
+                }
+            }
         }
     }
     Ok(Value::new_null(ctx))
 }
 
 pub fn next_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
-     if let Ok(dom) = el.dom.lock() {
+    if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             let mut curr = node.next_sibling;
-             while let Some(sibling_idx) = curr {
-                 if let Some(sibling_node) = dom.get_node(sibling_idx) {
-                      if let AceNodeType::Element(_) = sibling_node.node_type {
-                           let element = Element { 
-                                dom: el.dom.clone(),
-                                index: sibling_idx,
-                                mutations: el.mutations.clone(),
-                                stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                  pending_scroll: el.pending_scroll.clone(),
-                                  element_geometry: el.element_geometry.clone(),
-                                  element_scroll: el.element_scroll.clone(),
-                                 primitives: el.primitives.clone(),
-                                canvas_contexts: el.canvas_contexts.clone(),
-                           };
-                           let instance = Class::instance(ctx, element)?;
-                           return Ok(instance.into_value());
-                      }
-                      curr = sibling_node.next_sibling;
-                 } else {
-                     break;
-                 }
-             }
+            let mut curr = node.next_sibling;
+            while let Some(sibling_idx) = curr {
+                if let Some(sibling_node) = dom.get_node(sibling_idx) {
+                    if let AceNodeType::Element(_) = sibling_node.node_type {
+                        let element = Element {
+                            dom: el.dom.clone(),
+                            index: sibling_idx,
+                            mutations: el.mutations.clone(),
+                            stylesheet_dirty: el.stylesheet_dirty.clone(),
+                            pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
+                            primitives: el.primitives.clone(),
+                            canvas_contexts: el.canvas_contexts.clone(),
+                        };
+                        let instance = Class::instance(ctx, element)?;
+                        return Ok(instance.into_value());
+                    }
+                    curr = sibling_node.next_sibling;
+                } else {
+                    break;
+                }
+            }
         }
-     }
+    }
     Ok(Value::new_null(ctx))
 }
 
 pub fn previous_element_sibling<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
-     if let Ok(dom) = el.dom.lock() {
+    if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             let mut curr = node.prev_sibling;
-             while let Some(sibling_idx) = curr {
-                 if let Some(sibling_node) = dom.get_node(sibling_idx) {
-                      if let AceNodeType::Element(_) = sibling_node.node_type {
-                           let element = Element { 
-                                dom: el.dom.clone(),
-                                index: sibling_idx,
-                                mutations: el.mutations.clone(),
-                                  pending_scroll: el.pending_scroll.clone(),
-                                  element_geometry: el.element_geometry.clone(),
-                                  element_scroll: el.element_scroll.clone(),
-                                 stylesheet_dirty: el.stylesheet_dirty.clone(),
-                                primitives: el.primitives.clone(),
-                                canvas_contexts: el.canvas_contexts.clone(),
-                           };
-                           let instance = Class::instance(ctx, element)?;
-                           return Ok(instance.into_value());
-                      }
-                      curr = sibling_node.prev_sibling;
-                 } else {
-                     break;
-                 }
-             }
+            let mut curr = node.prev_sibling;
+            while let Some(sibling_idx) = curr {
+                if let Some(sibling_node) = dom.get_node(sibling_idx) {
+                    if let AceNodeType::Element(_) = sibling_node.node_type {
+                        let element = Element {
+                            dom: el.dom.clone(),
+                            index: sibling_idx,
+                            mutations: el.mutations.clone(),
+                            pending_scroll: el.pending_scroll.clone(),
+                            element_geometry: el.element_geometry.clone(),
+                            element_scroll: el.element_scroll.clone(),
+                            stylesheet_dirty: el.stylesheet_dirty.clone(),
+                            primitives: el.primitives.clone(),
+                            canvas_contexts: el.canvas_contexts.clone(),
+                        };
+                        let instance = Class::instance(ctx, element)?;
+                        return Ok(instance.into_value());
+                    }
+                    curr = sibling_node.prev_sibling;
+                } else {
+                    break;
+                }
+            }
         }
-     }
+    }
     Ok(Value::new_null(ctx))
 }
 
 pub fn child_element_count(el: &Element) -> usize {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-            return node.children.iter().filter(|&&idx| {
-                if let Some(child) = dom.get_node(idx) {
-                    matches!(child.node_type, AceNodeType::Element(_))
-                } else {
-                    false
-                }
-            }).count();
+            return node
+                .children
+                .iter()
+                .filter(|&&idx| {
+                    if let Some(child) = dom.get_node(idx) {
+                        matches!(child.node_type, AceNodeType::Element(_))
+                    } else {
+                        false
+                    }
+                })
+                .count();
         }
     }
     0
 }
 
-pub fn insert_before<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>, ref_child: Value<'js>) -> Result<Value<'js>> {
+pub fn insert_before<'js>(
+    el: &Element,
+    _ctx: Ctx<'js>,
+    child: Value<'js>,
+    ref_child: Value<'js>,
+) -> Result<Value<'js>> {
     let parent_idx = el.index;
-    
+
     let ref_idx: Option<usize> = if ref_child.is_null() || ref_child.is_undefined() {
         None
     } else {
-        let ref_el = Class::<Element>::from_value(&ref_child)
-            .map_err(|_| rquickjs::Error::new_from_js("TypeError", "Argument 2 must be an Element or null"))?;
+        let ref_el = Class::<Element>::from_value(&ref_child).map_err(|_| {
+            rquickjs::Error::new_from_js("TypeError", "Argument 2 must be an Element or null")
+        })?;
         let idx = ref_el.borrow().index;
         Some(idx)
     };
@@ -435,7 +460,10 @@ pub fn insert_before<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>, ref_ch
         }
         mark_mutation(el);
         return Ok(child);
-    } else if let Ok(fragment) = Class::<crate::runtime::bindings::html::document::fragment::DocumentFragment>::from_value(&child) {
+    } else if let Ok(fragment) = Class::<
+        crate::runtime::bindings::html::document::fragment::DocumentFragment,
+    >::from_value(&child)
+    {
         let fragment_borrow = fragment.borrow();
         let fragment_idx = fragment_borrow.index;
 
@@ -456,7 +484,10 @@ pub fn insert_before<'js>(el: &Element, ctx: Ctx<'js>, child: Value<'js>, ref_ch
         return Ok(child);
     }
 
-    Err(rquickjs::Error::new_from_js("TypeError", "Argument 1 must be an Element or DocumentFragment"))
+    Err(rquickjs::Error::new_from_js(
+        "TypeError",
+        "Argument 1 must be an Element or DocumentFragment",
+    ))
 }
 
 pub fn remove(el: &Element) {
@@ -513,7 +544,12 @@ pub fn set_text_content(el: &Element, text: String) {
     }
     mark_mutation(el);
 }
-pub fn insert_adjacent_html<'js>(el: &Element, _ctx: Ctx<'js>, position: String, html: String) -> Result<()> {
+pub fn insert_adjacent_html<'js>(
+    el: &Element,
+    _ctx: Ctx<'js>,
+    position: String,
+    html: String,
+) -> Result<()> {
     if let Ok(mut dom) = el.dom.lock() {
         dom.insert_adjacent_html(el.index, &position, &html);
     }

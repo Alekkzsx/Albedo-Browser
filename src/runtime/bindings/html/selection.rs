@@ -1,6 +1,6 @@
-use rquickjs::{Ctx, Class, Result, Value, Object};
-use std::sync::{Arc, Mutex};
 use super::range::Range;
+use rquickjs::{Class, Ctx, Result, Value};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -51,7 +51,7 @@ impl Selection {
 
     #[qjs(get, rename = "anchorNode")]
     pub fn anchor_node<'js>(&self, ctx: Ctx<'js>) -> Value<'js> {
-        // In a real scenario, this would return an Element/Node wrapper. 
+        // In a real scenario, this would return an Element/Node wrapper.
         // For MVP, returning null if no wrapper is tracked correctly back to JS space yet.
         Value::new_null(ctx)
     }
@@ -80,7 +80,7 @@ impl Selection {
             0
         }
     }
-    
+
     #[qjs(get, rename = "rangeCount")]
     pub fn range_count(&self) -> usize {
         self.ranges.lock().unwrap().len()

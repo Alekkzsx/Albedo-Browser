@@ -1,7 +1,7 @@
-use rquickjs::{Ctx, Result, Value, Function, Object, Persistent, Class, prelude::*};
-use std::cell::RefCell;
-use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::bindings::html::element::Element;
+use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result, Value};
+use std::cell::RefCell;
 
 #[derive(Clone)]
 #[rquickjs::class]
@@ -17,8 +17,15 @@ pub struct IntersectionObserver {
 #[rquickjs::methods]
 impl IntersectionObserver {
     #[qjs(constructor)]
-    pub fn new<'js>(ctx: Ctx<'js>, callback: Function<'js>, options: Option<Object<'js>>) -> Result<Self> {
-        let rt = ctx.globals().get::<_, JsRuntime>("__albedo_rt__").expect("JsRuntime required");
+    pub fn new<'js>(
+        ctx: Ctx<'js>,
+        callback: Function<'js>,
+        options: Option<Object<'js>>,
+    ) -> Result<Self> {
+        let rt = ctx
+            .globals()
+            .get::<_, JsRuntime>("__albedo_rt__")
+            .expect("JsRuntime required");
 
         // Extrair threshold(s) das opções
         let thresholds_list = if let Some(ref opts) = options {
@@ -30,7 +37,11 @@ impl IntersectionObserver {
                         v.push(t);
                     }
                 }
-                if v.is_empty() { vec![0.0] } else { v }
+                if v.is_empty() {
+                    vec![0.0]
+                } else {
+                    v
+                }
             } else if let Ok(t) = opts.get::<_, f32>("threshold") {
                 vec![t]
             } else {
@@ -48,7 +59,8 @@ impl IntersectionObserver {
         };
 
         let callback_persistent = Persistent::save(&ctx, callback);
-        let callback_stored: Persistent<Function<'static>> = unsafe { std::mem::transmute(callback_persistent) };
+        let callback_stored: Persistent<Function<'static>> =
+            unsafe { std::mem::transmute(callback_persistent) };
 
         Ok(Self {
             rt,
@@ -59,7 +71,7 @@ impl IntersectionObserver {
         })
     }
 
-    pub fn observe<'js>(&self, ctx: Ctx<'js>, target: Value<'js>) {
+    pub fn observe<'js>(&self, _ctx: Ctx<'js>, target: Value<'js>) {
         // Extrair node_idx do Element JS
         let node_idx = Self::extract_node_idx(&target);
 

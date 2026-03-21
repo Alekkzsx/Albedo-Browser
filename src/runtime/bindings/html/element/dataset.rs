@@ -1,7 +1,6 @@
-use rquickjs::{Ctx, Result, Value, Class};
 use crate::engine::dom::{AceDOM, AceNodeType};
+use rquickjs::{Class, Ctx, Result, Value};
 use std::sync::{Arc, Mutex};
-use super::mark_mutation;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]

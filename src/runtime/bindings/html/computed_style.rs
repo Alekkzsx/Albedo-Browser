@@ -1,6 +1,6 @@
 use crate::engine::dom::AceDOM;
-use std::sync::{Arc, Mutex};
 use crate::engine::style::Stylesheet;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -17,18 +17,33 @@ pub struct ComputedCSSStyleDeclaration {
 impl ComputedCSSStyleDeclaration {
     #[qjs(rename = "getPropertyValue")]
     pub fn get_property_value(&self, property: String) -> String {
-        let stylesheet = self.stylesheet.lock().unwrap();
-        let dom = self.dom.lock().unwrap();
+        let _stylesheet = self.stylesheet.lock().unwrap();
+        let _dom = self.dom.lock().unwrap();
         let stylesheet_lock = self.stylesheet.lock().unwrap();
         let dom_lock = self.dom.lock().unwrap();
         // stylesheet.calculate_style signature was updated in previous steps to accept &AceDOM and usize
         // For now, we don't have parent context easily available here without traversing up.
         // We'll pass None for parent_style for now (inheritance will be limited for JS query until we fix this loop).
-        let root_style = stylesheet_lock.calculate_style(&dom_lock, 0, None, None, None, None, None, None, 0.0, 1024.0, 768.0, "light");
-        let style = stylesheet_lock.calculate_style(&dom_lock, self.node_idx, None, Some(&root_style), None, None, None, None, 0.0, 1024.0, 768.0, "light");
-        
+        let root_style = stylesheet_lock.calculate_style(
+            &dom_lock, 0, None, None, None, None, None, None, 0.0, 1024.0, 768.0, "light",
+        );
+        let style = stylesheet_lock.calculate_style(
+            &dom_lock,
+            self.node_idx,
+            None,
+            Some(&root_style),
+            None,
+            None,
+            None,
+            None,
+            0.0,
+            1024.0,
+            768.0,
+            "light",
+        );
+
         match property.as_str() {
-            "color" => format!("{:?}", style.color), 
+            "color" => format!("{:?}", style.color),
             "background-color" | "background" => format!("{:?}", style.background_color),
             "font-size" => format!("{}px", style.font_size),
             "display" => format!("{:?}", style.display).to_lowercase(),

@@ -1,18 +1,18 @@
-use rquickjs::{Ctx, Value, Class, Result, Function, Persistent};
-use crate::engine::dom::{AceDOM, AceNodeType, AceNode};
-use crate::runtime::core::runtime::JsRuntime;
-use super::element::{Element, ElementType};
-use std::sync::{Arc, Mutex};
+use super::element::Element;
+use crate::engine::dom::{AceDOM, AceNode, AceNodeType};
 use crate::engine::style::Stylesheet;
+use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Class, Ctx, Function, Result, Value};
+use std::sync::{Arc, Mutex};
 
-pub mod query;
-pub mod events;
 pub mod collections;
+pub mod events;
 pub mod fragment;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod observer_tests;
+pub mod query;
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -28,7 +28,8 @@ pub struct Document {
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
     #[qjs(skip_trace)]
-    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    pub canvas_contexts:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
@@ -38,7 +39,8 @@ pub struct Document {
     pub url: String,
     pub referrer: String,
     #[qjs(skip_trace)]
-    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    pub element_geometry:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
@@ -61,7 +63,7 @@ impl Document {
     }
 
     #[qjs(rename = "dispatchEvent")]
-    pub fn dispatch_event<'js>(&self, ctx: Ctx<'js>, event: Value<'js>) -> bool {
+    pub fn dispatch_event<'js>(&self, _ctx: Ctx<'js>, event: Value<'js>) -> bool {
         self::events::dispatch_event(self, event)
     }
 
@@ -74,7 +76,7 @@ impl Document {
     pub fn default_view<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         Ok(ctx.globals().into_value())
     }
-    
+
     #[qjs(get, rename = "cookie")]
     pub fn cookie(&self) -> String {
         if let Some(ref rm) = self.resource_manager {
@@ -119,13 +121,17 @@ impl Document {
         let idx = if let Ok(mut dom) = self.dom.lock() {
             let idx = dom.nodes.len();
             dom.nodes.push(AceNode {
-                node_type: AceNodeType::Element(crate::engine::dom::AceElement { tag, attributes: std::collections::HashMap::new() }),
+                node_type: AceNodeType::Element(crate::engine::dom::AceElement {
+                    tag,
+                    attributes: std::collections::HashMap::new(),
+                }),
                 parent: None,
                 children: Vec::new(),
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
-                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                    | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -159,7 +165,8 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
-                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                    | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -193,7 +200,8 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
-                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                    | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -227,7 +235,8 @@ impl Document {
                 prev_sibling: None,
                 next_sibling: None,
                 shadow_root: None,
-                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
+                dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                    | crate::engine::dom::NodeDirtyFlags::STYLE,
             });
             idx
         } else {
@@ -251,14 +260,18 @@ impl Document {
     }
 
     #[qjs(get, rename = "onclick")]
-    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "onclick")]
     pub fn onclick_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("click".to_string(), listener);
     }
 
     #[qjs(get, rename = "onload")]
-    pub fn onload_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn onload_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "onload")]
     pub fn onload_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("load".to_string(), listener);
@@ -299,10 +312,10 @@ impl Document {
     pub fn body<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
         if let Some(body_idx) = dom.body {
-             let idx = body_idx;
-             drop(dom);
-             
-             let element = Element { 
+            let idx = body_idx;
+            drop(dom);
+
+            let element = Element {
                 dom: self.dom.clone(),
                 index: idx,
                 mutations: self.mutations.clone(),
@@ -323,10 +336,10 @@ impl Document {
     pub fn head<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
         if let Some(head_idx) = dom.head {
-             let idx = head_idx;
-             drop(dom);
-             
-             let element = Element { 
+            let idx = head_idx;
+            drop(dom);
+
+            let element = Element {
                 dom: self.dom.clone(),
                 index: idx,
                 mutations: self.mutations.clone(),
@@ -348,8 +361,8 @@ impl Document {
         let dom = self.dom.lock().unwrap();
         let root_idx = dom.root;
         drop(dom);
-        
-        let element = Element { 
+
+        let element = Element {
             dom: self.dom.clone(),
             index: root_idx,
             mutations: self.mutations.clone(),
@@ -384,7 +397,7 @@ impl Document {
         let dom = self.dom.lock().unwrap();
         if let Some(idx) = dom.active_element {
             drop(dom);
-            let element = Element { 
+            let element = Element {
                 dom: self.dom.clone(),
                 index: idx,
                 mutations: self.mutations.clone(),
@@ -402,37 +415,51 @@ impl Document {
     }
 }
 
-pub fn register(rt: &JsRuntime, dom: Arc<Mutex<AceDOM>>, stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>, primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>, canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>, url: String, referrer: String, resource_manager: Option<crate::network::resources::ResourceManager>) -> Result<()> {
+pub fn register(
+    rt: &JsRuntime,
+    dom: Arc<Mutex<AceDOM>>,
+    stylesheet: std::sync::Arc<std::sync::Mutex<crate::engine::style::Stylesheet>>,
+    primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
+    canvas_contexts: Arc<
+        Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>,
+    >,
+    url: String,
+    referrer: String,
+    resource_manager: Option<crate::network::resources::ResourceManager>,
+) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             let global = ctx.globals();
             // Register classes
             Class::<Element>::define(&global)?;
             Class::<Document>::define(&global)?;
-            
+
             let cookies = if let Some(rm) = resource_manager.as_ref() {
                 rm.cookie_jar.lock().unwrap().get_cookies_for_url(&url)
             } else {
                 String::new()
             };
 
-            let doc_instance = Class::instance(ctx.clone(), Document { 
-                dom, 
-                stylesheet: stylesheet.clone(),
-                mutations: rt.mutations.clone(),
-                stylesheet_dirty: rt.stylesheet_dirty.clone(),
-                cookie_storage: Arc::new(Mutex::new(cookies)),
-                resource_manager,
-                primitives,
-                canvas_contexts,
-                pending_scroll: rt.pending_scroll.clone(),
-                element_geometry: rt.element_geometry.clone(), // Add
-                element_scroll: rt.element_scroll.clone(), // Add
-                url,
-                referrer,
-            })?;
+            let doc_instance = Class::instance(
+                ctx.clone(),
+                Document {
+                    dom,
+                    stylesheet: stylesheet.clone(),
+                    mutations: rt.mutations.clone(),
+                    stylesheet_dirty: rt.stylesheet_dirty.clone(),
+                    cookie_storage: Arc::new(Mutex::new(cookies)),
+                    resource_manager,
+                    primitives,
+                    canvas_contexts,
+                    pending_scroll: rt.pending_scroll.clone(),
+                    element_geometry: rt.element_geometry.clone(), // Add
+                    element_scroll: rt.element_scroll.clone(),     // Add
+                    url,
+                    referrer,
+                },
+            )?;
             global.set("document", doc_instance)?;
-            
+
             Ok(())
         })
     })

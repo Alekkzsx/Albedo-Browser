@@ -1,5 +1,5 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, Function, prelude::This};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Class, Ctx, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -31,7 +31,8 @@ impl WindowProxy {
 
         let caller_origin = caller_rt
             .origin
-            .lock().unwrap()
+            .lock()
+            .unwrap()
             .as_ref()
             .map(|o: &crate::network::security::Origin| o.to_string())
             .unwrap_or_else(|| "null".to_string());
@@ -70,15 +71,16 @@ impl WindowProxy {
             // This only locks the event_loop mutex (not the JS context) - no deadlock.
             // The message is processed on the next run_pending() call in the target runtime.
             let target_rt = arc.lock().unwrap();
-            target_rt.event_loop
-                .lock().unwrap()
-                .enqueue_message(message_json, caller_origin, Some(caller_rt.id));
+            target_rt.event_loop.lock().unwrap().enqueue_message(
+                message_json,
+                caller_origin,
+                Some(caller_rt.id),
+            );
         }
 
         Ok(())
     }
 }
-
 
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let global = ctx.globals();

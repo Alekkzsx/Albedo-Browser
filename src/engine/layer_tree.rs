@@ -52,7 +52,7 @@ impl Layer {
             let top = self.y.min(item.y);
             let right = (self.x + self.width).max(item.x + item.width);
             let bottom = (self.y + self.height).max(item.y + item.height);
-            
+
             self.x = left;
             self.y = top;
             self.width = right - left;
@@ -84,7 +84,7 @@ impl Layer {
                 }
             }
         }
-        
+
         tiles.into_values().collect()
     }
 }
@@ -106,7 +106,7 @@ impl LayerTree {
 
     pub fn build(items: Vec<DisplayItem>, fixed_nodes: &[usize]) -> Self {
         let mut tree = Self::new();
-        
+
         // Contextos isolados
         let mut fixed_layer = Layer::new(tree.next_layer_id, true, 1000);
         tree.next_layer_id += 1;

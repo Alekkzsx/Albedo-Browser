@@ -1,9 +1,6 @@
 // ARQUIVO: src/graphics/canvas2d.rs
 
-use tiny_skia::{
-    Color, FilterQuality, Paint, PathBuilder, Pixmap, 
-    PixmapPaint, Rect, Stroke, Transform
-};
+use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 /// Estado atual do desenho (Cores, Estilos de Linha)
 #[derive(Clone, Debug)]
@@ -31,13 +28,13 @@ pub struct Canvas2D {
     width: u32,
     height: u32,
     pixmap: Pixmap,
-    
+
     // Caminho atual sendo construído (beginPath -> ... -> fill)
     path_builder: PathBuilder,
-    
+
     // Estado atual
     state: DrawState,
-    
+
     // Pilha de estados para save()/restore()
     state_stack: Vec<DrawState>,
 }
@@ -71,7 +68,7 @@ impl Canvas2D {
                 self.width = width;
                 self.height = height;
                 // HTML Canvas limpa o estado ao redimensionar, mas aqui mantemos o path builder
-                self.path_builder = PathBuilder::new(); 
+                self.path_builder = PathBuilder::new();
             }
         }
     }
@@ -140,7 +137,7 @@ impl Canvas2D {
 
     /// Adiciona um retângulo ao path atual
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
-        let r = Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0,0.0,0.0,0.0).unwrap());
+        let r = Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap());
         self.path_builder.push_rect(r);
     }
 
@@ -148,17 +145,14 @@ impl Canvas2D {
 
     /// clearRect: Limpa uma área (deixa transparente)
     pub fn clear_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
-        let rect = Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0,0.0,0.0,0.0).unwrap());
+        let rect =
+            Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap());
         // Modo Clear usa PorterDuff::Clear
         let mut paint = Paint::default();
         paint.blend_mode = tiny_skia::BlendMode::Clear;
-        
-        self.pixmap.fill_rect(
-            rect, 
-            &paint, 
-            self.state.transform, 
-            None
-        );
+
+        self.pixmap
+            .fill_rect(rect, &paint, self.state.transform, None);
     }
 
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
@@ -166,18 +160,19 @@ impl Canvas2D {
             let mut paint = Paint::default();
             paint.set_color(self.state.fill_color);
             paint.anti_alias = true; // Borda suave
-            // Aplica transparência global se necessário
+                                     // Aplica transparência global se necessário
             if self.state.global_alpha < 1.0 {
                 let current_alpha = self.state.fill_color.alpha();
                 paint.set_color_rgba8(
                     (self.state.fill_color.red() * 255.0) as u8,
                     (self.state.fill_color.green() * 255.0) as u8,
                     (self.state.fill_color.blue() * 255.0) as u8,
-                    (current_alpha * self.state.global_alpha * 255.0) as u8
+                    (current_alpha * self.state.global_alpha * 255.0) as u8,
                 );
             }
 
-            self.pixmap.fill_rect(rect, &paint, self.state.transform, None);
+            self.pixmap
+                .fill_rect(rect, &paint, self.state.transform, None);
         }
     }
 
@@ -191,11 +186,11 @@ impl Canvas2D {
             paint.anti_alias = true;
 
             self.pixmap.fill_path(
-                &path, 
-                &paint, 
+                &path,
+                &paint,
                 Default::default(), // FillRule (Winding/EvenOdd)
-                self.state.transform, 
-                None
+                self.state.transform,
+                None,
             );
         }
     }
@@ -212,13 +207,8 @@ impl Canvas2D {
                 ..Stroke::default() // Caps, Joins padrão
             };
 
-            self.pixmap.stroke_path(
-                &path, 
-                &paint, 
-                &stroke, 
-                self.state.transform, 
-                None
-            );
+            self.pixmap
+                .stroke_path(&path, &paint, &stroke, self.state.transform, None);
         }
     }
 }
@@ -226,23 +216,28 @@ impl Canvas2D {
 // --- AUXILIAR: PARSER DE CORES LEVE ---
 
 fn parse_hex_color(hex: &str) -> Option<Color> {
-    if !hex.starts_with('#') { return None; }
-    
+    if !hex.starts_with('#') {
+        return None;
+    }
+
     let hex = hex.trim_start_matches('#');
     let (r, g, b, a) = match hex.len() {
-        3 => { // #RGB
+        3 => {
+            // #RGB
             let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
             let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
             let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
             (r * 17, g * 17, b * 17, 255)
-        },
-        6 => { // #RRGGBB
+        }
+        6 => {
+            // #RRGGBB
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
             (r, g, b, 255)
-        },
-        8 => { // #RRGGBBAA
+        }
+        8 => {
+            // #RRGGBBAA
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;

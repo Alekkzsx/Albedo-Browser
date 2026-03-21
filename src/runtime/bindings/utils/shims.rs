@@ -1,6 +1,6 @@
-use rquickjs::{Context, Result, Class, Ctx};
-use std::sync::{Arc, Mutex};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Class, Result};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -16,11 +16,11 @@ impl History {
     pub fn pushState(&self) {
         // Stub
     }
-    
+
     pub fn replaceState(&self) {
         // Stub
     }
-    
+
     pub fn back(&self) {}
     pub fn forward(&self) {}
     pub fn go(&self) {}
@@ -36,17 +36,29 @@ pub struct Screen {
 #[rquickjs::methods]
 impl Screen {
     #[qjs(get)]
-    pub fn width(&self) -> i32 { self.size.lock().unwrap().0 }
+    pub fn width(&self) -> i32 {
+        self.size.lock().unwrap().0
+    }
     #[qjs(get)]
-    pub fn height(&self) -> i32 { self.size.lock().unwrap().1 }
+    pub fn height(&self) -> i32 {
+        self.size.lock().unwrap().1
+    }
     #[qjs(get)]
-    pub fn availWidth(&self) -> i32 { self.size.lock().unwrap().0 }
+    pub fn availWidth(&self) -> i32 {
+        self.size.lock().unwrap().0
+    }
     #[qjs(get)]
-    pub fn availHeight(&self) -> i32 { self.size.lock().unwrap().1 }
+    pub fn availHeight(&self) -> i32 {
+        self.size.lock().unwrap().1
+    }
     #[qjs(get)]
-    pub fn colorDepth(&self) -> i32 { 24 }
+    pub fn colorDepth(&self) -> i32 {
+        24
+    }
     #[qjs(get)]
-    pub fn pixelDepth(&self) -> i32 { 24 }
+    pub fn pixelDepth(&self) -> i32 {
+        24
+    }
 }
 
 #[derive(Clone, rquickjs::class::Trace)]
@@ -59,7 +71,8 @@ impl Performance {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs_f64() * 1000.0
+            .as_secs_f64()
+            * 1000.0
     }
 }
 
@@ -67,16 +80,21 @@ pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             let global = ctx.globals();
-            
+
             let history = Class::instance(ctx.clone(), History {})?;
             global.set("history", history)?;
-            
-            let screen = Class::instance(ctx.clone(), Screen { size: rt.screen_size.clone() })?;
+
+            let screen = Class::instance(
+                ctx.clone(),
+                Screen {
+                    size: rt.screen_size.clone(),
+                },
+            )?;
             global.set("screen", screen)?;
-            
+
             let performance = Class::instance(ctx.clone(), Performance {})?;
             global.set("performance", performance)?;
-            
+
             Ok(())
         })
     })

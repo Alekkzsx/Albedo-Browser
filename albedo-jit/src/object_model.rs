@@ -3,10 +3,10 @@
 //! Modelo mínimo de objetos/arrays com "hidden class" (shape) para suportar
 //! inline caches e specialization no Tier 2.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::mem::offset_of;
 use std::sync::OnceLock;
-use parking_lot::RwLock;
 
 use crate::js_value::JsValue;
 use serde_json::Value as JsonValue;
@@ -85,7 +85,7 @@ fn length_prop_id() -> u32 {
 
 #[derive(Debug, Clone)]
 struct Shape {
-    id: u64,         // hash of keys+order
+    id: u64, // hash of keys+order
     parent: Option<u64>,
     last_prop: Option<u32>,
     props: Vec<u32>, // property ids in order (offset = index)
@@ -123,7 +123,8 @@ impl ShapeRegistry {
     }
 
     fn get_offset(&self, shape_id: u64, prop_id: u32) -> Option<u32> {
-        self.shapes.get(&shape_id)
+        self.shapes
+            .get(&shape_id)
             .and_then(|s| s.prop_index.get(&prop_id).copied())
             .map(|v| v as u32)
     }
@@ -133,8 +134,7 @@ impl ShapeRegistry {
             return *next;
         }
 
-        let base = self.shapes.get(&from_shape)
-            .expect("Shape inválido");
+        let base = self.shapes.get(&from_shape).expect("Shape inválido");
 
         if base.prop_index.contains_key(&prop_id) {
             return from_shape;
@@ -223,7 +223,11 @@ fn ensure_props_capacity(obj: &mut JsObject, new_len: usize) {
     };
 
     if vec.capacity() < new_len {
-        let mut new_cap = if vec.capacity() == 0 { 4 } else { vec.capacity() * 2 };
+        let mut new_cap = if vec.capacity() == 0 {
+            4
+        } else {
+            vec.capacity() * 2
+        };
         while new_cap < new_len {
             new_cap *= 2;
         }
@@ -468,26 +472,26 @@ mod tests {
     fn test_shape_transitions() {
         let obj1 = alloc_object();
         let obj2 = alloc_object();
-        
+
         // Inicialmente vazios, devem ter o mesmo shape
         assert_eq!(object_shape_id(obj1), object_shape_id(obj2));
-        
+
         let prop_a = JsValue::string(intern_string("a".to_string()) as u64);
         let prop_b = JsValue::string(intern_string("b".to_string()) as u64);
-        
+
         // obj1: {a: 1}
         set_prop(obj1, prop_a, JsValue::int32(1));
         let shape_a = object_shape_id(obj1).unwrap();
-        
+
         // obj2: {a: 2} -> devem ter o mesmo shape (mesma estrutura)
         set_prop(obj2, prop_a, JsValue::int32(2));
         assert_eq!(object_shape_id(obj2).unwrap(), shape_a);
-        
+
         // obj1: {a: 1, b: 3}
         set_prop(obj1, prop_b, JsValue::int32(3));
         let shape_ab = object_shape_id(obj1).unwrap();
         assert_ne!(shape_ab, shape_a);
-        
+
         // obj2: {a: 2, b: 4} -> devem ter o mesmo shape
         set_prop(obj2, prop_b, JsValue::int32(4));
         assert_eq!(object_shape_id(obj2).unwrap(), shape_ab);
@@ -497,17 +501,17 @@ mod tests {
     fn test_shape_divergence() {
         let obj_ab = alloc_object();
         let obj_ba = alloc_object();
-        
+
         let prop_a = JsValue::string(intern_string("a".to_string()) as u64);
         let prop_b = JsValue::string(intern_string("b".to_string()) as u64);
-        
+
         // Diferentes ordens de inserção geram diferentes shapes (como no V8)
         set_prop(obj_ab, prop_a, JsValue::int32(1));
         set_prop(obj_ab, prop_b, JsValue::int32(2));
-        
+
         set_prop(obj_ba, prop_b, JsValue::int32(2));
         set_prop(obj_ba, prop_a, JsValue::int32(1));
-        
+
         assert_ne!(object_shape_id(obj_ab), object_shape_id(obj_ba));
     }
 
@@ -516,13 +520,13 @@ mod tests {
         let obj = alloc_object();
         let prop_x = JsValue::string(intern_string("x".to_string()) as u64);
         set_prop(obj, prop_x, JsValue::int32(100));
-        
+
         let shape_id = object_shape_id(obj).unwrap();
         let prop_id = prop_x.as_string_id() as u32;
-        
+
         let offset = shape_offset(shape_id, prop_id);
         assert!(offset.is_some());
-        
+
         // O valor deve estar no offset correto
         unsafe {
             let internal_obj = &*(obj.as_object_ptr() as *const JsObject);

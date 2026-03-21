@@ -1,6 +1,6 @@
 use kuchiki::NodeRef;
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
@@ -144,7 +144,7 @@ impl AceDOM {
     /// Construtor a partir de kuchiki NodeRef
     pub fn from_kuchiki(kuchiki_root: NodeRef) -> Self {
         let mut nodes = Vec::new();
-        
+
         let root_idx = Self::convert_recursive(&kuchiki_root, &mut nodes, None);
 
         let mut dom = Self {
@@ -180,7 +180,7 @@ impl AceDOM {
 
             AceNodeType::Element(AceElement { tag, attributes })
         } else if let Some(text) = kuchiki_node.as_text() {
-            AceNodeType::Text(std::sync::Arc::from(text.borrow().as_str())) 
+            AceNodeType::Text(std::sync::Arc::from(text.borrow().as_str()))
         } else if let Some(comment) = kuchiki_node.as_comment() {
             AceNodeType::Comment(std::sync::Arc::from(comment.borrow().as_str()))
         } else {
@@ -205,16 +205,24 @@ impl AceDOM {
         }
 
         if !children_indices.is_empty() {
-             for i in 0..children_indices.len() {
+            for i in 0..children_indices.len() {
                 let curr = children_indices[i];
-                let prev = if i > 0 { Some(children_indices[i-1]) } else { None };
-                let next = if i < children_indices.len() - 1 { Some(children_indices[i+1]) } else { None };
+                let prev = if i > 0 {
+                    Some(children_indices[i - 1])
+                } else {
+                    None
+                };
+                let next = if i < children_indices.len() - 1 {
+                    Some(children_indices[i + 1])
+                } else {
+                    None
+                };
 
                 if let Some(node) = nodes.get_mut(curr) {
                     node.prev_sibling = prev;
                     node.next_sibling = next;
                 }
-             }
+            }
         }
 
         if let Some(node) = nodes.get_mut(current_idx) {
@@ -227,38 +235,38 @@ impl AceDOM {
     fn find_head_body(&mut self) {
         // Busca simples a partir da raiz
         if let Some(root_node) = self.nodes.get(self.root) {
-             for &child_idx in &root_node.children {
-                 if let Some(html_node) = self.nodes.get(child_idx) {
-                     if let AceNodeType::Element(el) = &html_node.node_type {
-                         if el.tag == "html" {
-                             for &grandchild_idx in &html_node.children {
-                                 if let Some(grandchild) = self.nodes.get(grandchild_idx) {
-                                     if let AceNodeType::Element(gc_el) = &grandchild.node_type {
-                                         if gc_el.tag == "head" {
-                                             self.head = Some(grandchild_idx);
-                                         } else if gc_el.tag == "body" {
-                                             self.body = Some(grandchild_idx);
-                                         }
-                                     }
-                                 }
-                             }
-                         }
-                     }
-                 }
-             }
+            for &child_idx in &root_node.children {
+                if let Some(html_node) = self.nodes.get(child_idx) {
+                    if let AceNodeType::Element(el) = &html_node.node_type {
+                        if el.tag == "html" {
+                            for &grandchild_idx in &html_node.children {
+                                if let Some(grandchild) = self.nodes.get(grandchild_idx) {
+                                    if let AceNodeType::Element(gc_el) = &grandchild.node_type {
+                                        if gc_el.tag == "head" {
+                                            self.head = Some(grandchild_idx);
+                                        } else if gc_el.tag == "body" {
+                                            self.body = Some(grandchild_idx);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        
+
         if self.head.is_none() || self.body.is_none() {
-             for (i, node) in self.nodes.iter().enumerate() {
-                 if let AceNodeType::Element(el) = &node.node_type {
-                     if self.head.is_none() && el.tag == "head" {
-                         self.head = Some(i);
-                     }
-                     if self.body.is_none() && el.tag == "body" {
-                         self.body = Some(i);
-                     }
-                 }
-             }
+            for (i, node) in self.nodes.iter().enumerate() {
+                if let AceNodeType::Element(el) = &node.node_type {
+                    if self.head.is_none() && el.tag == "head" {
+                        self.head = Some(i);
+                    }
+                    if self.body.is_none() && el.tag == "body" {
+                        self.body = Some(i);
+                    }
+                }
+            }
         }
     }
 
@@ -271,56 +279,64 @@ impl AceDOM {
             let last_child = parent.children.last().cloned();
             prev_sibling = last_child;
             parent.children.push(child_idx);
-            
+
             if let Some(last_idx) = last_child {
                 if let Some(last_node) = self.nodes.get_mut(last_idx) {
                     last_node.next_sibling = Some(child_idx);
                 }
             }
-            
+
             if let Some(child_node) = self.nodes.get_mut(child_idx) {
                 child_node.parent = Some(parent_idx);
                 child_node.prev_sibling = last_child;
                 child_node.next_sibling = None;
             }
         }
-        
+
         // Propagate dirty flags
-        self.mark_dirty(parent_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
+        self.mark_dirty(
+            parent_idx,
+            NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN,
+        );
         self.mark_dirty(child_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
 
         // Notify observers
-        self.notify_mutation(parent_idx, MutationRecord {
-            type_: MutationType::ChildList,
-            target: parent_idx,
-            added_nodes: vec![child_idx],
-            removed_nodes: vec![],
-            previous_sibling: prev_sibling,
-            next_sibling: None,
-            attribute_name: None,
-            old_value: None,
-        });
+        self.notify_mutation(
+            parent_idx,
+            MutationRecord {
+                type_: MutationType::ChildList,
+                target: parent_idx,
+                added_nodes: vec![child_idx],
+                removed_nodes: vec![],
+                previous_sibling: prev_sibling,
+                next_sibling: None,
+                attribute_name: None,
+                old_value: None,
+            },
+        );
     }
 
     pub fn mark_dirty(&mut self, node_idx: usize, flags: NodeDirtyFlags) {
-        if flags.is_empty() { return; }
+        if flags.is_empty() {
+            return;
+        }
 
         let mut current_idx = Some(node_idx);
         let mut first = true;
-        
+
         while let Some(idx) = current_idx {
             if let Some(node) = self.nodes.get_mut(idx) {
                 if first {
                     node.dirty.insert(flags);
                     first = false;
                 }
-                
+
                 // If subtree flag is already set, we can stop propagating up
                 // (except for the first node which might have other flags)
                 if node.dirty.contains(NodeDirtyFlags::SUBTREE) && !first {
                     break;
                 }
-                
+
                 node.dirty.insert(NodeDirtyFlags::SUBTREE);
                 current_idx = node.parent;
             } else {
@@ -347,43 +363,46 @@ impl AceDOM {
             if let Some(parent) = self.nodes.get_mut(p_idx) {
                 parent.children.retain(|&idx| idx != node_idx);
             }
-            
+
             let node = self.nodes.get(node_idx).unwrap();
             let prev = node.prev_sibling;
             let next = node.next_sibling;
-            
+
             if let Some(prev_idx) = prev {
                 if let Some(prev_node) = self.nodes.get_mut(prev_idx) {
                     prev_node.next_sibling = next;
                 }
             }
-            
+
             if let Some(next_idx) = next {
                 if let Some(next_node) = self.nodes.get_mut(next_idx) {
                     next_node.prev_sibling = prev;
                 }
             }
-            
+
             if let Some(node) = self.nodes.get_mut(node_idx) {
                 node.parent = None;
                 node.prev_sibling = None;
                 node.next_sibling = None;
             }
-            
+
             // Mark parent dirty
             self.mark_dirty(p_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
 
             // Notify observers
-            self.notify_mutation(p_idx, MutationRecord {
-                type_: MutationType::ChildList,
-                target: p_idx,
-                added_nodes: vec![],
-                removed_nodes: vec![node_idx],
-                previous_sibling: prev_sibling,
-                next_sibling: next_sibling,
-                attribute_name: None,
-                old_value: None,
-            });
+            self.notify_mutation(
+                p_idx,
+                MutationRecord {
+                    type_: MutationType::ChildList,
+                    target: p_idx,
+                    added_nodes: vec![],
+                    removed_nodes: vec![node_idx],
+                    previous_sibling: prev_sibling,
+                    next_sibling: next_sibling,
+                    attribute_name: None,
+                    old_value: None,
+                },
+            );
         }
     }
 
@@ -392,22 +411,34 @@ impl AceDOM {
 
         if let Some(parent) = self.nodes.get_mut(parent_idx) {
             let position = if let Some(r_idx) = ref_idx {
-                parent.children.iter().position(|&idx| idx == r_idx).unwrap_or(parent.children.len())
+                parent
+                    .children
+                    .iter()
+                    .position(|&idx| idx == r_idx)
+                    .unwrap_or(parent.children.len())
             } else {
                 parent.children.len()
             };
 
             parent.children.insert(position, child_idx);
-            
-            let prev = if position > 0 { Some(parent.children[position - 1]) } else { None };
-            let next = if position + 1 < parent.children.len() { Some(parent.children[position + 1]) } else { None };
+
+            let prev = if position > 0 {
+                Some(parent.children[position - 1])
+            } else {
+                None
+            };
+            let next = if position + 1 < parent.children.len() {
+                Some(parent.children[position + 1])
+            } else {
+                None
+            };
 
             if let Some(prev_idx) = prev {
                 if let Some(prev_node) = self.nodes.get_mut(prev_idx) {
                     prev_node.next_sibling = Some(child_idx);
                 }
             }
-            
+
             if let Some(next_idx) = next {
                 if let Some(next_node) = self.nodes.get_mut(next_idx) {
                     next_node.prev_sibling = Some(child_idx);
@@ -421,23 +452,40 @@ impl AceDOM {
             }
         }
 
-        self.mark_dirty(parent_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
+        self.mark_dirty(
+            parent_idx,
+            NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN,
+        );
         self.mark_dirty(child_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
 
-        self.notify_mutation(parent_idx, MutationRecord {
-            type_: MutationType::ChildList,
-            target: parent_idx,
-            added_nodes: vec![child_idx],
-            removed_nodes: vec![],
-            previous_sibling: if let Some(p) = self.get_node(child_idx) { p.prev_sibling } else { None },
-            next_sibling: ref_idx,
-            attribute_name: None,
-            old_value: None,
-        });
+        self.notify_mutation(
+            parent_idx,
+            MutationRecord {
+                type_: MutationType::ChildList,
+                target: parent_idx,
+                added_nodes: vec![child_idx],
+                removed_nodes: vec![],
+                previous_sibling: if let Some(p) = self.get_node(child_idx) {
+                    p.prev_sibling
+                } else {
+                    None
+                },
+                next_sibling: ref_idx,
+                attribute_name: None,
+                old_value: None,
+            },
+        );
     }
 
-    pub fn set_inner_html_from_kuchiki(&mut self, parent_idx: usize, kuchiki_nodes: kuchiki::iter::Siblings) {
-        let old_children = self.get_node(parent_idx).map(|n| n.children.clone()).unwrap_or_default();
+    pub fn set_inner_html_from_kuchiki(
+        &mut self,
+        parent_idx: usize,
+        kuchiki_nodes: kuchiki::iter::Siblings,
+    ) {
+        let old_children = self
+            .get_node(parent_idx)
+            .map(|n| n.children.clone())
+            .unwrap_or_default();
         if let Some(node) = self.nodes.get_mut(parent_idx) {
             node.children.clear();
         }
@@ -451,8 +499,16 @@ impl AceDOM {
         if !new_children.is_empty() {
             for i in 0..new_children.len() {
                 let curr = new_children[i];
-                let prev = if i > 0 { Some(new_children[i-1]) } else { None };
-                let next = if i < new_children.len() - 1 { Some(new_children[i+1]) } else { None };
+                let prev = if i > 0 {
+                    Some(new_children[i - 1])
+                } else {
+                    None
+                };
+                let next = if i < new_children.len() - 1 {
+                    Some(new_children[i + 1])
+                } else {
+                    None
+                };
 
                 if let Some(node) = self.nodes.get_mut(curr) {
                     node.prev_sibling = prev;
@@ -465,21 +521,30 @@ impl AceDOM {
             node.children = new_children;
         }
 
-        self.notify_mutation(parent_idx, MutationRecord {
-            type_: MutationType::ChildList,
-            target: parent_idx,
-            added_nodes: self.get_node(parent_idx).map(|n| n.children.clone()).unwrap_or_default(),
-            removed_nodes: old_children,
-            previous_sibling: None,
-            next_sibling: None,
-            attribute_name: None,
-            old_value: None,
-        });
+        self.notify_mutation(
+            parent_idx,
+            MutationRecord {
+                type_: MutationType::ChildList,
+                target: parent_idx,
+                added_nodes: self
+                    .get_node(parent_idx)
+                    .map(|n| n.children.clone())
+                    .unwrap_or_default(),
+                removed_nodes: old_children,
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: None,
+                old_value: None,
+            },
+        );
     }
 
     pub fn set_text_content_notify(&mut self, node_idx: usize, text: String) {
-        let old_children = self.get_node(node_idx).map(|n| n.children.clone()).unwrap_or_default();
-        
+        let old_children = self
+            .get_node(node_idx)
+            .map(|n| n.children.clone())
+            .unwrap_or_default();
+
         if let Some(node) = self.nodes.get_mut(node_idx) {
             node.children.clear();
         }
@@ -501,16 +566,19 @@ impl AceDOM {
 
         self.mark_dirty(node_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::CHILDREN);
 
-        self.notify_mutation(node_idx, MutationRecord {
-            type_: MutationType::ChildList,
-            target: node_idx,
-            added_nodes: vec![text_idx],
-            removed_nodes: old_children,
-            previous_sibling: None,
-            next_sibling: None,
-            attribute_name: None,
-            old_value: None,
-        });
+        self.notify_mutation(
+            node_idx,
+            MutationRecord {
+                type_: MutationType::ChildList,
+                target: node_idx,
+                added_nodes: vec![text_idx],
+                removed_nodes: old_children,
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: None,
+                old_value: None,
+            },
+        );
     }
 
     pub fn serialize_subtree_text(&self, node_idx: usize) -> String {
@@ -534,39 +602,42 @@ impl AceDOM {
             match &node.node_type {
                 AceNodeType::Element(el) => {
                     let mut s = format!("<{}", el.tag);
-                    
+
                     // Ordenar atributos para serialização estável (opcional mas bom para SVG)
                     let mut attrs: Vec<_> = el.attributes.iter().collect();
                     attrs.sort_by_key(|(k, _)| *k);
-                    
+
                     for (name, value) in attrs {
                         s.push_str(&format!(" {}=\"{}\"", name, value.replace("\"", "&quot;")));
                     }
-                    
+
                     if node.children.is_empty() {
-                         s.push_str(" />");
+                        s.push_str(" />");
                     } else {
-                         s.push('>');
-                         for &child_idx in &node.children {
-                             s.push_str(&self.serialize_subtree_html(child_idx));
-                         }
-                         s.push_str(&format!("</{}>", el.tag));
+                        s.push('>');
+                        for &child_idx in &node.children {
+                            s.push_str(&self.serialize_subtree_html(child_idx));
+                        }
+                        s.push_str(&format!("</{}>", el.tag));
                     }
                     return s;
-                },
+                }
                 AceNodeType::Text(t) => {
-                    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                },
+                    return t
+                        .replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;");
+                }
                 AceNodeType::Comment(c) => {
                     return format!("<!--{}-->", c);
-                },
+                }
                 AceNodeType::Document => {
                     let mut s = String::new();
                     for &child_idx in &node.children {
                         s.push_str(&self.serialize_subtree_html(child_idx));
                     }
                     return s;
-                },
+                }
                 _ => return String::new(),
             }
         }
@@ -584,11 +655,11 @@ impl AceDOM {
             shadow_root: None,
             dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
         });
-        
+
         if let Some(node) = self.nodes.get_mut(element_idx) {
             node.shadow_root = Some(shadow_idx);
         }
-        
+
         self.mark_dirty(element_idx, NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE);
 
         shadow_idx
@@ -596,59 +667,77 @@ impl AceDOM {
 
     pub fn observe(&mut self, target: usize, options: MutationObserverInit, callback_id: usize) {
         let entry = self.observers.entry(target).or_insert(Vec::new());
-        entry.push(DomObserver { callback_id, options });
+        entry.push(DomObserver {
+            callback_id,
+            options,
+        });
     }
 
     pub fn remove_attribute_notify(&mut self, node_idx: usize, name: String) {
         let mut old_value = None;
         if let Some(node) = self.nodes.get_mut(node_idx) {
-             if let AceNodeType::Element(element) = &mut node.node_type {
-                 old_value = element.attributes.remove(&name);
-             }
+            if let AceNodeType::Element(element) = &mut node.node_type {
+                old_value = element.attributes.remove(&name);
+            }
         }
-        
-        self.notify_mutation(node_idx, MutationRecord {
-            type_: MutationType::Attributes,
-            target: node_idx,
-            added_nodes: vec![],
-            removed_nodes: vec![],
-            previous_sibling: None,
-            next_sibling: None,
-            attribute_name: Some(name),
-            old_value,
-        });
+
+        self.notify_mutation(
+            node_idx,
+            MutationRecord {
+                type_: MutationType::Attributes,
+                target: node_idx,
+                added_nodes: vec![],
+                removed_nodes: vec![],
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: Some(name),
+                old_value,
+            },
+        );
     }
 
     pub fn notify_mutation(&self, target: usize, record: MutationRecord) {
         // Collect observers that need to be notified
-        // Logic: 
+        // Logic:
         // 1. Check observers on target
         // 2. If bubbling (subtree: true), check ancestors
-        
+
         // This is a simplified notification system that just prints or could invoke a callback mechanism
         // In a real implementation, this would interact with the JS runtime to queue a microtask
-        
+
         let mut curr = Some(target);
         while let Some(node_idx) = curr {
             if let Some(observers) = self.observers.get(&node_idx) {
                 for obs in observers {
                     let match_target = node_idx == target;
                     let match_subtree = obs.options.subtree;
-                    
+
                     if match_target || match_subtree {
-                       match record.type_ {
-                           MutationType::ChildList => if !obs.options.child_list { continue; },
-                           MutationType::Attributes => if !obs.options.attributes { continue; },
-                           MutationType::CharacterData => if !obs.options.character_data { continue; },
-                       }
-                       
-                       let mut pending = self.pending_mutations_mut();
-                       let entry = pending.entry(obs.callback_id).or_insert(Vec::new());
-                       entry.push(record.clone());
+                        match record.type_ {
+                            MutationType::ChildList => {
+                                if !obs.options.child_list {
+                                    continue;
+                                }
+                            }
+                            MutationType::Attributes => {
+                                if !obs.options.attributes {
+                                    continue;
+                                }
+                            }
+                            MutationType::CharacterData => {
+                                if !obs.options.character_data {
+                                    continue;
+                                }
+                            }
+                        }
+
+                        let mut pending = self.pending_mutations_mut();
+                        let entry = pending.entry(obs.callback_id).or_insert(Vec::new());
+                        entry.push(record.clone());
                     }
                 }
             }
-            
+
             if let Some(node) = self.get_node(node_idx) {
                 curr = node.parent;
             } else {
@@ -656,9 +745,9 @@ impl AceDOM {
             }
         }
     }
-    
+
     // Helper to access pending_mutations mutably
-    fn pending_mutations_mut(&self) -> std::cell::RefMut<HashMap<usize, Vec<MutationRecord>>> {
+    fn pending_mutations_mut(&self) -> std::cell::RefMut<'_, HashMap<usize, Vec<MutationRecord>>> {
         self.pending_mutations.borrow_mut()
     }
 
@@ -671,25 +760,25 @@ impl AceDOM {
     pub fn set_attribute(&mut self, node_idx: usize, name: String, value: String) {
         if let Some(node) = self.nodes.get_mut(node_idx) {
             if let AceNodeType::Element(el) = &mut node.node_type {
-                let old_value = el.attributes.get(&name).cloned();
+                let _old_value = el.attributes.get(&name).cloned();
                 el.attributes.insert(name.clone(), value.clone());
-                
+
                 // Drop mutable borrow to call notify
             }
         }
-        
+
         // Re-borrow to notify (this is slightly inefficient doing lookup twice, but safe)
         // We need the old value, so we must have done the mutation first
         // Ideally we would return old_value from the mutation block
         // But let's keep it simple for now, we can optimize later
-        
+
         // Notify observers
         // We need to fetch old_value again? No, we can't because we just overwrote it.
-        // The previous block logic is flawed because we can't easily extract old_value out of the scope 
+        // The previous block logic is flawed because we can't easily extract old_value out of the scope
         // while also mutating.
         // Let's refactor slightly to be correct.
     }
-    
+
     // Helper to set attribute with notification
     pub fn set_attribute_notify(&mut self, node_idx: usize, name: String, value: String) {
         let mut old_value = None;
@@ -698,34 +787,37 @@ impl AceDOM {
                 old_value = el.attributes.insert(name.clone(), value.clone());
             }
         }
-        
+
         self.mark_dirty(node_idx, NodeDirtyFlags::STYLE | NodeDirtyFlags::LAYOUT);
 
-        self.notify_mutation(node_idx, MutationRecord {
-            type_: MutationType::Attributes,
-            target: node_idx,
-            added_nodes: vec![],
-            removed_nodes: vec![],
-            previous_sibling: None,
-            next_sibling: None,
-            attribute_name: Some(name),
-            old_value,
-        });
+        self.notify_mutation(
+            node_idx,
+            MutationRecord {
+                type_: MutationType::Attributes,
+                target: node_idx,
+                added_nodes: vec![],
+                removed_nodes: vec![],
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: Some(name),
+                old_value,
+            },
+        );
     }
 
     pub fn clone_subtree(&mut self, node_idx: usize, deep: bool) -> usize {
         let node = self.nodes.get(node_idx).cloned().unwrap();
         let new_idx = self.nodes.len();
-        
+
         // Push initial stub to reserve index
         self.nodes.push(node.clone());
-        
+
         let mut new_node = node.clone();
         new_node.parent = None;
         new_node.prev_sibling = None;
         new_node.next_sibling = None;
         new_node.children = Vec::new();
-        
+
         if deep {
             let mut children_indices = Vec::new();
             // Need to fetch original node's children
@@ -737,12 +829,20 @@ impl AceDOM {
                     child.parent = Some(new_idx);
                 }
             }
-            
+
             // Set siblings for new children
             for i in 0..children_indices.len() {
                 let curr = children_indices[i];
-                let prev = if i > 0 { Some(children_indices[i-1]) } else { None };
-                let next = if i < children_indices.len() - 1 { Some(children_indices[i+1]) } else { None };
+                let prev = if i > 0 {
+                    Some(children_indices[i - 1])
+                } else {
+                    None
+                };
+                let next = if i < children_indices.len() - 1 {
+                    Some(children_indices[i + 1])
+                } else {
+                    None
+                };
                 if let Some(child) = self.nodes.get_mut(curr) {
                     child.prev_sibling = prev;
                     child.next_sibling = next;
@@ -750,7 +850,7 @@ impl AceDOM {
             }
             new_node.children = children_indices;
         }
-        
+
         // Update the reserved index with actual data
         self.nodes[new_idx] = new_node;
         new_idx
@@ -760,7 +860,7 @@ impl AceDOM {
         use kuchiki::traits::TendrilSink;
         let parser = kuchiki::parse_html().from_utf8();
         let dom = parser.one(html.as_bytes());
-        
+
         // Always look for <body> because kuchiki always creates one for HTML
         let mut body = None;
         for node in dom.inclusive_descendants() {
@@ -779,7 +879,9 @@ impl AceDOM {
             imported_indices.push(idx);
         }
 
-        if imported_indices.is_empty() { return; }
+        if imported_indices.is_empty() {
+            return;
+        }
 
         // Determinar onde inserir baseado na posição
         match position.to_lowercase().as_str() {
@@ -792,7 +894,9 @@ impl AceDOM {
                 }
             }
             "afterbegin" => {
-                let first_child = self.get_node(target_idx).and_then(|n| n.children.first().cloned());
+                let first_child = self
+                    .get_node(target_idx)
+                    .and_then(|n| n.children.first().cloned());
                 for idx in imported_indices.into_iter().rev() {
                     self.insert_before(target_idx, idx, first_child);
                 }

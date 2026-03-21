@@ -1,8 +1,8 @@
-use std::sync::mpsc::Sender;
-use rusqlite::{Connection, Result as SqliteResult, params};
 use crate::runtime::core::event_loop::IDBEventMessage;
+use rusqlite::{params, Connection, Result as SqliteResult};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 
 /// Comandos para o Worker de IndexedDB - Especificação Completa
 pub enum IDBWorkerCommand {
@@ -17,7 +17,7 @@ pub enum IDBWorkerCommand {
     TransactionStart {
         db_name: String,
         store_names: Vec<String>,
-        mode: String, 
+        mode: String,
         transaction_id: usize,
     },
     TransactionCommit {
@@ -97,12 +97,18 @@ impl IDBServiceWorker {
 
             while let Some(command) = rx.blocking_recv() {
                 match command {
-                    IDBWorkerCommand::OpenDb { request_callback_id, name, version, origin, db_path } => {
+                    IDBWorkerCommand::OpenDb {
+                        request_callback_id,
+                        name,
+                        version,
+                        origin,
+                        db_path,
+                    } => {
                         let conn_key = format!("{}:{}", origin, name);
-                        
+
                         let result = (|| -> SqliteResult<(u32, u32)> {
                             let conn = Connection::open(&db_path)?;
-                            
+
                             conn.execute_batch(
                                 "CREATE TABLE IF NOT EXISTS idb_metadata (key TEXT PRIMARY KEY, value TEXT);
                                  CREATE TABLE IF NOT EXISTS idb_object_stores (
@@ -119,14 +125,22 @@ impl IDBServiceWorker {
                                  );"
                             )?;
 
-                            let current_version: u32 = conn.query_row(
-                                "SELECT value FROM idb_metadata WHERE key = 'version'",
-                                [],
-                                |row| row.get::<_, String>(0),
-                            ).and_then(|v| v.parse::<u32>().map_err(|_| rusqlite::Error::InvalidQuery))
-                            .unwrap_or(0);
+                            let current_version: u32 = conn
+                                .query_row(
+                                    "SELECT value FROM idb_metadata WHERE key = 'version'",
+                                    [],
+                                    |row| row.get::<_, String>(0),
+                                )
+                                .and_then(|v| {
+                                    v.parse::<u32>().map_err(|_| rusqlite::Error::InvalidQuery)
+                                })
+                                .unwrap_or(0);
 
-                            let target_version = version.unwrap_or(if current_version == 0 { 1 } else { current_version });
+                            let target_version = version.unwrap_or(if current_version == 0 {
+                                1
+                            } else {
+                                current_version
+                            });
 
                             connections.insert(conn_key.clone(), conn);
                             if target_version > current_version {
@@ -139,10 +153,14 @@ impl IDBServiceWorker {
                         match result {
                             Ok((old_v, new_v)) => {
                                 if new_v > 0 {
-                                    let sp_name = format!("sp_upgradeneeded_{}", request_callback_id);
-                                    if let Some(conn) = connections.get_mut(&format!("{}:{}", origin, name)) {
+                                    let sp_name =
+                                        format!("sp_upgradeneeded_{}", request_callback_id);
+                                    if let Some(conn) =
+                                        connections.get_mut(&format!("{}:{}", origin, name))
+                                    {
                                         let _ = conn.execute(&format!("SAVEPOINT {}", sp_name), []);
-                                        active_transactions.insert(1, (format!("{}:{}", origin, name), sp_name));
+                                        active_transactions
+                                            .insert(1, (format!("{}:{}", origin, name), sp_name));
                                     }
                                     let _ = el_tx.send(IDBEventMessage::UpgradeNeeded {
                                         request_callback_id,
@@ -167,40 +185,65 @@ impl IDBServiceWorker {
                                 });
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::TransactionStart { db_name, store_names: _, mode: _, transaction_id } => {
-                        if let Some((conn_key, conn)) = connections.iter_mut().find(|(k, _)| k.contains(&db_name)) {
+                    IDBWorkerCommand::TransactionStart {
+                        db_name,
+                        store_names: _,
+                        mode: _,
+                        transaction_id,
+                    } => {
+                        if let Some((conn_key, conn)) =
+                            connections.iter_mut().find(|(k, _)| k.contains(&db_name))
+                        {
                             let sp_name = format!("sp_tx_{}", transaction_id);
                             let _ = conn.execute(&format!("SAVEPOINT {}", sp_name), []);
                             active_transactions.insert(transaction_id, (conn_key.clone(), sp_name));
                         }
-                    },
+                    }
 
                     IDBWorkerCommand::TransactionCommit { transaction_id } => {
-                        if let Some((conn_key, sp_name)) = active_transactions.remove(&transaction_id) {
+                        if let Some((conn_key, sp_name)) =
+                            active_transactions.remove(&transaction_id)
+                        {
                             if let Some(conn) = connections.get_mut(&conn_key) {
                                 let _ = conn.execute(&format!("RELEASE SAVEPOINT {}", sp_name), []);
                             }
                         }
-                    },
+                    }
 
                     IDBWorkerCommand::TransactionAbort { transaction_id } => {
-                        if let Some((conn_key, sp_name)) = active_transactions.remove(&transaction_id) {
+                        if let Some((conn_key, sp_name)) =
+                            active_transactions.remove(&transaction_id)
+                        {
                             if let Some(conn) = connections.get_mut(&conn_key) {
-                                let _ = conn.execute(&format!("ROLLBACK TO SAVEPOINT {}", sp_name), []);
+                                let _ =
+                                    conn.execute(&format!("ROLLBACK TO SAVEPOINT {}", sp_name), []);
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::StorePut { request_callback_id, transaction_id, store_name, key, value_json, overwrite } => {
+                    IDBWorkerCommand::StorePut {
+                        request_callback_id,
+                        transaction_id,
+                        store_name,
+                        key,
+                        value_json,
+                        overwrite,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_data_{}", store_name);
                                 let sql = if overwrite {
-                                    format!("INSERT OR REPLACE INTO {} (key, value) VALUES (?1, ?2)", table_name)
+                                    format!(
+                                        "INSERT OR REPLACE INTO {} (key, value) VALUES (?1, ?2)",
+                                        table_name
+                                    )
                                 } else {
-                                    format!("INSERT INTO {} (key, value) VALUES (?1, ?2)", table_name)
+                                    format!(
+                                        "INSERT INTO {} (key, value) VALUES (?1, ?2)",
+                                        table_name
+                                    )
                                 };
                                 match conn.execute(&sql, params![key, value_json]) {
                                     Ok(_) => {
@@ -219,9 +262,14 @@ impl IDBServiceWorker {
                                 }
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::CreateObjectStore { transaction_id, name, key_path, auto_increment } => {
+                    IDBWorkerCommand::CreateObjectStore {
+                        transaction_id,
+                        name,
+                        key_path,
+                        auto_increment,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_data_{}", name);
@@ -234,24 +282,38 @@ impl IDBServiceWorker {
                                 );
                             }
                         }
-                    },
-                    
-                    IDBWorkerCommand::DeleteObjectStore { transaction_id, name } => {
-                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
+                    }
+
+                    IDBWorkerCommand::DeleteObjectStore {
+                        transaction_id,
+                        name,
+                    } => {
+                        if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_data_{}", name);
-                                let _ = conn.execute(&format!("DROP TABLE IF EXISTS {}", table_name), []);
-                                let _ = conn.execute("DELETE FROM idb_object_stores WHERE name = ?1", params![name]);
+                                let _ = conn
+                                    .execute(&format!("DROP TABLE IF EXISTS {}", table_name), []);
+                                let _ = conn.execute(
+                                    "DELETE FROM idb_object_stores WHERE name = ?1",
+                                    params![name],
+                                );
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::StoreGet { request_callback_id, transaction_id, store_name, key } => {
+                    IDBWorkerCommand::StoreGet {
+                        request_callback_id,
+                        transaction_id,
+                        store_name,
+                        key,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get(conn_key) {
                                 let table_name = format!("idb_data_{}", store_name);
-                                let sql = format!("SELECT value FROM {} WHERE key = ?1", table_name);
-                                let result: SqliteResult<String> = conn.query_row(&sql, params![key], |row| row.get(0));
+                                let sql =
+                                    format!("SELECT value FROM {} WHERE key = ?1", table_name);
+                                let result: SqliteResult<String> =
+                                    conn.query_row(&sql, params![key], |row| row.get(0));
                                 match result {
                                     Ok(val) => {
                                         let _ = el_tx.send(IDBEventMessage::Success {
@@ -268,9 +330,14 @@ impl IDBServiceWorker {
                                 }
                             }
                         }
-                    },
-                    
-                    IDBWorkerCommand::StoreDelete { request_callback_id, transaction_id, store_name, key } => {
+                    }
+
+                    IDBWorkerCommand::StoreDelete {
+                        request_callback_id,
+                        transaction_id,
+                        store_name,
+                        key,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_data_{}", store_name);
@@ -282,9 +349,13 @@ impl IDBServiceWorker {
                                 });
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::StoreClear { request_callback_id, transaction_id, store_name } => {
+                    IDBWorkerCommand::StoreClear {
+                        request_callback_id,
+                        transaction_id,
+                        store_name,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_data_{}", store_name);
@@ -295,9 +366,15 @@ impl IDBServiceWorker {
                                 });
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::CreateIndex { transaction_id, store_name, index_name, key_path, unique } => {
+                    IDBWorkerCommand::CreateIndex {
+                        transaction_id,
+                        store_name,
+                        index_name,
+                        key_path,
+                        unique,
+                    } => {
                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get_mut(conn_key) {
                                 let table_name = format!("idb_idx_{}_{}", store_name, index_name);
@@ -310,23 +387,37 @@ impl IDBServiceWorker {
                                 );
                             }
                         }
-                    },
+                    }
 
-                    IDBWorkerCommand::OpenCursor { request_callback_id, transaction_id, store_name, index_name: _, range: _, direction: _ } => {
-                         if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
+                    IDBWorkerCommand::OpenCursor {
+                        request_callback_id,
+                        transaction_id,
+                        store_name,
+                        index_name: _,
+                        range: _,
+                        direction: _,
+                    } => {
+                        if let Some((conn_key, _)) = active_transactions.get(&transaction_id) {
                             if let Some(conn) = connections.get(conn_key) {
                                 let table_name = format!("idb_data_{}", store_name);
-                                match conn.prepare(&format!("SELECT key, value FROM {} ORDER BY key", table_name)) {
+                                match conn.prepare(&format!(
+                                    "SELECT key, value FROM {} ORDER BY key",
+                                    table_name
+                                )) {
                                     Ok(mut stmt) => {
                                         let rows = stmt.query_map([], |row| {
-                                            Ok(format!(r#"{{"key": "{}", "value": {}}}"#, 
-                                                row.get::<_, String>(0)?, 
-                                                row.get::<_, String>(1)?))
+                                            Ok(format!(
+                                                r#"{{"key": "{}", "value": {}}}"#,
+                                                row.get::<_, String>(0)?,
+                                                row.get::<_, String>(1)?
+                                            ))
                                         });
                                         if let Ok(rows) = rows {
                                             let mut results = Vec::new();
                                             for row in rows {
-                                                if let Ok(json) = row { results.push(json); }
+                                                if let Ok(json) = row {
+                                                    results.push(json);
+                                                }
                                             }
                                             let _ = el_tx.send(IDBEventMessage::Success {
                                                 callback_id: request_callback_id,

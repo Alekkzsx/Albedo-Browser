@@ -11,35 +11,36 @@
 //! O QuickJS continua como interpretador base. O AlbedoJIT compila hot paths
 //! para código de máquina nativo, acelerando funções executadas repetidamente.
 
-pub mod bytecode;
-pub mod decoder;
-pub mod jit_engine;
-pub mod profiler;
-pub mod js_value;
-pub mod runtime_helpers;
+pub mod air_interpreter;
 pub mod baseline_compiler;
-pub mod executable_memory;
+pub mod builtins;
+pub mod bytecode;
 pub mod code_cache;
-pub mod type_feedback;
-pub mod object_model;
-pub mod tier2_compiler;
+pub mod decoder;
+pub mod deopt;
+pub mod executable_memory;
 pub mod fast_builtins;
 pub mod jit_bridge;
-pub mod air_interpreter;
-pub mod deopt;
-pub mod builtins;
+pub mod jit_engine;
+pub mod js_value;
+pub mod object_model;
+pub mod profiler;
+pub mod runtime_helpers;
+pub mod tier2_compiler;
+pub mod type_feedback;
 
 // Re-exports públicos
-pub use bytecode::{AirBuilder, AirFunction, AirOpcode};#[cfg(test)]
+pub use bytecode::{AirBuilder, AirFunction, AirOpcode};
+#[cfg(test)]
 mod jit_equivalence_tests;
-pub use decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
-pub use jit_engine::AlbedoJitEngine;
-pub use profiler::{FunctionId, JitProfiler, ProfilerConfig, ExecutionStats};
-pub use js_value::JsValue;
 pub use baseline_compiler::BaselineCompiler;
-pub use tier2_compiler::Tier2Compiler;
-pub use executable_memory::{CodePool, CodeRegion, CodePoolStats};
-pub use code_cache::{CodeCache, CachedCode, CacheStatsSnapshot, JitTier};
-pub use jit_bridge::{JitBridge, BytecodeRegistry, JitBridgeStats};
+pub use builtins::BuiltinId;
+pub use code_cache::{CacheStatsSnapshot, CachedCode, CodeCache, JitTier};
+pub use decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
 pub use deopt::{DeoptMeta, DeoptPoint};
-pub use builtins::{BuiltinId};
+pub use executable_memory::{CodePool, CodePoolStats, CodeRegion};
+pub use jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
+pub use jit_engine::AlbedoJitEngine;
+pub use js_value::JsValue;
+pub use profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
+pub use tier2_compiler::Tier2Compiler;

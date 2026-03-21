@@ -1,6 +1,6 @@
-use rquickjs::{Class, Ctx, Function, Result, Value, Object, prelude::Opt};
-use std::sync::{Arc, Mutex};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::Opt, Class, Ctx, Function, Result, Value};
+use std::sync::{Arc, Mutex};
 
 // ─── Entrada no registry global de MQL (para disparo de change events) ──────
 
@@ -25,7 +25,6 @@ pub struct MediaQueryList {
 
 #[rquickjs::methods]
 impl MediaQueryList {
-
     // ── Propriedades ──────────────────────────────────────────────────────────
 
     #[qjs(get)]
@@ -35,7 +34,7 @@ impl MediaQueryList {
             &self.media_query,
             vw as f32,
             vh as f32,
-            "light",   // TODO: expor color_scheme real do JsRuntime quando implementado
+            "light", // TODO: expor color_scheme real do JsRuntime quando implementado
         )
     }
 
@@ -64,7 +63,9 @@ impl MediaQueryList {
         callback: Function<'js>,
         _options: Opt<Value<'js>>,
     ) -> Result<()> {
-        if event_type != "change" { return Ok(()); }
+        if event_type != "change" {
+            return Ok(());
+        }
         let persistent = rquickjs::Persistent::save(&ctx, callback);
         self.listeners.lock().unwrap().push(persistent);
         Ok(())
@@ -76,7 +77,9 @@ impl MediaQueryList {
         _callback: Function<'js>,
         _options: Opt<Value<'js>>,
     ) -> Result<()> {
-        if event_type != "change" { return Ok(()); }
+        if event_type != "change" {
+            return Ok(());
+        }
         // Remover por identidade — QuickJS não expõe ptr direto,
         // limpamos todos por ora (simplificação segura para v1)
         // TODO: implementar remoção precisa por referência quando necessário
@@ -98,7 +101,9 @@ impl MediaQueryList {
     }
 
     // ── dispatchEvent (stub de compatibilidade) ───────────────────────────────
-    pub fn dispatchEvent(&self, _event: Value<'_>) -> bool { true }
+    pub fn dispatchEvent(&self, _event: Value<'_>) -> bool {
+        true
+    }
 }
 
 // ─── Função principal: window.matchMedia(query) ───────────────────────────────
@@ -114,31 +119,32 @@ pub fn register(rt: &JsRuntime) -> Result<()> {
             let viewport_cap = viewport.clone();
             let registry_cap = mql_registry.clone();
 
-            let match_media_fn = Function::new(ctx.clone(), move |ctx: Ctx<'_>, query: String| {
-                let listeners: Arc<Mutex<Vec<rquickjs::Persistent<Function<'static>>>>> =
-                    Arc::new(Mutex::new(Vec::new()));
+            let match_media_fn =
+                Function::new(ctx.clone(), move |_ctx: Ctx<'_>, query: String| {
+                    let listeners: Arc<Mutex<Vec<rquickjs::Persistent<Function<'static>>>>> =
+                        Arc::new(Mutex::new(Vec::new()));
 
-                // Calcular matches inicial
-                let (vw, vh) = *viewport_cap.lock().unwrap();
-                let initial_matches = crate::engine::style::matches_media_query(
-                    &query, vw as f32, vh as f32, "light"
-                );
+                    // Calcular matches inicial
+                    let (vw, vh) = *viewport_cap.lock().unwrap();
+                    let initial_matches = crate::engine::style::matches_media_query(
+                        &query, vw as f32, vh as f32, "light",
+                    );
 
-                // Registrar no MQL registry para receber change events
-                let entry = MqlEntry {
-                    query: query.clone(),
-                    last_matches: initial_matches,
-                    listeners: listeners.clone(),
-                };
-                registry_cap.lock().unwrap().push(entry);
+                    // Registrar no MQL registry para receber change events
+                    let entry = MqlEntry {
+                        query: query.clone(),
+                        last_matches: initial_matches,
+                        listeners: listeners.clone(),
+                    };
+                    registry_cap.lock().unwrap().push(entry);
 
-                // Retornar a view structure e deixar rquickjs embrulhar na classe JS
-                MediaQueryList {
-                    media_query: query,
-                    viewport: viewport_cap.clone(),
-                    listeners,
-                }
-            })?;
+                    // Retornar a view structure e deixar rquickjs embrulhar na classe JS
+                    MediaQueryList {
+                        media_query: query,
+                        viewport: viewport_cap.clone(),
+                        listeners,
+                    }
+                })?;
 
             ctx.globals().set("matchMedia", match_media_fn)?;
             Ok(())

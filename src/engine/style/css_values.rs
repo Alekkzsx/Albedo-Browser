@@ -50,17 +50,17 @@ impl fmt::Display for CssLength {
             CssLength::Min(vals) => {
                 let s: Vec<String> = vals.iter().map(|v| v.to_string()).collect();
                 write!(f, "min({})", s.join(", "))
-            },
+            }
             CssLength::Max(vals) => {
                 let s: Vec<String> = vals.iter().map(|v| v.to_string()).collect();
                 write!(f, "max({})", s.join(", "))
-            },
+            }
             CssLength::Calc(s) => write!(f, "calc({})", s),
             CssLength::MinMax(min, max) => write!(f, "minmax({}, {})", min, max),
             CssLength::Repeat(count, sub) => {
                 let s: Vec<String> = sub.iter().map(|v| v.to_string()).collect();
                 write!(f, "repeat({}, {})", count, s.join(", "))
-            },
+            }
             CssLength::MinContent => write!(f, "min-content"),
             CssLength::MaxContent => write!(f, "max-content"),
             CssLength::AutoFill => write!(f, "auto-fill"),
@@ -75,7 +75,13 @@ impl fmt::Display for CssLength {
 }
 
 /// Resolve CSS length to pixels given parent and root font sizes
-pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size: f32, viewport_width: f32, viewport_height: f32) -> f32 {
+pub fn resolve_length(
+    length: &CssLength,
+    parent_font_size: f32,
+    root_font_size: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> f32 {
     match length {
         CssLength::Px(v) => *v,
         CssLength::Percent(v) => *v / 100.0, // This needs context - usually handled by layout engine
@@ -83,7 +89,7 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
         CssLength::Vh(v) => *v / 100.0 * viewport_height,
         CssLength::Rem(v) => *v * root_font_size,
         CssLength::Em(v) => *v * parent_font_size,
-        CssLength::Fr(v) => *v, 
+        CssLength::Fr(v) => *v,
         CssLength::Zero => 0.0,
         CssLength::Auto => 0.0,
         CssLength::Number(v) => *v,
@@ -91,36 +97,89 @@ pub fn resolve_length(length: &CssLength, parent_font_size: f32, root_font_size:
         CssLength::Span(v) => *v as f32,
         CssLength::Name(_) | CssLength::LineNames(_) => 0.0,
         CssLength::Clamp(min, val, max) => {
-            let min_v = resolve_length(min, parent_font_size, root_font_size, viewport_width, viewport_height);
-            let val_v = resolve_length(val, parent_font_size, root_font_size, viewport_width, viewport_height);
-            let max_v = resolve_length(max, parent_font_size, root_font_size, viewport_width, viewport_height);
+            let min_v = resolve_length(
+                min,
+                parent_font_size,
+                root_font_size,
+                viewport_width,
+                viewport_height,
+            );
+            let val_v = resolve_length(
+                val,
+                parent_font_size,
+                root_font_size,
+                viewport_width,
+                viewport_height,
+            );
+            let max_v = resolve_length(
+                max,
+                parent_font_size,
+                root_font_size,
+                viewport_width,
+                viewport_height,
+            );
             val_v.max(min_v).min(max_v)
-        },
-        CssLength::Min(vals) => {
-            vals.iter()
-                .map(|v| resolve_length(v, parent_font_size, root_font_size, viewport_width, viewport_height))
-                .fold(f32::INFINITY, f32::min)
-        },
-        CssLength::Max(vals) => {
-            vals.iter()
-                .map(|v| resolve_length(v, parent_font_size, root_font_size, viewport_width, viewport_height))
-                .fold(f32::NEG_INFINITY, f32::max)
-        },
+        }
+        CssLength::Min(vals) => vals
+            .iter()
+            .map(|v| {
+                resolve_length(
+                    v,
+                    parent_font_size,
+                    root_font_size,
+                    viewport_width,
+                    viewport_height,
+                )
+            })
+            .fold(f32::INFINITY, f32::min),
+        CssLength::Max(vals) => vals
+            .iter()
+            .map(|v| {
+                resolve_length(
+                    v,
+                    parent_font_size,
+                    root_font_size,
+                    viewport_width,
+                    viewport_height,
+                )
+            })
+            .fold(f32::NEG_INFINITY, f32::max),
         CssLength::MinMax(min, max) => {
-            let min_v = resolve_length(min, parent_font_size, root_font_size, viewport_width, viewport_height);
-            let max_v = resolve_length(max, parent_font_size, root_font_size, viewport_width, viewport_height);
+            let _min_v = resolve_length(
+                min,
+                parent_font_size,
+                root_font_size,
+                viewport_width,
+                viewport_height,
+            );
+            let max_v = resolve_length(
+                max,
+                parent_font_size,
+                root_font_size,
+                viewport_width,
+                viewport_height,
+            );
             // Rough approximation: use max for now
             max_v
-        },
+        }
         CssLength::Repeat(_count, sub) => {
             // Rough approximation: resolve first element * 3 (arbitrary)
             if let Some(first) = sub.first() {
-                resolve_length(first, parent_font_size, root_font_size, viewport_width, viewport_height) * 3.0
+                resolve_length(
+                    first,
+                    parent_font_size,
+                    root_font_size,
+                    viewport_width,
+                    viewport_height,
+                ) * 3.0
             } else {
                 0.0
             }
-        },
-        CssLength::MinContent | CssLength::MaxContent | CssLength::AutoFill | CssLength::AutoFit => 0.0, // Needs layout context
+        }
+        CssLength::MinContent
+        | CssLength::MaxContent
+        | CssLength::AutoFill
+        | CssLength::AutoFit => 0.0, // Needs layout context
         CssLength::Calc(_) => 0.0, // Needs complex parser
     }
 }
@@ -287,7 +346,7 @@ impl CssColor {
                     "peru" => "#cd853f".to_string(),
                     _ => "#000000".to_string(),
                 }
-            },
+            }
             CssColor::CurrentColor => "#000000".to_string(),
             CssColor::Transparent => "transparent".to_string(),
             CssColor::Rgba(r, g, b, a) => {
@@ -726,8 +785,8 @@ pub struct CssAnimation {
     pub timing_function: String,
     pub delay_ms: u32,
     pub iteration_count: String, // "infinite" or number
-    pub direction: String, // "normal", "reverse", "alternate"...
-    pub fill_mode: String, // "none", "forwards", "backwards", "both"
+    pub direction: String,       // "normal", "reverse", "alternate"...
+    pub fill_mode: String,       // "none", "forwards", "backwards", "both"
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -818,7 +877,7 @@ pub struct ComputedStyle {
     pub z_index: i32,
     pub float: CssFloat,
     pub clear: CssClear,
-    
+
     // Box Model - Dimensions
     pub width: CssLength,
     pub height: CssLength,
@@ -826,7 +885,7 @@ pub struct ComputedStyle {
     pub max_width: CssLength,
     pub min_height: CssLength,
     pub max_height: CssLength,
-    
+
     // Box Model - Position (for absolute/fixed)
     pub top: CssLength,
     pub right: CssLength,
@@ -836,23 +895,23 @@ pub struct ComputedStyle {
     pub text_transform: CssTextTransform,
     pub text_overflow: CssTextOverflow,
     pub white_space: CssWhiteSpace,
-    
+
     // Backgroundel - Margins
     pub margin_top: CssLength,
     pub margin_right: CssLength,
     pub margin_bottom: CssLength,
     pub margin_left: CssLength,
-    
+
     // Box Model - Padding
     pub padding_top: CssLength,
     pub padding_right: CssLength,
     pub padding_bottom: CssLength,
     pub padding_left: CssLength,
-    
+
     // Spacing
     pub letter_spacing: CssLength,
     pub word_spacing: CssLength,
-    
+
     // Border
     pub border_width_top: CssLength,
     pub border_width_right: CssLength,
@@ -866,7 +925,7 @@ pub struct ComputedStyle {
     pub border_radius_top_right: f32,
     pub border_radius_bottom_right: f32,
     pub border_radius_bottom_left: f32,
-    
+
     // Visual
     pub color: CssColor,
     pub background_color: CssColor,
@@ -876,14 +935,14 @@ pub struct ComputedStyle {
     pub text_shadow: Vec<TextShadow>,
     pub outline: Option<Outline>,
     pub line_height: CssLength,
-    
+
     // Typography
     pub font_size: f32,
     pub font_family: String,
     pub font_weight: CssFontWeight,
     pub font_style: String,
     pub text_align: CssTextAlign,
-    
+
     // Flexbox
     pub flex_direction: CssFlexDirection,
     pub justify_content: CssJustifyContent,
@@ -892,7 +951,7 @@ pub struct ComputedStyle {
     pub flex_grow: f32,
     pub flex_shrink: f32,
     pub flex_basis: CssLength,
-    
+
     // Grid Layout
     pub grid_template_columns: Vec<CssLength>,
     pub grid_template_rows: Vec<CssLength>,
@@ -903,15 +962,15 @@ pub struct ComputedStyle {
     pub grid_column_gap: CssLength,
     pub grid_row_gap: CssLength,
     pub grid_template_areas: Vec<String>,
-    
+
     // Flexbox/Grid alignment
     pub order: i32,
     pub align_self: CssAlignItems,
     pub align_content: CssAlignContent,
-    
+
     // Pseudo-element content
     pub content: CssContent,
-    
+
     // Modern CSS
     pub aspect_ratio: Option<f32>,
     pub box_sizing: CssBoxSizing,
@@ -927,7 +986,7 @@ pub struct ComputedStyle {
     pub transitions: Vec<CssTransition>,
     pub animations: Vec<CssAnimation>,
     pub clip_path: Option<String>,
-    
+
     // Custom properties (CSS Variables)
     pub custom_properties: std::collections::HashMap<String, String>,
 }
@@ -941,7 +1000,7 @@ impl Default for ComputedStyle {
             z_index: 0,
             float: CssFloat::None,
             clear: CssClear::None,
-            
+
             // Dimensions
             width: CssLength::Auto,
             height: CssLength::Auto,
@@ -949,35 +1008,35 @@ impl Default for ComputedStyle {
             max_width: CssLength::Auto,
             min_height: CssLength::Zero,
             max_height: CssLength::Auto,
-            
+
             display: CssDisplay::default(),
-            
+
             // Position
             top: CssLength::Auto,
             right: CssLength::Auto,
             bottom: CssLength::Auto,
             left: CssLength::Auto,
-            
+
             text_transform: CssTextTransform::default(),
             text_overflow: CssTextOverflow::default(),
             white_space: CssWhiteSpace::default(),
-            
+
             // Backgrounds
             margin_top: CssLength::Zero,
             margin_right: CssLength::Zero,
             margin_bottom: CssLength::Zero,
             margin_left: CssLength::Zero,
-            
+
             // Padding
-    padding_top: CssLength::Zero,
-    padding_right: CssLength::Zero,
-    padding_bottom: CssLength::Zero,
-    padding_left: CssLength::Zero,
-    
-    // Spacing
-    letter_spacing: CssLength::Zero,
-    word_spacing: CssLength::Zero,
-            
+            padding_top: CssLength::Zero,
+            padding_right: CssLength::Zero,
+            padding_bottom: CssLength::Zero,
+            padding_left: CssLength::Zero,
+
+            // Spacing
+            letter_spacing: CssLength::Zero,
+            word_spacing: CssLength::Zero,
+
             // Border
             border_width_top: CssLength::Zero,
             border_width_right: CssLength::Zero,
@@ -991,7 +1050,7 @@ impl Default for ComputedStyle {
             border_radius_top_right: 0.0,
             border_radius_bottom_right: 0.0,
             border_radius_bottom_left: 0.0,
-            
+
             // Visual
             color: CssColor::Named("black".to_string()),
             background_color: CssColor::Transparent,
@@ -1001,14 +1060,14 @@ impl Default for ComputedStyle {
             text_shadow: Vec::new(),
             outline: None,
             line_height: CssLength::Px(1.2), // Default line-height
-            
+
             // Typography
             font_size: 16.0,
             font_family: "sans-serif".to_string(),
             font_weight: CssFontWeight::Normal,
             font_style: "normal".to_string(),
             text_align: CssTextAlign::Left,
-            
+
             // Flexbox
             flex_direction: CssFlexDirection::Row,
             justify_content: CssJustifyContent::FlexStart,
@@ -1017,7 +1076,7 @@ impl Default for ComputedStyle {
             flex_grow: 0.0,
             flex_shrink: 1.0,
             flex_basis: CssLength::Auto,
-            
+
             // Grid Default
             grid_template_columns: Vec::new(),
             grid_template_rows: Vec::new(),
@@ -1027,10 +1086,10 @@ impl Default for ComputedStyle {
             grid_row_end: CssLength::Auto,
             grid_column_gap: CssLength::Zero,
             grid_row_gap: CssLength::Zero,
-            
+
             // Pseudo-element content
             content: CssContent::Normal,
-            
+
             aspect_ratio: None,
             box_sizing: CssBoxSizing::ContentBox,
             visibility: CssVisibility::Visible,
@@ -1045,10 +1104,10 @@ impl Default for ComputedStyle {
             transitions: Vec::new(),
             animations: Vec::new(),
             clip_path: None,
-            
+
             // Custom properties
             custom_properties: std::collections::HashMap::new(),
-            
+
             // New Flexbox/Grid properties
             order: 0,
             align_self: CssAlignItems::Auto, // Default is auto, which computes to parent's align-items

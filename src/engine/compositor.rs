@@ -1,6 +1,3 @@
-use wgpu::util::DeviceExt;
-use std::collections::HashMap;
-
 /// Um Pool de Texturas dinâmicas para reciclar Tiles já rasterizados na VRAM.
 pub struct TexturePool {
     free_textures: Vec<wgpu::Texture>,
@@ -75,13 +72,13 @@ pub struct GpuCompositor {
     pub adapter: wgpu::Adapter,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    
+
     // Core Render Pass State
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub camera_bind_group_layout: wgpu::BindGroupLayout,
     pub render_pipeline: wgpu::RenderPipeline,
     pub default_sampler: wgpu::Sampler,
-    
+
     pub texture_pool: TexturePool,
 }
 
@@ -93,47 +90,53 @@ impl GpuCompositor {
         });
 
         // Nós pedimos por adaptador de Alta Performance (GPU dedicada se possível)
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }).await?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await?;
 
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("AceEngine GPU Compositor"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        ).await.ok()?;
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("AceEngine GPU Compositor"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    memory_hints: wgpu::MemoryHints::default(),
+                },
+                None,
+            )
+            .await
+            .ok()?;
 
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-            label: Some("texture_bind_group_layout"),
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
 
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
@@ -142,21 +145,21 @@ impl GpuCompositor {
                         min_binding_size: None,
                     },
                     count: None,
-                }
-            ],
-            label: Some("camera_bind_group_layout"),
-        });
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("WGSL Core Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into()),
         });
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &texture_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -228,7 +231,9 @@ impl GpuCompositor {
         font_system_arc: std::sync::Arc<std::sync::Mutex<cosmic_text::FontSystem>>,
         swash_cache_arc: std::sync::Arc<std::sync::Mutex<cosmic_text::SwashCache>>,
     ) -> Option<Vec<u8>> {
-        if physical_w == 0 || physical_h == 0 { return None; }
+        if physical_w == 0 || physical_h == 0 {
+            return None;
+        }
 
         let extent = wgpu::Extent3d {
             width: physical_w,
@@ -262,9 +267,11 @@ impl GpuCompositor {
             mapped_at_creation: false,
         });
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
 
         // Generate Ortho Camera Matrix
         let transform = [
@@ -280,7 +287,8 @@ impl GpuCompositor {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue.write_buffer(&camera_uniform, 0, bytemuck::cast_slice(&[transform]));
+        self.queue
+            .write_buffer(&camera_uniform, 0, bytemuck::cast_slice(&[transform]));
 
         let camera_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.camera_bind_group_layout,
@@ -318,10 +326,10 @@ impl GpuCompositor {
                     // Rasterize Tile via Skia on CPU (Caching would prevent this step if already rasterized)
                     let tile_w = 512;
                     let tile_h = 512;
-                    let mut pixmap = tiny_skia::Pixmap::new(tile_w, tile_h).unwrap();
+                    let pixmap = tiny_skia::Pixmap::new(tile_w, tile_h).unwrap();
                     let mut fb_lock = Some(pixmap);
-                    
-                    {   
+
+                    {
                         let mut font_system_lock = font_system_arc.lock().unwrap();
                         let mut swash_cache_lock = swash_cache_arc.lock().unwrap();
                         crate::renderer::paint_layout_tree(
@@ -332,10 +340,10 @@ impl GpuCompositor {
                             &mut font_system_lock,
                             &mut swash_cache_lock,
                             &mut fb_lock,
-                            &[]
+                            &[],
                         );
                     }
-                    
+
                     let rasterized = fb_lock.unwrap();
 
                     // Upload to wgpu texture
@@ -385,12 +393,30 @@ impl GpuCompositor {
                     let h = tile_h as f32;
 
                     let vertices = [
-                        Vertex { position: [x, y, 0.0], uv: [0.0, 0.0] },
-                        Vertex { position: [x + w, y, 0.0], uv: [1.0, 0.0] },
-                        Vertex { position: [x + w, y + h, 0.0], uv: [1.0, 1.0] },
-                        Vertex { position: [x, y, 0.0], uv: [0.0, 0.0] },
-                        Vertex { position: [x + w, y + h, 0.0], uv: [1.0, 1.0] },
-                        Vertex { position: [x, y + h, 0.0], uv: [0.0, 1.0] },
+                        Vertex {
+                            position: [x, y, 0.0],
+                            uv: [0.0, 0.0],
+                        },
+                        Vertex {
+                            position: [x + w, y, 0.0],
+                            uv: [1.0, 0.0],
+                        },
+                        Vertex {
+                            position: [x + w, y + h, 0.0],
+                            uv: [1.0, 1.0],
+                        },
+                        Vertex {
+                            position: [x, y, 0.0],
+                            uv: [0.0, 0.0],
+                        },
+                        Vertex {
+                            position: [x + w, y + h, 0.0],
+                            uv: [1.0, 1.0],
+                        },
+                        Vertex {
+                            position: [x, y + h, 0.0],
+                            uv: [0.0, 1.0],
+                        },
                     ];
 
                     let vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -399,7 +425,8 @@ impl GpuCompositor {
                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                         mapped_at_creation: false,
                     });
-                    self.queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+                    self.queue
+                        .write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
 
                     rpass.set_bind_group(1, &bind_group, &[]);
                     rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -454,10 +481,10 @@ impl GpuCompositor {
 
             drop(data);
             output_buffer.unmap();
-            
+
             // Swap BGRA to RGBA if required depending on target texture format
             /* format is Rgba8UnormSrgb, no swapping needed! */
-            
+
             return Some(final_pixels);
         }
 

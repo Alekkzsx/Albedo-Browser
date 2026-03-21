@@ -1,8 +1,7 @@
-use rquickjs::{Class, Ctx, Object, Result, Value, Function, Persistent};
-use std::sync::{Arc, Mutex};
-use crate::engine::dom::{AceDOM, MutationObserverInit};
-use crate::runtime::core::runtime::JsRuntime;
+use crate::engine::dom::MutationObserverInit;
 use crate::runtime::bindings::html::element::Element;
+use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Class, Ctx, Function, Object, Persistent, Result, Value};
 
 #[derive(Clone)]
 #[rquickjs::class]
@@ -15,34 +14,35 @@ pub struct MutationObserver {
 impl MutationObserver {
     #[qjs(constructor)]
     pub fn new<'js>(ctx: Ctx<'js>, callback: Function<'js>) -> Result<Self> {
-        let rt = ctx.globals().get::<_, JsRuntime>("__albedo_rt__").expect("JsRuntime required");
-        
+        let rt = ctx
+            .globals()
+            .get::<_, JsRuntime>("__albedo_rt__")
+            .expect("JsRuntime required");
+
         // Use a simple incrementing ID for observers
         let id = {
             let registry = rt.observer_registry.lock().unwrap();
             registry.len() + 1
         };
-        
+
         // Save callback in registry (transmute to 'static Persistent for storage)
         {
             let mut registry = rt.observer_registry.lock().unwrap();
             let cb_persist = Persistent::save(&ctx, callback);
-            let cb_static: Persistent<rquickjs::Function<'static>> = unsafe { std::mem::transmute(cb_persist) };
+            let cb_static: Persistent<rquickjs::Function<'static>> =
+                unsafe { std::mem::transmute(cb_persist) };
             registry.insert(id, cb_static);
         }
 
-        Ok(MutationObserver {
-            id,
-            rt,
-        })
+        Ok(MutationObserver { id, rt })
     }
 
     pub fn observe(&self, target: Value<'_>, options: Object<'_>) -> Result<()> {
         let element = Class::<Element>::from_value(&target)
             .map_err(|_| rquickjs::Error::new_from_js("Target must be an Element", "TypeError"))?;
-        
+
         let node_idx = element.borrow().index;
-        
+
         let init = MutationObserverInit {
             child_list: options.get("childList").unwrap_or(false),
             attributes: options.get("attributes").unwrap_or(false),
@@ -67,7 +67,7 @@ impl MutationObserver {
                 observers.retain(|o| o.callback_id != self.id);
             }
         }
-        
+
         // Remove from registry
         let mut registry = self.rt.observer_registry.lock().unwrap();
         registry.remove(&self.id);
@@ -76,16 +76,20 @@ impl MutationObserver {
     #[qjs(rename = "takeRecords")]
     pub fn take_records<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
-            let mut dom = dom_arc.lock().unwrap();
-            let records = dom.pending_mutations.borrow_mut().remove(&self.id).unwrap_or_default();
-            
+            let dom = dom_arc.lock().unwrap();
+            let records = dom
+                .pending_mutations
+                .borrow_mut()
+                .remove(&self.id)
+                .unwrap_or_default();
+
             let arr = rquickjs::Array::new(ctx.clone())?;
             for (i, rec) in records.into_iter().enumerate() {
                 let obj = rquickjs::Object::new(ctx.clone())?;
                 obj.set("type", rec.type_.as_str())?;
                 obj.set("attributeName", rec.attribute_name)?;
                 obj.set("oldValue", rec.old_value)?;
-                
+
                 let wrap_el = |idx: usize, ctx: &Ctx<'js>| -> Result<Value<'js>> {
                     let el = Element {
                         dom: dom_arc.clone(),
@@ -130,7 +134,7 @@ impl MutationObserver {
                 } else {
                     obj.set("nextSibling", rquickjs::Value::new_null(ctx.clone()))?;
                 }
-                
+
                 arr.set(i, obj)?;
             }
             return Ok(arr.into_value());

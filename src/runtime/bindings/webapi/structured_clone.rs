@@ -1,15 +1,11 @@
-use rquickjs::{Ctx, Result};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Ctx, Result};
 
 /// Registra structuredClone como um polyfill JavaScript puro.
 ///
 /// Seguindo o padrão consolidado no Albedo (vide text_encoding.rs).
 pub fn register(rt: &JsRuntime) -> Result<()> {
-    rt.with_context(|ctx| {
-        ctx.with(|ctx: Ctx| {
-            ctx.eval::<(), _>(STRUCTURED_CLONE_POLYFILL)
-        })
-    })
+    rt.with_context(|ctx| ctx.with(|ctx: Ctx| ctx.eval::<(), _>(STRUCTURED_CLONE_POLYFILL)))
 }
 
 const STRUCTURED_CLONE_POLYFILL: &str = r#"

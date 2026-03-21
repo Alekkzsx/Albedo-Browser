@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use rand::Rng;
 
 /// Represents a Blob object in memory
 #[derive(Debug, Clone)]

@@ -50,11 +50,10 @@ impl<'a> BaselineCompiler<'a> {
         let func_name = air.name.clone();
 
         // Declarar função no módulo
-        let func_id = self.engine.module.declare_function(
-            &func_name,
-            Linkage::Export,
-            &sig,
-        )?;
+        let func_id = self
+            .engine
+            .module
+            .declare_function(&func_name, Linkage::Export, &sig)?;
 
         // 2. Criar contexto de função do Cranelift
         let mut ctx = self.engine.module.make_context();
@@ -71,19 +70,97 @@ impl<'a> BaselineCompiler<'a> {
         }
 
         let mut ext_funcs = HashMap::new();
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_add_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_sub", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_mul", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_strict_eq", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_eq", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_lt", 2, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_to_bool", 1, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_get_prop_ic", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_call_ic", 4, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_obj", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_create_array", 0, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_set_prop", 3, &mut ext_funcs)?;
-        Self::declare_runtime_helper(&mut self.engine.module, &mut builder, "js_unimplemented", 0, &mut ext_funcs)?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_add_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_sub",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_mul",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_strict_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_lt",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_to_bool",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_get_prop_ic",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_call_ic",
+            4,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_obj",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_create_array",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_set_prop",
+            3,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_unimplemented",
+            0,
+            &mut ext_funcs,
+        )?;
 
         // Declarar todos os blocos antecipadamente para satisfazer Jumps forward
         let mut block_map = HashMap::new();
@@ -95,7 +172,7 @@ impl<'a> BaselineCompiler<'a> {
         // 4. Emitir instruções (Basic Blocks do AIR)
         for (i, air_block) in air.blocks.iter().enumerate() {
             let cl_block = block_map[&air_block.id];
-            
+
             // Appends para este bloco
             builder.switch_to_block(cl_block);
 
@@ -146,7 +223,12 @@ impl<'a> BaselineCompiler<'a> {
                         let val = builder.use_var(vars[src.0 as usize]);
                         builder.def_var(vars[dst.0 as usize], val);
                     }
-                    AirOpcode::Add { dst, lhs, rhs, ic_slot } => {
+                    AirOpcode::Add {
+                        dst,
+                        lhs,
+                        rhs,
+                        ic_slot,
+                    } => {
                         let a = builder.use_var(vars[lhs.0 as usize]);
                         let b = builder.use_var(vars[rhs.0 as usize]);
                         let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
@@ -195,7 +277,12 @@ impl<'a> BaselineCompiler<'a> {
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
-                    AirOpcode::GetProp { dst, obj, prop, ic_slot } => {
+                    AirOpcode::GetProp {
+                        dst,
+                        obj,
+                        prop,
+                        ic_slot,
+                    } => {
                         let o = builder.use_var(vars[obj.0 as usize]);
                         let p = builder.use_var(vars[prop.0 as usize]);
                         let slot = builder.ins().iconst(I64, *ic_slot as i64);
@@ -211,7 +298,13 @@ impl<'a> BaselineCompiler<'a> {
                         let func_ref = *ext_funcs.get("js_set_prop").unwrap();
                         let _call = builder.ins().call(func_ref, &[o, p, v]);
                     }
-                    AirOpcode::Call { dst, func, arg_start, num_args, ic_slot } => {
+                    AirOpcode::Call {
+                        dst,
+                        func,
+                        arg_start,
+                        num_args,
+                        ic_slot,
+                    } => {
                         let f = builder.use_var(vars[func.0 as usize]);
                         let args_ptr = if *num_args == 0 {
                             builder.ins().iconst(I64, 0)
@@ -233,7 +326,9 @@ impl<'a> BaselineCompiler<'a> {
                         let num_args_val = builder.ins().iconst(I64, *num_args as i64);
                         let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
                         let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                        let call = builder
+                            .ins()
+                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
@@ -254,7 +349,7 @@ impl<'a> BaselineCompiler<'a> {
                         let func_ref = *ext_funcs.get("js_unimplemented").unwrap();
                         let call = builder.ins().call(func_ref, &[]);
                         let _res = builder.inst_results(call)[0];
-                        
+
                         // Fallback maroto (usa reg destination padrao se der falha match, senao da compile error)
                         // Descobrir qual eh a "dst" property no Enum requer matching, entao usaremos log warning.
                         println!("[JIT Compiler] Warning: Unsupported Opcode {:?} - fallback to undefined", inst);
@@ -273,16 +368,20 @@ impl<'a> BaselineCompiler<'a> {
                         let cl_target = block_map[target];
                         builder.ins().jump(cl_target, &[]);
                     }
-                    AirTerminator::JumpIf { cond, then_blk, else_blk } => {
+                    AirTerminator::JumpIf {
+                        cond,
+                        then_blk,
+                        else_blk,
+                    } => {
                         let cl_then = block_map[then_blk];
                         let cl_else = block_map[else_blk];
-                        
+
                         // Convertermos o valor arbitrario p/ bool puro via C runtime
                         let cv = builder.use_var(vars[cond.0 as usize]);
                         let f_to_bool = *ext_funcs.get("js_to_bool").unwrap();
                         let call = builder.ins().call(f_to_bool, &[cv]);
                         let boxed_bool = builder.inst_results(call)[0];
-                        
+
                         // Mask pra pegar o bit isolado
                         let b_val = builder.ins().band_imm(boxed_bool, 1);
                         // Jump if Not Zero
@@ -290,7 +389,6 @@ impl<'a> BaselineCompiler<'a> {
                     }
                 }
             }
-
         }
 
         // Selar todos os blocos após emitir todos os saltos
@@ -309,7 +407,7 @@ impl<'a> BaselineCompiler<'a> {
         self.engine.module.clear_context(&mut ctx);
 
         // O flush pra .text (Executable RX Memory) é feito no commit() do jit_engine raiz
-        
+
         Ok(func_id)
     }
 
@@ -327,11 +425,7 @@ impl<'a> BaselineCompiler<'a> {
         }
         sig.returns.push(AbiParam::new(I64));
 
-        let func_id = module.declare_function(
-            name,
-            Linkage::Import,
-            &sig,
-        )?;
+        let func_id = module.declare_function(name, Linkage::Import, &sig)?;
 
         let local_ref = module.declare_func_in_func(func_id, builder.func);
         ext_funcs.insert(name.to_string(), local_ref);
@@ -352,17 +446,17 @@ mod tests {
     #[test]
     fn test_compile_simple_add() {
         let mut engine = AlbedoJitEngine::new().unwrap();
-        
+
         // Fake builder parameters
         let mut b = AirBuilder::new("test_add".to_string(), 2, 0);
-        
+
         // Bloco main que extrai P0, P1, Adiciona e Retorna
         let pr0 = b.param(0);
         let pr1 = b.param(1);
-        
+
         let sum_reg = b.emit_add(pr0, pr1);
         b.emit_return(sum_reg);
-        
+
         let air = b.build();
 
         // Compilação
@@ -387,16 +481,16 @@ mod tests {
     #[test]
     fn test_compile_branch() {
         let mut engine = AlbedoJitEngine::new().unwrap();
-        
+
         let mut b = AirBuilder::new("test_branch".to_string(), 1, 0);
         let pr0 = b.param(0); // condicao
-        
+
         let blk_then = b.create_block();
         let blk_else = b.create_block();
-        
+
         // Entry block
         b.emit_jump_if(pr0, blk_then, blk_else);
-        
+
         // Then (retorna int 10)
         b.switch_block(blk_then);
         let dst_10 = b.emit_load_int32(10);
@@ -406,7 +500,7 @@ mod tests {
         b.switch_block(blk_else);
         let dst_20 = b.emit_load_int32(20);
         b.emit_return(dst_20);
-        
+
         let air = b.build();
 
         let mut compiler = BaselineCompiler::new(&mut engine);
@@ -414,7 +508,7 @@ mod tests {
 
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
-        
+
         let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
         // Valores JS na C-ABI

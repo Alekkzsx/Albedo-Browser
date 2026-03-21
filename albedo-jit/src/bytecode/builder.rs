@@ -3,8 +3,8 @@
 //! O QuickJS Decoder ou o Profiler utilizarão esse Builder.
 
 use super::opcodes::*;
-use crate::type_feedback::{IcKind, TypeFeedbackRegistry};
 use crate::object_model;
+use crate::type_feedback::{IcKind, TypeFeedbackRegistry};
 
 pub struct AirBuilder {
     name: String,
@@ -68,7 +68,10 @@ impl AirBuilder {
 
     fn push_op(&mut self, op: AirOpcode) {
         let blk = &mut self.blocks[self.current_block as usize];
-        assert!(blk.terminator.is_none(), "Não se pode inserir em bloco já terminado");
+        assert!(
+            blk.terminator.is_none(),
+            "Não se pode inserir em bloco já terminado"
+        );
         blk.insts.push(op);
     }
 
@@ -101,7 +104,7 @@ impl AirBuilder {
         self.push_op(AirOpcode::LoadString { dst, str_id });
         dst
     }
-    
+
     pub fn emit_load_undefined(&mut self) -> AirReg {
         let dst = self.new_reg();
         self.push_op(AirOpcode::LoadUndefined { dst });
@@ -117,7 +120,12 @@ impl AirBuilder {
     pub fn emit_add(&mut self, lhs: AirReg, rhs: AirReg) -> AirReg {
         let dst = self.new_reg();
         let ic_slot = TypeFeedbackRegistry::alloc_slot(IcKind::Add);
-        self.push_op(AirOpcode::Add { dst, lhs, rhs, ic_slot });
+        self.push_op(AirOpcode::Add {
+            dst,
+            lhs,
+            rhs,
+            ic_slot,
+        });
         dst
     }
 
@@ -158,14 +166,25 @@ impl AirBuilder {
     pub fn emit_get_prop(&mut self, obj: AirReg, prop: AirReg) -> AirReg {
         let dst = self.new_reg();
         let ic_slot = TypeFeedbackRegistry::alloc_slot(IcKind::GetProp);
-        self.push_op(AirOpcode::GetProp { dst, obj, prop, ic_slot });
+        self.push_op(AirOpcode::GetProp {
+            dst,
+            obj,
+            prop,
+            ic_slot,
+        });
         dst
     }
 
     pub fn emit_call(&mut self, func: AirReg, arg_start: AirReg, num_args: u32) -> AirReg {
         let dst = self.new_reg();
         let ic_slot = TypeFeedbackRegistry::alloc_slot(IcKind::Call);
-        self.push_op(AirOpcode::Call { dst, func, arg_start, num_args, ic_slot });
+        self.push_op(AirOpcode::Call {
+            dst,
+            func,
+            arg_start,
+            num_args,
+            ic_slot,
+        });
         dst
     }
 
@@ -188,7 +207,11 @@ impl AirBuilder {
     pub fn emit_jump_if(&mut self, cond: AirReg, then_blk: AirBlockId, else_blk: AirBlockId) {
         let blk = &mut self.blocks[self.current_block as usize];
         assert!(blk.terminator.is_none());
-        blk.terminator = Some(AirTerminator::JumpIf { cond, then_blk, else_blk });
+        blk.terminator = Some(AirTerminator::JumpIf {
+            cond,
+            then_blk,
+            else_blk,
+        });
     }
 
     // ---------------------------------------------------------
@@ -204,7 +227,10 @@ impl AirBuilder {
             blocks: self.blocks,
             const_pool: self.const_pool,
         };
-        assert!(func.is_valid(), "Função AIR compilada não é válida (falta terminador?)");
+        assert!(
+            func.is_valid(),
+            "Função AIR compilada não é válida (falta terminador?)"
+        );
         func
     }
 }

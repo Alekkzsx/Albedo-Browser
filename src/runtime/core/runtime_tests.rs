@@ -1,10 +1,9 @@
-
 use super::*;
-use crate::runtime::core::runtime::JsRuntime;
-use std::sync::{Arc, Mutex};
 use crate::engine::style::Stylesheet;
 use crate::engine::AceEngine;
 use crate::runtime::bindings::html::document;
+use crate::runtime::core::runtime::JsRuntime;
+use std::sync::{Arc, Mutex};
 
 #[tokio::test]
 async fn test_basic_execution() {
@@ -22,7 +21,8 @@ async fn test_variables() {
 #[tokio::test]
 async fn test_function_definition() {
     let rt = JsRuntime::new().unwrap();
-    rt.execute_script("function multiply(a, b) { return a * b; }").unwrap();
+    rt.execute_script("function multiply(a, b) { return a * b; }")
+        .unwrap();
 }
 
 #[tokio::test]
@@ -32,20 +32,25 @@ async fn test_pointer_event_subclass() {
     let ctx = rt.context.lock().unwrap();
     let result = ctx.with(|ctx| {
         use crate::runtime::bindings::html::event_subclasses::PointerEvent;
-        
+
         let global = ctx.globals();
-        
+
         let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
         let _ = opts.set("pointerId", 42);
         let _ = opts.set("clientX", 100.0);
         let _ = opts.set("pointerType", "touch");
         let _ = opts.set("isPrimary", true);
-        
-        let pointer_event = rquickjs::Class::instance(ctx.clone(), PointerEvent::new("pointerdown".to_string(), Some(opts.into_value()))).unwrap();
-        
+
+        let pointer_event = rquickjs::Class::instance(
+            ctx.clone(),
+            PointerEvent::new("pointerdown".to_string(), Some(opts.into_value())),
+        )
+        .unwrap();
+
         global.set("ev", pointer_event).unwrap();
-        
-        ctx.eval::<String, _>(r#"
+
+        ctx.eval::<String, _>(
+            r#"
             [
                 ev instanceof PointerEvent,
                 ev instanceof MouseEvent,
@@ -57,7 +62,9 @@ async fn test_pointer_event_subclass() {
                 ev.isPrimary,
                 ev.width // Default deve ser 1.0
             ].join('|')
-        "#).unwrap()
+        "#,
+        )
+        .unwrap()
     });
 
     assert_eq!(result, "true|true|true|pointerdown|42|100|touch|true|1");
@@ -71,21 +78,26 @@ async fn test_touch_event_subclass() {
     let ctx = rt.context.lock().unwrap();
     let result = ctx.with(|ctx| {
         use crate::runtime::bindings::html::event_subclasses::TouchEvent;
-        
+
         // Define no ambiente
         let global = ctx.globals();
-        
+
         let mut opts = rquickjs::Object::new(ctx.clone()).unwrap();
         let _ = opts.set("clientX", 200.0);
         let _ = opts.set("identifier", 1);
         let _ = opts.set("bubbles", true);
         let _ = opts.set("cancelable", true);
-        
-        let touch_event = rquickjs::Class::instance(ctx.clone(), TouchEvent::new("touchstart".to_string(), Some(opts.into_value()))).unwrap();
-        
+
+        let touch_event = rquickjs::Class::instance(
+            ctx.clone(),
+            TouchEvent::new("touchstart".to_string(), Some(opts.into_value())),
+        )
+        .unwrap();
+
         global.set("ev", touch_event).unwrap();
-        
-        ctx.eval::<String, _>(r#"
+
+        ctx.eval::<String, _>(
+            r#"
             [
                 ev instanceof TouchEvent,
                 ev instanceof Event,
@@ -95,9 +107,11 @@ async fn test_touch_event_subclass() {
                 ev.bubbles,
                 ev.cancelable
             ].join('|')
-        "#).unwrap()
+        "#,
+        )
+        .unwrap()
     });
-    
+
     assert_eq!(result, "true|true|touchstart|200|1|true|true");
 }
 
@@ -105,12 +119,12 @@ async fn test_touch_event_subclass() {
 async fn test_set_timeout() {
     let rt = JsRuntime::new().unwrap();
     // rt.init_stdlib("http://test.com").unwrap(); // Removed
-    
+
     // We need to register timers if they are not built-in?
     // executor.rs usually registers them?
     // JsRuntime::new calls Context::full, which might include them?
     // Verify if setTimeout exists.
-    
+
     let result = rt.execute_script("typeof setTimeout").unwrap();
     if result == "undefined" {
         return; // Skip if not available
@@ -123,15 +137,15 @@ async fn test_set_timeout() {
         }, 10);
     ";
     rt.execute_script(script).unwrap();
-    
+
     // Initial check
     let result = rt.execute_script("called").unwrap();
     assert_eq!(result, "false");
-    
+
     // Wait and run loop
     std::thread::sleep(std::time::Duration::from_millis(20));
     rt.run_pending();
-    
+
     // Final check
     let result = rt.execute_script("called").unwrap();
     assert_eq!(result, "true");
@@ -148,25 +162,42 @@ async fn test_dom_sync_with_timers() {
     // rt.init_stdlib("http://test.com").unwrap();
     let primitives = Arc::new(Mutex::new(Vec::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
+    document::register(
+        &rt,
+        dom.clone(),
+        engine.stylesheet.clone(),
+        primitives,
+        canvas_contexts,
+        "http://test.com".to_string(),
+        "".to_string(),
+        None,
+    )
+    .unwrap();
 
     // Verify initial state via JS
-    let initial = rt.execute_script("document.getElementById('target').textContent").unwrap();
+    let initial = rt
+        .execute_script("document.getElementById('target').textContent")
+        .unwrap();
     assert_eq!(initial, "Initial");
 
-    rt.execute_script(r#"
+    rt.execute_script(
+        r#"
         setTimeout(function() {
             var el = document.getElementById("target");
             if (el) el.textContent = "Updated";
         }, 10);
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     // Wait and run
     std::thread::sleep(std::time::Duration::from_millis(30));
     rt.run_pending();
 
     // Now SHOULD be "Updated"
-    let updated = rt.execute_script("document.getElementById('target').textContent").unwrap();
+    let updated = rt
+        .execute_script("document.getElementById('target').textContent")
+        .unwrap();
     assert_eq!(updated, "Updated");
 }
 
@@ -185,13 +216,27 @@ async fn test_computed_style() {
     let rt = JsRuntime::new().unwrap();
     let primitives = Arc::new(Mutex::new(Vec::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
+    document::register(
+        &rt,
+        dom.clone(),
+        engine.stylesheet.clone(),
+        primitives,
+        canvas_contexts,
+        "http://test.com".to_string(),
+        "".to_string(),
+        None,
+    )
+    .unwrap();
 
-    let result = rt.execute_script(r#"
+    let result = rt
+        .execute_script(
+            r#"
         var el = document.getElementById("target");
         var style = getComputedStyle(el);
         style.getPropertyValue('color') + '|' + style.getPropertyValue('font-size')
-    "#).unwrap();
+    "#,
+        )
+        .unwrap();
 
     assert_eq!(result, "red|20px");
 }
@@ -214,9 +259,21 @@ async fn test_dom_traversal() {
     let rt = JsRuntime::new().unwrap();
     let primitives = Arc::new(Mutex::new(Vec::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
+    document::register(
+        &rt,
+        dom.clone(),
+        engine.stylesheet.clone(),
+        primitives,
+        canvas_contexts,
+        "http://test.com".to_string(),
+        "".to_string(),
+        None,
+    )
+    .unwrap();
 
-    let result = rt.execute_script(r#"
+    let result = rt
+        .execute_script(
+            r#"
         var parent = document.getElementById("parent");
         var child1 = document.getElementById("child1");
         var sub = document.getElementById("subchild");
@@ -229,7 +286,9 @@ async fn test_dom_traversal() {
             sub.parentElement.getAttribute('id')
         ].join('|');
         log
-    "#).unwrap();
+    "#,
+        )
+        .unwrap();
 
     assert_eq!(result, "3|child1|child3|child2|child2");
 }
@@ -244,9 +303,21 @@ async fn test_dom_attribute_manipulation() {
     let rt = JsRuntime::new().unwrap();
     let primitives = Arc::new(Mutex::new(Vec::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
-    document::register(&rt, dom.clone(), engine.stylesheet.clone(), primitives, canvas_contexts, "http://test.com".to_string(), "".to_string(), None).unwrap();
+    document::register(
+        &rt,
+        dom.clone(),
+        engine.stylesheet.clone(),
+        primitives,
+        canvas_contexts,
+        "http://test.com".to_string(),
+        "".to_string(),
+        None,
+    )
+    .unwrap();
 
-    let result = rt.execute_script(r#"
+    let result = rt
+        .execute_script(
+            r#"
         const el = document.getElementById("target");
         let log = [];
         
@@ -258,10 +329,12 @@ async fn test_dom_attribute_manipulation() {
         log.push(el.hasAttribute("class"));
         
         log.join("|")
-    "#).unwrap();
+    "#,
+        )
+        .unwrap();
 
     assert_eq!(result, "foo|hello|true|false");
-    
+
     // Check DOM sync manually?
     // Access AceDOM via lock
     let d = dom.lock().unwrap();
@@ -272,7 +345,10 @@ async fn test_dom_attribute_manipulation() {
         if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
             if let Some(id) = el.attributes.get("id") {
                 if id == "target" {
-                    assert_eq!(el.attributes.get("title").map(|s| s.as_str()), Some("hello"));
+                    assert_eq!(
+                        el.attributes.get("title").map(|s| s.as_str()),
+                        Some("hello")
+                    );
                     assert!(el.attributes.get("class").is_none());
                     found = true;
                 }
@@ -289,21 +365,21 @@ async fn test_iframe_post_message() {
     // O runtime filho é criado e injetado manualmente logo abaixo.
     let mut engine = AceEngine::new();
     let html = r#"<iframe id="child"></iframe>"#;
-    engine.load_html(html);  // Não dispara init_subframe_runtimes (sem src)
+    engine.load_html(html); // Não dispara init_subframe_runtimes (sem src)
 
     let dom_arc = engine.dom.as_ref().unwrap().clone();
 
     // ---- Runtime filho: criado manualmente com setup mínimo ----
     let child_rt = JsRuntime::new().unwrap();
-    *child_rt.origin.lock().unwrap() = Some(
-        crate::network::security::Origin::from_url("test://child").unwrap()
-    );
+    *child_rt.origin.lock().unwrap() =
+        Some(crate::network::security::Origin::from_url("test://child").unwrap());
     // Registrar eventos (MessageEvent) e addEventListener/dispatchEvent básico
     crate::runtime::core::init::register_events(&child_rt).unwrap();
     {
         let ctx = child_rt.context.lock().unwrap();
         ctx.with(|ctx| {
-            let _ = ctx.eval::<(), _>(r#"
+            let _ = ctx.eval::<(), _>(
+                r#"
                 globalThis._listeners = {};
                 globalThis.addEventListener = function(type, fn) {
                     if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
@@ -316,13 +392,14 @@ async fn test_iframe_post_message() {
                 };
                 globalThis.window = globalThis;
                 globalThis.self = globalThis;
-            "#);
+            "#,
+            );
         });
     }
     // Registrar no global registry para postMessage conseguir encontrá-lo
     crate::runtime::core::registry::register_runtime(
         child_rt.id,
-        Arc::new(Mutex::new(child_rt.clone()))
+        Arc::new(Mutex::new(child_rt.clone())),
     );
 
     // Injetar child_rt no subframe do DOM pai para que contentWindow retorne
@@ -340,27 +417,33 @@ async fn test_iframe_post_message() {
 
     // ---- Runtime pai: setup mínimo com document API + WindowProxy ----
     let parent_rt = JsRuntime::new().unwrap();
-    *parent_rt.origin.lock().unwrap() = Some(
-        crate::network::security::Origin::from_url("test://parent").unwrap()
-    );
+    *parent_rt.origin.lock().unwrap() =
+        Some(crate::network::security::Origin::from_url("test://parent").unwrap());
     crate::runtime::core::registry::register_runtime(
         parent_rt.id,
-        Arc::new(Mutex::new(parent_rt.clone()))
+        Arc::new(Mutex::new(parent_rt.clone())),
     );
 
     let primitives = Arc::new(Mutex::new(Vec::<crate::engine::ACEPrimitive>::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
     document::register(
-        &parent_rt, dom_arc.clone(), engine.stylesheet.clone(),
-        primitives, canvas_contexts,
-        "test://parent".to_string(), "".to_string(), None
-    ).unwrap();
+        &parent_rt,
+        dom_arc.clone(),
+        engine.stylesheet.clone(),
+        primitives,
+        canvas_contexts,
+        "test://parent".to_string(),
+        "".to_string(),
+        None,
+    )
+    .unwrap();
 
     // Registrar WindowProxy e addEventListener no pai
     {
         let ctx = parent_rt.context.lock().unwrap();
         ctx.with(|ctx| {
-            let _ = ctx.eval::<(), _>(r#"
+            let _ = ctx.eval::<(), _>(
+                r#"
                 globalThis._listeners = {};
                 globalThis.addEventListener = function(type, fn) {
                     if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
@@ -372,25 +455,32 @@ async fn test_iframe_post_message() {
                     return true;
                 };
                 globalThis.window = globalThis;
-            "#);
+            "#,
+            );
             let _ = crate::runtime::bindings::webapi::window_proxy::register(&ctx);
             let _ = crate::runtime::bindings::webapi::post_message::register(&ctx);
         });
     }
 
     // ---- Adicionar listener de mensagem no filho ----
-    child_rt.execute_script(r#"
+    child_rt
+        .execute_script(
+            r#"
         globalThis.received = false;
         globalThis.dataReceived = null;
         globalThis.addEventListener('message', function(e) {
             globalThis.received = true;
             globalThis.dataReceived = e.data;
         });
-    "#).unwrap();
+    "#,
+        )
+        .unwrap();
 
     // ---- Pai envia postMessage para o filho via contentWindow ----
     // postMessage é assíncrono: enfileira no event_loop do filho
-    let result = parent_rt.execute_script(r#"
+    let result = parent_rt
+        .execute_script(
+            r#"
         var iframe = document.getElementById('child');
         if (!iframe) { 'no iframe'; }
         else {
@@ -401,11 +491,16 @@ async fn test_iframe_post_message() {
                 'sent';
             }
         }
-    "#).unwrap();
+    "#,
+        )
+        .unwrap();
 
     println!("[test] postMessage result: {}", result);
-    assert!(result.contains("sent"),
-        "postMessage não enviado, resultado: {}", result);
+    assert!(
+        result.contains("sent"),
+        "postMessage não enviado, resultado: {}",
+        result
+    );
 
     // ---- Processar a mensagem no event loop do filho (próximo tick) ----
     // run_pending() drena pending_messages e dispara os listeners
@@ -419,8 +514,11 @@ async fn test_iframe_post_message() {
     let data = child_rt.execute_script("globalThis.dataReceived").unwrap();
     println!("[test] dataReceived: {}", data);
     // postMessage serializa como JSON, então "Hello from parent" → "\"Hello from parent\""
-    assert_eq!(data, "\"Hello from parent\"",
-        "Dado da mensagem incorreto: {}", data);
+    assert_eq!(
+        data, "\"Hello from parent\"",
+        "Dado da mensagem incorreto: {}",
+        data
+    );
 }
 
 #[tokio::test]
@@ -451,19 +549,24 @@ async fn test_request_idle_callback() {
     rt.run_idle_callbacks(deadline);
 
     // Verificar se rodou
-    let idle_data = rt.execute_script("JSON.stringify(globalThis.idleData)").unwrap();
+    let idle_data = rt
+        .execute_script("JSON.stringify(globalThis.idleData)")
+        .unwrap();
     assert!(idle_data.contains("timeRemaining"));
     assert!(idle_data.contains("\"didTimeout\":false"));
 
     // 2. Testar cancelIdleCallback
-    rt.execute_script(r#"
+    rt.execute_script(
+        r#"
         globalThis.canceledRan = false;
         let cid = requestIdleCallback(function(deadline) {
             globalThis.canceledRan = true;
         });
         cancelIdleCallback(cid);
-    "#).unwrap();
-    
+    "#,
+    )
+    .unwrap();
+
     rt.run_idle_callbacks(deadline);
     let canceled_ran = rt.execute_script("globalThis.canceledRan").unwrap();
     assert_eq!(canceled_ran, "false");
@@ -481,27 +584,32 @@ async fn test_request_idle_callback() {
 
     // Aguardar o timeout expirar
     std::thread::sleep(std::time::Duration::from_millis(5));
-    
+
     // Passar Instant::now() (0ms restantes) como deadline para forçar que execute só pelo timeout
     let expired_deadline = std::time::Instant::now() - std::time::Duration::from_millis(1);
     rt.run_idle_callbacks(expired_deadline);
 
-    let timeout_data = rt.execute_script("JSON.stringify(globalThis.timeoutData)").unwrap();
+    let timeout_data = rt
+        .execute_script("JSON.stringify(globalThis.timeoutData)")
+        .unwrap();
     assert!(timeout_data.contains("\"didTimeout\":true"));
 }
-
 
 #[tokio::test]
 async fn test_text_encoder_basic() {
     let rt = JsRuntime::new().unwrap();
     crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
-    
-    let result = rt.execute_script(r#"
+
+    let result = rt
+        .execute_script(
+            r#"
         const enc = new TextEncoder();
         const bytes = enc.encode('abc');
         [bytes[0], bytes[1], bytes[2]].join(',')
-    "#).unwrap();
-    
+    "#,
+        )
+        .unwrap();
+
     assert_eq!(result, "97,98,99");
 }
 
@@ -509,11 +617,15 @@ async fn test_text_encoder_basic() {
 async fn test_text_encoder_encoding_property() {
     let rt = JsRuntime::new().unwrap();
     crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
-    
-    let result = rt.execute_script(r#"
+
+    let result = rt
+        .execute_script(
+            r#"
         new TextEncoder().encoding
-    "#).unwrap();
-    
+    "#,
+        )
+        .unwrap();
+
     assert_eq!(result, "utf-8");
 }
 
@@ -521,13 +633,17 @@ async fn test_text_encoder_encoding_property() {
 async fn test_text_decoder_basic() {
     let rt = JsRuntime::new().unwrap();
     crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
-    
-    let result = rt.execute_script(r#"
+
+    let result = rt
+        .execute_script(
+            r#"
         const dec = new TextDecoder();
         const bytes = new Uint8Array([104, 101, 108, 108, 111]); // hello
         dec.decode(bytes)
-    "#).unwrap();
-    
+    "#,
+        )
+        .unwrap();
+
     assert_eq!(result, "hello");
 }
 
@@ -535,8 +651,10 @@ async fn test_text_decoder_basic() {
 async fn test_text_decoder_fatal() {
     let rt = JsRuntime::new().unwrap();
     crate::runtime::bindings::webapi::text_encoding::register(&rt).unwrap();
-    
-    let result = rt.execute_script(r#"
+
+    let result = rt
+        .execute_script(
+            r#"
         try {
             const dec = new TextDecoder('utf-8', { fatal: true });
             const bad = new Uint8Array([0xFF, 0xFE]);
@@ -545,8 +663,10 @@ async fn test_text_decoder_fatal() {
         } catch(e) {
             e.name;
         }
-    "#).unwrap();
-    
+    "#,
+        )
+        .unwrap();
+
     assert_eq!(result, "TypeError");
 }
 
@@ -554,7 +674,7 @@ async fn test_text_decoder_fatal() {
 async fn test_structured_clone_full_suite() {
     let rt = JsRuntime::new().unwrap();
     crate::runtime::bindings::webapi::structured_clone::register(&rt).unwrap();
-    
+
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx| {
         let script = r#"
@@ -636,7 +756,11 @@ async fn test_structured_clone_full_suite() {
             })()
         "#;
         let fail_index = ctx.eval::<i32, _>(script).unwrap();
-        assert_eq!(fail_index, -1, "Teste de structuredClone falhou no índice {}", fail_index);
+        assert_eq!(
+            fail_index, -1,
+            "Teste de structuredClone falhou no índice {}",
+            fail_index
+        );
     });
 }
 
@@ -683,9 +807,9 @@ async fn test_queue_microtask_order() {
     rt.execute_script(script).unwrap();
 
     // Microtasks (queueMicrotask e Promise) devem executar antes de macrotasks (setTimeout 0)
-    // Precisamos aguardar um pouco para o timer ser "engatado" no event loop se necessário, 
+    // Precisamos aguardar um pouco para o timer ser "engatado" no event loop se necessário,
     // mas run_pending processa microtasks primeiro.
-    
+
     std::thread::sleep(std::time::Duration::from_millis(10));
     rt.run_pending();
 
@@ -695,7 +819,7 @@ async fn test_queue_microtask_order() {
     assert!(result.contains("microtask"));
     assert!(result.contains("promise"));
     assert!(result.contains("macrotask"));
-    
+
     // Garantir que macrotask é o último
     assert!(result.ends_with("macrotask"));
 }

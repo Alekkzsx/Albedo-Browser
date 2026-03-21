@@ -1,4 +1,4 @@
-use super::runtime::{JsRuntime, JsResult};
+use super::runtime::{JsResult, JsRuntime};
 use rquickjs::Value;
 
 pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
@@ -11,11 +11,14 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
     code.hash(&mut hasher);
     let script_id = albedo_jit::FunctionId(format!("script_{}", hasher.finish()));
     rt.profiler.record_call(script_id.clone());
-    
+
     // AlbedoJIT Bridge: Tenta rodar código nativo
-    rt.jit_bridge.compile_pending(&rt.bytecode_registry); 
+    rt.jit_bridge.compile_pending(&rt.bytecode_registry);
     if let Some(ptr) = rt.jit_bridge.try_native(&script_id) {
-        println!("[JIT] Executando versão NATIVA acelerada para {:?}", script_id);
+        println!(
+            "[JIT] Executando versão NATIVA acelerada para {:?}",
+            script_id
+        );
         // SAFETY: Execução direta de função JIT sem argumentos (top-level script)
         let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };
         func();
@@ -24,7 +27,10 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
 
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx| {
-        match ctx.eval::<Value, _>(code) {
+        // Registrar contexto para OSR
+        crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor::enter_ctx(&ctx);
+
+        let result = match ctx.eval::<Value, _>(code) {
             Ok(result) => {
                 println!("[JS] Script execution success.");
                 // Try to convert to string, fallback to debug
@@ -38,10 +44,10 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
                     // Try JSON stringify
                     match ctx.json_stringify(result.clone()) {
                         Ok(Some(s)) => Ok(s.to_string()?),
-                        _ => Ok(format!("{:?}", result))
+                        _ => Ok(format!("{:?}", result)),
                     }
                 }
-            },
+            }
             Err(e) => {
                 println!("[JS] Script execution FAILED.");
                 let exception_val = ctx.catch();
@@ -52,18 +58,22 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
                     } else {
                         msg.push_str(&format!("{:?}", exception_val));
                     }
-                    
+
                     if let Ok(stack) = obj.get::<_, String>("stack") {
                         msg.push_str("\nStack:\n");
                         msg.push_str(&stack);
                     }
                     eprintln!("\n[JS EXCEPTION DETAILED]\n{}\n", msg);
                 } else {
-                        eprintln!("\n[JS EXCEPTION DETAILED] {:?}\n", exception_val);
+                    eprintln!("\n[JS EXCEPTION DETAILED] {:?}\n", exception_val);
                 }
                 Err(e)
             }
-        }
+        };
+
+        // Limpar contexto
+        crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor::exit_ctx();
+        result
     })
 }
 
@@ -77,14 +87,21 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
 /// * `code` - Código-fonte do módulo
 /// * `module_name` - Nome canônico do módulo (URL absoluta ou nome inline)
 pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult<String> {
-    println!("[JS] Executing ES Module '{}' ({} bytes)...", module_name, code.len());
+    println!(
+        "[JS] Executing ES Module '{}' ({} bytes)...",
+        module_name,
+        code.len()
+    );
 
     // AlbedoJIT Profiler Hook (Módulos usando o nome canônico)
     let mod_id = albedo_jit::FunctionId(format!("module_{}", module_name));
     // AlbedoJIT Bridge: Tenta rodar código nativo
     rt.jit_bridge.compile_pending(&rt.bytecode_registry);
     if let Some(ptr) = rt.jit_bridge.try_native(&mod_id) {
-        println!("[JIT] Executando versão NATIVA acelerada para módulo {:?}", mod_id);
+        println!(
+            "[JIT] Executando versão NATIVA acelerada para módulo {:?}",
+            mod_id
+        );
         let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };
         func();
         return Ok("JIT_NATIVE_MODULE_SUCCESS".to_string());
@@ -92,8 +109,11 @@ pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult
 
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx| {
+        // Registrar contexto para OSR
+        crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor::enter_ctx(&ctx);
+
         // Module::evaluate é o método estático que declara E avalia o módulo
-        match rquickjs::Module::evaluate(ctx.clone(), module_name, code) {
+        let result = match rquickjs::Module::evaluate(ctx.clone(), module_name, code) {
             Ok(promise) => {
                 // Executar microtasks pendentes para resolver a promise do módulo
                 while ctx.execute_pending_job() {}
@@ -114,12 +134,19 @@ pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult
                 }
             }
             Err(e) => {
-                eprintln!("[JS] ES Module '{}' Module::evaluate() failed.", module_name);
+                eprintln!(
+                    "[JS] ES Module '{}' Module::evaluate() failed.",
+                    module_name
+                );
                 let exception_val = ctx.catch();
                 log_js_exception(&exception_val);
                 Err(e)
             }
-        }
+        };
+
+        // Limpar contexto
+        crate::runtime::bridge::quickjs_intercept::QuickJsInterceptor::exit_ctx();
+        result
     })
 }
 

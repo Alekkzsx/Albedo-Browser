@@ -1,4 +1,4 @@
-use rquickjs::{Ctx, Result, Value, Class};
+use rquickjs::{Ctx, Result, Value};
 use std::collections::HashMap;
 
 #[derive(Clone, rquickjs::class::Trace)]
@@ -11,9 +11,9 @@ pub struct FormData {
 #[rquickjs::methods]
 impl FormData {
     #[qjs(constructor)]
-    pub fn new(ctx: Ctx<'_>, form: Option<Value<'_>>) -> Result<Self> {
-        let mut data = HashMap::new();
-        
+    pub fn new(_ctx: Ctx<'_>, form: Option<Value<'_>>) -> Result<Self> {
+        let data = HashMap::new();
+
         if let Some(form_val) = form {
             if form_val.is_object() {
                 // In a real browser, this would extract values from the form's input elements.
@@ -23,7 +23,7 @@ impl FormData {
                 println!("FormData constructor called with form element (stub: data extraction not yet fully implemented from Element)");
             }
         }
-        
+
         Ok(Self { data })
     }
 

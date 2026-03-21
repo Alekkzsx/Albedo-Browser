@@ -8,6 +8,10 @@ version = "0.1.0"
 edition = "2021"
 authors = ["AlbedoUser"]
 
+[lib]
+name = "albedo"
+path = "src/lib.rs"
+
 [dependencies]
 slint = { version = "1.9", features = ["raw-window-handle-06"] }
 rfd = "0.14"

@@ -1,7 +1,6 @@
-use rquickjs::Result;
 use crate::engine::dom::{AceDOM, AceNodeType};
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -25,7 +24,9 @@ impl CssStyleDeclaration {
                     if let Some(style_attr) = element.attributes.get("style") {
                         for decl in style_attr.split(';') {
                             let decl = decl.trim();
-                            if decl.is_empty() { continue; }
+                            if decl.is_empty() {
+                                continue;
+                            }
                             if let Some((key, val)) = decl.split_once(':') {
                                 map.insert(key.trim().to_string(), val.trim().to_string());
                             }
@@ -38,24 +39,26 @@ impl CssStyleDeclaration {
     }
 
     fn update_style_attribute(&self, map: &HashMap<String, String>) {
-         if let Ok(mut dom) = self.dom.lock() {
+        if let Ok(mut dom) = self.dom.lock() {
             if let Some(node) = dom.nodes.get_mut(self.index) {
                 if let AceNodeType::Element(element) = &mut node.node_type {
                     if map.is_empty() {
-                         element.attributes.remove("style");
+                        element.attributes.remove("style");
                     } else {
-                         let mut style_str = String::new();
-                         for (key, val) in map {
-                             style_str.push_str(key);
-                             style_str.push_str(": ");
-                             style_str.push_str(val);
-                             style_str.push_str("; ");
-                         }
-                         element.attributes.insert("style".to_string(), style_str.trim().to_string());
+                        let mut style_str = String::new();
+                        for (key, val) in map {
+                            style_str.push_str(key);
+                            style_str.push_str(": ");
+                            style_str.push_str(val);
+                            style_str.push_str("; ");
+                        }
+                        element
+                            .attributes
+                            .insert("style".to_string(), style_str.trim().to_string());
                     }
                 }
             }
-         }
+        }
     }
 }
 
@@ -75,20 +78,23 @@ impl CssStyleDeclaration {
         let mut map = self.parse_style();
         map.insert(property, value);
         self.update_style_attribute(&map);
-        
+
         if let Ok(dom) = self.dom.lock() {
-            dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
-                type_: crate::engine::dom::MutationType::Attributes,
-                target: self.index,
-                added_nodes: vec![],
-                removed_nodes: vec![],
-                previous_sibling: None,
-                next_sibling: None,
-                attribute_name: Some("style".to_string()),
-                old_value: None, // We could compute this but it's expensive
-            });
+            dom.notify_mutation(
+                self.index,
+                crate::engine::dom::MutationRecord {
+                    type_: crate::engine::dom::MutationType::Attributes,
+                    target: self.index,
+                    added_nodes: vec![],
+                    removed_nodes: vec![],
+                    previous_sibling: None,
+                    next_sibling: None,
+                    attribute_name: Some("style".to_string()),
+                    old_value: None, // We could compute this but it's expensive
+                },
+            );
         }
-        
+
         self.mark_mutation();
     }
 
@@ -103,24 +109,27 @@ impl CssStyleDeclaration {
         let mut map = self.parse_style();
         let val = map.remove(&property).unwrap_or_default();
         self.update_style_attribute(&map);
-        
+
         if let Ok(dom) = self.dom.lock() {
-            dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
-                type_: crate::engine::dom::MutationType::Attributes,
-                target: self.index,
-                added_nodes: vec![],
-                removed_nodes: vec![],
-                previous_sibling: None,
-                next_sibling: None,
-                attribute_name: Some("style".to_string()),
-                old_value: None,
-            });
+            dom.notify_mutation(
+                self.index,
+                crate::engine::dom::MutationRecord {
+                    type_: crate::engine::dom::MutationType::Attributes,
+                    target: self.index,
+                    added_nodes: vec![],
+                    removed_nodes: vec![],
+                    previous_sibling: None,
+                    next_sibling: None,
+                    attribute_name: Some("style".to_string()),
+                    old_value: None,
+                },
+            );
         }
 
         self.mark_mutation();
         val
     }
-    
+
     #[qjs(get, rename = "cssText")]
     pub fn get_css_text(&self) -> String {
         if let Ok(dom) = self.dom.lock() {
@@ -138,7 +147,7 @@ impl CssStyleDeclaration {
         if let Ok(mut dom) = self.dom.lock() {
             if let Some(node) = dom.nodes.get_mut(self.index) {
                 if let AceNodeType::Element(element) = &mut node.node_type {
-                     element.attributes.insert("style".to_string(), value);
+                    element.attributes.insert("style".to_string(), value);
                 }
             }
         }

@@ -1,5 +1,5 @@
-use rquickjs::{Ctx, Result};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{Ctx, Result};
 
 /// Registra TextEncoder e TextDecoder como polyfills JavaScript puros.
 ///
@@ -8,11 +8,7 @@ use crate::runtime::core::runtime::JsRuntime;
 /// sem dependências de lifetime complexas. O polyfill é 100% compatível com a
 /// Web Encoding API Specification (WHATWG).
 pub fn register(rt: &JsRuntime) -> Result<()> {
-    rt.with_context(|ctx| {
-        ctx.with(|ctx: Ctx| {
-            ctx.eval::<(), _>(TEXT_ENCODING_POLYFILL)
-        })
-    })
+    rt.with_context(|ctx| ctx.with(|ctx: Ctx| ctx.eval::<(), _>(TEXT_ENCODING_POLYFILL)))
 }
 
 const TEXT_ENCODING_POLYFILL: &str = r#"

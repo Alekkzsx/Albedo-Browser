@@ -1,6 +1,6 @@
-use rquickjs::{Ctx, Result, Value, Function, Persistent};
-use std::collections::HashMap;
+use rquickjs::{Ctx, Function, Persistent, Result, Value};
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 type ListenerRegistry = HashMap<usize, HashMap<String, Vec<Listener>>>;
 
@@ -9,7 +9,7 @@ thread_local! {
 }
 
 struct Listener {
-    callback: Function<'static>, 
+    callback: Function<'static>,
 }
 
 pub struct EventTargetImpl;
@@ -32,7 +32,7 @@ impl EventTargetImpl {
             }
         });
     }
-    
+
     pub fn get_listeners(target_ptr: usize, type_: &str) -> Vec<Function<'static>> {
         REGISTRY.with(|registry| {
             let map = registry.borrow();
@@ -52,27 +52,27 @@ impl EventTargetImpl {
     }
 
     pub fn dispatch_event_with_bubbling(
-        target_ptr: usize, 
-        event_obj: &Event, 
-        get_parent_fn: impl Fn(usize) -> Option<usize>
+        target_ptr: usize,
+        event_obj: &Event,
+        get_parent_fn: impl Fn(usize) -> Option<usize>,
     ) -> Vec<(usize, Function<'static>)> {
         let mut path = Vec::new();
         let mut curr = target_ptr;
         path.push(curr);
-        
+
         if event_obj.bubbles {
             while let Some(parent) = get_parent_fn(curr) {
                 path.push(parent);
                 curr = parent;
             }
         }
-        
+
         let mut listeners_to_call = Vec::new();
         for ptr in path.iter() {
-             let listeners = Self::get_listeners(*ptr, &event_obj.type_);
-             for l in listeners {
-                 listeners_to_call.push((*ptr, l));
-             }
+            let listeners = Self::get_listeners(*ptr, &event_obj.type_);
+            for l in listeners {
+                listeners_to_call.push((*ptr, l));
+            }
         }
         listeners_to_call
     }
@@ -87,8 +87,8 @@ pub struct Event {
     pub bubbles: bool,
     #[qjs(get, enumerable)]
     pub cancelable: bool,
-    
-    pub target: Option<Persistent<Value<'static>>>, 
+
+    pub target: Option<Persistent<Value<'static>>>,
     pub current_target: Option<Persistent<Value<'static>>>,
     #[qjs(get, rename = "cancelBubble")]
     pub cancel_bubble: bool,
@@ -107,24 +107,24 @@ impl Event {
     pub fn new<'js>(type_: String, options: Option<Value<'js>>) -> Self {
         let mut bubbles = false;
         let mut cancelable = false;
-        
+
         if let Some(opts) = options {
             if let Some(obj) = opts.as_object() {
                 bubbles = obj.get("bubbles").unwrap_or(false);
                 cancelable = obj.get("cancelable").unwrap_or(false);
             }
         }
-        
+
         Self {
             type_,
-            bubbles, 
+            bubbles,
             cancelable,
             target: None,
             current_target: None,
             cancel_bubble: false,
         }
     }
-    
+
     #[qjs(rename = "initEvent")]
     pub fn init_event(&mut self, type_: String, bubbles: bool, cancelable: bool) {
         self.type_ = type_;
@@ -153,14 +153,18 @@ impl Event {
     }
 
     #[qjs(rename = "composedPath")]
-    pub fn composed_path<'js>(&self, ctx: Ctx<'js>, _this: rquickjs::Object<'js>) -> Result<Value<'js>> {
+    pub fn composed_path<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        _this: rquickjs::Object<'js>,
+    ) -> Result<Value<'js>> {
         let array = rquickjs::Array::new(ctx.clone())?;
         if let Some(ref target) = self.target {
             array.set(0, target.clone().restore(&ctx)?)?;
         }
         Ok(array.into_value())
     }
-    
+
     #[qjs(rename = "preventDefault")]
     pub fn prevent_default<'js>(&self, this: rquickjs::Object<'js>) {
         if self.cancelable {

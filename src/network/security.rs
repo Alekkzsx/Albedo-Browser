@@ -1,5 +1,5 @@
-use url::Url;
 use std::fmt;
+use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Origin {
@@ -56,7 +56,9 @@ impl ContentSecurityPolicy {
 
         for directive in raw.split(';') {
             let parts: Vec<&str> = directive.trim().split_whitespace().collect();
-            if parts.len() < 2 { continue; }
+            if parts.len() < 2 {
+                continue;
+            }
 
             match parts[0] {
                 "script-src" => script_src.extend(parts[1..].iter().map(|s| s.to_string())),
@@ -81,19 +83,29 @@ impl ContentSecurityPolicy {
     }
 
     fn check_directive(&self, directive: &[String], url: &str, origin: &Origin) -> bool {
-        if directive.is_empty() { return true; }
-        if directive.contains(&"'none'".to_string()) { return false; }
-        if directive.contains(&"*".to_string()) { return true; }
-        
+        if directive.is_empty() {
+            return true;
+        }
+        if directive.contains(&"'none'".to_string()) {
+            return false;
+        }
+        if directive.contains(&"*".to_string()) {
+            return true;
+        }
+
         if directive.contains(&"'self'".to_string()) {
             if let Some(target_origin) = Origin::from_url(url) {
-                if origin.is_same_origin(&target_origin) { return true; }
+                if origin.is_same_origin(&target_origin) {
+                    return true;
+                }
             }
         }
 
         // Check for specific hosts
         for dev in directive {
-            if url.contains(dev) { return true; }
+            if url.contains(dev) {
+                return true;
+            }
         }
 
         false
@@ -106,12 +118,24 @@ pub struct AccessControl {
 
 impl AccessControl {
     pub fn new() -> Self {
-        Self { allowed_origins: Vec::new() }
+        Self {
+            allowed_origins: Vec::new(),
+        }
     }
 
-    pub fn validate_cors(&self, origin: &Origin, _target_url: &str, resp_headers: &std::collections::HashMap<String, String>) -> bool {
-        let allow_origin = resp_headers.get("access-control-allow-origin").map(|s| s.as_str());
-        let allow_credentials = resp_headers.get("access-control-allow-credentials").map(|s| s.as_str()) == Some("true");
+    pub fn validate_cors(
+        &self,
+        origin: &Origin,
+        _target_url: &str,
+        resp_headers: &std::collections::HashMap<String, String>,
+    ) -> bool {
+        let allow_origin = resp_headers
+            .get("access-control-allow-origin")
+            .map(|s| s.as_str());
+        let allow_credentials = resp_headers
+            .get("access-control-allow-credentials")
+            .map(|s| s.as_str())
+            == Some("true");
 
         if let Some(mut origin_val) = allow_origin {
             origin_val = origin_val.trim();
@@ -147,29 +171,35 @@ pub struct Cookie {
 
 impl CookieJar {
     pub fn new() -> Self {
-        Self { cookies: std::collections::HashMap::new() }
+        Self {
+            cookies: std::collections::HashMap::new(),
+        }
     }
 
     pub fn set_cookie(&mut self, url: &str, cookie_str: &str) {
         // Very simplified cookie parser
         let origin = Origin::from_url(url);
         if let Some(org) = origin {
-             let parts: Vec<&str> = cookie_str.split(';').collect();
-             if parts.is_empty() { return; }
-             let name_val: Vec<&str> = parts[0].splitn(2, '=').collect();
-             if name_val.len() < 2 { return; }
+            let parts: Vec<&str> = cookie_str.split(';').collect();
+            if parts.is_empty() {
+                return;
+            }
+            let name_val: Vec<&str> = parts[0].splitn(2, '=').collect();
+            if name_val.len() < 2 {
+                return;
+            }
 
-             let cookie = Cookie {
-                 name: name_val[0].trim().to_string(),
-                 value: name_val[1].trim().to_string(),
-                 domain: org.host.clone(),
-                 path: "/".to_string(),
-                 secure: cookie_str.contains("Secure"),
-                 http_only: cookie_str.contains("HttpOnly"),
-                 same_site: "Lax".to_string(),
-             };
+            let cookie = Cookie {
+                name: name_val[0].trim().to_string(),
+                value: name_val[1].trim().to_string(),
+                domain: org.host.clone(),
+                path: "/".to_string(),
+                secure: cookie_str.contains("Secure"),
+                http_only: cookie_str.contains("HttpOnly"),
+                same_site: "Lax".to_string(),
+            };
 
-             self.cookies.entry(org.host).or_default().push(cookie);
+            self.cookies.entry(org.host).or_default().push(cookie);
         }
     }
 
@@ -177,7 +207,8 @@ impl CookieJar {
         let origin = Origin::from_url(url);
         if let Some(org) = origin {
             if let Some(cookies) = self.cookies.get(&org.host) {
-                return cookies.iter()
+                return cookies
+                    .iter()
                     .map(|c| format!("{}={}", c.name, c.value))
                     .collect::<Vec<_>>()
                     .join("; ");
