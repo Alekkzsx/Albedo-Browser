@@ -1,7 +1,7 @@
 ---
 description: Implementação de Funcionalidades com Maestria Absoluta
 ---
-Abaixo estão os passos obrigatórios para implementar qualquer nova funcionalidade no AlbedoBrowser seguindo o Protocolo de Maestria v3.0.
+Abaixo estão os passos obrigatórios para implementar qualquer nova funcionalidade no AlbedoBrowser seguindo o [Protocolo de Maestria Absoluta](file:///home/alekkzsx/Documentos/GitHub/AlbedoBrowser/.agents/instructions/mastery_protocol.md).
 
 1. **Fase de Análise Profunda**
    - Ler o arquivo principal (`mod.rs` do componente).
@@ -9,7 +9,9 @@ Abaixo estão os passos obrigatórios para implementar qualquer nova funcionalid
    - Se for WebAPI, ler o padrão em [https://html.spec.whatwg.org/](https://html.spec.whatwg.org/).
 
 2. **Criação do Plano de Implementação**
-   - Criar `implementation_plan.md` no diretório de artifacts.
+   // turbo
+   - Rodar `sleep 4` (Pausa de Incubação Cognitiva).
+   - Criar `implementation_plan.md` seguindo o [planning_template.md](file:///home/alekkzsx/Documentos/GitHub/AlbedoBrowser/.agents/instructions/planning_template.md).
    - Listar todos os arquivos a serem modificados.
    - Definir a estratégia de testes ANTES de codar.
 
