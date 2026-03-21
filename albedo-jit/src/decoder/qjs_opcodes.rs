@@ -12,7 +12,7 @@ pub enum QjsOpcode {
     PushUndefined,
     PushNull,
     PushString(u32), // Índice no Constant Pool
-    
+
     // --- Manipulação de Pilha ---
     Drop,
     Dup,
@@ -25,10 +25,10 @@ pub enum QjsOpcode {
     PutArg(u32),
 
     // --- Aritmética e Bitwise ---
-    Add, 
-    Sub, 
-    Mul, 
-    Div, 
+    Add,
+    Sub,
+    Mul,
+    Div,
     Mod,
     Neg,
     BitAnd,
@@ -49,12 +49,12 @@ pub enum QjsOpcode {
 
     // --- Acesso a Propriedades ---
     GetField(u32), // String Index
-    PutField(u32), 
+    PutField(u32),
     GetArrayEl,
     PutArrayEl,
 
     // --- Controle de Fluxo ---
-    Goto(i32),       // Offset relativo no bytecode
+    Goto(i32), // Offset relativo no bytecode
     IfTrue(i32),
     IfFalse(i32),
     Return,
@@ -63,7 +63,7 @@ pub enum QjsOpcode {
     // --- Objetos e Funções ---
     CreateObj,
     CreateArray,
-    Call(u32),       // Número de Argumentos
+    Call(u32), // Número de Argumentos
 }
 
 /// Metadados e código bruto capturado do QuickJS (Simulado na Fase 1.3)

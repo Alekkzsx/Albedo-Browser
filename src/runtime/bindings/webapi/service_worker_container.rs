@@ -1,12 +1,10 @@
-use rquickjs::{Class, Ctx, Function, Persistent, Result as JsResult, Value, Object, prelude::*};
+use crate::runtime::bindings::webapi::sync::{PeriodicSyncManager, SyncManager};
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::service_worker::{
-    ServiceWorkerRegistration, ServiceWorkerInstance, ServiceWorkerManager,
-    ServiceWorkerState, UpdateViaCache, ClientInfo,
+    ServiceWorkerInstance, ServiceWorkerManager, ServiceWorkerRegistration,
 };
-use crate::runtime::bindings::webapi::sync::{SyncManager, PeriodicSyncManager};
+use rquickjs::{prelude::*, Class, Ctx, Object, Result as JsResult, Value};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 // ============================================================================
 // SERVICE WORKER CLIENT INFO (for clients.matchAll, etc)
@@ -17,7 +15,7 @@ use std::collections::HashMap;
 pub struct ServiceWorkerClient {
     pub id: String,
     pub url: String,
-    pub frame_type: String,  // "top-level", "nested", "iframe", "worker"
+    pub frame_type: String, // "top-level", "nested", "iframe", "worker"
     pub focused: bool,
 }
 
@@ -43,11 +41,7 @@ impl ServiceWorkerClient {
         self.focused
     }
 
-    pub fn post_message<'js>(
-        &self,
-        _ctx: Ctx<'js>,
-        _message: Value<'js>,
-    ) -> JsResult<()> {
+    pub fn post_message<'js>(&self, _ctx: Ctx<'js>, _message: Value<'js>) -> JsResult<()> {
         // TODO: Post message to client window/tab
         Ok(())
     }
@@ -73,7 +67,7 @@ impl Clients {
         _options: rquickjs::prelude::Opt<Object<'js>>,
     ) -> JsResult<Value<'js>> {
         // TODO: Return actual clients
-        let arr = rquickjs::Array::new(ctx.clone())?;
+        let _arr = rquickjs::Array::new(ctx.clone())?;
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<(Vec<ServiceWorkerClient>,), ()>((Vec::new(),));
         Ok(promise.into_value())
@@ -86,11 +80,7 @@ impl Clients {
     }
 
     /// clients.openWindow(url): Open new window
-    pub fn open_window<'js>(
-        &self,
-        ctx: Ctx<'js>,
-        _url: String,
-    ) -> JsResult<Value<'js>> {
+    pub fn open_window<'js>(&self, ctx: Ctx<'js>, _url: String) -> JsResult<Value<'js>> {
         // TODO: Request tab manager to open new window
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<_, ()>((ServiceWorkerClient {
@@ -203,9 +193,7 @@ impl ServiceWorkerRegistrationJS {
     pub fn sync<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         let sync_mgr = SyncManager {
             registration_id: self.registration.id.clone(),
-            background_sync_queue: Arc::new(
-                self.registration.background_sync_queue.clone()
-            ),
+            background_sync_queue: Arc::new(self.registration.background_sync_queue.clone()),
         };
         Ok(Class::instance(ctx, sync_mgr)?.into_value())
     }
@@ -214,9 +202,7 @@ impl ServiceWorkerRegistrationJS {
     pub fn periodic_sync<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         let periodic_mgr = PeriodicSyncManager {
             registration_id: self.registration.id.clone(),
-            periodic_sync_scheduler: Arc::new(
-                self.registration.periodic_sync_scheduler.clone()
-            ),
+            periodic_sync_scheduler: Arc::new(self.registration.periodic_sync_scheduler.clone()),
         };
         Ok(Class::instance(ctx, periodic_mgr)?.into_value())
     }
@@ -248,7 +234,8 @@ impl ServiceWorkerContainer {
     ) -> JsResult<Value<'js>> {
         // Extract scope from options
         let scope = if let Some(opts) = options.0 {
-            opts.get::<_, String>("scope").unwrap_or_else(|_| "/".to_string())
+            opts.get::<_, String>("scope")
+                .unwrap_or_else(|_| "/".to_string())
         } else {
             "/".to_string()
         };
@@ -291,9 +278,7 @@ impl ServiceWorkerContainer {
 
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
 
-        let reg_js = ServiceWorkerRegistrationJS {
-            registration: reg,
-        };
+        let reg_js = ServiceWorkerRegistrationJS { registration: reg };
 
         let _ = resolve.call::<_, ()>((reg_js,));
 
@@ -325,7 +310,9 @@ impl ServiceWorkerContainer {
                 let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let reg_js_vec: Vec<ServiceWorkerRegistrationJS> = registrations
                     .iter()
-                    .map(|r| ServiceWorkerRegistrationJS { registration: r.clone() })
+                    .map(|r| ServiceWorkerRegistrationJS {
+                        registration: r.clone(),
+                    })
                     .collect();
                 let _ = resolve.call::<(Vec<ServiceWorkerRegistrationJS>,), ()>((reg_js_vec,));
 
@@ -339,11 +326,7 @@ impl ServiceWorkerContainer {
     }
 
     /// navigator.serviceWorker.getRegistration(clientURL)
-    pub fn get_registration<'js>(
-        &self,
-        ctx: Ctx<'js>,
-        client_url: String,
-    ) -> JsResult<Value<'js>> {
+    pub fn get_registration<'js>(&self, ctx: Ctx<'js>, client_url: String) -> JsResult<Value<'js>> {
         let rt_lock = self.rt.lock().unwrap();
         let origin = rt_lock
             .origin
@@ -356,9 +339,7 @@ impl ServiceWorkerContainer {
 
         match self.manager.find_for_url(&origin, &client_url) {
             Ok(Some(reg)) => {
-                let reg_js = ServiceWorkerRegistrationJS {
-                    registration: reg,
-                };
+                let reg_js = ServiceWorkerRegistrationJS { registration: reg };
 
                 let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
                 let _ = resolve.call::<_, ()>((reg_js,));
@@ -418,10 +399,7 @@ impl ServiceWorkerContainer {
     }
 
     /// navigator.serviceWorker.oncontrollerchange (event)
-    pub fn oncontrollerchange<'js>(
-        &self,
-        _ctx: Ctx<'js>,
-    ) -> JsResult<Value<'js>> {
+    pub fn oncontrollerchange<'js>(&self, _ctx: Ctx<'js>) -> JsResult<Value<'js>> {
         // Return null for now - event handlers would be set via property assignment
         Ok(Value::new_null(_ctx))
     }

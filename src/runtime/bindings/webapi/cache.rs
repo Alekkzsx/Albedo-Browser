@@ -1,9 +1,9 @@
-use rquickjs::{Class, Ctx, Function, Persistent, Result as JsResult, Value, Object, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwCacheEntryData};
-use std::sync::{Arc, Mutex};
+use rquickjs::{prelude::*, Class, Ctx, Object, Persistent, Result as JsResult, Value};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use std::sync::{Arc, Mutex};
 
 // ============================================================================
 // CACHE ENTRY STORAGE (for IndexedDB persistence)
@@ -16,8 +16,8 @@ pub struct CacheEntry {
     pub status_text: String,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
-    pub timestamp: u64,  // unix timestamp
-    pub expires_at: Option<u64>,  // unix timestamp or None = no expiry
+    pub timestamp: u64,          // unix timestamp
+    pub expires_at: Option<u64>, // unix timestamp or None = no expiry
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -55,16 +55,16 @@ impl Cache {
     /// cache.add(url): Fetch from network and store in cache
     pub fn add<'js>(&self, ctx: Ctx<'js>, url: String) -> JsResult<Value<'js>> {
         let (promise, resolve, reject) = rquickjs::Promise::new(&ctx)?;
-        
+
         // Use JsRuntime to register promise in event loop
         let globals = ctx.globals();
         let rt: JsRuntime = globals.get("__albedo_rt__").unwrap();
-        
+
         let (id, sender) = {
             let mut el = rt.event_loop.lock().unwrap();
             let id = el.register_promise(
                 Persistent::save(&ctx, resolve),
-                Persistent::save(&ctx, reject)
+                Persistent::save(&ctx, reject),
             );
             (id, el.async_sender.clone())
         };
@@ -76,7 +76,11 @@ impl Cache {
 
         tokio::spawn(async move {
             let client = crate::network::client::FetchClient::new();
-            match client.fetch(&url_clone, None, crate::network::security::Origin::from_url(&origin)) {
+            match client.fetch(
+                &url_clone,
+                None,
+                crate::network::security::Origin::from_url(&origin),
+            ) {
                 Ok(resp) => {
                     let entry = SwCacheEntryData {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -86,25 +90,28 @@ impl Cache {
                         status: resp.status,
                         headers: serde_json::to_string(&resp.headers).unwrap_or_default(),
                         body: resp.body_bytes,
-                        created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        created_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
                     };
                     if let Ok(_) = db.save_cache_entry(&entry) {
-                         let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
-                             id,
-                             result: Ok((200, "".to_string())), // Resolve void with 200 OK
-                         });
+                        let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                            id,
+                            result: Ok((200, "".to_string())), // Resolve void with 200 OK
+                        });
                     } else {
-                         let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
-                             id,
-                             result: Err("Database error".to_string()),
-                         });
+                        let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                            id,
+                            result: Err("Database error".to_string()),
+                        });
                     }
                 }
                 Err(e) => {
-                     let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
-                         id,
-                         result: Err(e.to_string()),
-                     });
+                    let _ = sender.send(crate::runtime::core::event_loop::AsyncResult {
+                        id,
+                        result: Err(e.to_string()),
+                    });
                 }
             }
         });
@@ -120,7 +127,7 @@ impl Cache {
         _options: rquickjs::prelude::Opt<Object<'js>>,
     ) -> JsResult<Value<'js>> {
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
-        
+
         if let Ok(Some(entry)) = self.db.get_cache_entry(&self.name, &url) {
             let resp = Response {
                 status: entry.status,
@@ -166,10 +173,9 @@ impl CacheStorage {
     /// caches.open(name): Open/create cache with given name
     pub fn open<'js>(&self, ctx: Ctx<'js>, name: String) -> JsResult<Value<'js>> {
         // Check if already in memory
-        let mut cache_list = self
-            .cache_list
-            .lock()
-            .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
+        let mut cache_list = self.cache_list.lock().map_err(|_| {
+            rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list")
+        })?;
 
         if let Some(cache) = cache_list.get(&name) {
             let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
@@ -197,10 +203,9 @@ impl CacheStorage {
 
     /// caches.keys(): List all cache names
     pub fn keys<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
-        let cache_list = self
-            .cache_list
-            .lock()
-            .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
+        let cache_list = self.cache_list.lock().map_err(|_| {
+            rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list")
+        })?;
 
         let arr = rquickjs::Array::new(ctx.clone())?;
         for (i, name) in cache_list.keys().enumerate() {
@@ -208,17 +213,17 @@ impl CacheStorage {
         }
 
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
-        let _ = resolve.call::<(Vec<String>,), ()>((cache_list.keys().cloned().collect::<Vec<_>>(),));
+        let _ =
+            resolve.call::<(Vec<String>,), ()>((cache_list.keys().cloned().collect::<Vec<_>>(),));
 
         Ok(promise.into_value())
     }
 
     /// caches.delete(name): Delete entire cache
     pub fn delete<'js>(&self, ctx: Ctx<'js>, name: String) -> JsResult<Value<'js>> {
-        let mut cache_list = self
-            .cache_list
-            .lock()
-            .map_err(|_| rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list"))?;
+        let mut cache_list = self.cache_list.lock().map_err(|_| {
+            rquickjs::Error::new_from_js("CacheStorage", "Failed to lock cache list")
+        })?;
 
         let existed = cache_list.remove(&name).is_some();
 

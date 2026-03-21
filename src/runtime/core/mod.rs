@@ -1,10 +1,10 @@
-pub mod runtime;
-pub mod executor;
-pub mod event_loop;
 pub mod eval;
+pub mod event_loop;
+pub mod executor;
 pub mod init;
-pub mod registry;
 pub mod module_loader;
+pub mod registry;
+pub mod runtime;
 pub mod service_worker;
 pub mod sw_db;
 

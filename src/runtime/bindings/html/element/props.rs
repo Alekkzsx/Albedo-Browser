@@ -1,15 +1,14 @@
-use rquickjs::{Ctx, Class, Value, Result};
-use super::{Element, mark_mutation};
-use crate::engine::dom::{AceDOM, AceNodeType, AceNode};
+use super::{mark_mutation, Element};
+use crate::engine::dom::{AceDOM, AceNode, AceNodeType};
 use kuchiki::traits::*;
-use std::collections::HashMap;
+use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn tag_name(el: &Element) -> String {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let AceNodeType::Element(element) = &node.node_type {
-                 return element.tag.to_uppercase();
-             }
+            if let AceNodeType::Element(element) = &node.node_type {
+                return element.tag.to_uppercase();
+            }
         }
     }
     "".to_string()
@@ -84,7 +83,9 @@ pub fn set_checked(el: &Element, val: bool) {
 }
 
 pub fn width(el: &Element) -> i32 {
-    get_attribute(el, "width".to_string()).and_then(|v| v.parse().ok()).unwrap_or(0)
+    get_attribute(el, "width".to_string())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
 }
 
 pub fn set_width(el: &Element, val: i32) {
@@ -92,7 +93,9 @@ pub fn set_width(el: &Element, val: i32) {
 }
 
 pub fn height(el: &Element) -> i32 {
-    get_attribute(el, "height".to_string()).and_then(|v| v.parse().ok()).unwrap_or(0)
+    get_attribute(el, "height".to_string())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
 }
 
 pub fn set_height(el: &Element, val: i32) {
@@ -109,7 +112,7 @@ pub fn natural_height(el: &Element) -> i32 {
     height(el)
 }
 
-pub fn complete(el: &Element) -> bool {
+pub fn complete(_el: &Element) -> bool {
     // Stub: Assume loaded for now.
     true
 }
@@ -151,9 +154,9 @@ pub fn set_text_content(el: &Element, text: String) {
 pub fn get_attribute(el: &Element, name: String) -> Option<String> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let AceNodeType::Element(element) = &node.node_type {
-                 return element.attributes.get(&name).cloned();
-             }
+            if let AceNodeType::Element(element) = &node.node_type {
+                return element.attributes.get(&name).cloned();
+            }
         }
     }
     None
@@ -162,9 +165,9 @@ pub fn get_attribute(el: &Element, name: String) -> Option<String> {
 pub fn get_attribute_names(el: &Element) -> Vec<String> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let AceNodeType::Element(element) = &node.node_type {
-                 return element.attributes.keys().cloned().collect();
-             }
+            if let AceNodeType::Element(element) = &node.node_type {
+                return element.attributes.keys().cloned().collect();
+            }
         }
     }
     Vec::new()
@@ -180,9 +183,9 @@ pub fn set_attribute(el: &Element, name: String, value: String) {
 pub fn has_attribute(el: &Element, name: String) -> bool {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-             if let AceNodeType::Element(element) = &node.node_type {
-                 return element.attributes.contains_key(&name);
-             }
+            if let AceNodeType::Element(element) = &node.node_type {
+                return element.attributes.contains_key(&name);
+            }
         }
     }
     false
@@ -202,7 +205,7 @@ pub fn inner_html(el: &Element) -> String {
             // Serialize children
             let mut s = String::new();
             for &child_idx in &node.children {
-                 s.push_str(&serialize_node(&dom, child_idx));
+                s.push_str(&serialize_node(&dom, child_idx));
             }
             return s;
         }
@@ -236,13 +239,13 @@ pub fn set_inner_html(el: &Element, html: String) {
     if let Ok(mut dom) = el.dom.lock() {
         // Parse HTML como um documento completo (mais simples que fragmento no kuchiki)
         let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
-        
+
         // Encontrar o body do fragmento analisado
         if let Ok(body_match) = kuchiki_root.select_first("body") {
             let body_node = body_match.as_node().clone();
             dom.set_inner_html_from_kuchiki(el.index, body_node.children());
         } else {
-            // Se não houver body (ex: texto puro ou fragmento sem tags estruturais), 
+            // Se não houver body (ex: texto puro ou fragmento sem tags estruturais),
             // kuchiki_root costuma ter o conteúdo no html ou diretamente.
             // Vamos tentar pegar os filhos da raiz se o body falhar.
             dom.set_inner_html_from_kuchiki(el.index, kuchiki_root.children());
@@ -265,17 +268,21 @@ pub fn set_outer_html(el: &Element, html: String) {
         let parent_idx = dom.get_node(el.index).and_then(|n| n.parent);
         if let Some(p_idx) = parent_idx {
             let ref_idx = dom.get_node(el.index).and_then(|n| n.next_sibling);
-            
+
             // Parse HTML
             let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
-            
+
             // Remove old node
             dom.remove_node_from_parent(el.index);
-            
+
             // Insert new nodes from fragment
             if let Ok(body_match) = kuchiki_root.select_first("body") {
                 for child in body_match.as_node().children() {
-                    let child_idx = crate::engine::dom::AceDOM::convert_recursive(&child, &mut dom.nodes, Some(p_idx));
+                    let child_idx = crate::engine::dom::AceDOM::convert_recursive(
+                        &child,
+                        &mut dom.nodes,
+                        Some(p_idx),
+                    );
                     dom.insert_before(p_idx, child_idx, ref_idx);
                 }
             }
@@ -300,7 +307,7 @@ pub fn offset_top(el: &Element) -> f32 {
 pub fn offset_left(el: &Element) -> f32 {
     let geometry = el.element_geometry.lock().unwrap();
     if let Some(geom) = geometry.get(&el.index) {
-        return geom.x; 
+        return geom.x;
     }
     0.0
 }
@@ -407,8 +414,8 @@ pub fn scroll_height(el: &Element) -> f32 {
 pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(mut dom) = el.dom.lock() {
         let shadow_idx = dom.attach_shadow(el.index);
-        
-        let element = Element { 
+
+        let element = Element {
             dom: el.dom.clone(),
             index: shadow_idx,
             mutations: el.mutations.clone(),

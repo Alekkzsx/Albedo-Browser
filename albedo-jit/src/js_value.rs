@@ -1,9 +1,9 @@
 //! # JsValue
 //!
 //! Representação de 64-bits (NaN-boxing) para valores dinâmicos.
-//! 
-//! Esta técnica explora o espaço dos NaNs no padrão IEEE 754 (float64) 
-//! para injetar tipos (inteiros, ponteiros, booleanos) num mesmo 
+//!
+//! Esta técnica explora o espaço dos NaNs no padrão IEEE 754 (float64)
+//! para injetar tipos (inteiros, ponteiros, booleanos) num mesmo
 //! registrador físico de máquina.
 //!
 //! Float64 canônico: `[sinal: 1] [expoente: 11] [mantissa: 52]`
@@ -21,18 +21,18 @@
 // Qualquer valor com top 16 bits >= 0xFFF9 é considerado "boxed".
 // Float64 válidos (incluindo NaN canônico) ficam abaixo disso.
 
-pub const FLOAT_NAN: u64     = 0x7FF8_0000_0000_0000;
-pub const TAG_MASK: u64      = 0xFFFF_0000_0000_0000;
-pub const PAYLOAD_MASK: u64  = 0x0000_FFFF_FFFF_FFFF;
+pub const FLOAT_NAN: u64 = 0x7FF8_0000_0000_0000;
+pub const TAG_MASK: u64 = 0xFFFF_0000_0000_0000;
+pub const PAYLOAD_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 
-pub const TAG_INT32: u64     = 0xFFFE_0000_0000_0000;
-pub const TAG_BOOL: u64      = 0xFFFD_0000_0000_0000;
+pub const TAG_INT32: u64 = 0xFFFE_0000_0000_0000;
+pub const TAG_BOOL: u64 = 0xFFFD_0000_0000_0000;
 pub const TAG_UNDEFINED: u64 = 0xFFFC_0000_0000_0000;
-pub const TAG_NULL: u64      = 0xFFFB_0000_0000_0000;
-pub const TAG_OBJECT: u64    = 0xFFFA_0000_0000_0000;
-pub const TAG_STRING: u64    = 0xFFF9_0000_0000_0000;
-pub const TAG_BUILTIN: u64   = 0xFFF8_0000_0000_0000;
-pub const TAG_MIN: u64       = TAG_BUILTIN;
+pub const TAG_NULL: u64 = 0xFFFB_0000_0000_0000;
+pub const TAG_OBJECT: u64 = 0xFFFA_0000_0000_0000;
+pub const TAG_STRING: u64 = 0xFFF9_0000_0000_0000;
+pub const TAG_BUILTIN: u64 = 0xFFF8_0000_0000_0000;
+pub const TAG_MIN: u64 = TAG_BUILTIN;
 
 /// Um valor dinâmico tipado no formato de 64 bits para o AlbedoJIT.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

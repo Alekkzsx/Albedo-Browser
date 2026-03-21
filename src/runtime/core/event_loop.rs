@@ -1,7 +1,7 @@
-use std::collections::{VecDeque, HashMap};
+use rquickjs::{Function, Persistent};
+use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
-use rquickjs::{Persistent, Function, Ctx, Value};
-use std::sync::mpsc::{Sender, Receiver, channel};
 
 pub struct AsyncResult {
     pub id: u32,
@@ -36,7 +36,7 @@ pub struct PendingMessage {
 
 pub enum IDBEventMessage {
     Success {
-        callback_id: usize, 
+        callback_id: usize,
         result_json: String,
     },
     DatabaseSuccess {
@@ -55,7 +55,7 @@ pub enum IDBEventMessage {
         db_name: String,
         old_version: u32,
         new_version: u32,
-    }
+    },
 }
 
 #[derive(Clone)]
@@ -88,12 +88,17 @@ pub struct EventLoop {
     pub next_idb_callback_id: usize,
 
     // Service Worker & Background Sync
-    pub background_sync_queue: Option<std::sync::Arc<crate::runtime::core::service_worker::BackgroundSyncQueue>>,
-    pub periodic_sync_scheduler: Option<std::sync::Arc<crate::runtime::core::service_worker::PeriodicSyncScheduler>>,
-    pub fetch_interceptor_chain: Option<std::sync::Arc<std::sync::Mutex<crate::runtime::core::service_worker::FetchInterceptorChain>>>,
-    pub online_status: std::sync::Arc<std::sync::Mutex<bool>>,  // true = online
+    pub background_sync_queue:
+        Option<std::sync::Arc<crate::runtime::core::service_worker::BackgroundSyncQueue>>,
+    pub periodic_sync_scheduler:
+        Option<std::sync::Arc<crate::runtime::core::service_worker::PeriodicSyncScheduler>>,
+    pub fetch_interceptor_chain: Option<
+        std::sync::Arc<
+            std::sync::Mutex<crate::runtime::core::service_worker::FetchInterceptorChain>,
+        >,
+    >,
+    pub online_status: std::sync::Arc<std::sync::Mutex<bool>>, // true = online
 }
-
 
 impl EventLoop {
     pub fn new() -> Self {
@@ -123,18 +128,25 @@ impl EventLoop {
         }
     }
 
-    pub fn push_idle_callback(&mut self, callback: Persistent<Function<'static>>, timeout_ms: Option<u64>) -> u32 {
+    pub fn push_idle_callback(
+        &mut self,
+        callback: Persistent<Function<'static>>,
+        timeout_ms: Option<u64>,
+    ) -> u32 {
         let id = self.next_idle_id;
         self.next_idle_id += 1;
-        
+
         let timeout_deadline = timeout_ms.map(|ms| Instant::now() + Duration::from_millis(ms));
-        
-        self.idle_callbacks.insert(id, IdleCallbackTask {
+
+        self.idle_callbacks.insert(
             id,
-            callback: UnsafeSendVal(callback),
-            timeout_deadline,
-        });
-        
+            IdleCallbackTask {
+                id,
+                callback: UnsafeSendVal(callback),
+                timeout_deadline,
+            },
+        );
+
         id
     }
 
@@ -153,13 +165,13 @@ impl EventLoop {
 
         for (id, task) in &self.idle_callbacks {
             let mut should_run = false;
-            
+
             if let Some(deadline) = task.timeout_deadline {
                 if now >= deadline {
                     should_run = true;
                 }
             }
-            
+
             if !should_run && has_idle_time {
                 should_run = true;
             }
@@ -180,8 +192,17 @@ impl EventLoop {
 
     /// Queue a postMessage for delivery on the next run_pending() tick.
     /// Never blocks - safe to call from any context.
-    pub fn enqueue_message(&mut self, data_json: String, origin: String, source_runtime_id: Option<usize>) {
-        self.pending_messages.push_back(PendingMessage { data_json, origin, source_runtime_id });
+    pub fn enqueue_message(
+        &mut self,
+        data_json: String,
+        origin: String,
+        source_runtime_id: Option<usize>,
+    ) {
+        self.pending_messages.push_back(PendingMessage {
+            data_json,
+            origin,
+            source_runtime_id,
+        });
     }
 
     /// Drain all pending messages for processing in run_pending().
@@ -189,10 +210,20 @@ impl EventLoop {
         std::mem::take(&mut self.pending_messages)
     }
 
-    pub fn register_promise(&mut self, resolve: Persistent<Function<'static>>, reject: Persistent<Function<'static>>) -> u32 {
+    pub fn register_promise(
+        &mut self,
+        resolve: Persistent<Function<'static>>,
+        reject: Persistent<Function<'static>>,
+    ) -> u32 {
         let id = self.next_resolution_id;
         self.next_resolution_id += 1;
-        self.pending_resolutions.insert(id, PromiseResolution { resolve: UnsafeSendVal(resolve), reject: UnsafeSendVal(reject) });
+        self.pending_resolutions.insert(
+            id,
+            PromiseResolution {
+                resolve: UnsafeSendVal(resolve),
+                reject: UnsafeSendVal(reject),
+            },
+        );
         id
     }
 
@@ -229,13 +260,18 @@ impl EventLoop {
         self.macro_tasks.push_back(Box::new(task));
     }
 
-    pub fn set_timer(&mut self, callback: Persistent<Function<'static>>, delay: u64, is_interval: bool) -> u32 {
+    pub fn set_timer(
+        &mut self,
+        callback: Persistent<Function<'static>>,
+        delay: u64,
+        is_interval: bool,
+    ) -> u32 {
         let id = self.next_timer_id;
         self.next_timer_id += 1;
 
         let duration = Duration::from_millis(delay);
         let deadline = Instant::now() + duration;
-        
+
         let task = TimerTask {
             id,
             callback: UnsafeSendVal(callback),
@@ -255,15 +291,15 @@ impl EventLoop {
     pub fn take_pending_tasks(&mut self) -> (Vec<TimerTask>, VecDeque<Box<dyn FnOnce() + Send>>) {
         let now = Instant::now();
         let mut expired_ids = Vec::new();
-        
+
         for (id, task) in &self.timers {
             if task.deadline <= now {
                 expired_ids.push(*id);
             }
         }
-        
+
         let mut ready_timers = Vec::new();
-        
+
         for id in expired_ids {
             if let Some(task) = self.timers.remove(&id) {
                 // If it's an interval, we reschedule a clone immediately
@@ -276,7 +312,7 @@ impl EventLoop {
                     };
                     self.timers.insert(id, next_task);
                 }
-                
+
                 // Add the original task to the ready list
                 ready_timers.push(task);
             }
@@ -312,7 +348,9 @@ impl EventLoop {
     /// Set fetch interceptor chain (called during runtime init)
     pub fn set_fetch_interceptor_chain(
         &mut self,
-        chain: std::sync::Arc<std::sync::Mutex<crate::runtime::core::service_worker::FetchInterceptorChain>>,
+        chain: std::sync::Arc<
+            std::sync::Mutex<crate::runtime::core::service_worker::FetchInterceptorChain>,
+        >,
     ) {
         self.fetch_interceptor_chain = Some(chain);
     }

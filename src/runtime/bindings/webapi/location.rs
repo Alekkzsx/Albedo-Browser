@@ -1,4 +1,4 @@
-use rquickjs::{Context, Result, Class, Ctx, Value};
+use rquickjs::{Class, Context, Result};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
@@ -11,7 +11,10 @@ pub struct Location {
 
 impl Location {
     pub fn new(url: String, pending_navigation: Arc<Mutex<Option<String>>>) -> Self {
-        Self { url, pending_navigation }
+        Self {
+            url,
+            pending_navigation,
+        }
     }
 }
 
@@ -21,7 +24,7 @@ impl Location {
     pub fn href(&self) -> String {
         self.url.clone()
     }
-    
+
     #[qjs(set, rename = "href")]
     pub fn set_href(&mut self, val: String) {
         println!("Location.href set to: {}", val);
@@ -49,21 +52,21 @@ impl Location {
         }
         "".to_string()
     }
-    
+
     #[qjs(get)]
     pub fn hostname(&self) -> String {
         let host = self.host();
         if let Some(pos) = host.find(':') {
-             return host[0..pos].to_string();
+            return host[0..pos].to_string();
         }
         host
     }
-    
+
     #[qjs(get)]
     pub fn port(&self) -> String {
         let host = self.host();
         if let Some(pos) = host.find(':') {
-             return host[pos+1..].to_string();
+            return host[pos + 1..].to_string();
         }
         "".to_string()
     }
@@ -73,10 +76,10 @@ impl Location {
         if let Some(rest) = self.url.split("://").nth(1) {
             if let Some(start) = rest.find('/') {
                 if let Some(end) = rest[start..].find('?') {
-                    return rest[start..start+end].to_string();
+                    return rest[start..start + end].to_string();
                 }
                 if let Some(end) = rest[start..].find('#') {
-                     return rest[start..start+end].to_string();
+                    return rest[start..start + end].to_string();
                 }
                 return rest[start..].to_string();
             }
@@ -87,14 +90,14 @@ impl Location {
     #[qjs(get)]
     pub fn search(&self) -> String {
         if let Some(pos) = self.url.find('?') {
-             if let Some(end) = self.url[pos..].find('#') {
-                 return self.url[pos..pos+end].to_string();
-             }
-             return self.url[pos..].to_string();
+            if let Some(end) = self.url[pos..].find('#') {
+                return self.url[pos..pos + end].to_string();
+            }
+            return self.url[pos..].to_string();
         }
         "".to_string()
     }
-    
+
     #[qjs(get)]
     pub fn hash(&self) -> String {
         if let Some(pos) = self.url.find('#') {
@@ -123,7 +126,7 @@ impl Location {
         *self.pending_navigation.lock().unwrap() = Some(url.clone());
         self.url = url;
     }
-    
+
     pub fn assign(&mut self, url: String) {
         println!("Location.assign called with {}", url);
         *self.pending_navigation.lock().unwrap() = Some(url.clone());
@@ -131,10 +134,17 @@ impl Location {
     }
 }
 
-pub fn register(ctx: &Context, initial_url: &str, pending_navigation: Arc<Mutex<Option<String>>>) -> Result<()> {
+pub fn register(
+    ctx: &Context,
+    initial_url: &str,
+    pending_navigation: Arc<Mutex<Option<String>>>,
+) -> Result<()> {
     ctx.with(|ctx| {
         let global = ctx.globals();
-        let location = Class::instance(ctx.clone(), Location::new(initial_url.to_string(), pending_navigation))?;
+        let location = Class::instance(
+            ctx.clone(),
+            Location::new(initial_url.to_string(), pending_navigation),
+        )?;
         global.set("location", location)?;
         Ok(())
     })

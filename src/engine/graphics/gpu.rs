@@ -1,18 +1,18 @@
 // ARQUIVO: src/graphics/gpu.rs
 
-use wgpu::util::DeviceExt;
 use std::borrow::Cow;
+use wgpu::util::DeviceExt;
 
 // Representa 1 retângulo HTML para ser instanciado na GPU
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct QuadInstance {
-    pub position: [f32; 2],     // x, y (top-left)
-    pub size: [f32; 2],         // width, height
-    pub color: [f32; 4],        // r, g, b, a
+    pub position: [f32; 2],      // x, y (top-left)
+    pub size: [f32; 2],          // width, height
+    pub color: [f32; 4],         // r, g, b, a
     pub border_radius: [f32; 4], // tl, tr, br, bl
-    pub z_index: f32,           // Opcional para profundidade, mas no WGPU com back-to-front array position é suficiente
-    pub _pad: [f32; 3],         // Padding de alinhamento 16-bytes 
+    pub z_index: f32, // Opcional para profundidade, mas no WGPU com back-to-front array position é suficiente
+    pub _pad: [f32; 3], // Padding de alinhamento 16-bytes
 }
 
 impl QuadInstance {
@@ -48,21 +48,26 @@ impl GpuContext {
 
         let instance = wgpu::Instance::default();
 
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            force_fallback_adapter: false,
-            compatible_surface: None,
-        }).await?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                force_fallback_adapter: false,
+                compatible_surface: None,
+            })
+            .await?;
 
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Albedo GPU Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: Default::default(),
-            },
-            None,
-        ).await.ok()?;
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Albedo GPU Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::downlevel_defaults(),
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
+            .await
+            .ok()?;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Albedo Instanced Shader"),
@@ -226,8 +231,9 @@ impl GpuContext {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let u32_size = std::mem::size_of::<u32>() as u32;
-        let output_buffer_size = (u32_size * self.texture_width * self.texture_height) as wgpu::BufferAddress;
-        
+        let output_buffer_size =
+            (u32_size * self.texture_width * self.texture_height) as wgpu::BufferAddress;
+
         // Output Readback Buffer
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             size: output_buffer_size,
@@ -237,13 +243,17 @@ impl GpuContext {
         });
 
         // Vertex Buffer Dinâmico
-        let instance_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ACE Rect Instance Buffer"),
-            contents: bytemuck::cast_slice(instances),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let instance_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ACE Rect Instance Buffer"),
+                contents: bytemuck::cast_slice(instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -252,7 +262,12 @@ impl GpuContext {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }), // Fundo Branco Page
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        }), // Fundo Branco Page
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -291,13 +306,13 @@ impl GpuContext {
         // Polling Seguro CPU Side (Non-blocking trait rustico)
         let buffer_slice = output_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
-        
+
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
             tx.send(v).unwrap();
         });
-        
+
         self.device.poll(wgpu::Maintain::Wait);
-        
+
         if let Ok(Ok(())) = rx.recv() {
             let data = buffer_slice.get_mapped_range();
             let result = data.to_vec();

@@ -1,11 +1,11 @@
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{Ctx, Object, Function};
 use rquickjs::prelude::Rest;
-use std::sync::{Arc, Mutex};
+use rquickjs::{Ctx, Function, Object};
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 
 /// Console API implementation for JavaScript
-/// 
+///
 /// Provides console.log, console.error, console.warn, etc.
 pub struct Console {
     output: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -18,37 +18,33 @@ impl Console {
             output: Arc::new(Mutex::new(Box::new(std::io::stdout()))),
         }
     }
-    
+
     /// Create a Console with custom output
     pub fn with_output(output: Box<dyn Write + Send>) -> Self {
         Self {
             output: Arc::new(Mutex::new(output)),
         }
     }
-    
+
     /// Register console API in the JavaScript runtime
     pub fn register(runtime: &JsRuntime) -> Result<(), rquickjs::Error> {
-        runtime.with_context(|ctx| {
-            ctx.with(|ctx: Ctx| {
-                Self::register_in_ctx(&ctx)
-            })
-        })
+        runtime.with_context(|ctx| ctx.with(|ctx: Ctx| Self::register_in_ctx(&ctx)))
     }
 
     pub fn register_in_ctx(ctx: &Ctx<'_>) -> Result<(), rquickjs::Error> {
         let console = Object::new(ctx.clone())?;
-        
+
         // Register functions
         console.set("log", Function::new(ctx.clone(), console_log)?)?;
         console.set("error", Function::new(ctx.clone(), console_error)?)?;
         console.set("warn", Function::new(ctx.clone(), console_warn)?)?;
         console.set("info", Function::new(ctx.clone(), console_info)?)?;
         console.set("debug", Function::new(ctx.clone(), console_debug)?)?;
-        
+
         // Register in global scope
         let globals = ctx.globals();
         globals.set("console", console)?;
-        
+
         Ok(())
     }
 }
@@ -93,24 +89,26 @@ fn console_debug<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<()
 /// Convert a JavaScript value to a string representation
 fn value_to_string<'a>(ctx: &Ctx<'a>, value: &rquickjs::Value<'a>) -> String {
     use rquickjs::Type;
-    
+
     match value.type_of() {
         Type::Null => "null".to_string(),
         Type::Undefined => "undefined".to_string(),
-        Type::Bool => {
-            value.as_bool().map(|b| b.to_string()).unwrap_or_else(|| "false".to_string())
-        },
-        Type::Int => {
-            value.as_int().map(|i| i.to_string()).unwrap_or_else(|| "0".to_string())
-        },
-        Type::Float => {
-            value.as_number().map(|f| f.to_string()).unwrap_or_else(|| "0.0".to_string())
-        },
-        Type::String => {
-            value.as_string()
-                .and_then(|s| s.to_string().ok())
-                .unwrap_or_else(|| "".to_string())
-        },
+        Type::Bool => value
+            .as_bool()
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "false".to_string()),
+        Type::Int => value
+            .as_int()
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "0".to_string()),
+        Type::Float => value
+            .as_number()
+            .map(|f| f.to_string())
+            .unwrap_or_else(|| "0.0".to_string()),
+        Type::String => value
+            .as_string()
+            .and_then(|s| s.to_string().ok())
+            .unwrap_or_else(|| "".to_string()),
         Type::Array => {
             // Try to format as array
             if let Some(arr) = value.as_array() {
@@ -119,7 +117,7 @@ fn value_to_string<'a>(ctx: &Ctx<'a>, value: &rquickjs::Value<'a>) -> String {
                     .filter_map(|i| arr.get::<rquickjs::Value>(i).ok())
                     .map(|v| value_to_string(ctx, &v))
                     .collect();
-                
+
                 if len > 10 {
                     format!("[{}, ... ({} more)]", items.join(", "), len - 10)
                 } else {
@@ -128,7 +126,7 @@ fn value_to_string<'a>(ctx: &Ctx<'a>, value: &rquickjs::Value<'a>) -> String {
             } else {
                 "[Array]".to_string()
             }
-        },
+        }
         Type::Object => {
             // Try to stringify as JSON
             // json_stringify requires value to be strictly bound to context lifetime
@@ -142,7 +140,7 @@ fn value_to_string<'a>(ctx: &Ctx<'a>, value: &rquickjs::Value<'a>) -> String {
                 }
             }
             "[Object]".to_string()
-        },
+        }
         Type::Function => "[Function]".to_string(),
         Type::Constructor => "[Constructor]".to_string(),
         _ => "[Unknown]".to_string(),
@@ -152,37 +150,40 @@ fn value_to_string<'a>(ctx: &Ctx<'a>, value: &rquickjs::Value<'a>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_console_log() {
         let rt = JsRuntime::new().unwrap();
         Console::register(&rt).unwrap();
-        
+
         // Should not crash
         rt.execute_script("console.log('Hello, World!')").unwrap();
     }
-    
+
     #[test]
     fn test_console_multiple_args() {
         let rt = JsRuntime::new().unwrap();
         Console::register(&rt).unwrap();
-        
-        rt.execute_script("console.log('Number:', 42, 'Boolean:', true, 'Null:', null)").unwrap();
+
+        rt.execute_script("console.log('Number:', 42, 'Boolean:', true, 'Null:', null)")
+            .unwrap();
     }
-    
+
     #[test]
     fn test_console_error() {
         let rt = JsRuntime::new().unwrap();
         Console::register(&rt).unwrap();
-        
-        rt.execute_script("console.error('This is an error')").unwrap();
+
+        rt.execute_script("console.error('This is an error')")
+            .unwrap();
     }
-    
+
     #[test]
     fn test_console_objects() {
         let rt = JsRuntime::new().unwrap();
         Console::register(&rt).unwrap();
-        
-        rt.execute_script("console.log({name: 'Albedo', version: '0.1.0'})").unwrap();
+
+        rt.execute_script("console.log({name: 'Albedo', version: '0.1.0'})")
+            .unwrap();
     }
 }

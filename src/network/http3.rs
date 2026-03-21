@@ -8,12 +8,12 @@
 //!   - Recuperação de perda de pacotes por stream individual
 //!   - Controle de congestionamento per-stream
 
+use bytes::Buf;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use bytes::Buf;
 
 /// Resposta HTTP/3 com status, headers e corpo
 #[derive(Debug, Clone)]
@@ -84,7 +84,10 @@ impl Http3Client {
         if loaded_certs == 0 {
             return Err("[HTTP/3] Nenhum certificado raiz encontrado no sistema".into());
         }
-        println!("[HTTP/3] {} certificados raiz carregados do sistema", loaded_certs);
+        println!(
+            "[HTTP/3] {} certificados raiz carregados do sistema",
+            loaded_certs
+        );
 
         // 2. Configurar TLS com rustls (zero dependências de OpenSSL)
         let mut tls_config = rustls::ClientConfig::builder()
@@ -105,7 +108,7 @@ impl Http3Client {
         // Idle timeout: fecha conexões ociosas após 30s (economiza RAM/sockets)
         transport_config.max_idle_timeout(Some(
             quinn::IdleTimeout::try_from(Duration::from_secs(30))
-                .map_err(|e| format!("[HTTP/3] Idle timeout inválido: {}", e))?
+                .map_err(|e| format!("[HTTP/3] Idle timeout inválido: {}", e))?,
         ));
         // Keep-alive: envia pings a cada 10s para manter NAT traversal
         transport_config.keep_alive_interval(Some(Duration::from_secs(10)));
@@ -115,9 +118,7 @@ impl Http3Client {
 
         // 4. Criar endpoint QUIC (bind em porta efêmera IPv4)
         //    Usa um único socket UDP compartilhado para todas as conexões
-        let mut endpoint = quinn::Endpoint::client(
-            "0.0.0.0:0".parse::<SocketAddr>().unwrap()
-        )?;
+        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse::<SocketAddr>().unwrap())?;
         endpoint.set_default_client_config(client_config);
 
         println!("[HTTP/3] Client QUIC inicializado com sucesso");
@@ -159,12 +160,14 @@ impl Http3Client {
         println!("[HTTP/3] Conectando via QUIC a {} ({})", pool_key, addr);
 
         // Iniciar handshake QUIC (inclui TLS 1.3 em 1-RTT)
-        let conn = self.endpoint
+        let conn = self
+            .endpoint
             .connect(addr, host)?
             .await
             .map_err(|e| format!("[HTTP/3] Handshake QUIC falhou para {}: {}", pool_key, e))?;
 
-        println!("[HTTP/3] Conexão QUIC estabelecida com {} (protocol: {:?})",
+        println!(
+            "[HTTP/3] Conexão QUIC estabelecida com {} (protocol: {:?})",
             pool_key,
             conn.handshake_data()
                 .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
@@ -198,10 +201,12 @@ impl Http3Client {
         body: Option<Vec<u8>>,
     ) -> Result<Http3Response, Box<dyn Error + Send + Sync>> {
         // 1. Parsear URL
-        let uri: http::Uri = url.parse()
+        let uri: http::Uri = url
+            .parse()
             .map_err(|e| format!("[HTTP/3] URL inválida '{}': {}", url, e))?;
 
-        let host = uri.host()
+        let host = uri
+            .host()
             .ok_or_else(|| format!("[HTTP/3] URL sem host: {}", url))?;
         let port = uri.port_u16().unwrap_or(443);
 
@@ -213,7 +218,8 @@ impl Http3Client {
         let (mut driver, mut send_request) = h3::client::new(h3_conn).await?;
 
         // 4. Construir request HTTP
-        let http_method = method.parse::<http::Method>()
+        let http_method = method
+            .parse::<http::Method>()
             .map_err(|e| format!("[HTTP/3] Método inválido '{}': {}", method, e))?;
 
         let mut builder = http::Request::builder()
@@ -224,7 +230,7 @@ impl Http3Client {
         for (k, v) in &headers {
             if let (Ok(name), Ok(val)) = (
                 k.parse::<http::header::HeaderName>(),
-                http::header::HeaderValue::from_str(v)
+                http::header::HeaderValue::from_str(v),
             ) {
                 builder = builder.header(name, val);
             }
@@ -238,11 +244,15 @@ impl Http3Client {
         }
 
         // Albedo User-Agent
-        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("user-agent")) {
+        if !headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+        {
             builder = builder.header("user-agent", "AlbedoBrowser/0.1 (QUIC; HTTP/3)");
         }
 
-        let req = builder.body(())
+        let req = builder
+            .body(())
             .map_err(|e| format!("[HTTP/3] Falha ao construir request: {}", e))?;
 
         // 5. Criar a task do driver (gerencia control streams em background)
@@ -271,10 +281,7 @@ impl Http3Client {
         // Parsear response headers
         let mut response_headers = HashMap::new();
         for (name, value) in resp.headers() {
-            response_headers.insert(
-                name.to_string(),
-                value.to_str().unwrap_or("").to_string(),
-            );
+            response_headers.insert(name.to_string(), value.to_str().unwrap_or("").to_string());
         }
 
         // 8. Receber body completo (recv_data retorna impl Buf)
@@ -283,7 +290,12 @@ impl Http3Client {
             body_bytes.extend_from_slice(chunk.chunk());
         }
 
-        println!("[HTTP/3] Response: {} {} ({} bytes)", status, url, body_bytes.len());
+        println!(
+            "[HTTP/3] Response: {} {} ({} bytes)",
+            status,
+            url,
+            body_bytes.len()
+        );
 
         // Cancelar driver task (stream já foi consumida)
         drive_task.abort();
@@ -328,10 +340,7 @@ impl Http3Client {
 
         for conn in connections {
             // Enviar CLOSE frame com código H3_NO_ERROR (0x100)
-            conn.close(
-                quinn::VarInt::from_u32(0x100),
-                b"closed by client",
-            );
+            conn.close(quinn::VarInt::from_u32(0x100), b"closed by client");
         }
 
         // 2. Aguardar o endpoint ficar idle (todas as conexões efetivamente fechadas)

@@ -36,7 +36,9 @@ pub extern "C" fn fast_math_sqrt(val: u64) -> u64 {
 #[no_mangle]
 pub extern "C" fn fast_math_floor(val: u64) -> u64 {
     let v = JsValue(val);
-    if v.is_int32() { return val; }
+    if v.is_int32() {
+        return val;
+    }
     let n = to_number(v);
     JsValue::float64(n.floor()).0
 }
@@ -45,7 +47,9 @@ pub extern "C" fn fast_math_floor(val: u64) -> u64 {
 #[no_mangle]
 pub extern "C" fn fast_math_ceil(v: u64) -> u64 {
     let val = JsValue(v);
-    if val.is_int32() { return v; }
+    if val.is_int32() {
+        return v;
+    }
     if val.is_float64() {
         return JsValue::float64(val.as_float64().ceil()).0;
     }
@@ -58,7 +62,12 @@ pub extern "C" fn fast_array_push(arr: u64, val: u64) -> u64 {
     let arr_v = JsValue(arr);
     let val_v = JsValue(val);
     let res = object_model::array_push(arr_v, &[val_v]);
-    println!("[FAST-JIT] Array.push arr={:?} val={:?} -> len={}", arr_v, val_v, res.as_int32());
+    println!(
+        "[FAST-JIT] Array.push arr={:?} val={:?} -> len={}",
+        arr_v,
+        val_v,
+        res.as_int32()
+    );
     let _ = std::io::stdout().flush();
     res.0
 }
@@ -103,11 +112,17 @@ mod tests {
     #[test]
     fn test_fast_abs() {
         assert_eq!(JsValue(fast_math_abs(JsValue::int32(-42).0)).as_int32(), 42);
-        assert_eq!(JsValue(fast_math_abs(JsValue::float64(-10.5).0)).as_float64(), 10.5);
+        assert_eq!(
+            JsValue(fast_math_abs(JsValue::float64(-10.5).0)).as_float64(),
+            10.5
+        );
     }
 
     #[test]
     fn test_fast_sqrt() {
-        assert_eq!(JsValue(fast_math_sqrt(JsValue::float64(16.0).0)).as_float64(), 4.0);
+        assert_eq!(
+            JsValue(fast_math_sqrt(JsValue::float64(16.0).0)).as_float64(),
+            4.0
+        );
     }
 }

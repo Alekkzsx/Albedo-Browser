@@ -1,4 +1,4 @@
-use cosmic_text::{FontSystem, Buffer, Metrics, Attrs, Family, Shaping};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
@@ -18,15 +18,27 @@ pub struct TextMeasurer {
 
 impl TextMeasurer {
     pub fn new(font_system: Arc<Mutex<FontSystem>>) -> Self {
-        Self { 
+        Self {
             font_system,
             measure_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
-    pub fn measure_text(&self, text: &str, font_size: f32, line_height: f32, family: Option<&str>, weight: cosmic_text::Weight, max_width: Option<f32>, letter_spacing: f32, word_spacing: f32) -> (f32, f32) {
-        if text.is_empty() { return (0.0, 0.0); }
-        
+    pub fn measure_text(
+        &self,
+        text: &str,
+        font_size: f32,
+        line_height: f32,
+        family: Option<&str>,
+        weight: cosmic_text::Weight,
+        max_width: Option<f32>,
+        letter_spacing: f32,
+        word_spacing: f32,
+    ) -> (f32, f32) {
+        if text.is_empty() {
+            return (0.0, 0.0);
+        }
+
         let cache_key = format!(
             "{}_{}_{}_{:?}_{:?}_{:?}_{}_{}",
             text, font_size, line_height, family, weight.0, max_width, letter_spacing, word_spacing
@@ -40,7 +52,7 @@ impl TextMeasurer {
         }
 
         let mut font_system = self.font_system.lock().unwrap();
-        
+
         let mut attrs = Attrs::new().weight(weight);
         if let Some(f) = family {
             attrs = attrs.family(Family::Name(f));
@@ -70,7 +82,7 @@ impl TextMeasurer {
         // Spaced Path (Tokenized Greedy Wrapping)
         let metrics = Metrics::new(font_size, line_height);
         let mut buffer = Buffer::new(&mut font_system, metrics);
-        
+
         let mut current_x = 0.0;
         let mut current_y = line_height;
         let mut max_x: f32 = 0.0;
@@ -79,7 +91,9 @@ impl TextMeasurer {
         let mut space_w = 0.0;
         buffer.set_text(&mut font_system, " ", attrs, Shaping::Advanced);
         buffer.shape_until_scroll(&mut font_system, false);
-        if let Some(run) = buffer.layout_runs().next() { space_w = run.line_w; }
+        if let Some(run) = buffer.layout_runs().next() {
+            space_w = run.line_w;
+        }
 
         let mut first_word_in_line = true;
 
@@ -91,7 +105,7 @@ impl TextMeasurer {
             } else {
                 (word, "")
             };
-            
+
             let mut word_w = 0.0;
             if letter_spacing != 0.0 {
                 for c in word_trim.chars() {

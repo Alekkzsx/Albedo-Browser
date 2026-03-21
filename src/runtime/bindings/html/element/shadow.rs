@@ -1,7 +1,6 @@
-use rquickjs::{Class, Ctx, Result, Value};
 use super::Element;
-use crate::engine::dom::AceNodeType;
 use crate::runtime::bindings::html::document::fragment::DocumentFragment;
+use rquickjs::{Class, Ctx, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -17,7 +16,7 @@ impl ShadowRoot {
         if let Ok(dom) = self.fragment.dom.lock() {
             for (idx, node) in dom.nodes.iter().enumerate() {
                 if node.shadow_root == Some(self.fragment.index) {
-                     let element = Element {
+                    let element = Element {
                         dom: self.fragment.dom.clone(),
                         index: idx,
                         mutations: self.fragment.mutations.clone(),
@@ -38,7 +37,13 @@ impl ShadowRoot {
 
     #[qjs(rename = "appendChild")]
     pub fn append_child<'js>(&self, ctx: Ctx<'js>, child: Value<'js>) -> Result<Value<'js>> {
-        super::hierarchy::append_child_generic(&self.fragment.dom, self.fragment.index, &self.fragment.mutations, ctx, child)
+        super::hierarchy::append_child_generic(
+            &self.fragment.dom,
+            self.fragment.index,
+            &self.fragment.mutations,
+            ctx,
+            child,
+        )
     }
 }
 
@@ -60,7 +65,7 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
             pending_scroll: el.pending_scroll.clone(),
             element_geometry: el.element_geometry.clone(),
             element_scroll: el.element_scroll.clone(),
-        }
+        },
     };
 
     let instance = Class::instance(ctx, shadow)?;
@@ -82,7 +87,7 @@ pub fn get_shadow_root<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
                         pending_scroll: el.pending_scroll.clone(),
                         element_geometry: el.element_geometry.clone(),
                         element_scroll: el.element_scroll.clone(),
-                    }
+                    },
                 };
                 let instance = Class::instance(ctx, shadow)?;
                 return Ok(instance.into_value());

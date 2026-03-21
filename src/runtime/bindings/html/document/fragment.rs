@@ -1,7 +1,7 @@
-use rquickjs::{Ctx, Class, Result, Value};
-use crate::engine::dom::{AceDOM, AceNodeType, AceNode};
-use std::sync::{Arc, Mutex};
+use crate::engine::dom::{AceDOM, AceNode, AceNodeType};
 use crate::runtime::bindings::html::element::Element;
+use rquickjs::{Class, Ctx, Result, Value};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -17,11 +17,13 @@ pub struct DocumentFragment {
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
     #[qjs(skip_trace)]
-    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    pub canvas_contexts:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
-    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    pub element_geometry:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
@@ -29,7 +31,11 @@ pub struct DocumentFragment {
 #[rquickjs::methods]
 impl DocumentFragment {
     #[qjs(rename = "appendChild")]
-    pub fn append_child<'js>(&self, ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
+    pub fn append_child<'js>(
+        &self,
+        _ctx: Ctx<'js>,
+        child: Class<'js, Element>,
+    ) -> Result<Class<'js, Element>> {
         let child_idx = child.borrow().index;
         let parent_idx = self.index;
         if let Ok(mut dom) = self.dom.lock() {
@@ -51,9 +57,13 @@ impl DocumentFragment {
         mutations: Arc<Mutex<bool>>,
         stylesheet_dirty: Arc<Mutex<bool>>,
         primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
-        canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+        canvas_contexts: Arc<
+            Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>,
+        >,
         pending_scroll: Arc<Mutex<Option<usize>>>,
-        element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+        element_geometry: Arc<
+            Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>,
+        >,
         element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
     ) -> Self {
         let mut d = dom.lock().unwrap();
@@ -65,10 +75,21 @@ impl DocumentFragment {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
-            dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT | crate::engine::dom::NodeDirtyFlags::STYLE,
+            dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                | crate::engine::dom::NodeDirtyFlags::STYLE,
         });
 
-        Self { dom: dom.clone(), index, mutations, stylesheet_dirty, primitives, canvas_contexts, pending_scroll, element_geometry, element_scroll }
+        Self {
+            dom: dom.clone(),
+            index,
+            mutations,
+            stylesheet_dirty,
+            primitives,
+            canvas_contexts,
+            pending_scroll,
+            element_geometry,
+            element_scroll,
+        }
     }
 
     // Helper to reuse element logic

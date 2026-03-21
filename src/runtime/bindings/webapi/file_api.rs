@@ -1,5 +1,5 @@
-use rquickjs::{Class, Ctx, Result, Value, Object, Persistent, Function, ArrayBuffer, prelude::*};
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::*, ArrayBuffer, Class, Ctx, Function, Object, Persistent, Result, Value};
 // No UnsafeSendVal needed here after synchronous refactor
 use std::sync::{Arc, Mutex};
 
@@ -14,7 +14,11 @@ pub struct Blob {
 #[rquickjs::methods]
 impl Blob {
     #[qjs(constructor)]
-    pub fn new(ctx: Ctx<'_>, parts: Option<Value<'_>>, options: Option<Object<'_>>) -> Result<Self> {
+    pub fn new(
+        _ctx: Ctx<'_>,
+        parts: Option<Value<'_>>,
+        options: Option<Object<'_>>,
+    ) -> Result<Self> {
         let mut data = Vec::new();
         if let Some(parts_val) = parts {
             if let Some(arr) = parts_val.as_array() {
@@ -26,7 +30,8 @@ impl Blob {
                         if let Some(blob) = Class::<Blob>::from_object(&blob_obj) {
                             data.extend_from_slice(&blob.borrow().data);
                         }
-                    } else if let Some(ab) = part.as_object().and_then(|obj| obj.as_array_buffer()) {
+                    } else if let Some(ab) = part.as_object().and_then(|obj| obj.as_array_buffer())
+                    {
                         data.extend_from_slice(ab.as_ref());
                     }
                 }
@@ -51,13 +56,26 @@ impl Blob {
         self.mime_type.clone()
     }
 
-    pub fn slice(&self, start: Option<isize>, end: Option<isize>, content_type: Option<String>) -> Self {
+    pub fn slice(
+        &self,
+        start: Option<isize>,
+        end: Option<isize>,
+        content_type: Option<String>,
+    ) -> Self {
         let len = self.data.len() as isize;
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(len);
 
-        let s = if start < 0 { (len + start).max(0) } else { start.min(len) } as usize;
-        let e = if end < 0 { (len + end).max(0) } else { end.min(len) } as usize;
+        let s = if start < 0 {
+            (len + start).max(0)
+        } else {
+            start.min(len)
+        } as usize;
+        let e = if end < 0 {
+            (len + end).max(0)
+        } else {
+            end.min(len)
+        } as usize;
 
         let data = if s < e {
             self.data[s..e].to_vec()
@@ -100,26 +118,43 @@ pub struct File {
 #[rquickjs::methods]
 impl File {
     #[qjs(constructor)]
-    pub fn new(ctx: Ctx<'_>, parts: Option<Value<'_>>, name: String, options: Option<Object<'_>>) -> Result<Self> {
+    pub fn new(
+        ctx: Ctx<'_>,
+        parts: Option<Value<'_>>,
+        name: String,
+        options: Option<Object<'_>>,
+    ) -> Result<Self> {
         let blob = Blob::new(ctx, parts, options.clone())?;
         let mut last_modified = chrono::Utc::now().timestamp_millis();
         if let Some(opts) = options {
             last_modified = opts.get("lastModified").unwrap_or(last_modified);
         }
-        Ok(Self { blob, name, last_modified })
+        Ok(Self {
+            blob,
+            name,
+            last_modified,
+        })
     }
 
     #[qjs(get)]
-    pub fn name(&self) -> String { self.name.clone() }
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
 
     #[qjs(get, rename = "lastModified")]
-    pub fn last_modified(&self) -> i64 { self.last_modified }
+    pub fn last_modified(&self) -> i64 {
+        self.last_modified
+    }
 
     #[qjs(get)]
-    pub fn size(&self) -> usize { self.blob.size() }
+    pub fn size(&self) -> usize {
+        self.blob.size()
+    }
 
     #[qjs(get, rename = "type")]
-    pub fn mime_type(&self) -> String { self.blob.mime_type() }
+    pub fn mime_type(&self) -> String {
+        self.blob.mime_type()
+    }
 
     #[qjs(rename = "arrayBuffer")]
     pub fn array_buffer<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
@@ -155,11 +190,19 @@ impl FileReader {
 
     #[qjs(rename = "readAsText")]
     pub fn read_as_text(&self, ctx: Ctx<'_>, blob_val: Value<'_>) -> Result<()> {
-        let blob_obj = blob_val.as_object().ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
-        let blob = Class::<Blob>::from_object(blob_obj).ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?.borrow().clone();
+        let blob_obj = blob_val
+            .as_object()
+            .ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
+        let blob = Class::<Blob>::from_object(blob_obj)
+            .ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?
+            .borrow()
+            .clone();
         let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
-        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap()).unwrap().borrow().clone();
-        
+        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap())
+            .unwrap()
+            .borrow()
+            .clone();
+
         let blob_data = blob.data.clone();
 
         // Perform read synchronously (data is already in memory)
@@ -181,16 +224,24 @@ impl FileReader {
 
     #[qjs(rename = "readAsDataURL")]
     pub fn read_as_data_url(&self, ctx: Ctx<'_>, blob_val: Value<'_>) -> Result<()> {
-        let blob_obj = blob_val.as_object().ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
-        let blob = Class::<Blob>::from_object(blob_obj).ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?.borrow().clone();
+        let blob_obj = blob_val
+            .as_object()
+            .ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Expected Object"))?;
+        let blob = Class::<Blob>::from_object(blob_obj)
+            .ok_or_else(|| rquickjs::Error::new_from_js("Blob", "Invalid Blob object"))?
+            .borrow()
+            .clone();
         let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
-        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap()).unwrap().borrow().clone();
-        
+        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap())
+            .unwrap()
+            .borrow()
+            .clone();
+
         let blob_data = blob.data.clone();
         let mime_type = blob.mime_type.clone();
 
         // Perform conversion synchronously (data in memory)
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
         let base64_str = general_purpose::STANDARD.encode(&blob_data);
         let result_str = format!("data:{};base64,{}", mime_type, base64_str);
         rt.with_context(|ctx| {

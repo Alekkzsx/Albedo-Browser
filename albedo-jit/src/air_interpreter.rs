@@ -2,13 +2,13 @@
 //!
 //! Interpreter simples para AirFunction. Usado em deopt/OSR.
 
+use crate::builtins::{call_builtin, BuiltinId};
 use crate::bytecode::{AirFunction, AirOpcode, AirTerminator};
+use crate::jit_engine::AlbedoJitEngine;
 use crate::js_value::JsValue;
 use crate::object_model;
 use crate::runtime_helpers;
-use crate::builtins::{BuiltinId, call_builtin};
 use crate::tier2_compiler::Tier2Compiler;
-use crate::jit_engine::AlbedoJitEngine;
 use std::collections::{HashMap, HashSet};
 
 pub struct AirInterpreter;
@@ -84,27 +84,35 @@ impl AirInterpreter {
                         regs[dst.0 as usize] = regs[src.0 as usize];
                     }
                     AirOpcode::Add { dst, lhs, rhs, .. } => {
-                        let v = runtime_helpers::js_add(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v =
+                            runtime_helpers::js_add(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::Sub { dst, lhs, rhs } => {
-                        let v = runtime_helpers::js_sub(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v =
+                            runtime_helpers::js_sub(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::Mul { dst, lhs, rhs } => {
-                        let v = runtime_helpers::js_mul(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v =
+                            runtime_helpers::js_mul(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::StrictEq { dst, lhs, rhs } => {
-                        let v = runtime_helpers::js_strict_eq(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v = runtime_helpers::js_strict_eq(
+                            regs[lhs.0 as usize].0,
+                            regs[rhs.0 as usize].0,
+                        );
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::Eq { dst, lhs, rhs } => {
-                        let v = runtime_helpers::js_eq(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v =
+                            runtime_helpers::js_eq(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::Lt { dst, lhs, rhs } => {
-                        let v = runtime_helpers::js_lt(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
+                        let v =
+                            runtime_helpers::js_lt(regs[lhs.0 as usize].0, regs[rhs.0 as usize].0);
                         regs[dst.0 as usize] = JsValue(v);
                     }
                     AirOpcode::GetProp { dst, obj, prop, .. } => {
@@ -124,7 +132,13 @@ impl AirInterpreter {
                     AirOpcode::CreateArray { dst } => {
                         regs[dst.0 as usize] = object_model::alloc_array();
                     }
-                    AirOpcode::Call { dst, func, arg_start, num_args, .. } => {
+                    AirOpcode::Call {
+                        dst,
+                        func,
+                        arg_start,
+                        num_args,
+                        ..
+                    } => {
                         let f = regs[func.0 as usize];
                         if f.is_builtin() {
                             let id = f.as_builtin_id() as u32;
@@ -157,7 +171,11 @@ impl AirInterpreter {
                     block_idx = target_idx;
                     inst_idx = 0;
                 }
-                Some(AirTerminator::JumpIf { cond, then_blk, else_blk }) => {
+                Some(AirTerminator::JumpIf {
+                    cond,
+                    then_blk,
+                    else_blk,
+                }) => {
                     let cv = regs[cond.0 as usize];
                     let b = JsValue(runtime_helpers::js_to_bool(cv.0)).as_bool();
                     let next = if b { then_blk.0 } else { else_blk.0 };
@@ -174,10 +192,7 @@ impl AirInterpreter {
 }
 
 fn find_block_index(air: &AirFunction, id: u32) -> usize {
-    air.blocks
-        .iter()
-        .position(|b| b.id.0 == id)
-        .unwrap_or(0)
+    air.blocks.iter().position(|b| b.id.0 == id).unwrap_or(0)
 }
 
 fn compute_loop_headers(air: &AirFunction) -> HashSet<u32> {
@@ -197,7 +212,9 @@ fn compute_loop_headers(air: &AirFunction) -> HashSet<u32> {
                         }
                     }
                 }
-                AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                AirTerminator::JumpIf {
+                    then_blk, else_blk, ..
+                } => {
                     if let Some(&to_idx) = index_map.get(&then_blk.0) {
                         if to_idx <= from_idx {
                             headers.insert(then_blk.0);
@@ -287,13 +304,20 @@ impl OsrManager {
         *count == self.threshold
     }
 
-    pub fn get_or_compile(&mut self, air: &AirFunction, block_id: u32, inst_index: usize) -> *const u8 {
+    pub fn get_or_compile(
+        &mut self,
+        air: &AirFunction,
+        block_id: u32,
+        inst_index: usize,
+    ) -> *const u8 {
         let key = (air.name.clone(), block_id, inst_index);
         if let Some(ptr) = self.cache.get(&key) {
             return *ptr;
         }
         let mut compiler = Tier2Compiler::new(&mut self.engine);
-        let ptr = compiler.compile_osr(air, block_id, inst_index).expect("OSR compile falhou");
+        let ptr = compiler
+            .compile_osr(air, block_id, inst_index)
+            .expect("OSR compile falhou");
         self.cache.insert(key, ptr);
         ptr
     }

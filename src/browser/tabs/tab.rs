@@ -14,7 +14,8 @@ pub struct Tab {
     pub engine: AceEngine,
     pub mode: TabMode,
     pub show_start_page: bool,
-    pub resource_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::network::resources::ResourceResponse>>,
+    pub resource_rx:
+        Option<tokio::sync::mpsc::UnboundedReceiver<crate::network::resources::ResourceResponse>>,
     pub is_loading: bool,
     pub loading_progress: f32,
     pub favicon_data: Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>,

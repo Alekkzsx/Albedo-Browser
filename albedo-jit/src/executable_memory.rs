@@ -41,9 +41,10 @@ impl CodeRegion {
         let aligned_size = (size + page_size - 1) & !(page_size - 1);
 
         let ptr = unsafe { platform_alloc(aligned_size)? };
-        
+
         Ok(Self {
-            ptr: NonNull::new(ptr).ok_or_else(|| MemoryError::AllocationFailed("Nulo retornado".into()))?,
+            ptr: NonNull::new(ptr)
+                .ok_or_else(|| MemoryError::AllocationFailed("Nulo retornado".into()))?,
             size: aligned_size,
             used: 0,
             state: ProtectionState::ReadWrite,
@@ -162,7 +163,7 @@ impl CodePool {
         self.stats.total_allocated += real_size;
         self.stats.current_usage += real_size;
         self.stats.allocations_count += 1;
-        
+
         if self.stats.current_usage > self.stats.peak_usage {
             self.stats.peak_usage = self.stats.current_usage;
         }
@@ -198,7 +199,10 @@ fn get_page_size() -> usize {
 unsafe fn platform_alloc(size: usize) -> Result<*mut u8, MemoryError> {
     let ptr = VirtualAlloc(ptr::null(), size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if ptr.is_null() {
-        return Err(MemoryError::AllocationFailed(format!("VirtualAlloc falhou com erro: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::AllocationFailed(format!(
+            "VirtualAlloc falhou com erro: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(ptr as *mut u8)
 }
@@ -207,7 +211,10 @@ unsafe fn platform_alloc(size: usize) -> Result<*mut u8, MemoryError> {
 unsafe fn platform_protect_rx(ptr: *mut u8, size: usize) -> Result<(), MemoryError> {
     let mut old_protect = 0;
     if VirtualProtect(ptr as _, size, PAGE_EXECUTE_READ, &mut old_protect) == 0 {
-        return Err(MemoryError::ProtectionFailed(format!("VirtualProtect -> RX falhou: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::ProtectionFailed(format!(
+            "VirtualProtect -> RX falhou: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(())
 }
@@ -216,7 +223,10 @@ unsafe fn platform_protect_rx(ptr: *mut u8, size: usize) -> Result<(), MemoryErr
 unsafe fn platform_protect_rw(ptr: *mut u8, size: usize) -> Result<(), MemoryError> {
     let mut old_protect = 0;
     if VirtualProtect(ptr as _, size, PAGE_READWRITE, &mut old_protect) == 0 {
-        return Err(MemoryError::ProtectionFailed(format!("VirtualProtect -> RW falhou: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::ProtectionFailed(format!(
+            "VirtualProtect -> RW falhou: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(())
 }
@@ -249,7 +259,10 @@ unsafe fn platform_alloc(size: usize) -> Result<*mut u8, MemoryError> {
         0,
     );
     if ptr == MAP_FAILED {
-        return Err(MemoryError::AllocationFailed(format!("mmap falhou: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::AllocationFailed(format!(
+            "mmap falhou: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(ptr as *mut u8)
 }
@@ -257,7 +270,10 @@ unsafe fn platform_alloc(size: usize) -> Result<*mut u8, MemoryError> {
 #[cfg(unix)]
 unsafe fn platform_protect_rx(ptr: *mut u8, size: usize) -> Result<(), MemoryError> {
     if mprotect(ptr as _, size, PROT_READ | PROT_EXEC) != 0 {
-        return Err(MemoryError::ProtectionFailed(format!("mprotect -> RX falhou: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::ProtectionFailed(format!(
+            "mprotect -> RX falhou: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(())
 }
@@ -265,7 +281,10 @@ unsafe fn platform_protect_rx(ptr: *mut u8, size: usize) -> Result<(), MemoryErr
 #[cfg(unix)]
 unsafe fn platform_protect_rw(ptr: *mut u8, size: usize) -> Result<(), MemoryError> {
     if mprotect(ptr as _, size, PROT_READ | PROT_WRITE) != 0 {
-        return Err(MemoryError::ProtectionFailed(format!("mprotect -> RW falhou: {}", std::io::Error::last_os_error())));
+        return Err(MemoryError::ProtectionFailed(format!(
+            "mprotect -> RW falhou: {}",
+            std::io::Error::last_os_error()
+        )));
     }
     Ok(())
 }
@@ -294,11 +313,11 @@ mod tests {
     #[test]
     fn test_write_and_execute_simple() {
         let mut region = CodeRegion::allocate(4096).unwrap();
-        
+
         // Código para retornar 42 (x86_64: mov eax, 42; ret)
         #[cfg(target_arch = "x86_64")]
         let code = [0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3];
-        
+
         // Código para retornar 42 (AArch64: mov w0, #42; ret)
         #[cfg(target_arch = "aarch64")]
         let code = [0x40, 0x05, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6];
@@ -307,7 +326,7 @@ mod tests {
         {
             region.write(&code).unwrap();
             region.make_executable().unwrap();
-            
+
             let func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(region.as_ptr()) };
             assert_eq!(func(), 42);
         }
@@ -318,7 +337,7 @@ mod tests {
         let mut pool = CodePool::new(8192);
         pool.allocate(4096).unwrap();
         pool.allocate(4096).unwrap();
-        
+
         let result = pool.allocate(1);
         assert!(matches!(result, Err(MemoryError::BudgetExceeded)));
     }
@@ -327,7 +346,7 @@ mod tests {
     fn test_wx_violation() {
         let mut region = CodeRegion::allocate(4096).unwrap();
         region.make_executable().unwrap();
-        
+
         let result = region.write(&[0x90]); // NOP
         assert!(matches!(result, Err(MemoryError::NotWritable)));
     }

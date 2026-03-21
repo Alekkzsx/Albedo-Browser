@@ -1,8 +1,8 @@
-use rquickjs::{class::Trace, methods};
 use crate::engine::dom::AceDOM;
 use crate::engine::graphics::canvas2d::Canvas2D;
-use std::sync::{Arc, Mutex};
+use rquickjs::{class::Trace, methods};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Trace)]
 #[rquickjs::class]

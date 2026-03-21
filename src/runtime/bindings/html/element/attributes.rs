@@ -1,7 +1,7 @@
-use rquickjs::{Ctx, Class, Result, Value, Object};
-use crate::engine::dom::{AceDOM, AceNodeType};
-use std::sync::{Arc, Mutex};
 use super::Element;
+use crate::engine::dom::{AceDOM, AceNodeType};
+use rquickjs::{Class, Ctx, Object, Result, Value};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -56,7 +56,12 @@ impl NamedNodeMap {
 }
 
 impl NamedNodeMap {
-    fn create_attr_object<'js>(&self, ctx: Ctx<'js>, name: String, value: String) -> Result<Value<'js>> {
+    fn create_attr_object<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        name: String,
+        value: String,
+    ) -> Result<Value<'js>> {
         let obj = Object::new(ctx)?;
         obj.set("name", name)?;
         obj.set("value", value)?;

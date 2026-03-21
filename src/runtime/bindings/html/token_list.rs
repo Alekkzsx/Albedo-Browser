@@ -1,7 +1,6 @@
-use rquickjs::{Result, Class};
 use crate::engine::dom::{AceDOM, AceNodeType};
-use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -35,16 +34,19 @@ impl DomTokenList {
                         old_value = element.attributes.remove("class");
                     }
                 }
-                dom.notify_mutation(self.index, crate::engine::dom::MutationRecord {
-                    type_: crate::engine::dom::MutationType::Attributes,
-                    target: self.index,
-                    added_nodes: vec![],
-                    removed_nodes: vec![],
-                    previous_sibling: None,
-                    next_sibling: None,
-                    attribute_name: Some("class".to_string()),
-                    old_value,
-                });
+                dom.notify_mutation(
+                    self.index,
+                    crate::engine::dom::MutationRecord {
+                        type_: crate::engine::dom::MutationType::Attributes,
+                        target: self.index,
+                        added_nodes: vec![],
+                        removed_nodes: vec![],
+                        previous_sibling: None,
+                        next_sibling: None,
+                        attribute_name: Some("class".to_string()),
+                        old_value,
+                    },
+                );
             }
         }
     }
@@ -54,7 +56,10 @@ impl DomTokenList {
             if let Some(node) = dom.get_node(self.index) {
                 if let AceNodeType::Element(element) = &node.node_type {
                     if let Some(class_attr) = element.attributes.get("class") {
-                        return class_attr.split_whitespace().map(|s| s.to_string()).collect();
+                        return class_attr
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect();
                     }
                 }
             }
@@ -71,7 +76,7 @@ impl DomTokenList {
         }
         // Invalidate styles if class changes
         if let Ok(mut sd) = self.stylesheet_dirty.lock() {
-            *sd = true; 
+            *sd = true;
         }
     }
 
@@ -142,7 +147,11 @@ impl DomTokenList {
 
     #[qjs(get, rename = "value")]
     pub fn get_value(&self) -> String {
-        self.get_classes().iter().cloned().collect::<Vec<_>>().join(" ")
+        self.get_classes()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     #[qjs(set, rename = "value")]

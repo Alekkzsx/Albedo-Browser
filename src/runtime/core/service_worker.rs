@@ -1,12 +1,10 @@
+use rquickjs::Result as JsResult;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
-use rquickjs::{Context, Runtime, Ctx, Value, Persistent, Function, prelude::*, Class, Result as JsResult};
-use tokio::sync::mpsc::UnboundedSender;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::runtime::core::runtime::JsRuntime;
-use crate::runtime::bindings::webapi::idb_service::worker::IDBWorkerCommand;
 use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwRegistrationData, SwSyncTaskData};
 
 // ============================================================================
@@ -16,17 +14,17 @@ use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwRegistrationData, SwS
 #[derive(Clone, Debug, PartialEq)]
 pub enum ServiceWorkerState {
     Installing,
-    Installed,      // waiting state
+    Installed, // waiting state
     Activating,
-    Activated,      // controllers are activated
+    Activated, // controllers are activated
     Redundant,
 }
 
 #[derive(Clone, Debug)]
 pub enum UpdateViaCache {
-    Imports,       // Only update imports
-    All,           // Always check all URLs
-    None,          // Never check (cache always)
+    Imports, // Only update imports
+    All,     // Always check all URLs
+    None,    // Never check (cache always)
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -63,8 +61,8 @@ pub struct RequestContext {
     pub url: String,
     pub headers: HashMap<String, String>,
     pub body: Option<Vec<u8>>,
-    pub mode: String,           // cors, no-cors, same-origin, navigate
-    pub credentials: String,    // omit, same-origin, include
+    pub mode: String,        // cors, no-cors, same-origin, navigate
+    pub credentials: String, // omit, same-origin, include
     pub cache_mode: CacheMode,
     pub redirect: RedirectMode,
 }
@@ -86,9 +84,9 @@ pub struct ResponseContext {
 
 #[derive(Clone, Debug)]
 pub enum InterceptResult {
-    Handled(ResponseContext),       // SW called respondWith()
-    Modified(RequestContext),        // SW modified request
-    PassThrough,                    // SW skipped
+    Handled(ResponseContext), // SW called respondWith()
+    Modified(RequestContext), // SW modified request
+    PassThrough,              // SW skipped
 }
 
 pub trait FetchInterceptor: Send + Sync {
@@ -176,12 +174,17 @@ impl BackgroundSyncQueue {
             id: Uuid::new_v4().to_string(),
             tag: tag.clone(),
             registration_id: reg_id.clone(),
-            created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             retry_count: 0,
         };
 
         // Persist to DB
-        self.db.save_sync_task(&task_data).map_err(|e| e.to_string())?;
+        self.db
+            .save_sync_task(&task_data)
+            .map_err(|e| e.to_string())?;
 
         let task = SyncTask {
             id: task_data.id,
@@ -320,7 +323,10 @@ pub struct ServiceWorkerInstance {
 pub enum SwEvent {
     Execute(String),
     Dispatch(String),
-    Fetch(RequestContext, tokio::sync::oneshot::Sender<InterceptResult>),
+    Fetch(
+        RequestContext,
+        tokio::sync::oneshot::Sender<InterceptResult>,
+    ),
     Terminate,
 }
 
@@ -328,7 +334,7 @@ pub enum SwEvent {
 pub struct ClientInfo {
     pub id: String,
     pub url: String,
-    pub frame_type: String,  // "top-level", "nested", "iframe", "worker"
+    pub frame_type: String, // "top-level", "nested", "iframe", "worker"
     pub focused: bool,
 }
 
@@ -354,39 +360,41 @@ impl ServiceWorkerInstance {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<SwEvent>();
         *self.event_tx.lock().unwrap() = Some(tx);
-        
+
         let is_running = self.is_running.clone();
         is_running.store(true, std::sync::atomic::Ordering::SeqCst);
 
         let handle = std::thread::spawn(move || {
             println!("[SW] Thread started for Worker: {}", script_url);
             // Initialize runtime inside the thread
-            let mut rt = crate::runtime::core::init::init_sw_runtime(&script_url, &origin).unwrap_or_else(|| {
-                panic!("Failed to init SW runtime for {}", script_url);
-            });
-            
+            let rt = crate::runtime::core::init::init_sw_runtime(&script_url, &origin)
+                .unwrap_or_else(|| {
+                    panic!("Failed to init SW runtime for {}", script_url);
+                });
+
             while let Some(event) = rx.blocking_recv() {
                 match event {
                     SwEvent::Execute(script) => {
-                         let _ = rt.execute_script(&script);
+                        let _ = rt.execute_script(&script);
                     }
                     SwEvent::Dispatch(evt_type) => {
-                         rt.with_context(|ctx| {
-                             ctx.with(|ctx| {
-                                 let script = format!("globalThis.dispatchEvent(new Event('{}'))", evt_type);
-                                 let _ = ctx.eval::<(), _>(script);
-                             });
-                         });
+                        rt.with_context(|ctx| {
+                            ctx.with(|ctx| {
+                                let script =
+                                    format!("globalThis.dispatchEvent(new Event('{}'))", evt_type);
+                                let _ = ctx.eval::<(), _>(script);
+                            });
+                        });
                     }
-                    SwEvent::Fetch(req, resp_tx) => {
-                         rt.with_context(|ctx| {
-                             ctx.with(|ctx| {
-                                 // Simple logic: Dispatch FetchEvent.
-                                 // respondWith() would need complex binding, defaulting to PassThrough for now 
-                                 // but through the oneshot channel to unblock ResourceManager.
-                                 let _ = resp_tx.send(InterceptResult::PassThrough);
-                             });
-                         });
+                    SwEvent::Fetch(_req, resp_tx) => {
+                        rt.with_context(|ctx| {
+                            ctx.with(|_ctx| {
+                                // Simple logic: Dispatch FetchEvent.
+                                // respondWith() would need complex binding, defaulting to PassThrough for now
+                                // but through the oneshot channel to unblock ResourceManager.
+                                let _ = resp_tx.send(InterceptResult::PassThrough);
+                            });
+                        });
                     }
                     SwEvent::Terminate => break,
                 }
@@ -403,7 +411,8 @@ impl ServiceWorkerInstance {
         if let Some(tx) = self.event_tx.lock().unwrap().as_ref() {
             let _ = tx.send(SwEvent::Terminate);
         }
-        self.is_running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.is_running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn set_state(&self, state: ServiceWorkerState) -> std::result::Result<(), String> {
@@ -435,15 +444,15 @@ impl ServiceWorkerInstance {
 
 #[derive(Clone)]
 pub struct ServiceWorkerRegistration {
-    pub id: String,                 // unique ID (UUID)
-    pub scope: String,              // e.g., "/app/" or "/"
-    pub script_url: String,         // URL to fetch SW script
-    pub origin: String,             // Same-origin enforcement
+    pub id: String,         // unique ID (UUID)
+    pub scope: String,      // e.g., "/app/" or "/"
+    pub script_url: String, // URL to fetch SW script
+    pub origin: String,     // Same-origin enforcement
 
     pub installing: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>,
-    pub installed: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>,   // waiting
+    pub installed: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>, // waiting
     pub activating: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>,
-    pub active: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>,      // current controller
+    pub active: Arc<Mutex<Option<Arc<ServiceWorkerInstance>>>>, // current controller
 
     pub update_via_cache: UpdateViaCache,
     pub last_update_check: Arc<Mutex<Instant>>,
@@ -479,25 +488,37 @@ impl ServiceWorkerRegistration {
         }
     }
 
-    pub fn set_installing(&self, instance: Option<Arc<ServiceWorkerInstance>>) -> std::result::Result<(), String> {
+    pub fn set_installing(
+        &self,
+        instance: Option<Arc<ServiceWorkerInstance>>,
+    ) -> std::result::Result<(), String> {
         let mut installing = self.installing.lock().map_err(|e| e.to_string())?;
         *installing = instance;
         Ok(())
     }
 
-    pub fn set_installed(&self, instance: Option<Arc<ServiceWorkerInstance>>) -> std::result::Result<(), String> {
+    pub fn set_installed(
+        &self,
+        instance: Option<Arc<ServiceWorkerInstance>>,
+    ) -> std::result::Result<(), String> {
         let mut installed = self.installed.lock().map_err(|e| e.to_string())?;
         *installed = instance;
         Ok(())
     }
 
-    pub fn set_activating(&self, instance: Arc<ServiceWorkerInstance>) -> std::result::Result<(), String> {
+    pub fn set_activating(
+        &self,
+        instance: Arc<ServiceWorkerInstance>,
+    ) -> std::result::Result<(), String> {
         let mut activating = self.activating.lock().map_err(|e| e.to_string())?;
         *activating = Some(instance);
         Ok(())
     }
 
-    pub fn set_active(&self, instance: Arc<ServiceWorkerInstance>) -> std::result::Result<(), String> {
+    pub fn set_active(
+        &self,
+        instance: Arc<ServiceWorkerInstance>,
+    ) -> std::result::Result<(), String> {
         let mut active = self.active.lock().map_err(|e| e.to_string())?;
         *active = Some(instance);
         Ok(())
@@ -508,7 +529,9 @@ impl ServiceWorkerRegistration {
         Ok(active.clone())
     }
 
-    pub fn get_installing(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
+    pub fn get_installing(
+        &self,
+    ) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
         let installing = self.installing.lock().map_err(|e| e.to_string())?;
         Ok(installing.clone())
     }
@@ -518,7 +541,9 @@ impl ServiceWorkerRegistration {
         Ok(installed.clone())
     }
 
-    pub fn get_activating(&self) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
+    pub fn get_activating(
+        &self,
+    ) -> std::result::Result<Option<Arc<ServiceWorkerInstance>>, String> {
         let activating = self.activating.lock().map_err(|e| e.to_string())?;
         Ok(activating.clone())
     }
@@ -555,9 +580,11 @@ impl ServiceWorkerManager {
     }
 
     pub fn load_from_db(&self) -> std::result::Result<(), String> {
-        let saved = self.db.get_all_registrations()
+        let saved = self
+            .db
+            .get_all_registrations()
             .map_err(|e| format!("DB Error: {}", e))?;
-            
+
         let mut regs = self.registrations.lock().unwrap();
         for data in saved {
             let reg = Arc::new(ServiceWorkerRegistration::new(
@@ -566,15 +593,18 @@ impl ServiceWorkerManager {
                 data.origin.clone(),
                 self.db.clone(),
             ));
-            
+
             // Restore ID using unsafe as it's immutable field
             let mut_reg = unsafe { &mut *(Arc::as_ptr(&reg) as *mut ServiceWorkerRegistration) };
             mut_reg.id = data.id.clone();
-            
+
             let key = format!("{}#{}", data.origin, data.scope);
             regs.insert(key, reg);
         }
-        println!("[ServiceWorkerManager] Hydrated {} registrations from DB", regs.len());
+        println!(
+            "[ServiceWorkerManager] Hydrated {} registrations from DB",
+            regs.len()
+        );
         Ok(())
     }
 
@@ -589,7 +619,9 @@ impl ServiceWorkerManager {
             origin: reg.origin.clone(),
             last_update_check: 0,
         };
-        self.db.save_registration(&reg_data).map_err(|e| e.to_string())?;
+        self.db
+            .save_registration(&reg_data)
+            .map_err(|e| e.to_string())?;
 
         let key = format!("{}#{}", reg.origin, reg.scope);
         registrations.insert(key, reg);
@@ -601,7 +633,9 @@ impl ServiceWorkerManager {
 
         let key = format!("{}#{}", origin, scope);
         if let Some(reg) = registrations.remove(&key) {
-            self.db.delete_registration(&reg.id).map_err(|e| e.to_string())?;
+            self.db
+                .delete_registration(&reg.id)
+                .map_err(|e| e.to_string())?;
             return Ok(true);
         }
         Ok(false)
@@ -613,22 +647,29 @@ impl ServiceWorkerManager {
         request: RequestContext,
     ) -> JsResult<InterceptResult> {
         let (tx, rx) = tokio::sync::oneshot::channel::<InterceptResult>();
-        
+
         if let Some(event_tx) = &*instance.event_tx.lock().unwrap() {
             let _ = event_tx.send(SwEvent::Fetch(request, tx));
-            
+
             // Wait for response with timeout
             match rx.blocking_recv() {
                 Ok(res) => return Ok(res),
                 Err(_) => return Ok(InterceptResult::PassThrough),
             }
         }
-        
+
         Ok(InterceptResult::PassThrough)
     }
 
-    pub fn find_for_url(&self, origin: &str, url: &str) -> JsResult<Option<Arc<ServiceWorkerRegistration>>> {
-        let registrations = self.registrations.lock().map_err(|_| rquickjs::Error::Unknown)?;
+    pub fn find_for_url(
+        &self,
+        origin: &str,
+        url: &str,
+    ) -> JsResult<Option<Arc<ServiceWorkerRegistration>>> {
+        let registrations = self
+            .registrations
+            .lock()
+            .map_err(|_| rquickjs::Error::Unknown)?;
         for reg in registrations.values() {
             if reg.origin == origin && reg.scope_matches(url) {
                 return Ok(Some(reg.clone()));
@@ -651,25 +692,39 @@ impl ServiceWorkerManager {
         Ok(results)
     }
 
-    pub fn install_worker(&self, reg: Arc<ServiceWorkerRegistration>) -> std::result::Result<(), String> {
+    pub fn install_worker(
+        &self,
+        reg: Arc<ServiceWorkerRegistration>,
+    ) -> std::result::Result<(), String> {
         let script_url = reg.script_url.clone();
         let origin = reg.origin.clone();
 
         // 1. Fetch Script (Blocking)
         let client = crate::network::client::FetchClient::new();
-        let response = client.fetch(&script_url, None, crate::network::security::Origin::from_url(&origin))
+        let response = client
+            .fetch(
+                &script_url,
+                None,
+                crate::network::security::Origin::from_url(&origin),
+            )
             .map_err(|e| format!("Failed to fetch SW script: {}", e))?;
 
         if !response.ok() {
-            return Err(format!("SW script fetch failed with status {}", response.status));
+            return Err(format!(
+                "SW script fetch failed with status {}",
+                response.status
+            ));
         }
 
         let script_content = response.text();
-        let instance = Arc::new(ServiceWorkerInstance::new(Uuid::new_v4().to_string(), script_url.clone()));
-        
+        let instance = Arc::new(ServiceWorkerInstance::new(
+            Uuid::new_v4().to_string(),
+            script_url.clone(),
+        ));
+
         reg.set_installing(Some(instance.clone()))?;
         instance.spawn(script_url, origin);
-        
+
         if let Some(tx) = &*instance.event_tx.lock().unwrap() {
             let _ = tx.send(SwEvent::Execute(script_content));
             let _ = tx.send(SwEvent::Dispatch("install".to_string()));

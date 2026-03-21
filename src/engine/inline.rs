@@ -1,7 +1,6 @@
 /// Inline Formatting Context (IFC) - Algorithm for laying out inline elements and text
 /// Based on CSS 2.2 / CSS 3 specification for inline layout
-
-use crate::engine::style::css_values::{ComputedStyle, CssDisplay, CssVerticalAlign};
+use crate::engine::style::css_values::ComputedStyle;
 use crate::engine::text::TextMetrics;
 
 /// Represents an inline box (can be text, inline element, or inline-block)
@@ -125,7 +124,11 @@ pub struct InlineFormattingContext {
 }
 
 impl InlineFormattingContext {
-    pub fn new(available_width: f32, text_measurer: crate::engine::text::TextMeasurer, text_overflow: crate::engine::style::css_values::CssTextOverflow) -> Self {
+    pub fn new(
+        available_width: f32,
+        text_measurer: crate::engine::text::TextMeasurer,
+        text_overflow: crate::engine::style::css_values::CssTextOverflow,
+    ) -> Self {
         Self {
             available_width,
             lines: Vec::new(),
@@ -143,11 +146,17 @@ impl InlineFormattingContext {
                     // Force line break
                     self.finish_line();
                 }
-                InlineBox::Text { ref content, ref metrics, ref style } => {
+                InlineBox::Text {
+                    content: _,
+                    metrics: _,
+                    style: _,
+                } => {
                     let box_width = box_.inline_size();
 
                     // Check if box fits on current line
-                    if self.current_line.width + box_width > self.available_width && !self.current_line.boxes.is_empty() {
+                    if self.current_line.width + box_width > self.available_width
+                        && !self.current_line.boxes.is_empty()
+                    {
                         match self.text_overflow {
                             crate::engine::style::css_values::CssTextOverflow::Ellipsis => {
                                 // Handle ellipsis truncation
@@ -164,7 +173,7 @@ impl InlineFormattingContext {
                     }
 
                     self.current_line.add_box(box_);
-                    
+
                     // After adding, if it overflows and we have ellipsis/clip on a single line (nowrap logic simulation)
                     if self.current_line.width > self.available_width {
                         match self.text_overflow {
@@ -190,8 +199,13 @@ impl InlineFormattingContext {
                     let box_width = box_.inline_size();
 
                     // Check if box fits on current line
-                    if self.current_line.width + box_width > self.available_width && !self.current_line.boxes.is_empty() {
-                        if !matches!(self.text_overflow, crate::engine::style::css_values::CssTextOverflow::Clip) {
+                    if self.current_line.width + box_width > self.available_width
+                        && !self.current_line.boxes.is_empty()
+                    {
+                        if !matches!(
+                            self.text_overflow,
+                            crate::engine::style::css_values::CssTextOverflow::Clip
+                        ) {
                             // Non-clip (e.g. ellipsis) usually stops here for inline-blocks too if they overflow
                             return;
                         }
@@ -212,24 +226,60 @@ impl InlineFormattingContext {
 
     /// Apply overflow logic (ellipsis or clip) to a text box
     fn apply_overflow_logic(&mut self, box_: InlineBox, use_ellipsis: bool) {
-        if let InlineBox::Text { content, metrics, style } = box_ {
+        if let InlineBox::Text {
+            content,
+            metrics,
+            style,
+        } = box_
+        {
             let font_size = style.font_size;
-            let line_height = crate::engine::style::css_values::resolve_length(&style.line_height, font_size, 16.0, self.available_width, 0.0); // Simple resolve
-            let line_height = if line_height <= 0.0 { font_size * 1.2 } else { line_height };
-            
-            let letter_spacing = crate::engine::style::css_values::resolve_length(&style.letter_spacing, font_size, 16.0, self.available_width, 0.0);
-            let word_spacing = crate::engine::style::css_values::resolve_length(&style.word_spacing, font_size, 16.0, self.available_width, 0.0);
-            
+            let line_height = crate::engine::style::css_values::resolve_length(
+                &style.line_height,
+                font_size,
+                16.0,
+                self.available_width,
+                0.0,
+            ); // Simple resolve
+            let line_height = if line_height <= 0.0 {
+                font_size * 1.2
+            } else {
+                line_height
+            };
+
+            let letter_spacing = crate::engine::style::css_values::resolve_length(
+                &style.letter_spacing,
+                font_size,
+                16.0,
+                self.available_width,
+                0.0,
+            );
+            let word_spacing = crate::engine::style::css_values::resolve_length(
+                &style.word_spacing,
+                font_size,
+                16.0,
+                self.available_width,
+                0.0,
+            );
+
             let ellipsis = "…";
             let (ell_w, _) = if use_ellipsis {
-                self.text_measurer.measure_text(ellipsis, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing)
+                self.text_measurer.measure_text(
+                    ellipsis,
+                    font_size,
+                    line_height,
+                    Some(&style.font_family),
+                    cosmic_text::Weight::NORMAL,
+                    None,
+                    letter_spacing,
+                    word_spacing,
+                )
             } else {
                 (0.0, 0.0)
             };
-            
+
             let available = self.available_width - self.current_line.width;
             let safe_width = available - ell_w;
-            
+
             if safe_width <= 0.0 {
                 if use_ellipsis {
                     let ell_metrics = crate::engine::text::TextMetrics {
@@ -245,38 +295,60 @@ impl InlineFormattingContext {
                         style,
                     });
                 }
-                // If clip, we don't add anything if there's no space? 
+                // If clip, we don't add anything if there's no space?
                 // Actually, clip means we draw what fits.
             } else {
                 // Find truncation point
                 let mut left = 0;
                 let mut right = content.len();
                 let mut best_idx = 0;
-                
+
                 while left <= right {
                     let mid = (left + right) / 2;
                     let mut mid_adj = mid;
-                    while mid_adj > 0 && !content.is_char_boundary(mid_adj) { mid_adj -= 1; }
-                    
+                    while mid_adj > 0 && !content.is_char_boundary(mid_adj) {
+                        mid_adj -= 1;
+                    }
+
                     let sub = &content[..mid_adj];
-                    let (w, _) = self.text_measurer.measure_text(sub, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing);
-                    
+                    let (w, _) = self.text_measurer.measure_text(
+                        sub,
+                        font_size,
+                        line_height,
+                        Some(&style.font_family),
+                        cosmic_text::Weight::NORMAL,
+                        None,
+                        letter_spacing,
+                        word_spacing,
+                    );
+
                     if w <= safe_width {
                         best_idx = mid_adj;
                         left = mid + 1;
-                        while left < content.len() && !content.is_char_boundary(left) { left += 1; }
+                        while left < content.len() && !content.is_char_boundary(left) {
+                            left += 1;
+                        }
                     } else {
                         right = mid.saturating_sub(1);
                     }
                 }
-                
+
                 let mut result_content = content[..best_idx].to_string();
                 if use_ellipsis {
                     result_content.push_str(ellipsis);
                 }
-                
-                let (new_w, _) = self.text_measurer.measure_text(&result_content, font_size, line_height, Some(&style.font_family), cosmic_text::Weight::NORMAL, None, letter_spacing, word_spacing);
-                
+
+                let (new_w, _) = self.text_measurer.measure_text(
+                    &result_content,
+                    font_size,
+                    line_height,
+                    Some(&style.font_family),
+                    cosmic_text::Weight::NORMAL,
+                    None,
+                    letter_spacing,
+                    word_spacing,
+                );
+
                 let new_metrics = crate::engine::text::TextMetrics {
                     width: new_w,
                     height: metrics.height,
@@ -284,7 +356,7 @@ impl InlineFormattingContext {
                     descent: metrics.descent,
                     line_height: metrics.line_height,
                 };
-                
+
                 self.current_line.add_box(InlineBox::Text {
                     content: result_content,
                     metrics: new_metrics,
@@ -310,9 +382,7 @@ impl InlineFormattingContext {
 
     /// Get maximum width used
     pub fn max_width(&self) -> f32 {
-        self.lines.iter()
-            .map(|line| line.width)
-            .fold(0.0, f32::max)
+        self.lines.iter().map(|line| line.width).fold(0.0, f32::max)
     }
 }
 
@@ -322,7 +392,15 @@ pub struct LineBreaker;
 impl LineBreaker {
     /// Break text into lines based on width constraint
     /// Returns vector of (text, width) tuples
-    pub fn break_text(text: &str, max_width: f32, measurer: &crate::engine::text::TextMeasurer, font_size: f32, line_height: f32, family: Option<&str>, weight: cosmic_text::Weight) -> Vec<(String, f32)> {
+    pub fn break_text(
+        _text: &str,
+        _max_width: f32,
+        _measurer: &crate::engine::text::TextMeasurer,
+        _font_size: f32,
+        _line_height: f32,
+        _family: Option<&str>,
+        _weight: cosmic_text::Weight,
+    ) -> Vec<(String, f32)> {
         // Obsolete
         vec![]
     }
@@ -342,7 +420,10 @@ impl LineBreaker {
     }
 }
 
-pub fn apply_text_transform(text: &str, transform: &crate::engine::style::css_values::CssTextTransform) -> String {
+pub fn apply_text_transform(
+    text: &str,
+    transform: &crate::engine::style::css_values::CssTextTransform,
+) -> String {
     match transform {
         crate::engine::style::css_values::CssTextTransform::Uppercase => text.to_uppercase(),
         crate::engine::style::css_values::CssTextTransform::Lowercase => text.to_lowercase(),
@@ -361,7 +442,7 @@ pub fn apply_text_transform(text: &str, transform: &crate::engine::style::css_va
                 }
             }
             result
-        },
+        }
         crate::engine::style::css_values::CssTextTransform::None => text.to_string(),
     }
 }
@@ -440,7 +521,11 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        let mut ifc = InlineFormattingContext::new(120.0, measurer, crate::engine::style::css_values::CssTextOverflow::Clip);
+        let mut ifc = InlineFormattingContext::new(
+            120.0,
+            measurer,
+            crate::engine::style::css_values::CssTextOverflow::Clip,
+        );
 
         let boxes = vec![
             InlineBox::Text {
@@ -475,7 +560,11 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        let mut ifc = InlineFormattingContext::new(120.0, measurer, crate::engine::style::css_values::CssTextOverflow::Clip);
+        let mut ifc = InlineFormattingContext::new(
+            120.0,
+            measurer,
+            crate::engine::style::css_values::CssTextOverflow::Clip,
+        );
 
         let boxes = vec![
             InlineBox::Text {
@@ -512,15 +601,17 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        let mut ifc = InlineFormattingContext::new(120.0, measurer, crate::engine::style::css_values::CssTextOverflow::Ellipsis);
+        let mut ifc = InlineFormattingContext::new(
+            120.0,
+            measurer,
+            crate::engine::style::css_values::CssTextOverflow::Ellipsis,
+        );
 
-        let boxes = vec![
-            InlineBox::Text {
-                content: "Very long text that should be truncated".to_string(),
-                metrics,
-                style: style.clone(),
-            },
-        ];
+        let boxes = vec![InlineBox::Text {
+            content: "Very long text that should be truncated".to_string(),
+            metrics,
+            style: style.clone(),
+        }];
 
         ifc.layout(boxes);
 
@@ -547,15 +638,17 @@ mod tests {
         let style = ComputedStyle::default();
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::engine::text::TextMeasurer::new(font_system);
-        let mut ifc = InlineFormattingContext::new(50.0, measurer, crate::engine::style::css_values::CssTextOverflow::Clip);
+        let mut ifc = InlineFormattingContext::new(
+            50.0,
+            measurer,
+            crate::engine::style::css_values::CssTextOverflow::Clip,
+        );
 
-        let boxes = vec![
-            InlineBox::Text {
-                content: "Very long text that should be clipped".to_string(),
-                metrics,
-                style: style.clone(),
-            },
-        ];
+        let boxes = vec![InlineBox::Text {
+            content: "Very long text that should be clipped".to_string(),
+            metrics,
+            style: style.clone(),
+        }];
 
         ifc.layout(boxes);
 

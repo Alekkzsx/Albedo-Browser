@@ -45,66 +45,211 @@ impl fmt::Display for AirBlockId {
 pub enum AirOpcode {
     // === Variables & Constants ===
     /// Carrega um valor i32
-    LoadInt32 { dst: AirReg, value: i32 },
+    LoadInt32 {
+        dst: AirReg,
+        value: i32,
+    },
     /// Carrega um valor f64 (double)
-    LoadFloat64 { dst: AirReg, value: f64 },
+    LoadFloat64 {
+        dst: AirReg,
+        value: f64,
+    },
     /// Carrega um booleano (true/false)
-    LoadBool { dst: AirReg, value: bool },
+    LoadBool {
+        dst: AirReg,
+        value: bool,
+    },
     /// Carrega o valor JS `undefined`
-    LoadUndefined { dst: AirReg },
+    LoadUndefined {
+        dst: AirReg,
+    },
     /// Carrega o valor JS `null`
-    LoadNull { dst: AirReg },
+    LoadNull {
+        dst: AirReg,
+    },
     /// Carrega uma string (usando o índice do constant pool)
-    LoadString { dst: AirReg, str_id: u32 },
+    LoadString {
+        dst: AirReg,
+        str_id: u32,
+    },
     /// Copia o valor de um registrador para outro
-    Move { dst: AirReg, src: AirReg },
-    
+    Move {
+        dst: AirReg,
+        src: AirReg,
+    },
+
     // === Aritmética e Bitwise ===
-    Add { dst: AirReg, lhs: AirReg, rhs: AirReg, ic_slot: u32 },
-    Sub { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Mul { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Div { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Mod { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Neg { dst: AirReg, src: AirReg },
-    BitAnd { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    BitOr { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    BitXor { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Shl { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    Shr { dst: AirReg, lhs: AirReg, rhs: AirReg },
-    UShr { dst: AirReg, lhs: AirReg, rhs: AirReg },
+    Add {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+        ic_slot: u32,
+    },
+    Sub {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Mul {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Div {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Mod {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Neg {
+        dst: AirReg,
+        src: AirReg,
+    },
+    BitAnd {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    BitOr {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    BitXor {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Shl {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    Shr {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
+    UShr {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    },
 
     // === Comparação ===
-    Eq { dst: AirReg, lhs: AirReg, rhs: AirReg },          // ==
-    StrictEq { dst: AirReg, lhs: AirReg, rhs: AirReg },    // ===
-    Lt { dst: AirReg, lhs: AirReg, rhs: AirReg },          // <
-    Lte { dst: AirReg, lhs: AirReg, rhs: AirReg },         // <=
-    Gt { dst: AirReg, lhs: AirReg, rhs: AirReg },          // >
-    Gte { dst: AirReg, lhs: AirReg, rhs: AirReg },         // >=
-    Not { dst: AirReg, src: AirReg },                      // !
+    Eq {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // ==
+    StrictEq {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // ===
+    Lt {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // <
+    Lte {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // <=
+    Gt {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // >
+    Gte {
+        dst: AirReg,
+        lhs: AirReg,
+        rhs: AirReg,
+    }, // >=
+    Not {
+        dst: AirReg,
+        src: AirReg,
+    }, // !
 
     // === Objetos, Arrays e Propriedades ===
-    CreateObj { dst: AirReg },
-    CreateArray { dst: AirReg },
-    ArrayPush { arr: AirReg, value: AirReg },
-    
-    GetProp { dst: AirReg, obj: AirReg, prop: AirReg, ic_slot: u32 },
-    SetProp { obj: AirReg, prop: AirReg, value: AirReg },
-    DeleteProp { dst: AirReg, obj: AirReg, prop: AirReg },
-    HasProp { dst: AirReg, obj: AirReg, prop: AirReg },
+    CreateObj {
+        dst: AirReg,
+    },
+    CreateArray {
+        dst: AirReg,
+    },
+    ArrayPush {
+        arr: AirReg,
+        value: AirReg,
+    },
+
+    GetProp {
+        dst: AirReg,
+        obj: AirReg,
+        prop: AirReg,
+        ic_slot: u32,
+    },
+    SetProp {
+        obj: AirReg,
+        prop: AirReg,
+        value: AirReg,
+    },
+    DeleteProp {
+        dst: AirReg,
+        obj: AirReg,
+        prop: AirReg,
+    },
+    HasProp {
+        dst: AirReg,
+        obj: AirReg,
+        prop: AirReg,
+    },
 
     // === Funções e Closures ===
-    /// Chama uma função. arg_start contém o primeiro argumento; 
+    /// Chama uma função. arg_start contém o primeiro argumento;
     /// os subsequentes (arg_idx..arg_idx+num_args) estão nos registradores sequenciais.
-    Call { dst: AirReg, func: AirReg, arg_start: AirReg, num_args: u32, ic_slot: u32 },
+    Call {
+        dst: AirReg,
+        func: AirReg,
+        arg_start: AirReg,
+        num_args: u32,
+        ic_slot: u32,
+    },
     /// Chamada de construtor (new Func(...))
-    NewCall { dst: AirReg, func: AirReg, arg_start: AirReg, num_args: u32 },
+    NewCall {
+        dst: AirReg,
+        func: AirReg,
+        arg_start: AirReg,
+        num_args: u32,
+    },
 
     // === Type Conversions ===
-    ToNumber { dst: AirReg, src: AirReg },
-    ToString { dst: AirReg, src: AirReg },
-    ToBool { dst: AirReg, src: AirReg },
-    TypeOf { dst: AirReg, src: AirReg },
-    InstanceOf { dst: AirReg, obj: AirReg, ctor: AirReg },
+    ToNumber {
+        dst: AirReg,
+        src: AirReg,
+    },
+    ToString {
+        dst: AirReg,
+        src: AirReg,
+    },
+    ToBool {
+        dst: AirReg,
+        src: AirReg,
+    },
+    TypeOf {
+        dst: AirReg,
+        src: AirReg,
+    },
+    InstanceOf {
+        dst: AirReg,
+        obj: AirReg,
+        ctor: AirReg,
+    },
 }
 
 /// Terminadores de Bloco (Control Flow).
@@ -177,7 +322,7 @@ impl AirFunction {
             return false;
         }
 
-        // Todo bloco (exceto talvez o último durante a construção) 
+        // Todo bloco (exceto talvez o último durante a construção)
         // precisa ter um terminador
         for block in &self.blocks {
             if block.terminator.is_none() {

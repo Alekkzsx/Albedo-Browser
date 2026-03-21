@@ -1,7 +1,3 @@
-
-use crate::engine::dom::{AceDOM, AceNodeType};
-use kuchiki::traits::TendrilSink;
-
 #[test]
 fn test_acedom_parsing() {
     let html = r#"
@@ -25,7 +21,7 @@ fn test_acedom_parsing() {
     // Verify Metadata
     // assert_eq!(dom.metadata.title, "Test Page".to_string());
     // assert_eq!(dom.metadata.charset, "utf-8".to_string());
-    
+
     // Check resources
     // assert!(dom.resources.contains(&"style.css".to_string()));
     // assert!(dom.resources.contains(&"image.png".to_string()));
@@ -46,13 +42,13 @@ fn test_acedom_parsing() {
         // Search recursively or just children? The div is direct child of body in this HTML
         for &child_idx in &body_node.children {
             let child = dom.get_node(child_idx).unwrap();
-             // Skip text nodes (newline/whitespace)
-             if let AceNodeType::Element(el) = &child.node_type {
-                 if el.tag == "div" {
-                     assert_eq!(el.attributes.get("data-custom"), Some(&"value".to_string()));
-                     found_div = true;
-                 }
-             }
+            // Skip text nodes (newline/whitespace)
+            if let AceNodeType::Element(el) = &child.node_type {
+                if el.tag == "div" {
+                    assert_eq!(el.attributes.get("data-custom"), Some(&"value".to_string()));
+                    found_div = true;
+                }
+            }
         }
         assert!(found_div, "Did not find child div");
     } else {
@@ -64,5 +60,9 @@ fn test_acedom_parsing() {
 fn test_css_parsing() {
     let css = "body { color: red; border: 1px solid black; }\n.box { margin: 10px; }";
     let stylesheet = crate::engine::style::parse(css);
-    assert_eq!(stylesheet.rules.len(), 2, "Deveria ter extraido 2 regras do CSS");
+    assert_eq!(
+        stylesheet.rules.len(),
+        2,
+        "Deveria ter extraido 2 regras do CSS"
+    );
 }

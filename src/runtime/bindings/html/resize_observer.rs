@@ -1,6 +1,6 @@
-use rquickjs::{Ctx, Result, Value, Function, Object, Persistent, Class, prelude::*};
-use std::cell::RefCell;
 use crate::runtime::core::runtime::JsRuntime;
+use rquickjs::{prelude::*, Ctx, Function, Object, Persistent, Result, Value};
+use std::cell::RefCell;
 
 #[derive(Clone)]
 #[rquickjs::class]
@@ -14,9 +14,12 @@ pub struct ResizeObserver {
 impl ResizeObserver {
     #[qjs(constructor)]
     pub fn new<'js>(ctx: Ctx<'js>, callback: Function<'js>) -> Result<Self> {
-        let rt = ctx.globals().get::<_, JsRuntime>("__albedo_rt__").expect("JsRuntime required");
-        
-        let id = {
+        let rt = ctx
+            .globals()
+            .get::<_, JsRuntime>("__albedo_rt__")
+            .expect("JsRuntime required");
+
+        let _id = {
             let mut el = rt.event_loop.lock().unwrap();
             el.next_observer_id += 1;
             el.next_observer_id
@@ -33,10 +36,12 @@ impl ResizeObserver {
 
     pub fn observe<'js>(&self, target: Value<'js>, _options: Option<Object<'js>>) {
         // Mock implementation
-        self.targets.borrow_mut().push(unsafe { std::mem::transmute(target) });
+        self.targets
+            .borrow_mut()
+            .push(unsafe { std::mem::transmute(target) });
     }
 
-    pub fn unobserve<'js>(&self, target: Value<'js>) {
+    pub fn unobserve<'js>(&self, _target: Value<'js>) {
         // Mock implementation
     }
 

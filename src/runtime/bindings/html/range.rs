@@ -1,5 +1,5 @@
-use rquickjs::{Ctx, Class, Result, Value, Object};
 use crate::runtime::bindings::html::element::Element;
+use rquickjs::{Class, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -30,7 +30,8 @@ impl Range {
             if let Some(el_class) = Class::<Element>::from_object(&obj) {
                 self.start_container = Some(el_class.borrow().index);
                 self.start_offset = offset;
-                self.collapsed = self.start_container == self.end_container && self.start_offset == self.end_offset;
+                self.collapsed = self.start_container == self.end_container
+                    && self.start_offset == self.end_offset;
             }
         }
     }
@@ -41,7 +42,8 @@ impl Range {
             if let Some(el_class) = Class::<Element>::from_object(&obj) {
                 self.end_container = Some(el_class.borrow().index);
                 self.end_offset = offset;
-                self.collapsed = self.start_container == self.end_container && self.start_offset == self.end_offset;
+                self.collapsed = self.start_container == self.end_container
+                    && self.start_offset == self.end_offset;
             }
         }
     }
@@ -66,10 +68,10 @@ impl Range {
                 self.start_container = Some(idx);
                 self.end_container = Some(idx);
                 self.start_offset = 0;
-                
-                // Assuming child nodes length to set end_offset correctly, 
+
+                // Assuming child nodes length to set end_offset correctly,
                 // but since we only have node_idx here, we approximate or leave as 1 for element boundary
-                self.end_offset = 1; 
+                self.end_offset = 1;
                 self.collapsed = false;
             }
         }
@@ -82,13 +84,19 @@ impl Range {
 
     #[qjs(rename = "detach")]
     pub fn detach(&self) {}
-    
+
     #[qjs(get, rename = "startOffset")]
-    pub fn get_start_offset(&self) -> usize { self.start_offset }
-    
+    pub fn get_start_offset(&self) -> usize {
+        self.start_offset
+    }
+
     #[qjs(get, rename = "endOffset")]
-    pub fn get_end_offset(&self) -> usize { self.end_offset }
-    
+    pub fn get_end_offset(&self) -> usize {
+        self.end_offset
+    }
+
     #[qjs(get, rename = "collapsed")]
-    pub fn is_collapsed(&self) -> bool { self.collapsed }
+    pub fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
 }

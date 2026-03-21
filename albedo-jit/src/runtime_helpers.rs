@@ -7,10 +7,10 @@
 //! Apenas quando formos para o Tier 2 substituiremos as chamadas CALL
 //! por instruções CPU nativas (FADD, IADD) via Type Specialization.
 
+use crate::builtins::{call_builtin, BuiltinId};
 use crate::js_value::{JsValue, TAG_MASK};
-use crate::type_feedback::TypeFeedbackRegistry;
-use crate::builtins::{BuiltinId, call_builtin};
 use crate::object_model;
+use crate::type_feedback::TypeFeedbackRegistry;
 
 // ---------------------------------------------------------------------------
 // Helpers Aritméticos
@@ -158,7 +158,8 @@ pub extern "C" fn js_call_ic(func: u64, args_ptr: u64, num_args: u64, slot: u64)
     if f.is_builtin() {
         let id = f.as_builtin_id() as u32;
         if let Some(bid) = builtin_from_id(id) {
-            let args = unsafe { std::slice::from_raw_parts(args_ptr as *const u64, num_args as usize) };
+            let args =
+                unsafe { std::slice::from_raw_parts(args_ptr as *const u64, num_args as usize) };
             let vals: Vec<JsValue> = args.iter().map(|v| JsValue(*v)).collect();
             return call_builtin(bid, &vals).0;
         }
@@ -253,11 +254,10 @@ pub extern "C" fn js_to_bool(val: u64) -> u64 {
     if v.is_undefined() || v.is_null() {
         return JsValue::bool(false).0;
     }
-    
+
     // Objetos/Strings não vazias = true
     JsValue::bool(true).0
 }
-
 
 /// Coerção abstrata simples JS ToNumber
 #[inline]
@@ -267,7 +267,11 @@ fn to_number(val: JsValue) -> f64 {
     } else if val.is_float64() {
         val.as_float64()
     } else if val.is_bool() {
-        if val.as_bool() { 1.0 } else { 0.0 }
+        if val.as_bool() {
+            1.0
+        } else {
+            0.0
+        }
     } else if val.is_null() {
         0.0
     } else {
@@ -299,14 +303,14 @@ mod tests {
         assert!(val.is_float64());
         assert_eq!(val.as_float64(), (i32::MAX as f64) + 1.0);
     }
-    
+
     #[test]
     fn test_runtime_js_strict_eq() {
         let r1 = js_strict_eq(JsValue::int32(42).0, JsValue::int32(42).0);
         assert!(JsValue(r1).as_bool());
 
         let r2 = js_strict_eq(JsValue::int32(42).0, JsValue::float64(42.0).0);
-        assert!(!JsValue(r2).as_bool()); 
+        assert!(!JsValue(r2).as_bool());
     }
 
     #[test]

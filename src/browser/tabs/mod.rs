@@ -1,3 +1,3 @@
-pub mod tab;
-pub mod manager;
 pub mod collection;
+pub mod manager;
+pub mod tab;

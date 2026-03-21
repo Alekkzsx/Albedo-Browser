@@ -1,5 +1,4 @@
-use rquickjs::{Ctx, Result, Value, Object, Array, prelude::*};
-use std::collections::HashMap;
+use rquickjs::{prelude::*, Array, Ctx, Result, Value};
 
 #[rquickjs::class]
 #[derive(Clone, rquickjs::class::Trace)]
@@ -11,7 +10,7 @@ pub struct URLSearchParams {
 #[rquickjs::methods]
 impl URLSearchParams {
     #[qjs(constructor)]
-    pub fn new<'js>(ctx: Ctx<'js>, init: Option<Value<'js>>) -> Result<Self> {
+    pub fn new<'js>(_ctx: Ctx<'js>, init: Option<Value<'js>>) -> Result<Self> {
         let mut params = Vec::new();
         if let Some(val) = init {
             if let Some(s) = val.as_string() {
@@ -30,7 +29,10 @@ impl URLSearchParams {
     }
 
     pub fn get(&self, name: String) -> Option<String> {
-        self.params.iter().find(|(k, _)| k == &name).map(|(_, v)| v.clone())
+        self.params
+            .iter()
+            .find(|(k, _)| k == &name)
+            .map(|(_, v)| v.clone())
     }
 
     pub fn set(&mut self, name: String, value: String) {
@@ -64,7 +66,8 @@ impl URLSearchParams {
 
     #[qjs(rename = "getAll")]
     pub fn get_all(&self, name: String) -> Vec<String> {
-        self.params.iter()
+        self.params
+            .iter()
             .filter(|(k, _)| k == &name)
             .map(|(_, v)| v.clone())
             .collect()
@@ -82,7 +85,7 @@ impl URLSearchParams {
             pair.set(1, v.clone())?;
             arr.set(i, pair)?;
         }
-        // In a real browser this returns an iterator, but returning an array 
+        // In a real browser this returns an iterator, but returning an array
         // that's iterable is a common and functional shortcut for simple engines.
         // We could implement a real iterator class if needed by the user.
         Ok(arr.into_value())
@@ -105,7 +108,8 @@ impl URLSearchParams {
     }
 
     pub fn to_string(&self) -> String {
-        self.params.iter()
+        self.params
+            .iter()
             .map(|(k, v)| {
                 let encoded_k = urlencoding::encode(k);
                 let encoded_v = urlencoding::encode(v);
@@ -121,23 +125,33 @@ impl URLSearchParams {
 
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let globals = ctx.globals();
-    globals.set("URLSearchParams", rquickjs::Class::<URLSearchParams>::register(&ctx.clone())?)?;
-    
+    globals.set(
+        "URLSearchParams",
+        rquickjs::Class::<URLSearchParams>::register(&ctx.clone())?,
+    )?;
+
     // Base64 (using engine::base64 or similar if available, but for now fixed base64 crate usage)
     use base64::Engine;
     let b64_engine = base64::engine::general_purpose::STANDARD;
-    
+
     let engine_clone = b64_engine.clone();
-    globals.set("btoa", rquickjs::Function::new(ctx.clone(), move |s: String| -> String {
-        engine_clone.encode(s)
-    }))?;
-    
+    globals.set(
+        "btoa",
+        rquickjs::Function::new(ctx.clone(), move |s: String| -> String {
+            engine_clone.encode(s)
+        }),
+    )?;
+
     let engine_clone = b64_engine.clone();
-    globals.set("atob", rquickjs::Function::new(ctx.clone(), move |s: String| -> Result<String> {
-        engine_clone.decode(s)
-            .map(|b| String::from_utf8_lossy(&b).to_string())
-            .map_err(|_| rquickjs::Error::new_from_js("Invalid base64", "Error"))
-    }))?;
+    globals.set(
+        "atob",
+        rquickjs::Function::new(ctx.clone(), move |s: String| -> Result<String> {
+            engine_clone
+                .decode(s)
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .map_err(|_| rquickjs::Error::new_from_js("Invalid base64", "Error"))
+        }),
+    )?;
 
     Ok(())
 }

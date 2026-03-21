@@ -47,7 +47,9 @@ fn benchmark_deltablue_like() {
 }
 
 fn fib(n: i32) -> i32 {
-    if n <= 1 { return n; }
+    if n <= 1 {
+        return n;
+    }
     let mut a = 0;
     let mut b = 1;
     for _ in 2..=n {
@@ -60,8 +62,12 @@ fn fib(n: i32) -> i32 {
 
 #[derive(Clone, Copy)]
 struct Body {
-    x: f64, y: f64, z: f64,
-    vx: f64, vy: f64, vz: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    vx: f64,
+    vy: f64,
+    vz: f64,
     mass: f64,
 }
 
@@ -70,7 +76,15 @@ fn nbody_system() -> Vec<Body> {
     const SOLAR_MASS: f64 = 4.0 * PI * PI;
     const DAYS_PER_YEAR: f64 = 365.24;
 
-    let sun = Body { x: 0.0, y: 0.0, z: 0.0, vx: 0.0, vy: 0.0, vz: 0.0, mass: SOLAR_MASS };
+    let sun = Body {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        vx: 0.0,
+        vy: 0.0,
+        vz: 0.0,
+        mass: SOLAR_MASS,
+    };
     let jupiter = Body {
         x: 4.84143144246472090e+00,
         y: -1.16032004402742839e+00,
@@ -170,7 +184,9 @@ fn energy(bodies: &[Body]) -> f64 {
 fn richards_like(iterations: usize) -> usize {
     // Mini-scheduler com filas e work packets
     #[derive(Clone)]
-    struct Packet { value: i32 }
+    struct Packet {
+        value: i32,
+    }
     let mut queue: std::collections::VecDeque<Packet> = std::collections::VecDeque::new();
     let mut handled = 0usize;
 

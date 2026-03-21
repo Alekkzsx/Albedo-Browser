@@ -1,6 +1,6 @@
-use rquickjs::{Ctx, Result, Value, Class, Object, Array};
-use crate::engine::dom::{AceDOM, AceNodeType};
+use crate::engine::dom::AceDOM;
 use crate::runtime::bindings::html::element::Element;
+use rquickjs::{Array, Class, Ctx, Result, Value};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]
@@ -17,11 +17,13 @@ pub struct HtmlCollection {
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
     #[qjs(skip_trace)]
-    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    pub canvas_contexts:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
-    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    pub element_geometry:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
@@ -63,7 +65,7 @@ impl HtmlCollection {
     fn get_elements_indices(&self) -> Vec<usize> {
         let mut indices = Vec::new();
         if let Ok(dom) = self.dom.lock() {
-            for (i, node) in dom.nodes.iter().enumerate() {
+            for (i, _node) in dom.nodes.iter().enumerate() {
                 if (self.selector_fn)(&dom, i) {
                     indices.push(i);
                 }

@@ -1,6 +1,5 @@
 use super::runtime::JsRuntime;
 use crate::engine::AceEngine;
-use rquickjs::{Context, Runtime, Ctx, Value, Class, Function, Persistent, prelude::*};
 use std::sync::{Arc, Mutex};
 
 type JsResult<T> = Result<T, rquickjs::Error>;
@@ -20,7 +19,7 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         rt.element_geometry = engine.element_geometry.clone();
         rt.element_scroll = engine.element_scroll.clone();
         *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(url);
-        let origin_str = get_origin(url); 
+        let origin_str = get_origin(url);
 
         // ES Modules: Configurar ModuleRegistry e registrar Loader/Resolver
         {
@@ -46,12 +45,21 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         }
         crate::runtime::core::registry::register_runtime(rt.id, Arc::new(Mutex::new(rt.clone())));
         if let Some(dom) = &engine.dom {
-            if let Err(e) = crate::runtime::bindings::html::document::register(&rt, dom.clone(), engine.stylesheet.clone(), engine.primitives.clone(), engine.canvas_contexts.clone(), url.to_string(), "".to_string(), engine.resource_manager.clone()) {
-                    eprintln!("Failed to register document API: {}", e);
+            if let Err(e) = crate::runtime::bindings::html::document::register(
+                &rt,
+                dom.clone(),
+                engine.stylesheet.clone(),
+                engine.primitives.clone(),
+                engine.canvas_contexts.clone(),
+                url.to_string(),
+                "".to_string(),
+                engine.resource_manager.clone(),
+            ) {
+                eprintln!("Failed to register document API: {}", e);
             }
         }
         if let Err(e) = crate::runtime::bindings::utils::console::Console::register(&rt) {
-                eprintln!("Failed to register console: {}", e);
+            eprintln!("Failed to register console: {}", e);
         }
         if let Err(e) = register_events(&rt) {
             eprintln!("Failed to register events: {}", e);
@@ -64,13 +72,13 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
     None
 }
 
-pub fn init_sw_runtime(url: &str, origin: &str) -> Option<JsRuntime> {
+pub fn init_sw_runtime(_url: &str, origin: &str) -> Option<JsRuntime> {
     if let Ok(rt) = JsRuntime::new() {
         rt.context.lock().unwrap().with(|ctx| {
             let _ = ctx.globals().set("__albedo_rt__", rt.clone());
         });
         *rt.origin.lock().unwrap() = crate::network::security::Origin::from_url(origin);
-        
+
         // Initialize basic stdlib for SW (subset of full stdlib)
         let _ = register_events(&rt);
         let _ = crate::runtime::bindings::utils::console::Console::register(&rt);
@@ -81,15 +89,16 @@ pub fn init_sw_runtime(url: &str, origin: &str) -> Option<JsRuntime> {
         let _ = crate::runtime::bindings::webapi::url::register(&rt);
         let _ = crate::runtime::bindings::webapi::text_encoding::register(&rt);
         let _ = crate::runtime::bindings::webapi::structured_clone::register(&rt);
-        
+
         // Circular global for ServiceWorkerGlobalScope
         rt.context.lock().unwrap().with(|ctx| {
             let global = ctx.globals();
             let _ = global.set("self", global.clone());
             let _ = global.set("globalThis", global.clone());
-            
+
             // SW specific Polyfills
-            let _ = ctx.eval::<(), _>(r#"
+            let _ = ctx.eval::<(), _>(
+                r#"
                 globalThis._listeners = {};
                 globalThis.addEventListener = function(type, listener) {
                     if (!globalThis._listeners[type]) globalThis._listeners[type] = [];
@@ -117,7 +126,8 @@ pub fn init_sw_runtime(url: &str, origin: &str) -> Option<JsRuntime> {
                     claim: function() { return Promise.resolve(); },
                     matchAll: function() { return Promise.resolve([]); }
                 };
-            "#);
+            "#,
+            );
         });
 
         // Register core SW bindings
@@ -159,7 +169,9 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     // Service Worker, Cache, and Background Sync APIs (NEW)
     crate::runtime::bindings::webapi::cache::register_cache_storage(rt)?;
     crate::runtime::bindings::webapi::sync::register_sync_events(rt)?;
-    crate::runtime::bindings::webapi::service_worker_container::register_service_worker_container(rt)?;
+    crate::runtime::bindings::webapi::service_worker_container::register_service_worker_container(
+        rt,
+    )?;
 
     // Register window proxy and post message using the context
     {
@@ -175,17 +187,21 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::runtime::bindings::webapi::history::register(rt)?;
     crate::runtime::bindings::webapi::navigator::register(&rt.context.lock().unwrap())?;
     // `navigator` and `clipboard` bindings are registered by their modules.
-    crate::runtime::bindings::webapi::location::register(&rt.context.lock().unwrap(), url, rt.pending_navigation.clone())?;
+    crate::runtime::bindings::webapi::location::register(
+        &rt.context.lock().unwrap(),
+        url,
+        rt.pending_navigation.clone(),
+    )?;
     crate::runtime::bindings::utils::shims::register(rt)?;
-    
+
     {
         let ctx = rt.context.lock().unwrap();
         ctx.with(|ctx| {
-             crate::runtime::bindings::webapi::url_search_params::register(&ctx)?;
-             Ok::<_, rquickjs::Error>(())
+            crate::runtime::bindings::webapi::url_search_params::register(&ctx)?;
+            Ok::<_, rquickjs::Error>(())
         })?;
     }
-    
+
     // Window/Self alias (Circular global)
     {
         let ctx = rt.context.lock().unwrap();
@@ -246,17 +262,18 @@ pub fn init_storage(rt: &JsRuntime, origin: &str) -> JsResult<()> {
     } else {
         std::path::PathBuf::from("./storage")
     };
-    
+
     // Sanitize origin for filename
-    let sanitized_origin = origin.replace("://", "_")
+    let sanitized_origin = origin
+        .replace("://", "_")
         .replace(".", "_")
         .replace("/", "_")
         .replace(":", "_");
-        
+
     let local_storage_path = storage_dir.join(format!("{}.json", sanitized_origin));
-    
+
     use crate::runtime::bindings::webapi::storage::Storage;
-    
+
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
             Storage::register(&ctx, "localStorage", Storage::new_local(local_storage_path))?;
@@ -270,27 +287,29 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
     let ctx = rt.context.lock().unwrap();
     ctx.with(|ctx: rquickjs::Ctx| {
         let global = ctx.globals();
-        
+
         // Register base Event
         use crate::runtime::bindings::html::event::Event;
         rquickjs::Class::<Event>::define(&global)?;
-        
+
         // Register subclasses
-        use crate::runtime::bindings::html::event_subclasses::{MouseEvent, KeyboardEvent, MessageEvent, PointerEvent, TouchEvent};
+        use crate::runtime::bindings::html::event_subclasses::{
+            KeyboardEvent, MessageEvent, MouseEvent, PointerEvent, TouchEvent,
+        };
         rquickjs::Class::<MouseEvent>::define(&global)?;
         rquickjs::Class::<PointerEvent>::define(&global)?;
         rquickjs::Class::<TouchEvent>::define(&global)?;
         rquickjs::Class::<KeyboardEvent>::define(&global)?;
         rquickjs::Class::<MessageEvent>::define(&global)?;
-        
+
         // Setup prototype chain (basic inheritance simulation)
-        
+
         let event_ctor: rquickjs::Function = global.get("Event")?;
         let mouse_ctor: rquickjs::Function = global.get("MouseEvent")?;
         let pointer_ctor: rquickjs::Function = global.get("PointerEvent")?;
         let touch_ctor: rquickjs::Function = global.get("TouchEvent")?;
         let kbd_ctor: rquickjs::Function = global.get("KeyboardEvent")?;
-        
+
         let event_proto: rquickjs::Object = event_ctor.get("prototype")?;
         let mouse_proto: rquickjs::Object = mouse_ctor.get("prototype")?;
         let pointer_proto: rquickjs::Object = pointer_ctor.get("prototype")?;
@@ -298,13 +317,13 @@ pub fn register_events(rt: &JsRuntime) -> JsResult<()> {
         let kbd_proto: rquickjs::Object = kbd_ctor.get("prototype")?;
         let msg_ctor: rquickjs::Function = global.get("MessageEvent")?;
         let msg_proto: rquickjs::Object = msg_ctor.get("prototype")?;
-        
+
         mouse_proto.set_prototype(Some(&event_proto))?;
         pointer_proto.set_prototype(Some(&mouse_proto))?; // PointerEvent herda de MouseEvent (que herda de Event)
         touch_proto.set_prototype(Some(&event_proto))?;
         kbd_proto.set_prototype(Some(&event_proto))?;
         msg_proto.set_prototype(Some(&event_proto))?;
-        
+
         Ok(())
     })
 }

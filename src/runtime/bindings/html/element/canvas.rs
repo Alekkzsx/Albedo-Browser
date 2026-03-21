@@ -1,8 +1,8 @@
-use rquickjs::{Ctx, Result, Value, Class};
-use super::{Element, mark_mutation};
 use super::canvas_context::CanvasRenderingContext2D;
-use crate::engine::graphics::canvas2d::Canvas2D;
+use super::Element;
 use crate::engine::dom::AceNodeType;
+use crate::engine::graphics::canvas2d::Canvas2D;
+use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn get_context<'js>(el: &Element, ctx: Ctx<'js>, type_: String) -> Result<Value<'js>> {
     if type_ != "2d" {
@@ -14,9 +14,15 @@ pub fn get_context<'js>(el: &Element, ctx: Ctx<'js>, type_: String) -> Result<Va
         if let Some(node) = dom.get_node(el.index) {
             if let AceNodeType::Element(element) = &node.node_type {
                 element.tag == "canvas"
-            } else { false }
-        } else { false }
-    } else { false };
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
     if !is_canvas {
         return Ok(Value::new_null(ctx));
@@ -30,7 +36,7 @@ pub fn get_context<'js>(el: &Element, ctx: Ctx<'js>, type_: String) -> Result<Va
         let h = super::props::height(el) as u32;
         let w = if w == 0 { 300 } else { w };
         let h = if h == 0 { 150 } else { h };
-        
+
         contexts.insert(el.index, Canvas2D::new(w, h));
     }
 

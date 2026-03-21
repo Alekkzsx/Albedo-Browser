@@ -1,9 +1,9 @@
-use resvg::{usvg, tiny_skia};
-use slint::{Image, SharedPixelBuffer, Rgba8Pixel};
+use resvg::{tiny_skia, usvg};
+use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
 pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
     let opt = usvg::Options::default();
-    
+
     let rtree = match usvg::Tree::from_str(svg_data, &opt) {
         Ok(tree) => tree,
         Err(e) => {
@@ -13,12 +13,8 @@ pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
     };
 
     let pixmap_size = rtree.size().to_int_size();
-    let mut pixmap = tiny_skia::Pixmap::new(
-        width.round() as u32, 
-        height.round() as u32
-    ).or_else(|| {
-        tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
-    })?;
+    let mut pixmap = tiny_skia::Pixmap::new(width.round() as u32, height.round() as u32)
+        .or_else(|| tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()))?;
 
     let render_ts = if width > 0.0 && height > 0.0 {
         let sx = width / rtree.size().width();
@@ -38,7 +34,7 @@ pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
 
 pub fn rasterize_svg_to_pixels(svg_data: &str, width: f32, height: f32) -> Option<Vec<u8>> {
     let opt = usvg::Options::default();
-    
+
     let rtree = match usvg::Tree::from_str(svg_data, &opt) {
         Ok(tree) => tree,
         Err(e) => {
@@ -49,11 +45,10 @@ pub fn rasterize_svg_to_pixels(svg_data: &str, width: f32, height: f32) -> Optio
 
     let pixmap_size = rtree.size().to_int_size();
     let mut pixmap = tiny_skia::Pixmap::new(
-        width.round().max(1.0) as u32, 
-        height.round().max(1.0) as u32
-    ).or_else(|| {
-        tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height())
-    })?;
+        width.round().max(1.0) as u32,
+        height.round().max(1.0) as u32,
+    )
+    .or_else(|| tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()))?;
 
     let render_ts = if width > 0.0 && height > 0.0 {
         let sx = width / rtree.size().width();

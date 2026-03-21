@@ -1,8 +1,6 @@
-use rquickjs::{Ctx, Class, Result, Value, Function, prelude::Rest};
-use super::token_list::DomTokenList;
 use crate::engine::dom::{AceDOM, AceNodeType};
+use rquickjs::{prelude::Rest, Class, Ctx, Function, Result, Value};
 use std::sync::{Arc, Mutex};
-use super::event::EventTargetImpl;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -18,26 +16,28 @@ pub struct Element {
     #[qjs(skip_trace)]
     pub primitives: Arc<Mutex<Vec<crate::engine::ACEPrimitive>>>,
     #[qjs(skip_trace)]
-    pub canvas_contexts: Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
+    pub canvas_contexts:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::graphics::canvas2d::Canvas2D>>>,
     #[qjs(skip_trace)]
     pub pending_scroll: Arc<Mutex<Option<usize>>>,
     #[qjs(skip_trace)]
-    pub element_geometry: Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
+    pub element_geometry:
+        Arc<Mutex<std::collections::HashMap<usize, crate::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 }
 
-pub mod hierarchy;
-pub mod props;
-pub mod style;
 pub mod attributes;
-pub mod rect;
-pub mod shadow;
-pub mod query;
-pub mod dataset;
-pub mod events;
 pub mod canvas;
 pub mod canvas_context;
+pub mod dataset;
+pub mod events;
+pub mod hierarchy;
+pub mod props;
+pub mod query;
+pub mod rect;
+pub mod shadow;
+pub mod style;
 
 pub(crate) use self::Element as ElementType;
 pub(crate) fn mark_mutation(el: &ElementType) {
@@ -70,7 +70,7 @@ impl Element {
     pub fn toggle_attribute(&self, name: String, force: Option<bool>) -> bool {
         let exists = self.has_attribute(name.clone());
         let should_exist = force.unwrap_or(!exists);
-        
+
         if should_exist {
             self.set_attribute(name, "".to_string());
             true
@@ -127,35 +127,47 @@ impl Element {
 
     // Event Handler Setters/Getters
     #[qjs(get, rename = "onclick")]
-    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn onclick_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "onclick")]
     pub fn onclick_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("click".to_string(), listener);
     }
 
     #[qjs(get, rename = "oninput")]
-    pub fn oninput_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn oninput_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "oninput")]
     pub fn oninput_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("input".to_string(), listener);
     }
 
     #[qjs(get, rename = "onchange")]
-    pub fn onchange_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn onchange_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "onchange")]
     pub fn onchange_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("change".to_string(), listener);
     }
 
     #[qjs(get, rename = "onsubmit")]
-    pub fn onsubmit_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> { Ok(Value::new_null(ctx)) }
+    pub fn onsubmit_get<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        Ok(Value::new_null(ctx))
+    }
     #[qjs(set, rename = "onsubmit")]
     pub fn onsubmit_setter<'js>(&self, listener: Function<'js>) {
         self.add_event_listener("submit".to_string(), listener);
     }
 
     #[qjs(rename = "attachShadow")]
-    pub fn attach_shadow<'js>(&self, ctx: Ctx<'js>, _options: rquickjs::Object<'js>) -> Result<Value<'js>> {
+    pub fn attach_shadow<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        _options: rquickjs::Object<'js>,
+    ) -> Result<Value<'js>> {
         self::shadow::attach_shadow(self, ctx)
     }
 
@@ -172,10 +184,14 @@ impl Element {
     }
 
     #[qjs(rename = "insertAdjacentHTML")]
-    pub fn insert_adjacent_html<'js>(&self, ctx: Ctx<'js>, position: String, html: String) -> Result<()> {
+    pub fn insert_adjacent_html<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        position: String,
+        html: String,
+    ) -> Result<()> {
         self::hierarchy::insert_adjacent_html(self, ctx, position, html)
     }
-
 
     #[qjs(get, rename = "style")]
     pub fn style<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
@@ -208,12 +224,21 @@ impl Element {
     }
 
     #[qjs(rename = "removeChild")]
-    pub fn remove_child<'js>(&self, ctx: Ctx<'js>, child: Class<'js, Element>) -> Result<Class<'js, Element>> {
+    pub fn remove_child<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        child: Class<'js, Element>,
+    ) -> Result<Class<'js, Element>> {
         self::hierarchy::remove_child(self, ctx, child)
     }
 
     #[qjs(rename = "insertBefore")]
-    pub fn insert_before<'js>(&self, ctx: Ctx<'js>, child: Value<'js>, ref_child: Value<'js>) -> Result<Value<'js>> {
+    pub fn insert_before<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        child: Value<'js>,
+        ref_child: Value<'js>,
+    ) -> Result<Value<'js>> {
         self::hierarchy::insert_before(self, ctx, child, ref_child)
     }
 
@@ -281,7 +306,7 @@ impl Element {
     pub fn get_attribute(&self, name: String) -> Option<String> {
         self::props::get_attribute(self, name)
     }
-    
+
     #[qjs(rename = "setAttribute")]
     pub fn set_attribute(&self, name: String, value: String) {
         self::props::set_attribute(self, name, value)
@@ -371,12 +396,12 @@ impl Element {
     pub fn set_checked(&self, val: bool) {
         self::props::set_checked(self, val)
     }
-    
+
     #[qjs(get, rename = "innerHTML")]
     pub fn inner_html(&self) -> String {
         self::props::inner_html(self)
     }
-    
+
     #[qjs(set, rename = "innerHTML")]
     pub fn set_inner_html(&self, html: String) {
         self::props::set_inner_html(self, html)
@@ -516,7 +541,7 @@ impl Element {
     }
 
     // ─── HTMLDialogElement API ───────────────────────────────────────
-    
+
     /// dialog.show() — abre o dialog como non-modal
     #[qjs(rename = "show")]
     pub fn dialog_show(&self) {
@@ -524,13 +549,19 @@ impl Element {
             let dom = self.dom.lock().unwrap();
             if let Some(node) = dom.get_node(self.index) {
                 matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
-            } else { false }
+            } else {
+                false
+            }
         };
-        if !is_dialog { return; }
-        
+        if !is_dialog {
+            return;
+        }
+
         // Se já está aberto, no-op
-        if self.has_attribute("open".into()) { return; }
-        
+        if self.has_attribute("open".into()) {
+            return;
+        }
+
         self.set_attribute("open".into(), String::new());
         self.mark_mutation();
     }
@@ -542,13 +573,19 @@ impl Element {
             let dom = self.dom.lock().unwrap();
             if let Some(node) = dom.get_node(self.index) {
                 matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
-            } else { false }
+            } else {
+                false
+            }
         };
-        if !is_dialog { return; }
-        
+        if !is_dialog {
+            return;
+        }
+
         // Se já está aberto, no-op (spec diz InvalidStateError, mas sem throw por agora)
-        if self.has_attribute("open".into()) { return; }
-        
+        if self.has_attribute("open".into()) {
+            return;
+        }
+
         self.set_attribute("open".into(), String::new());
         self.set_attribute("data-ace-modal".into(), String::new());
         self.mark_mutation();
@@ -561,22 +598,28 @@ impl Element {
             let dom = self.dom.lock().unwrap();
             if let Some(node) = dom.get_node(self.index) {
                 matches!(&node.node_type, AceNodeType::Element(el) if el.tag == "dialog")
-            } else { false }
+            } else {
+                false
+            }
         };
-        if !is_dialog { return; }
-        
+        if !is_dialog {
+            return;
+        }
+
         // Se não está aberto, no-op
-        if !self.has_attribute("open".into()) { return; }
-        
+        if !self.has_attribute("open".into()) {
+            return;
+        }
+
         // Armazenar returnValue se fornecido
         if let Some(rv) = return_value {
             self.set_attribute("data-return-value".into(), rv);
         }
-        
+
         self.remove_attribute("open".into());
         self.remove_attribute("data-ace-modal".into());
         self.mark_mutation();
-        
+
         // Disparar evento "close" no nó (via DOM mutation — o pulse tratará)
         // Nota: Para disparar imediatamente, seria necessário acesso ao JS runtime aqui.
         // A marca de mutation garante que o layout recompute.
@@ -591,7 +634,8 @@ impl Element {
     /// dialog.returnValue (getter)
     #[qjs(get, rename = "returnValue")]
     pub fn dialog_return_value_get(&self) -> String {
-        self.get_attribute("data-return-value".into()).unwrap_or_default()
+        self.get_attribute("data-return-value".into())
+            .unwrap_or_default()
     }
 
     /// dialog.returnValue (setter)
@@ -600,4 +644,5 @@ impl Element {
         self.set_attribute("data-return-value".into(), val);
     }
 }
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

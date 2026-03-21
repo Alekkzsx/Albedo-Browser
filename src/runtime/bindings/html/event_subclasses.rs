@@ -1,4 +1,4 @@
-use rquickjs::{Class, Ctx, Result, Value};
+use rquickjs::Value;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -44,7 +44,7 @@ impl MouseEvent {
         let mut client_x = 0.0;
         let mut client_y = 0.0;
         let mut button = 0;
-        let mut bubbles = false; 
+        let mut bubbles = false;
         let mut ctrl_key = false;
         let mut shift_key = false;
         let mut alt_key = false;
@@ -203,7 +203,7 @@ pub struct PointerEvent {
     pub bubbles: bool,
     #[qjs(get, enumerable)]
     pub cancelable: bool,
-    
+
     // MouseEvent properties
     #[qjs(get, enumerable, rename = "clientX")]
     pub client_x: f64,
@@ -262,13 +262,13 @@ impl PointerEvent {
         let mut client_x = 0.0;
         let mut client_y = 0.0;
         let mut button = 0;
-        let mut bubbles = false; 
+        let mut bubbles = false;
         let mut cancelable = false;
         let mut ctrl_key = false;
         let mut shift_key = false;
         let mut alt_key = false;
         let mut meta_key = false;
-        
+
         let mut pointer_id = 0;
         let mut width = 1.0;
         let mut height = 1.0;
@@ -300,7 +300,9 @@ impl PointerEvent {
                 tilt_x = obj.get("tiltX").unwrap_or(0);
                 tilt_y = obj.get("tiltY").unwrap_or(0);
                 twist = obj.get("twist").unwrap_or(0);
-                pointer_type = obj.get("pointerType").unwrap_or_else(|_| "mouse".to_string());
+                pointer_type = obj
+                    .get("pointerType")
+                    .unwrap_or_else(|_| "mouse".to_string());
                 is_primary = obj.get("isPrimary").unwrap_or(false);
             }
         }
@@ -450,7 +452,7 @@ impl TouchEvent {
     pub fn new<'js>(type_: String, options: Option<Value<'js>>) -> Self {
         let mut client_x = 0.0;
         let mut client_y = 0.0;
-        let mut bubbles = false; 
+        let mut bubbles = false;
         let mut cancelable = false;
         let mut ctrl_key = false;
         let mut shift_key = false;

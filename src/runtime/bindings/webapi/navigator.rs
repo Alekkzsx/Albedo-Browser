@@ -1,11 +1,10 @@
-use rquickjs::{Context, Result, Class, Ctx, Value};
 use super::clipboard::Clipboard;
 use super::geolocation::Geolocation;
+use rquickjs::{Class, Context, Ctx, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
-pub struct Navigator {
-}
+pub struct Navigator {}
 
 #[rquickjs::methods]
 impl Navigator {
@@ -24,12 +23,12 @@ impl Navigator {
     pub fn language(&self) -> String {
         "en-US".to_string()
     }
-    
+
     #[qjs(get, rename = "cookieEnabled")]
     pub fn cookie_enabled(&self) -> bool {
         true
     }
-    
+
     #[qjs(get)]
     pub fn onLine(&self) -> bool {
         true
@@ -53,11 +52,11 @@ impl Navigator {
 pub fn register(ctx: &Context) -> Result<()> {
     ctx.with(|ctx| {
         let global = ctx.globals();
-        
+
         // Register classes first
         Class::<Clipboard>::register(&ctx)?;
         Class::<Geolocation>::register(&ctx)?;
-        
+
         let navigator = Class::instance(ctx.clone(), Navigator {})?;
         global.set("navigator", navigator)?;
         Ok(())

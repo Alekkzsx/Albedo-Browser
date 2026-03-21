@@ -1,18 +1,17 @@
 use super::runtime::JsRuntime;
-use rquickjs::{Value, Ctx, Class};
-use std::collections::HashMap;
 use crate::runtime::bindings::webapi::indexeddb::IDBDatabase;
+use rquickjs::{Class, Ctx, Value};
+use std::collections::HashMap;
 
 pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     let mut executed = false;
-    
+
     // 0. Deliver pending postMessage messages (async event loop delivery).
     // Drain the queue first (only holds event_loop lock briefly), then dispatch
     // into the JS context without holding any lock - safe and deadlock-free.
     {
-        let messages: std::collections::VecDeque<_> = {
-            rt.event_loop.lock().unwrap().take_pending_messages()
-        };
+        let messages: std::collections::VecDeque<_> =
+            { rt.event_loop.lock().unwrap().take_pending_messages() };
         if !messages.is_empty() {
             rt.with_context(|ctx| {
                 ctx.with(|ctx| {
@@ -53,22 +52,28 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                             let _ = obj.set("type", rec.type_.as_str());
                                             let _ = obj.set("attributeName", rec.attribute_name);
                                             let _ = obj.set("oldValue", rec.old_value);
-                                            
+
                                             // Wrap target
                                             let target = wrap_element(rt, rec.target, &ctx);
                                             let _ = obj.set("target", target);
 
                                             // addedNodes
-                                            let added_arr = rquickjs::Array::new(ctx.clone()).unwrap();
-                                            for (idx, &node_idx) in rec.added_nodes.iter().enumerate() {
+                                            let added_arr =
+                                                rquickjs::Array::new(ctx.clone()).unwrap();
+                                            for (idx, &node_idx) in
+                                                rec.added_nodes.iter().enumerate()
+                                            {
                                                 let node = wrap_element(rt, node_idx, &ctx);
                                                 let _ = added_arr.set(idx, node);
                                             }
                                             let _ = obj.set("addedNodes", added_arr);
 
                                             // removedNodes
-                                            let removed_arr = rquickjs::Array::new(ctx.clone()).unwrap();
-                                            for (idx, &node_idx) in rec.removed_nodes.iter().enumerate() {
+                                            let removed_arr =
+                                                rquickjs::Array::new(ctx.clone()).unwrap();
+                                            for (idx, &node_idx) in
+                                                rec.removed_nodes.iter().enumerate()
+                                            {
                                                 let node = wrap_element(rt, node_idx, &ctx);
                                                 let _ = removed_arr.set(idx, node);
                                             }
@@ -76,15 +81,27 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
 
                                             // Siblings
                                             if let Some(prev) = rec.previous_sibling {
-                                                let _ = obj.set("previousSibling", wrap_element(rt, prev, &ctx));
+                                                let _ = obj.set(
+                                                    "previousSibling",
+                                                    wrap_element(rt, prev, &ctx),
+                                                );
                                             } else {
-                                                let _ = obj.set("previousSibling", rquickjs::Value::new_null(ctx.clone()));
+                                                let _ = obj.set(
+                                                    "previousSibling",
+                                                    rquickjs::Value::new_null(ctx.clone()),
+                                                );
                                             }
 
                                             if let Some(next) = rec.next_sibling {
-                                                let _ = obj.set("nextSibling", wrap_element(rt, next, &ctx));
+                                                let _ = obj.set(
+                                                    "nextSibling",
+                                                    wrap_element(rt, next, &ctx),
+                                                );
                                             } else {
-                                                let _ = obj.set("nextSibling", rquickjs::Value::new_null(ctx.clone()));
+                                                let _ = obj.set(
+                                                    "nextSibling",
+                                                    rquickjs::Value::new_null(ctx.clone()),
+                                                );
                                             }
 
                                             let _ = arr.set(i, obj);
@@ -129,8 +146,15 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                             Ok((status, body)) => {
                                 if let Ok(resolve) = resolution.resolve.0.clone().restore(&ctx) {
                                     use crate::runtime::bindings::webapi::fetch::Response;
-                                    let response = Response { status, body, headers: crate::runtime::bindings::webapi::fetch::Headers::new() };
-                                    if let Ok(instance) = rquickjs::Class::instance(ctx.clone(), response) {
+                                    let response = Response {
+                                        status,
+                                        body,
+                                        headers:
+                                            crate::runtime::bindings::webapi::fetch::Headers::new(),
+                                    };
+                                    if let Ok(instance) =
+                                        rquickjs::Class::instance(ctx.clone(), response)
+                                    {
                                         let _: rquickjs::Result<()> = resolve.call((instance,));
                                         executed = true;
                                     }
@@ -165,17 +189,26 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                 let mut registry = rt.observer_registry.lock().unwrap();
                 for event in idb_events {
                     match event {
-                        crate::runtime::core::event_loop::IDBEventMessage::Success { callback_id, result_json } => {
+                        crate::runtime::core::event_loop::IDBEventMessage::Success {
+                            callback_id,
+                            result_json,
+                        } => {
                             if let Some(cb_persistent) = registry.remove(&callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
                                     // Parse JSON back to JS Value using QuickJS eval
-                                    let val: Value = ctx.eval(format!("({})", result_json)).unwrap_or_else(|_| rquickjs::Value::new_null(ctx.clone()));
+                                    let val: Value = ctx
+                                        .eval(format!("({})", result_json))
+                                        .unwrap_or_else(|_| rquickjs::Value::new_null(ctx.clone()));
                                     let _: rquickjs::Result<Value> = callback.call((val,));
                                     executed = true;
                                 }
                             }
-                        },
-                         crate::runtime::core::event_loop::IDBEventMessage::DatabaseSuccess { callback_id, db_name, version } => {
+                        }
+                        crate::runtime::core::event_loop::IDBEventMessage::DatabaseSuccess {
+                            callback_id,
+                            db_name,
+                            version,
+                        } => {
                             if let Some(cb_persistent) = registry.remove(&callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
                                     let db = IDBDatabase {
@@ -194,8 +227,12 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                     }
                                 }
                             }
-                        },
-                        crate::runtime::core::event_loop::IDBEventMessage::Error { callback_id, error_name, error_message } => {
+                        }
+                        crate::runtime::core::event_loop::IDBEventMessage::Error {
+                            callback_id,
+                            error_name,
+                            error_message,
+                        } => {
                             if let Some(cb_persistent) = registry.remove(&callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
                                     let err_obj = rquickjs::Object::new(ctx.clone()).unwrap();
@@ -205,28 +242,37 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                                     executed = true;
                                 }
                             }
-                        },
-                        crate::runtime::core::event_loop::IDBEventMessage::UpgradeNeeded { request_callback_id, transaction_id: _, db_name, old_version, new_version } => {
+                        }
+                        crate::runtime::core::event_loop::IDBEventMessage::UpgradeNeeded {
+                            request_callback_id,
+                            transaction_id: _,
+                            db_name,
+                            old_version,
+                            new_version,
+                        } => {
                             if let Some(cb_persistent) = registry.get(&request_callback_id) {
                                 if let Ok(callback) = cb_persistent.clone().restore(&ctx) {
-                                   let db = IDBDatabase {
-                                       name: db_name,
-                                       version: new_version,
-                                       worker_tx: rt.idb_worker.lock().unwrap().tx.clone(),
-                                       observer_registry: rt.observer_registry.clone(),
-                                   };
-                                   if let Ok(db_instance) = Class::instance(ctx.clone(), db) {
-                                       let upgrade_evt = rquickjs::Object::new(ctx.clone()).unwrap();
-                                       let _ = upgrade_evt.set("target", {
-                                           let target = rquickjs::Object::new(ctx.clone()).unwrap();
-                                           let _ = target.set("result", db_instance);
-                                           target
-                                       });
-                                       let _ = upgrade_evt.set("oldVersion", old_version);
-                                       let _ = upgrade_evt.set("newVersion", new_version);
-                                       let _: rquickjs::Result<Value> = callback.call((upgrade_evt,));
-                                       executed = true;
-                                   }
+                                    let db = IDBDatabase {
+                                        name: db_name,
+                                        version: new_version,
+                                        worker_tx: rt.idb_worker.lock().unwrap().tx.clone(),
+                                        observer_registry: rt.observer_registry.clone(),
+                                    };
+                                    if let Ok(db_instance) = Class::instance(ctx.clone(), db) {
+                                        let upgrade_evt =
+                                            rquickjs::Object::new(ctx.clone()).unwrap();
+                                        let _ = upgrade_evt.set("target", {
+                                            let target =
+                                                rquickjs::Object::new(ctx.clone()).unwrap();
+                                            let _ = target.set("result", db_instance);
+                                            target
+                                        });
+                                        let _ = upgrade_evt.set("oldVersion", old_version);
+                                        let _ = upgrade_evt.set("newVersion", new_version);
+                                        let _: rquickjs::Result<Value> =
+                                            callback.call((upgrade_evt,));
+                                        executed = true;
+                                    }
                                 }
                             }
                         }
@@ -245,9 +291,9 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
         let mut el = rt.event_loop.lock().unwrap();
         el.take_pending_tasks()
     };
-    
+
     if !timers.is_empty() {
-            rt.with_context(|ctx| {
+        rt.with_context(|ctx| {
             ctx.with(|ctx| {
                 for timer in timers {
                     if let Ok(func) = timer.callback.0.clone().restore(&ctx) {
@@ -255,15 +301,15 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                         executed = true;
                     }
                 }
-                
+
                 // Run pending jobs AGAIN after timers might have resolved promises
                 while ctx.execute_pending_job() {
                     executed = true;
                 }
             })
-            });
+        });
     }
-            
+
     for task in macros {
         task();
         executed = true;
@@ -282,14 +328,14 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
             ctx.with(|ctx| {
                 for task in idle_tasks {
                     let now = std::time::Instant::now();
-                    
+
                     // Calcular timeRemaining em double (ms)
                     let time_remaining_ms = if frame_deadline > now {
                         frame_deadline.duration_since(now).as_secs_f64() * 1000.0
                     } else {
                         0.0
                     };
-                    
+
                     // Verificar se foi timeout
                     let did_timeout = task.timeout_deadline.map(|d| now >= d).unwrap_or(false);
 
@@ -313,7 +359,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
                         }
                     }
                 }
-                
+
                 // Processar microtasks agendadas pelos idle callbacks
                 while ctx.execute_pending_job() {
                     executed = true;
@@ -390,7 +436,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
     // 5. Layout Observers (Resize & Intersection)
     check_layout_observers(rt);
     check_media_query_changes(rt);
-    
+
     (executed, stylesheet_dirty)
 }
 
@@ -404,7 +450,10 @@ fn check_media_query_changes(rt: &JsRuntime) {
     let mut registry = rt.mql_registry.lock().unwrap();
     for entry in registry.iter_mut() {
         let new_matches = crate::engine::style::matches_media_query(
-            &entry.query, current_vw, current_vh, "light"
+            &entry.query,
+            current_vw,
+            current_vh,
+            "light",
         );
 
         if new_matches != entry.last_matches {
@@ -446,19 +495,19 @@ fn check_layout_observers(rt: &JsRuntime) {
         let intersection_registry = rt.intersection_registry.lock().unwrap();
 
         // Obtém o viewport do Runtime e calcula o retângulo da Câmera (janela de visualização) no mundo
-        // Offset (viewport_y) do Browser_View Slint é tipicamente esticado pro negativo ou positivo 
+        // Offset (viewport_y) do Browser_View Slint é tipicamente esticado pro negativo ou positivo
         let current_viewport_y = *rt.viewport_y.lock().unwrap();
         let viewport = (0.0, -current_viewport_y, 1024.0, 768.0); // Câmera 1024x768 ajustada via Y Scroll
 
         let mut current_rects = HashMap::new();
-        // Diferente do "Primitive", Geometry armazena TODOS IDs validos da page mesmo "invisíveis" 
+        // Diferente do "Primitive", Geometry armazena TODOS IDs validos da page mesmo "invisíveis"
         for (node_idx, geom) in geometry.iter() {
             current_rects.insert(*node_idx, (geom.x, geom.y, geom.width, geom.height));
         }
 
         // Check ResizeObservers
         for (&node_idx, callbacks) in resize_registry.iter() {
-            if let Some(&(cx, cy, cw, ch)) = current_rects.get(&node_idx) {
+            if let Some(&(_cx, _cy, cw, ch)) = current_rects.get(&node_idx) {
                 let prev = layout_states.get(&node_idx).cloned();
                 if prev.is_none() || (prev.unwrap().2 != cw || prev.unwrap().3 != ch) {
                     for cb in callbacks {
@@ -472,12 +521,22 @@ fn check_layout_observers(rt: &JsRuntime) {
         for (&node_idx, observers) in intersection_registry.iter() {
             if let Some(&(cx, cy, cw, ch)) = current_rects.get(&node_idx) {
                 // Calculate intersection area baseando-se no viewport_y Dinâmico
-                let x_overlap = (cx.max(viewport.0)).min(cx + cw).min(viewport.0 + viewport.2) - (cx.max(viewport.0));
-                let y_overlap = (cy.max(viewport.1)).min(cy + ch).min(viewport.1 + viewport.3) - (cy.max(viewport.1));
-                
+                let x_overlap = (cx.max(viewport.0))
+                    .min(cx + cw)
+                    .min(viewport.0 + viewport.2)
+                    - (cx.max(viewport.0));
+                let y_overlap = (cy.max(viewport.1))
+                    .min(cy + ch)
+                    .min(viewport.1 + viewport.3)
+                    - (cy.max(viewport.1));
+
                 let intersection_area = (x_overlap * y_overlap).max(0.0);
                 let total_area = cw * ch;
-                let ratio = if total_area > 0.0 { intersection_area / total_area } else { 0.0 };
+                let ratio = if total_area > 0.0 {
+                    intersection_area / total_area
+                } else {
+                    0.0
+                };
 
                 for (cb, threshold) in observers {
                     if ratio >= *threshold {
@@ -496,14 +555,25 @@ fn check_layout_observers(rt: &JsRuntime) {
             let elem_idx = (proj_key % 1_000_000) as usize;
 
             if let Some(observers) = intersection_registry.get(&elem_idx) {
-                let (gx, gy, gw, gh) = (proj_geom.x, proj_geom.y, proj_geom.width, proj_geom.height);
+                let (gx, gy, gw, gh) =
+                    (proj_geom.x, proj_geom.y, proj_geom.width, proj_geom.height);
 
                 // Interseção com o viewport do frame pai
-                let x_overlap = (gx.max(viewport.0)).min(gx + gw).min(viewport.0 + viewport.2) - (gx.max(viewport.0));
-                let y_overlap = (gy.max(viewport.1)).min(gy + gh).min(viewport.1 + viewport.3) - (gy.max(viewport.1));
+                let x_overlap = (gx.max(viewport.0))
+                    .min(gx + gw)
+                    .min(viewport.0 + viewport.2)
+                    - (gx.max(viewport.0));
+                let y_overlap = (gy.max(viewport.1))
+                    .min(gy + gh)
+                    .min(viewport.1 + viewport.3)
+                    - (gy.max(viewport.1));
                 let intersection_area = (x_overlap * y_overlap).max(0.0);
                 let total_area = gw * gh;
-                let ratio = if total_area > 0.0 { intersection_area / total_area } else { 0.0 };
+                let ratio = if total_area > 0.0 {
+                    intersection_area / total_area
+                } else {
+                    0.0
+                };
 
                 for (cb, threshold) in observers {
                     if ratio >= *threshold {
@@ -531,10 +601,10 @@ fn check_layout_observers(rt: &JsRuntime) {
                         let _ = rect.set("width", w);
                         let _ = rect.set("height", h);
                         let _ = entry.set("contentRect", rect);
-                        
+
                         let target = wrap_element(rt, node_idx, &ctx);
                         let _ = entry.set("target", target);
-                        
+
                         let arr = rquickjs::Array::new(ctx.clone()).unwrap();
                         let _ = arr.set(0, entry);
                         let _: rquickjs::Result<Value> = cb.call((arr,));
@@ -547,7 +617,7 @@ fn check_layout_observers(rt: &JsRuntime) {
                         let entry = rquickjs::Object::new(ctx.clone()).unwrap();
                         let _ = entry.set("intersectionRatio", ratio);
                         let _ = entry.set("isIntersecting", ratio > 0.0);
-                        
+
                         let target = wrap_element(rt, node_idx, &ctx);
                         let _ = entry.set("target", target);
 

@@ -11,7 +11,7 @@ mod table_colspan_tests {
     #[test]
     fn test_table_simple() {
         let mut engine = AceEngine::new();
-        
+
         let html = r#"
             <html>
             <body>
@@ -28,17 +28,17 @@ mod table_colspan_tests {
             </body>
             </html>
         "#;
-        
+
         engine.load_html(html);
         engine.layout(800.0, 600.0);
-        
+
         println!("✓ Simple table layout successful");
     }
 
     #[test]
     fn test_table_colspan() {
         let mut engine = AceEngine::new();
-        
+
         let html = r#"
             <html>
             <body>
@@ -54,17 +54,17 @@ mod table_colspan_tests {
             </body>
             </html>
         "#;
-        
+
         engine.load_html(html);
         engine.layout(800.0, 600.0);
-        
+
         println!("✓ Table with colspan layout successful");
     }
 
     #[test]
     fn test_table_rowspan() {
         let mut engine = AceEngine::new();
-        
+
         let html = r#"
             <html>
             <body>
@@ -80,17 +80,17 @@ mod table_colspan_tests {
             </body>
             </html>
         "#;
-        
+
         engine.load_html(html);
         engine.layout(800.0, 600.0);
-        
+
         println!("✓ Table with rowspan layout successful");
     }
 
     #[test]
     fn test_table_colspan_rowspan_combined() {
         let mut engine = AceEngine::new();
-        
+
         let html = r#"
             <html>
             <body>
@@ -111,17 +111,17 @@ mod table_colspan_tests {
             </body>
             </html>
         "#;
-        
+
         engine.load_html(html);
         engine.layout(800.0, 600.0);
-        
+
         println!("✓ Table with combined colspan/rowspan layout successful");
     }
 
     #[test]
     fn test_table_with_thead_tbody() {
         let mut engine = AceEngine::new();
-        
+
         let html = r#"
             <html>
             <body>
@@ -141,10 +141,10 @@ mod table_colspan_tests {
             </body>
             </html>
         "#;
-        
+
         engine.load_html(html, "http://test.com");
         engine.layout(800.0, 600.0);
-        
+
         println!("✓ Table with thead/tbody and colspan layout successful");
     }
     */

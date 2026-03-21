@@ -1,8 +1,8 @@
+use hex::encode as hex_encode;
+use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use rusqlite::{Connection, params};
-use hex::encode as hex_encode;
-use sha2::{Sha256, Digest};
 
 /// Compression method for cached resources
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,39 +117,55 @@ impl DiskCache {
     }
 
     /// Get cached resource by URL
-    pub fn get(&self, url: &str) -> Result<Option<(CacheEntry, Vec<u8>)>, Box<dyn std::error::Error>> {
+    pub fn get(
+        &self,
+        url: &str,
+    ) -> Result<Option<(CacheEntry, Vec<u8>)>, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
             "SELECT url, etag, cache_control, last_modified, expires, content_type, 
                     status_code, original_size, compressed_size, compression, file_hash, 
                     timestamp, last_accessed, access_count 
-             FROM cache_entries WHERE url = ?1"
+             FROM cache_entries WHERE url = ?1",
         )?;
 
         let result = stmt.query_row([url], |row| {
             Ok((
-                row.get::<_, String>(0)?,   // url
+                row.get::<_, String>(0)?,         // url
                 row.get::<_, Option<String>>(1)?, // etag
                 row.get::<_, Option<String>>(2)?, // cache_control
                 row.get::<_, Option<String>>(3)?, // last_modified
                 row.get::<_, Option<String>>(4)?, // expires
-                row.get::<_, String>(5)?,   // content_type
-                row.get::<_, u16>(6)?,      // status_code
-                row.get::<_, usize>(7)?,    // original_size
-                row.get::<_, usize>(8)?,    // compressed_size
-                row.get::<_, String>(9)?,   // compression
-                row.get::<_, String>(10)?,  // file_hash
-                row.get::<_, u64>(11)?,     // timestamp
-                row.get::<_, u64>(12)?,     // last_accessed
-                row.get::<_, u32>(13)?,     // access_count
+                row.get::<_, String>(5)?,         // content_type
+                row.get::<_, u16>(6)?,            // status_code
+                row.get::<_, usize>(7)?,          // original_size
+                row.get::<_, usize>(8)?,          // compressed_size
+                row.get::<_, String>(9)?,         // compression
+                row.get::<_, String>(10)?,        // file_hash
+                row.get::<_, u64>(11)?,           // timestamp
+                row.get::<_, u64>(12)?,           // last_accessed
+                row.get::<_, u32>(13)?,           // access_count
             ))
         });
 
         match result {
-            Ok((url, etag, cache_control, last_modified, expires, content_type, 
-                status_code, original_size, compressed_size, compression, file_hash, 
-                timestamp, last_accessed, access_count)) => {
+            Ok((
+                url,
+                etag,
+                cache_control,
+                last_modified,
+                expires,
+                content_type,
+                status_code,
+                original_size,
+                compressed_size,
+                compression,
+                file_hash,
+                timestamp,
+                last_accessed,
+                access_count,
+            )) => {
                 // Read file from disk
                 let file_path = self.content_dir.join(&file_hash);
                 let data = std::fs::read(&file_path)?;
@@ -210,7 +226,12 @@ impl DiskCache {
         // Generate hash for file storage
         let mut hasher = Sha256::new();
         hasher.update(url.as_bytes());
-        hasher.update(SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos().to_le_bytes());
+        hasher.update(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)?
+                .as_nanos()
+                .to_le_bytes(),
+        );
         let file_hash = hex_encode(hasher.finalize());
 
         // Write compressed data to disk
@@ -219,9 +240,7 @@ impl DiskCache {
 
         // Store metadata in database
         let conn = self.conn.lock().unwrap();
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_secs();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
         conn.execute(
             "INSERT OR REPLACE INTO cache_entries 
@@ -256,11 +275,9 @@ impl DiskCache {
     /// Check if entry exists and is valid
     pub fn exists(&self, url: &str) -> Result<bool, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().unwrap();
-        let exists = conn.query_row(
-            "SELECT 1 FROM cache_entries WHERE url = ?1",
-            [url],
-            |_| Ok(()),
-        );
+        let exists = conn.query_row("SELECT 1 FROM cache_entries WHERE url = ?1", [url], |_| {
+            Ok(())
+        });
 
         Ok(exists.is_ok())
     }
@@ -287,20 +304,15 @@ impl DiskCache {
     /// Clear entries older than specified days
     pub fn clear_old_entries(&self, days: u64) -> Result<u64, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().unwrap();
-        let cutoff_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_secs() - (days * 86400);
+        let cutoff_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() - (days * 86400);
 
         // Get files to delete
-        let mut stmt = conn.prepare(
-            "SELECT file_hash FROM cache_entries WHERE timestamp < ?1"
-        )?;
-        
-        let file_hashes: Vec<String> = stmt.query_map([cutoff_time], |row| {
-            row.get(0)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let mut stmt = conn.prepare("SELECT file_hash FROM cache_entries WHERE timestamp < ?1")?;
+
+        let file_hashes: Vec<String> = stmt
+            .query_map([cutoff_time], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
 
         // Delete database entries
         let deleted = conn.execute(
@@ -322,22 +334,17 @@ impl DiskCache {
         let conn = self.conn.lock().unwrap();
 
         // Get files to delete (all URLs matching origin)
-        let mut stmt = conn.prepare(
-            "SELECT file_hash FROM cache_entries WHERE url LIKE ?1"
-        )?;
-        
+        let mut stmt = conn.prepare("SELECT file_hash FROM cache_entries WHERE url LIKE ?1")?;
+
         let pattern = format!("{}%", origin);
-        let file_hashes: Vec<String> = stmt.query_map([pattern.clone()], |row| {
-            row.get(0)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let file_hashes: Vec<String> = stmt
+            .query_map([pattern.clone()], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
 
         // Delete database entries
-        let deleted = conn.execute(
-            "DELETE FROM cache_entries WHERE url LIKE ?1",
-            [pattern],
-        )? as u64;
+        let deleted =
+            conn.execute("DELETE FROM cache_entries WHERE url LIKE ?1", [pattern])? as u64;
 
         // Delete files
         for hash in file_hashes {
@@ -351,25 +358,19 @@ impl DiskCache {
     /// Get cache statistics
     pub fn get_stats(&self) -> Result<(u64, u32, u64), Box<dyn std::error::Error>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT COUNT(*), SUM(compressed_size) FROM cache_entries"
-        )?;
+        let mut stmt = conn.prepare("SELECT COUNT(*), SUM(compressed_size) FROM cache_entries")?;
 
-        let (count, total_size): (u32, Option<u64>) = stmt.query_row([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
+        let (count, total_size): (u32, Option<u64>) =
+            stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         Ok((total_size.unwrap_or(0), count, self.max_size_bytes))
     }
 
     fn evict_if_needed(&self, conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
         // Check total size
-        let mut stmt = conn.prepare(
-            "SELECT SUM(compressed_size) FROM cache_entries"
-        )?;
-        let total_size: u64 = stmt.query_row([], |row| {
-            Ok(row.get::<_, Option<u64>>(0)?.unwrap_or(0))
-        })?;
+        let mut stmt = conn.prepare("SELECT SUM(compressed_size) FROM cache_entries")?;
+        let total_size: u64 =
+            stmt.query_row([], |row| Ok(row.get::<_, Option<u64>>(0)?.unwrap_or(0)))?;
 
         if total_size > self.max_size_bytes {
             // Evict LRU entries until we're under the limit
@@ -377,14 +378,13 @@ impl DiskCache {
 
             let mut stmt = conn.prepare(
                 "SELECT file_hash, compressed_size FROM cache_entries 
-                 ORDER BY last_accessed ASC"
+                 ORDER BY last_accessed ASC",
             )?;
 
-            let to_delete: Vec<(String, u64)> = stmt.query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?
-            .filter_map(|r| r.ok())
-            .collect();
+            let to_delete: Vec<(String, u64)> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .filter_map(|r| r.ok())
+                .collect();
 
             let mut current_size = total_size;
             for (file_hash, size) in to_delete {
@@ -418,7 +418,8 @@ pub fn compress_data(
     match method {
         CompressionMethod::None => Ok(data.to_vec()),
         CompressionMethod::Gzip => {
-            let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
             use std::io::Write;
             encoder.write_all(data)?;
             Ok(encoder.finish()?)
@@ -429,9 +430,7 @@ pub fn compress_data(
             writer.write_all(data)?;
             Ok(writer.into_inner())
         }
-        CompressionMethod::Zstd => {
-            Ok(zstd::encode_all(data, 3)?)
-        }
+        CompressionMethod::Zstd => Ok(zstd::encode_all(data, 3)?),
     }
 }
 
@@ -456,9 +455,7 @@ pub fn decompress_data(
             reader.read_to_end(&mut result)?;
             Ok(result)
         }
-        CompressionMethod::Zstd => {
-            Ok(zstd::decode_all(data)?)
-        }
+        CompressionMethod::Zstd => Ok(zstd::decode_all(data)?),
     }
 }
 

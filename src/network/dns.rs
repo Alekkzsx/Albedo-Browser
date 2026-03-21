@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 use std::net::ToSocketAddrs;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 /// Service for pre-resolving DNS domains
@@ -40,12 +40,12 @@ impl DnsPrefetcher {
         // Simple heuristic to find domains (very basic)
         // In a real browser, the HTML parser would trigger this for links
         // finding strings like "example.com" or "https://example.com"
-        
+
         let mut start = 0;
         while let Some(idx) = text[start..].find("://") {
             let protocol_end = start + idx + 3;
             if let Some(end) = text[protocol_end..].find(&['/', '"', '\'', ' ', '<', '>'][..]) {
-                let hostname = &text[protocol_end..protocol_end+end];
+                let hostname = &text[protocol_end..protocol_end + end];
                 if !hostname.is_empty() {
                     self.prefetch(hostname.to_string());
                 }

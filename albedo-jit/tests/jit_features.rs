@@ -1,6 +1,7 @@
 use albedo_jit::{
-    AirBuilder, AirOpcode, JsValue, AlbedoJitEngine, Tier2Compiler,
-    runtime_helpers, object_model, builtins::BuiltinId, air_interpreter::{AirInterpreter, OsrManager},
+    air_interpreter::{AirInterpreter, OsrManager},
+    builtins::BuiltinId,
+    object_model, runtime_helpers, AirBuilder, AirOpcode, AlbedoJitEngine, JsValue, Tier2Compiler,
 };
 
 #[test]
@@ -20,11 +21,8 @@ fn test_deopt_type_change() {
         ic_slot = *s;
     }
     for _ in 0..64 {
-        let _ = runtime_helpers::js_add_ic(
-            JsValue::int32(1).0,
-            JsValue::int32(2).0,
-            ic_slot as u64,
-        );
+        let _ =
+            runtime_helpers::js_add_ic(JsValue::int32(1).0, JsValue::int32(2).0, ic_slot as u64);
     }
 
     let mut compiler = Tier2Compiler::new(&mut engine);
@@ -86,7 +84,12 @@ fn test_builtins_math_array_string_json() {
     // Math.sqrt
     let func = JsValue::builtin(BuiltinId::MathSqrt as u64);
     let args = [JsValue::float64(9.0).0];
-    let res = JsValue(runtime_helpers::js_call_ic(func.0, args.as_ptr() as u64, 1, 0));
+    let res = JsValue(runtime_helpers::js_call_ic(
+        func.0,
+        args.as_ptr() as u64,
+        1,
+        0,
+    ));
     assert!(res.is_float64());
     assert_eq!(res.as_float64(), 3.0);
 
@@ -94,12 +97,22 @@ fn test_builtins_math_array_string_json() {
     let arr = object_model::alloc_array();
     let push = JsValue::builtin(BuiltinId::ArrayPush as u64);
     let args_push = [arr.0, JsValue::int32(10).0, JsValue::int32(20).0];
-    let len = JsValue(runtime_helpers::js_call_ic(push.0, args_push.as_ptr() as u64, 3, 0));
+    let len = JsValue(runtime_helpers::js_call_ic(
+        push.0,
+        args_push.as_ptr() as u64,
+        3,
+        0,
+    ));
     assert_eq!(len.as_int32(), 2);
 
     let pop = JsValue::builtin(BuiltinId::ArrayPop as u64);
     let args_pop = [arr.0];
-    let v = JsValue(runtime_helpers::js_call_ic(pop.0, args_pop.as_ptr() as u64, 1, 0));
+    let v = JsValue(runtime_helpers::js_call_ic(
+        pop.0,
+        args_pop.as_ptr() as u64,
+        1,
+        0,
+    ));
     assert_eq!(v.as_int32(), 20);
 
     // String.charAt
@@ -107,7 +120,12 @@ fn test_builtins_math_array_string_json() {
     let s_val = JsValue::string(s_id as u64);
     let char_at = JsValue::builtin(BuiltinId::StringCharAt as u64);
     let args_char = [s_val.0, JsValue::int32(1).0];
-    let c = JsValue(runtime_helpers::js_call_ic(char_at.0, args_char.as_ptr() as u64, 2, 0));
+    let c = JsValue(runtime_helpers::js_call_ic(
+        char_at.0,
+        args_char.as_ptr() as u64,
+        2,
+        0,
+    ));
     let c_str = object_model::get_string(c.as_string_id() as u32).unwrap();
     assert_eq!(c_str, "l");
 
@@ -116,7 +134,12 @@ fn test_builtins_math_array_string_json() {
     let json_val = JsValue::string(json as u64);
     let json_parse = JsValue::builtin(BuiltinId::JsonParse as u64);
     let args_json = [json_val.0];
-    let obj = JsValue(runtime_helpers::js_call_ic(json_parse.0, args_json.as_ptr() as u64, 1, 0));
+    let obj = JsValue(runtime_helpers::js_call_ic(
+        json_parse.0,
+        args_json.as_ptr() as u64,
+        1,
+        0,
+    ));
     let key_a = object_model::intern_string("a".to_string());
     let a_val = object_model::get_prop(obj, JsValue::string(key_a as u64));
     assert_eq!(a_val.as_int32(), 2);

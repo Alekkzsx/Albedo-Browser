@@ -3,14 +3,14 @@
 //! Armazena e gerencia o ciclo de vida do código de máquina gerado pelo JIT.
 //! Indexado por `FunctionId`, permitindo lookup rápido e invalidação de código.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use parking_lot::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cranelift_module::FuncId;
 use crate::profiler::FunctionId;
+use cranelift_module::FuncId;
 
 /// Tiers de compilação do AlbedoJIT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub enum JitTier {
     /// Compilação rápida sem otimizações (Baseline).
     Baseline,
     /// Compilação otimizada com inferência de tipos (AlbedoTurbo).
-    Optimized,
+    AlbedoTurbo,
 }
 
 /// Entrada no Code Cache contendo o código compilado e metadados.
@@ -115,7 +115,7 @@ impl CodeCache {
                 return Some(Arc::clone(entry));
             }
         }
-        
+
         self.misses.fetch_add(1, Ordering::Relaxed);
         None
     }
@@ -124,10 +124,10 @@ impl CodeCache {
     pub fn insert(&self, entry: CachedCode) {
         let size = entry.code_size_bytes as u64;
         let id = entry.func_id.clone();
-        
+
         let mut entries = self.entries.write();
         entries.insert(id, Arc::new(entry));
-        
+
         self.insertions.fetch_add(1, Ordering::Relaxed);
         self.total_code_bytes.fetch_add(size, Ordering::Relaxed);
     }
@@ -193,13 +193,7 @@ mod tests {
         let dummy_ptr = 0x1234 as *const u8;
         let cranelift_id = FuncId::from_u32(0);
 
-        let entry = CachedCode::new(
-            id.clone(),
-            dummy_ptr,
-            cranelift_id,
-            128,
-            JitTier::Baseline,
-        );
+        let entry = CachedCode::new(id.clone(), dummy_ptr, cranelift_id, 128, JitTier::Baseline);
 
         cache.insert(entry);
         assert_eq!(cache.len(), 1);
@@ -223,7 +217,7 @@ mod tests {
     fn test_cache_invalidation() {
         let cache = CodeCache::new();
         let id = FunctionId("volatile".into());
-        
+
         cache.insert(CachedCode::new(
             id.clone(),
             0x1 as *const u8,
@@ -242,8 +236,14 @@ mod tests {
     #[test]
     fn test_execution_counter() {
         let id = FunctionId("counter".into());
-        let entry = CachedCode::new(id, 0x1 as *const u8, FuncId::from_u32(0), 10, JitTier::Baseline);
-        
+        let entry = CachedCode::new(
+            id,
+            0x1 as *const u8,
+            FuncId::from_u32(0),
+            10,
+            JitTier::Baseline,
+        );
+
         assert_eq!(entry.increment_execution(), 1);
         assert_eq!(entry.increment_execution(), 2);
         assert_eq!(entry.execution_count.load(Ordering::Relaxed), 2);
