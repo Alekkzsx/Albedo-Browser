@@ -2,8 +2,8 @@
 //!
 //! Implementações nativas para Math.*, Array.push/pop, String.charAt, JSON.parse.
 
-use crate::js_value::JsValue;
-use crate::object_model;
+use crate::runtime::js_value::JsValue;
+use crate::runtime::object_model;
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

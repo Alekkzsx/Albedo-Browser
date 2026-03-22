@@ -5,9 +5,9 @@
 use parking_lot::RwLock;
 use std::sync::{Arc, OnceLock};
 
-use crate::air_interpreter::AirInterpreter;
+use crate::compiler::air_interpreter::AirInterpreter;
 use crate::bytecode::AirFunction;
-use crate::js_value::JsValue;
+use crate::runtime::js_value::JsValue;
 
 #[derive(Debug, Clone)]
 pub struct DeoptPoint {

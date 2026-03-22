@@ -5,10 +5,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::baseline_compiler::BaselineCompiler;
+    use crate::compiler::baseline_compiler::BaselineCompiler;
     use crate::decoder::{QjsBytecodeFunction, QjsOpcode, StackToRegisterTranslator};
-    use crate::jit_engine::AlbedoJitEngine;
-    use crate::js_value::JsValue;
+    use crate::engine::jit_engine::AlbedoJitEngine;
+    use crate::runtime::js_value::JsValue;
 
     /// Helper para compilar e executar uma função JIT com 1 argumento.
     fn jit_run_1(qjs_func: QjsBytecodeFunction, arg: JsValue) -> JsValue {

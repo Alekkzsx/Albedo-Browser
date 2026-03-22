@@ -6,11 +6,11 @@ use hashbrown::HashMap;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-use crate::baseline_compiler::BaselineCompiler;
-use crate::code_cache::CachedCode;
+use crate::compiler::baseline_compiler::BaselineCompiler;
+use crate::compiler::code_cache::CachedCode;
 use crate::decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
-use crate::jit_engine::{AlbedoJitEngine, JitError};
-use crate::profiler::{FunctionId, JitProfiler};
+use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
+use crate::engine::profiler::{FunctionId, JitProfiler};
 use cranelift_codegen::ir::{types::I64, AbiParam};
 use cranelift_module::Module;
 
@@ -114,7 +114,7 @@ impl JitBridge {
                             native_ptr,
                             func_id,
                             128, // Placeholder size
-                            crate::code_cache::JitTier::Baseline,
+                            crate::compiler::code_cache::JitTier::Baseline,
                         );
                         engine.code_cache.insert(entry);
 
@@ -222,7 +222,7 @@ impl JitBridge {
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::tier2_compiler::Tier2Compiler::new(&mut engine);
+            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine);
 
             // Compilação OSR (Tier 2)
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
@@ -234,7 +234,7 @@ impl JitBridge {
                         ptr,
                         func_id,
                         256,
-                        crate::code_cache::JitTier::AlbedoTurbo, // Tier 2
+                        crate::compiler::code_cache::JitTier::AlbedoTurbo, // Tier 2
                     );
                     engine.code_cache.insert(entry);
                     return Some(ptr);
@@ -256,7 +256,7 @@ impl JitBridge {
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::tier2_compiler::Tier2Compiler::new(&mut engine);
+            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine);
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
                 Ok(ptr) => {
                     let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
@@ -265,7 +265,7 @@ impl JitBridge {
                         ptr,
                         func_id,
                         256,
-                        crate::code_cache::JitTier::AlbedoTurbo,
+                        crate::compiler::code_cache::JitTier::AlbedoTurbo,
                     );
                     engine.code_cache.insert(entry);
                     return Some(ptr);
@@ -301,8 +301,8 @@ mod tests {
     use super::*;
     use crate::bytecode::{AirBuilder, AirOpcode, AirReg, AirTerminator};
     use crate::decoder::QjsOpcode;
-    use crate::js_value::JsValue;
-    use crate::profiler::ProfilerConfig;
+    use crate::runtime::js_value::JsValue;
+    use crate::engine::profiler::ProfilerConfig;
 
     #[test]
     fn test_bridge_e2e_flow() {

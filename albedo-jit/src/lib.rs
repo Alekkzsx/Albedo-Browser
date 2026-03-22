@@ -11,36 +11,31 @@
 //! O QuickJS continua como interpretador base. O AlbedoJIT compila hot paths
 //! para código de máquina nativo, acelerando funções executadas repetidamente.
 
-pub mod air_interpreter;
-pub mod baseline_compiler;
-pub mod builtins;
+pub mod compiler;
+pub mod runtime;
+pub mod engine;
+pub mod infra;
 pub mod bytecode;
-pub mod code_cache;
 pub mod decoder;
-pub mod deopt;
-pub mod executable_memory;
-pub mod fast_builtins;
-pub mod jit_bridge;
-pub mod jit_engine;
-pub mod js_value;
-pub mod object_model;
-pub mod profiler;
-pub mod runtime_helpers;
-pub mod tier2_compiler;
-pub mod type_feedback;
 
-// Re-exports públicos
+// Re-exports públicos para manter compatibilidade
 pub use bytecode::{AirBuilder, AirFunction, AirOpcode};
 #[cfg(test)]
 mod jit_equivalence_tests;
-pub use baseline_compiler::BaselineCompiler;
-pub use builtins::BuiltinId;
-pub use code_cache::{CacheStatsSnapshot, CachedCode, CodeCache, JitTier};
+
+pub use compiler::baseline_compiler::BaselineCompiler;
+pub use compiler::tier2_compiler::Tier2Compiler;
+pub use compiler::code_cache::{CacheStatsSnapshot, CachedCode, CodeCache, JitTier};
+pub use compiler::deopt::{DeoptMeta, DeoptPoint};
+
+pub use runtime::js_value::JsValue;
+pub use runtime::builtins::BuiltinId;
+
+pub use engine::jit_engine::AlbedoJitEngine;
+pub use engine::jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
+pub use engine::profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
+
+pub use infra::executable_memory::{CodePool, CodePoolStats, CodeRegion};
+
 pub use decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
-pub use deopt::{DeoptMeta, DeoptPoint};
-pub use executable_memory::{CodePool, CodePoolStats, CodeRegion};
-pub use jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
-pub use jit_engine::AlbedoJitEngine;
-pub use js_value::JsValue;
-pub use profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
-pub use tier2_compiler::Tier2Compiler;
+

@@ -1344,7 +1344,7 @@
   [x]  2.5  On-Stack Replacement (OSR) — tier-up dentro de loops
              → Se um loop longo está rodando no Tier 0, compilar o loop body
                para Tier 2 e transferir a execução mid-loop para código nativo
-  [ ]  2.6  Builtins rápidos: Math.*, Array.push/pop, String.charAt, JSON.parse
+  [x]  2.6  Builtins rápidos: Math.*, Array.push/pop, String.charAt, JSON.parse
              → Implementar em Rust puro com chamada direta (sem passa pelo JS)
   [ ]  2.7  Testes: type specialization correctness
              → Testar deopt: função que muda tipos no meio da execução

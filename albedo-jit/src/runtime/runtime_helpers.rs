@@ -7,10 +7,10 @@
 //! Apenas quando formos para o Tier 2 substituiremos as chamadas CALL
 //! por instruções CPU nativas (FADD, IADD) via Type Specialization.
 
-use crate::builtins::{call_builtin, BuiltinId};
-use crate::js_value::{JsValue, TAG_MASK};
-use crate::object_model;
-use crate::type_feedback::TypeFeedbackRegistry;
+use crate::runtime::builtins::{call_builtin, BuiltinId};
+use crate::runtime::js_value::{JsValue, TAG_MASK};
+use crate::runtime::object_model;
+use crate::runtime::type_feedback::TypeFeedbackRegistry;
 
 // ---------------------------------------------------------------------------
 // Helpers Aritméticos

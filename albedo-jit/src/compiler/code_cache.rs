@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::profiler::FunctionId;
+use crate::engine::profiler::FunctionId;
 use cranelift_module::FuncId;
 
 /// Tiers de compilação do AlbedoJIT.

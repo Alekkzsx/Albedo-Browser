@@ -6,9 +6,9 @@
 //! Este módulo é o coração do AlbedoJIT. Ele inicializa o backend Cranelift,
 //! compila funções para código nativo e gerencia o cache de código compilado.
 
-use crate::code_cache::{CachedCode, CodeCache, JitTier};
-use crate::executable_memory::{CodePool, CodePoolStats, MemoryError};
-use crate::profiler::FunctionId;
+use crate::compiler::code_cache::{CachedCode, CodeCache, JitTier};
+use crate::infra::executable_memory::{CodePool, CodePoolStats, MemoryError};
+use crate::engine::profiler::FunctionId;
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, Function, InstBuilder, UserFuncName};
 use cranelift_codegen::settings::{self, Configurable};
@@ -102,99 +102,224 @@ impl AlbedoJitEngine {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
         // Registrar as C-ABI helper functions do runtime para serem resolvidas pelo JIT Module
-        builder.symbol("js_add", crate::runtime_helpers::js_add as *const u8);
-        builder.symbol("js_add_ic", crate::runtime_helpers::js_add_ic as *const u8);
-        builder.symbol("js_sub", crate::runtime_helpers::js_sub as *const u8);
-        builder.symbol("js_mul", crate::runtime_helpers::js_mul as *const u8);
+        builder.symbol("js_add", crate::runtime::runtime_helpers::js_add as *const u8);
+        builder.symbol("js_add_ic", crate::runtime::runtime_helpers::js_add_ic as *const u8);
+        builder.symbol("js_sub", crate::runtime::runtime_helpers::js_sub as *const u8);
+        builder.symbol("js_mul", crate::runtime::runtime_helpers::js_mul as *const u8);
         builder.symbol(
             "js_strict_eq",
-            crate::runtime_helpers::js_strict_eq as *const u8,
+            crate::runtime::runtime_helpers::js_strict_eq as *const u8,
         );
-        builder.symbol("js_eq", crate::runtime_helpers::js_eq as *const u8);
-        builder.symbol("js_lt", crate::runtime_helpers::js_lt as *const u8);
+        builder.symbol("js_eq", crate::runtime::runtime_helpers::js_eq as *const u8);
+        builder.symbol("js_lt", crate::runtime::runtime_helpers::js_lt as *const u8);
         builder.symbol(
             "js_to_bool",
-            crate::runtime_helpers::js_to_bool as *const u8,
+            crate::runtime::runtime_helpers::js_to_bool as *const u8,
         );
         builder.symbol(
             "js_get_prop_ic",
-            crate::runtime_helpers::js_get_prop_ic as *const u8,
+            crate::runtime::runtime_helpers::js_get_prop_ic as *const u8,
         );
         builder.symbol(
             "js_call_ic",
-            crate::runtime_helpers::js_call_ic as *const u8,
+            crate::runtime::runtime_helpers::js_call_ic as *const u8,
         );
         builder.symbol(
             "js_create_obj",
-            crate::runtime_helpers::js_create_obj as *const u8,
+            crate::runtime::runtime_helpers::js_create_obj as *const u8,
         );
         builder.symbol(
             "js_create_array",
-            crate::runtime_helpers::js_create_array as *const u8,
+            crate::runtime::runtime_helpers::js_create_array as *const u8,
         );
         builder.symbol(
             "js_set_prop",
-            crate::runtime_helpers::js_set_prop as *const u8,
+            crate::runtime::runtime_helpers::js_set_prop as *const u8,
         );
         builder.symbol(
             "js_deopt_bailout",
-            crate::deopt::js_deopt_bailout as *const u8,
+            crate::compiler::deopt::js_deopt_bailout as *const u8,
         );
         builder.symbol(
             "js_has_prop",
-            crate::object_model::has_prop as *const u8,
+            crate::runtime::object_model::has_prop as *const u8,
         );
         builder.symbol(
             "js_delete_prop",
-            crate::object_model::delete_prop as *const u8,
+            crate::runtime::object_model::delete_prop as *const u8,
         );
         builder.symbol(
             "js_type_of",
-            crate::runtime_helpers::js_type_of as *const u8,
+            crate::runtime::runtime_helpers::js_type_of as *const u8,
         );
         builder.symbol(
             "js_instance_of",
-            crate::runtime_helpers::js_instance_of as *const u8,
+            crate::runtime::runtime_helpers::js_instance_of as *const u8,
         );
 
         // Builtins Rápidos (Fase 1)
         builder.symbol(
             "fast_math_abs",
-            crate::fast_builtins::fast_math_abs as *const u8,
+            crate::runtime::fast_builtins::fast_math_abs as *const u8,
         );
         builder.symbol(
             "fast_math_sqrt",
-            crate::fast_builtins::fast_math_sqrt as *const u8,
+            crate::runtime::fast_builtins::fast_math_sqrt as *const u8,
         );
         builder.symbol(
             "fast_math_floor",
-            crate::fast_builtins::fast_math_floor as *const u8,
+            crate::runtime::fast_builtins::fast_math_floor as *const u8,
         );
         builder.symbol(
             "fast_math_ceil",
-            crate::fast_builtins::fast_math_ceil as *const u8,
+            crate::runtime::fast_builtins::fast_math_ceil as *const u8,
         );
+        builder.symbol(
+            "fast_math_acos",
+            crate::runtime::fast_builtins::fast_math_acos as *const u8,
+        );
+        builder.symbol(
+            "fast_math_acosh",
+            crate::runtime::fast_builtins::fast_math_acosh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_asin",
+            crate::runtime::fast_builtins::fast_math_asin as *const u8,
+        );
+        builder.symbol(
+            "fast_math_asinh",
+            crate::runtime::fast_builtins::fast_math_asinh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_atan",
+            crate::runtime::fast_builtins::fast_math_atan as *const u8,
+        );
+        builder.symbol(
+            "fast_math_atan2",
+            crate::runtime::fast_builtins::fast_math_atan2 as *const u8,
+        );
+        builder.symbol(
+            "fast_math_atanh",
+            crate::runtime::fast_builtins::fast_math_atanh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_cos",
+            crate::runtime::fast_builtins::fast_math_cos as *const u8,
+        );
+        builder.symbol(
+            "fast_math_cosh",
+            crate::runtime::fast_builtins::fast_math_cosh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_sin",
+            crate::runtime::fast_builtins::fast_math_sin as *const u8,
+        );
+        builder.symbol(
+            "fast_math_sinh",
+            crate::runtime::fast_builtins::fast_math_sinh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_tan",
+            crate::runtime::fast_builtins::fast_math_tan as *const u8,
+        );
+        builder.symbol(
+            "fast_math_tanh",
+            crate::runtime::fast_builtins::fast_math_tanh as *const u8,
+        );
+        builder.symbol(
+            "fast_math_exp",
+            crate::runtime::fast_builtins::fast_math_exp as *const u8,
+        );
+        builder.symbol(
+            "fast_math_expm1",
+            crate::runtime::fast_builtins::fast_math_expm1 as *const u8,
+        );
+        builder.symbol(
+            "fast_math_log",
+            crate::runtime::fast_builtins::fast_math_log as *const u8,
+        );
+        builder.symbol(
+            "fast_math_log1p",
+            crate::runtime::fast_builtins::fast_math_log1p as *const u8,
+        );
+        builder.symbol(
+            "fast_math_log10",
+            crate::runtime::fast_builtins::fast_math_log10 as *const u8,
+        );
+        builder.symbol(
+            "fast_math_log2",
+            crate::runtime::fast_builtins::fast_math_log2 as *const u8,
+        );
+        builder.symbol(
+            "fast_math_cbrt",
+            crate::runtime::fast_builtins::fast_math_cbrt as *const u8,
+        );
+        builder.symbol(
+            "fast_math_clz32",
+            crate::runtime::fast_builtins::fast_math_clz32 as *const u8,
+        );
+        builder.symbol(
+            "fast_math_fround",
+            crate::runtime::fast_builtins::fast_math_fround as *const u8,
+        );
+        builder.symbol(
+            "fast_math_hypot",
+            crate::runtime::fast_builtins::fast_math_hypot as *const u8,
+        );
+        builder.symbol(
+            "fast_math_imul",
+            crate::runtime::fast_builtins::fast_math_imul as *const u8,
+        );
+        builder.symbol(
+            "fast_math_pow",
+            crate::runtime::fast_builtins::fast_math_pow as *const u8,
+        );
+        builder.symbol(
+            "fast_math_random",
+            crate::runtime::fast_builtins::fast_math_random as *const u8,
+        );
+        builder.symbol(
+            "fast_math_round",
+            crate::runtime::fast_builtins::fast_math_round as *const u8,
+        );
+        builder.symbol(
+            "fast_math_sign",
+            crate::runtime::fast_builtins::fast_math_sign as *const u8,
+        );
+        builder.symbol(
+            "fast_math_trunc",
+            crate::runtime::fast_builtins::fast_math_trunc as *const u8,
+        );
+        builder.symbol(
+            "fast_math_max",
+            crate::runtime::fast_builtins::fast_math_max as *const u8,
+        );
+        builder.symbol(
+            "fast_math_min",
+            crate::runtime::fast_builtins::fast_math_min as *const u8,
+        );
+
 
         builder.symbol(
             "fast_array_push",
-            crate::fast_builtins::fast_array_push as *const u8,
+            crate::runtime::fast_builtins::fast_array_push as *const u8,
         );
         builder.symbol(
             "fast_array_pop",
-            crate::fast_builtins::fast_array_pop as *const u8,
+            crate::runtime::fast_builtins::fast_array_pop as *const u8,
         );
         builder.symbol(
             "fast_string_char_at",
-            crate::fast_builtins::fast_string_char_at as *const u8,
+            crate::runtime::fast_builtins::fast_string_char_at as *const u8,
         );
         builder.symbol(
             "fast_json_parse",
-            crate::fast_builtins::fast_json_parse as *const u8,
+            crate::runtime::fast_builtins::fast_json_parse as *const u8,
         );
 
         // Dummy placeholder pra coisas não-feitas que crashariam de unresolved symbol exception
         extern "C" fn js_unimplemented_mock() -> u64 {
-            crate::js_value::JsValue::undefined().0
+            crate::runtime::js_value::JsValue::undefined().0
         }
         builder.symbol("js_unimplemented", js_unimplemented_mock as *const u8);
 

@@ -1,11 +1,11 @@
-use albedo_jit::builtins::BuiltinId;
+use albedo_jit::runtime::builtins::BuiltinId;
 use albedo_jit::bytecode::{
     AirBlock, AirBlockId, AirConstantPool, AirFunction, AirOpcode, AirReg, AirTerminator,
 };
-use albedo_jit::jit_engine::AlbedoJitEngine;
-use albedo_jit::js_value::JsValue;
-use albedo_jit::tier2_compiler::Tier2Compiler;
-use albedo_jit::type_feedback::{IcKind, TypeFeedbackRegistry};
+use albedo_jit::engine::jit_engine::AlbedoJitEngine;
+use albedo_jit::runtime::js_value::JsValue;
+use albedo_jit::compiler::tier2_compiler::Tier2Compiler;
+use albedo_jit::runtime::type_feedback::{IcKind, TypeFeedbackRegistry};
 
 #[test]
 fn test_fast_math_jit_stress() {
@@ -226,4 +226,55 @@ fn test_fast_array_jit_stress() {
     let res = JsValue(func(n));
 
     assert_eq!(res.as_int32(), 50);
+}
+#[test]
+fn test_fast_math_sin_jit() {
+    let mut engine = AlbedoJitEngine::with_budget(1024 * 1024).unwrap();
+    let s_sin = TypeFeedbackRegistry::alloc_slot(IcKind::Call);
+
+    let mut air = AirFunction {
+        name: "test_sin".to_string(),
+        num_params: 1,
+        registers_count: 5,
+        blocks: Vec::new(),
+        const_pool: AirConstantPool::default(),
+    };
+
+    let r_x = AirReg(0);
+    let r_sin_fn = AirReg(1);
+    let r_res = AirReg(2);
+
+    let mut b0 = AirBlock::new(0);
+    let sin_builtin = JsValue::builtin(BuiltinId::MathSin as u64);
+    b0.insts.push(AirOpcode::LoadInt64 {
+        dst: r_sin_fn,
+        value: sin_builtin.0 as i64,
+    });
+    
+    TypeFeedbackRegistry::record_call(s_sin, sin_builtin);
+
+    b0.insts.push(AirOpcode::Call {
+        dst: r_res,
+        func: r_sin_fn,
+        arg_start: r_x,
+        num_args: 1,
+        ic_slot: s_sin,
+    });
+    b0.terminator = Some(AirTerminator::Return(r_res));
+    air.blocks.push(b0);
+
+    let mut compiler = Tier2Compiler::new(&mut engine);
+    let func_id = compiler.compile(&air).unwrap();
+    engine.finalize_definitions().unwrap();
+    let ptr = engine.get_finalized_function(func_id);
+
+    let func: fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+    let x = JsValue::float64(0.0).0;
+    let res = JsValue(func(x));
+
+    assert_eq!(res.as_float64(), 0.0);
+    
+    let x_pi_2 = JsValue::float64(std::f64::consts::PI / 2.0).0;
+    let res_pi_2 = JsValue(func(x_pi_2));
+    assert!((res_pi_2.as_float64() - 1.0).abs() < 1e-10);
 }
