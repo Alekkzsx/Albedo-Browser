@@ -29,8 +29,8 @@ mod tests {
         let ptr = engine.module.get_finalized_function(id);
 
         // 4. Execute
-        let native_func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        JsValue(native_func(arg.0))
+        let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        JsValue(native_func(JsValue::undefined().0, arg.0))
     }
 
     /// Helper para compilar e executar uma função JIT com 2 argumentos.
@@ -42,8 +42,8 @@ mod tests {
         let id = compiler.compile(&air_func).unwrap();
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
-        let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        JsValue(native_func(a.0, b.0))
+        let native_func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        JsValue(native_func(JsValue::undefined().0, a.0, b.0))
     }
 
     #[test]

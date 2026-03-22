@@ -175,15 +175,28 @@ impl AirBuilder {
         dst
     }
 
-    pub fn emit_call(&mut self, func: AirReg, arg_start: AirReg, num_args: u32) -> AirReg {
+    pub fn emit_call(&mut self, func: AirReg, this: AirReg, arg_start: AirReg, num_args: u32) -> AirReg {
         let dst = self.new_reg();
         let ic_slot = TypeFeedbackRegistry::alloc_slot(IcKind::Call);
         self.push_op(AirOpcode::Call {
             dst,
             func,
+            this,
             arg_start,
             num_args,
             ic_slot,
+        });
+        dst
+    }
+
+    pub fn emit_new_call(&mut self, func: AirReg, this: AirReg, arg_start: AirReg, num_args: u32) -> AirReg {
+        let dst = self.new_reg();
+        self.push_op(AirOpcode::NewCall {
+            dst,
+            func,
+            this,
+            arg_start,
+            num_args,
         });
         dst
     }

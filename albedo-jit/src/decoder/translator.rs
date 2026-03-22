@@ -39,7 +39,7 @@ impl StackToRegisterTranslator {
     pub fn new(func: &QjsBytecodeFunction) -> Self {
         // Pré-analisa Jumps e aloca os blocos AIR para cada target de salto
         let mut jump_targets = HashMap::new();
-        let mut builder = AirBuilder::new(&func.name, func.num_args, func.num_locals);
+        let mut builder = AirBuilder::new(&func.name, func.num_args + 1, func.num_locals);
 
         let mut offset = 0i32;
         for op in &func.opcodes {
@@ -99,6 +99,16 @@ impl StackToRegisterTranslator {
             }
 
             self.translate_instruction(op, offset as usize);
+
+            // Se a instrução que acabou de ser processada for um Return, a próxima DEVE começar um novo bloco
+            // mesmo que não seja um Jump Target (para evitar pânico de bloco terminado).
+            let next_offset = offset + 1;
+            if matches!(op, QjsOpcode::Return | QjsOpcode::ReturnUndef) && (next_offset as usize) < func.opcodes.len() {
+                if !self.jump_targets.contains_key(&next_offset) {
+                    let new_blk = self.builder.create_block();
+                    self.jump_targets.insert(next_offset, new_blk);
+                }
+            }
         }
 
         // Em um Fallback sem Return final no QuickJS, emitimos um ReturnUndefined
@@ -160,7 +170,7 @@ impl StackToRegisterTranslator {
 
             // --- Argumentos ---
             QjsOpcode::GetArg(arg_idx) => {
-                let param_reg = self.builder.param(*arg_idx);
+                let param_reg = self.builder.param(*arg_idx + 1);
                 self.vstack.push(param_reg);
             }
 
@@ -239,7 +249,8 @@ impl StackToRegisterTranslator {
                     arg_regs[0]
                 };
 
-                let dst = self.builder.emit_call(func_reg, arg_start, *num_args);
+                let this_reg = self.builder.emit_load_undefined();
+                let dst = self.builder.emit_call(func_reg, this_reg, arg_start, *num_args);
                 self.vstack.push(dst);
                 self.source_map.map_reg(dst, qjs_offset);
             }

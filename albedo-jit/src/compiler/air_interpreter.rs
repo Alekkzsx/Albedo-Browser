@@ -319,7 +319,8 @@ impl OsrManager {
         if let Some(ptr) = self.cache.get(&key) {
             return *ptr;
         }
-        let mut compiler = Tier2Compiler::new(&mut self.engine);
+        let dummy_registry = crate::engine::jit_bridge::BytecodeRegistry::new();
+        let mut compiler = Tier2Compiler::new(&mut self.engine, &dummy_registry);
         let ptr = compiler
             .compile_osr(air, block_id, inst_index)
             .expect("OSR compile falhou");

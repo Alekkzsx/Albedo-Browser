@@ -221,6 +221,7 @@ pub enum AirOpcode {
     Call {
         dst: AirReg,
         func: AirReg,
+        this: AirReg,
         arg_start: AirReg,
         num_args: u32,
         ic_slot: u32,
@@ -229,6 +230,7 @@ pub enum AirOpcode {
     NewCall {
         dst: AirReg,
         func: AirReg,
+        this: AirReg,
         arg_start: AirReg,
         num_args: u32,
     },
@@ -255,6 +257,103 @@ pub enum AirOpcode {
         obj: AirReg,
         ctor: AirReg,
     },
+}
+
+impl AirOpcode {
+    pub fn dst_reg(&self) -> Option<AirReg> {
+        match self {
+            AirOpcode::LoadInt32 { dst, .. } => Some(*dst),
+            AirOpcode::LoadFloat64 { dst, .. } => Some(*dst),
+            AirOpcode::LoadInt64 { dst, .. } => Some(*dst),
+            AirOpcode::LoadBool { dst, .. } => Some(*dst),
+            AirOpcode::LoadUndefined { dst } => Some(*dst),
+            AirOpcode::LoadNull { dst } => Some(*dst),
+            AirOpcode::LoadString { dst, .. } => Some(*dst),
+            AirOpcode::Move { dst, .. } => Some(*dst),
+            AirOpcode::Add { dst, .. } => Some(*dst),
+            AirOpcode::Sub { dst, .. } => Some(*dst),
+            AirOpcode::Mul { dst, .. } => Some(*dst),
+            AirOpcode::Div { dst, .. } => Some(*dst),
+            AirOpcode::Mod { dst, .. } => Some(*dst),
+            AirOpcode::Neg { dst, .. } => Some(*dst),
+            AirOpcode::BitAnd { dst, .. } => Some(*dst),
+            AirOpcode::BitOr { dst, .. } => Some(*dst),
+            AirOpcode::BitXor { dst, .. } => Some(*dst),
+            AirOpcode::Shl { dst, .. } => Some(*dst),
+            AirOpcode::Shr { dst, .. } => Some(*dst),
+            AirOpcode::UShr { dst, .. } => Some(*dst),
+            AirOpcode::Eq { dst, .. } => Some(*dst),
+            AirOpcode::StrictEq { dst, .. } => Some(*dst),
+            AirOpcode::Lt { dst, .. } => Some(*dst),
+            AirOpcode::Lte { dst, .. } => Some(*dst),
+            AirOpcode::Gt { dst, .. } => Some(*dst),
+            AirOpcode::Gte { dst, .. } => Some(*dst),
+            AirOpcode::Not { dst, .. } => Some(*dst),
+            AirOpcode::CreateObj { dst } => Some(*dst),
+            AirOpcode::CreateArray { dst } => Some(*dst),
+            AirOpcode::GetProp { dst, .. } => Some(*dst),
+            AirOpcode::DeleteProp { dst, .. } => Some(*dst),
+            AirOpcode::HasProp { dst, .. } => Some(*dst),
+            AirOpcode::Call { dst, .. } => Some(*dst),
+            AirOpcode::NewCall { dst, .. } => Some(*dst),
+            AirOpcode::ToNumber { dst, .. } => Some(*dst),
+            AirOpcode::ToString { dst, .. } => Some(*dst),
+            AirOpcode::ToBool { dst, .. } => Some(*dst),
+            AirOpcode::TypeOf { dst, .. } => Some(*dst),
+            AirOpcode::InstanceOf { dst, .. } => Some(*dst),
+            AirOpcode::ArrayPush { .. } | AirOpcode::SetProp { .. } => None,
+        }
+    }
+
+    pub fn operands(&self) -> Vec<AirReg> {
+        match self {
+            AirOpcode::Move { src, .. } => vec![*src],
+            AirOpcode::Add { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Sub { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Mul { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Div { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Mod { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Neg { src, .. } => vec![*src],
+            AirOpcode::BitAnd { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::BitOr { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::BitXor { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Shl { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Shr { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::UShr { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Eq { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::StrictEq { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Lt { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Lte { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Gt { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Gte { lhs, rhs, .. } => vec![*lhs, *rhs],
+            AirOpcode::Not { src, .. } => vec![*src],
+            AirOpcode::ArrayPush { arr, value } => vec![*arr, *value],
+            AirOpcode::GetProp { obj, prop, .. } => vec![*obj, *prop],
+            AirOpcode::SetProp { obj, prop, value } => vec![*obj, *prop, *value],
+            AirOpcode::DeleteProp { obj, prop, .. } => vec![*obj, *prop],
+            AirOpcode::HasProp { obj, prop, .. } => vec![*obj, *prop],
+            AirOpcode::Call { func, this, arg_start, num_args, .. } => {
+                let mut ops = vec![*func, *this];
+                for i in 0..*num_args {
+                    ops.push(AirReg(arg_start.0 + i));
+                }
+                ops
+            }
+            AirOpcode::NewCall { func, this, arg_start, num_args, .. } => {
+                let mut ops = vec![*func, *this];
+                for i in 0..*num_args {
+                    ops.push(AirReg(arg_start.0 + i));
+                }
+                ops
+            }
+            AirOpcode::ToNumber { src, .. } => vec![*src],
+            AirOpcode::ToString { src, .. } => vec![*src],
+            AirOpcode::ToBool { src, .. } => vec![*src],
+            AirOpcode::TypeOf { src, .. } => vec![*src],
+            AirOpcode::InstanceOf { obj, ctor, .. } => vec![*obj, *ctor],
+            _ => vec![],
+        }
+    }
 }
 
 /// Terminadores de Bloco (Control Flow).
@@ -336,5 +435,11 @@ impl AirFunction {
         }
 
         true
+    }
+
+    /// Retorna o número total de instruções (opcodes) na função.
+    /// Útil para heurísticas de inlining.
+    pub fn instruction_count(&self) -> usize {
+        self.blocks.iter().map(|b| b.insts.len()).sum()
     }
 }

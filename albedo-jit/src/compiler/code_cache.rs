@@ -6,11 +6,19 @@
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::engine::profiler::FunctionId;
 use cranelift_module::FuncId;
+
+/// Wrapper thread-safe para o ponteiro de código nativo.
+/// SAFETY: O código JIT-compilado é imutável após a geração e reside em memória executável.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeCodePtr(pub *const u8);
+
+unsafe impl Send for NativeCodePtr {}
+unsafe impl Sync for NativeCodePtr {}
 
 /// Tiers de compilação do AlbedoJIT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +33,7 @@ pub enum JitTier {
 pub struct CachedCode {
     pub func_id: FunctionId,
     /// Ponteiro para o código de máquina executável.
-    pub native_ptr: *const u8,
+    pub native_ptr: NativeCodePtr,
     /// ID interno no módulo Cranelift.
     pub cranelift_id: FuncId,
     /// Tamanho do código em bytes.
@@ -43,7 +51,7 @@ pub struct CachedCode {
 impl CachedCode {
     pub fn new(
         func_id: FunctionId,
-        native_ptr: *const u8,
+        native_ptr: NativeCodePtr,
         cranelift_id: FuncId,
         code_size_bytes: usize,
         tier: JitTier,
@@ -175,6 +183,16 @@ impl CodeCache {
     }
 }
 
+static GLOBAL_CODE_CACHE: OnceLock<Arc<CodeCache>> = OnceLock::new();
+
+pub fn set_global_code_cache(cache: Arc<CodeCache>) {
+    let _ = GLOBAL_CODE_CACHE.set(cache);
+}
+
+pub fn get_global_code_cache() -> Arc<CodeCache> {
+    GLOBAL_CODE_CACHE.get_or_init(|| Arc::new(CodeCache::new())).clone()
+}
+
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -190,7 +208,7 @@ mod tests {
     fn test_cache_insert_and_lookup() {
         let cache = CodeCache::new();
         let id = FunctionId("test_func".into());
-        let dummy_ptr = 0x1234 as *const u8;
+        let dummy_ptr = NativeCodePtr(0x1234 as *const u8);
         let cranelift_id = FuncId::from_u32(0);
 
         let entry = CachedCode::new(id.clone(), dummy_ptr, cranelift_id, 128, JitTier::Baseline);
@@ -220,7 +238,7 @@ mod tests {
 
         cache.insert(CachedCode::new(
             id.clone(),
-            0x1 as *const u8,
+            NativeCodePtr(0x1 as *const u8),
             FuncId::from_u32(0),
             64,
             JitTier::Baseline,
@@ -238,7 +256,7 @@ mod tests {
         let id = FunctionId("counter".into());
         let entry = CachedCode::new(
             id,
-            0x1 as *const u8,
+            NativeCodePtr(0x1 as *const u8),
             FuncId::from_u32(0),
             10,
             JitTier::Baseline,

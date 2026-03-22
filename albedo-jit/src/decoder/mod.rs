@@ -31,18 +31,18 @@ mod tests {
         let translator = StackToRegisterTranslator::new(&js_func);
         let (air_func, source_map) = translator.translate(js_func.clone());
 
-        assert_eq!(air_func.num_params, 1);
+        assert_eq!(air_func.num_params, 2);
         assert_eq!(air_func.blocks.len(), 1);
 
         let entry_blk = &air_func.blocks[0];
-        // v0=arg[0]. v1=LoadInt32(20). v2=Add(v0, v1). Return(v2)
+        // this=arg[0]. v1=arg[1]. v2=LoadInt32(20). v3=Add(v1, v2). Return(v3)
         assert_eq!(entry_blk.insts.len(), 2);
 
         // Verifica as instruções traduzidas
         assert_eq!(
             entry_blk.insts[0],
             AirOpcode::LoadInt32 {
-                dst: AirReg(1),
+                dst: AirReg(2),
                 value: 20
             }
         );
@@ -53,16 +53,16 @@ mod tests {
                 rhs,
                 ic_slot: _,
             } => {
-                assert_eq!(*dst, AirReg(2));
-                assert_eq!(*lhs, AirReg(0));
-                assert_eq!(*rhs, AirReg(1));
+                assert_eq!(*dst, AirReg(3));
+                assert_eq!(*lhs, AirReg(1));
+                assert_eq!(*rhs, AirReg(2));
             }
             other => panic!("Esperado Add, veio {:?}", other),
         }
-        assert_eq!(entry_blk.terminator, Some(AirTerminator::Return(AirReg(2))));
+        assert_eq!(entry_blk.terminator, Some(AirTerminator::Return(AirReg(3))));
 
         // Verifica SourceMap (Instrução v2/Add está no index 2 do opcodes QuickJS original)
-        assert_eq!(source_map.get_qjs_offset_for_reg(AirReg(2)), Some(2));
+        assert_eq!(source_map.get_qjs_offset_for_reg(AirReg(3)), Some(2));
     }
 
     #[test]
@@ -91,13 +91,13 @@ mod tests {
         assert_eq!(
             blk.insts[0],
             AirOpcode::LoadInt32 {
-                dst: AirReg(1),
+                dst: AirReg(2),
                 value: 5
             }
         );
         // O Return deve ser sobre o registrador que leu o local[0].
-        // Move(dst=AirReg(0), src=AirReg(1)) → Move(dst=AirReg(2), src=AirReg(0)) → Return(AirReg(2))
-        assert_eq!(blk.terminator, Some(AirTerminator::Return(AirReg(2))));
+        // Move(dst=AirReg(1), src=AirReg(2)) → Move(dst=AirReg(3), src=AirReg(1)) → Return(AirReg(3))
+        assert_eq!(blk.terminator, Some(AirTerminator::Return(AirReg(3))));
     }
 
     #[test]

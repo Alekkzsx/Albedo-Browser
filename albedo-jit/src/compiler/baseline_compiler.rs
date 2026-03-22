@@ -130,7 +130,7 @@ impl<'a> BaselineCompiler<'a> {
             &mut self.engine.module,
             &mut builder,
             "js_call_ic",
-            4,
+            5,
             &mut ext_funcs,
         )?;
         Self::declare_runtime_helper(
@@ -301,11 +301,14 @@ impl<'a> BaselineCompiler<'a> {
                     AirOpcode::Call {
                         dst,
                         func,
+                        this,
                         arg_start,
                         num_args,
                         ic_slot,
                     } => {
                         let f = builder.use_var(vars[func.0 as usize]);
+                        let this_val = builder.use_var(vars[this.0 as usize]);
+
                         let args_ptr = if *num_args == 0 {
                             builder.ins().iconst(I64, 0)
                         } else {
@@ -328,7 +331,7 @@ impl<'a> BaselineCompiler<'a> {
                         let func_ref = *ext_funcs.get("js_call_ic").unwrap();
                         let call = builder
                             .ins()
-                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                            .call(func_ref, &[f, this_val, args_ptr, num_args_val, slot_val]);
                         let res = builder.inst_results(call)[0];
                         builder.def_var(vars[dst.0 as usize], res);
                     }
@@ -441,20 +444,20 @@ impl<'a> BaselineCompiler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::{AirBuilder, AirOpcode, AirReg, AirTerminator};
+    use crate::bytecode::{AirBuilder, AirReg};
 
     #[test]
     fn test_compile_simple_add() {
         let mut engine = AlbedoJitEngine::new().unwrap();
 
-        // Fake builder parameters
-        let mut b = AirBuilder::new("test_add".to_string(), 2, 0);
+        // Fake builder parameters: this (P0), a (P1), b (P2)
+        let mut b = AirBuilder::new("test_add".to_string(), 3, 0);
 
-        // Bloco main que extrai P0, P1, Adiciona e Retorna
-        let pr0 = b.param(0);
+        // Bloco main que extrai P1, P2, Adiciona e Retorna
         let pr1 = b.param(1);
+        let pr2 = b.param(2);
 
-        let sum_reg = b.emit_add(pr0, pr1);
+        let sum_reg = b.emit_add(pr1, pr2);
         b.emit_return(sum_reg);
 
         let air = b.build();
@@ -467,12 +470,12 @@ mod tests {
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
 
-        let func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        let func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
         // Teste de Execução Nativa
         let v1 = JsValue::int32(100).0;
         let v2 = JsValue::int32(200).0;
-        let p_res = func(v1, v2);
+        let p_res = func(JsValue::undefined().0, v1, v2);
 
         assert!(JsValue(p_res).is_int32());
         assert_eq!(JsValue(p_res).as_int32(), 300);
@@ -482,14 +485,14 @@ mod tests {
     fn test_compile_branch() {
         let mut engine = AlbedoJitEngine::new().unwrap();
 
-        let mut b = AirBuilder::new("test_branch".to_string(), 1, 0);
-        let pr0 = b.param(0); // condicao
+        let mut b = AirBuilder::new("test_branch".to_string(), 2, 0);
+        let pr1 = b.param(1); // condicao (P1, P0 é this)
 
         let blk_then = b.create_block();
         let blk_else = b.create_block();
 
         // Entry block
-        b.emit_jump_if(pr0, blk_then, blk_else);
+        b.emit_jump_if(pr1, blk_then, blk_else);
 
         // Then (retorna int 10)
         b.switch_block(blk_then);
@@ -509,7 +512,7 @@ mod tests {
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
 
-        let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        let func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
         // Valores JS na C-ABI
         let js_true = JsValue::bool(true).0;
@@ -517,9 +520,10 @@ mod tests {
         // Float 0 no JS é false no JumpIf
         let js_zero = JsValue::float64(0.0).0;
 
+        let this_val = JsValue::undefined().0;
         // Validando fluxo lógico Nativo
-        assert_eq!(JsValue(func(js_true)).as_int32(), 10);
-        assert_eq!(JsValue(func(js_false)).as_int32(), 20);
-        assert_eq!(JsValue(func(js_zero)).as_int32(), 20); // Pula pro else
+        assert_eq!(JsValue(func(this_val, js_true)).as_int32(), 10);
+        assert_eq!(JsValue(func(this_val, js_false)).as_int32(), 20);
+        assert_eq!(JsValue(func(this_val, js_zero)).as_int32(), 20); // Pula pro else
     }
 }
