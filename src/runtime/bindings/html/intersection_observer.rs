@@ -1,6 +1,6 @@
 use crate::runtime::bindings::html::element::Element;
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result, Value};
+use rquickjs::{Class, Ctx, Function, Object, Persistent, Result, Value};
 use std::cell::RefCell;
 
 #[derive(Clone)]
@@ -9,7 +9,7 @@ pub struct IntersectionObserver {
     rt: JsRuntime,
     callback: Persistent<Function<'static>>,
     thresholds_list: Vec<f32>,
-    observer_id: usize,
+    _observer_id: usize,
     // Targets registrados neste observer (node_idx)
     targets: RefCell<Vec<usize>>,
 }
@@ -66,7 +66,7 @@ impl IntersectionObserver {
             rt,
             callback: callback_stored,
             thresholds_list,
-            observer_id,
+            _observer_id: observer_id,
             targets: RefCell::new(Vec::new()),
         })
     }

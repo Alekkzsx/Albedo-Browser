@@ -8,21 +8,21 @@ use std::sync::{Arc, Mutex};
 ///
 /// Provides console.log, console.error, console.warn, etc.
 pub struct Console {
-    output: Arc<Mutex<Box<dyn Write + Send>>>,
+    _output: Arc<Mutex<Box<dyn Write + Send>>>,
 }
 
 impl Console {
     /// Create a new Console that writes to stdout
     pub fn new() -> Self {
         Self {
-            output: Arc::new(Mutex::new(Box::new(std::io::stdout()))),
+            _output: Arc::new(Mutex::new(Box::new(std::io::stdout()))),
         }
     }
 
     /// Create a Console with custom output
     pub fn with_output(output: Box<dyn Write + Send>) -> Self {
         Self {
-            output: Arc::new(Mutex::new(output)),
+            _output: Arc::new(Mutex::new(output)),
         }
     }
 

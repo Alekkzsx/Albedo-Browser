@@ -54,6 +54,11 @@ pub enum AirOpcode {
         dst: AirReg,
         value: f64,
     },
+    /// Carrega bits brutos de um i64 (preserva NaNs)
+    LoadInt64 {
+        dst: AirReg,
+        value: i64,
+    },
     /// Carrega um booleano (true/false)
     LoadBool {
         dst: AirReg,

@@ -100,7 +100,7 @@ impl FetchResponse {
 // O SERVIÇO PRINCIPAL
 pub struct FetchClient {
     client: reqwest::blocking::Client,
-    http3_client: Option<Http3Client>,
+    _http3_client: Option<Http3Client>,
 }
 
 impl FetchClient {
@@ -144,7 +144,7 @@ impl FetchClient {
 
         Self {
             client,
-            http3_client,
+            _http3_client: http3_client,
         }
     }
 

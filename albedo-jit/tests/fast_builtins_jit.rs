@@ -159,9 +159,9 @@ fn test_fast_array_jit_stress() {
         value: 1,
     });
     let push_builtin = JsValue::builtin(BuiltinId::ArrayPush as u64);
-    b0.insts.push(AirOpcode::LoadFloat64 {
+    b0.insts.push(AirOpcode::LoadInt64 {
         dst: r_push,
-        value: f64::from_bits(push_builtin.0),
+        value: push_builtin.0 as i64,
     });
     b0.terminator = Some(AirTerminator::Jump(AirBlockId(1)));
 

@@ -126,7 +126,6 @@ impl TextMeasurer {
             if !first_word_in_line && current_x + word_w > mw {
                 current_x = 0.0;
                 current_y += line_height;
-                first_word_in_line = true;
             }
 
             current_x += word_w;
@@ -147,6 +146,7 @@ impl TextMeasurer {
             }
 
             first_word_in_line = false;
+            let _ = first_word_in_line; // Silenciar aviso de atribuição não lida na última iteração
         }
 
         let result = (max_x, current_y);

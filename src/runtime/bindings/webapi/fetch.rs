@@ -2,7 +2,7 @@ use crate::runtime::core::event_loop::AsyncResult;
 use crate::runtime::core::service_worker::{
     CacheMode, InterceptResult, RedirectMode, RequestContext,
 };
-use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result, Value};
+use rquickjs::{Class, Ctx, Function, Object, Persistent, Result, Value};
 use std::collections::HashMap;
 
 #[derive(Clone, rquickjs::class::Trace)]

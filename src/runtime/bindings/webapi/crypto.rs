@@ -1,5 +1,5 @@
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, ArrayBuffer, Class, Ctx, Object, Result, Value};
+use rquickjs::{ArrayBuffer, Class, Ctx, Object, Result, Value};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]

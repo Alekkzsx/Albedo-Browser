@@ -13,11 +13,13 @@ impl History {
         1
     }
 
-    pub fn pushState(&self) {
+    #[qjs(rename = "pushState")]
+    pub fn push_state(&self) {
         // Stub
     }
 
-    pub fn replaceState(&self) {
+    #[qjs(rename = "replaceState")]
+    pub fn replace_state(&self) {
         // Stub
     }
 
@@ -43,20 +45,20 @@ impl Screen {
     pub fn height(&self) -> i32 {
         self.size.lock().unwrap().1
     }
-    #[qjs(get)]
-    pub fn availWidth(&self) -> i32 {
+    #[qjs(get, rename = "availWidth")]
+    pub fn avail_width(&self) -> i32 {
         self.size.lock().unwrap().0
     }
-    #[qjs(get)]
-    pub fn availHeight(&self) -> i32 {
+    #[qjs(get, rename = "availHeight")]
+    pub fn avail_height(&self) -> i32 {
         self.size.lock().unwrap().1
     }
-    #[qjs(get)]
-    pub fn colorDepth(&self) -> i32 {
+    #[qjs(get, rename = "colorDepth")]
+    pub fn color_depth(&self) -> i32 {
         24
     }
-    #[qjs(get)]
-    pub fn pixelDepth(&self) -> i32 {
+    #[qjs(get, rename = "pixelDepth")]
+    pub fn pixel_depth(&self) -> i32 {
         24
     }
 }

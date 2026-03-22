@@ -1,6 +1,6 @@
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwCacheEntryData};
-use rquickjs::{prelude::*, Class, Ctx, Object, Persistent, Result as JsResult, Value};
+use rquickjs::{Class, Ctx, Object, Persistent, Result as JsResult, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -39,15 +39,6 @@ pub struct Cache {
     pub origin: String,
     #[qjs(skip_trace)]
     pub db: Arc<ServiceWorkerDatabase>,
-}
-
-#[derive(Clone, Debug)]
-enum CacheOperation {
-    Add(String),
-    Put(String, Vec<u8>),
-    Match(String),
-    Delete(String),
-    Keys,
 }
 
 #[rquickjs::methods]

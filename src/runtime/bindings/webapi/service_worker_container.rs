@@ -3,7 +3,7 @@ use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::service_worker::{
     ServiceWorkerInstance, ServiceWorkerManager, ServiceWorkerRegistration,
 };
-use rquickjs::{prelude::*, Class, Ctx, Object, Result as JsResult, Value};
+use rquickjs::{Class, Ctx, Object, Result as JsResult, Value};
 use std::sync::{Arc, Mutex};
 
 // ============================================================================

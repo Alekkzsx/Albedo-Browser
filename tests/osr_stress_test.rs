@@ -58,7 +58,6 @@ async fn test_osr_100m_iterations() {
 
     // 3. Script JS que executa o loop pesado
     let code = r#"
-        console.log("Iniciando loop de 100M no interpretador...");
         let n = 100000000;
         let i = 0;
         let sum = 0;
@@ -67,7 +66,6 @@ async fn test_osr_100m_iterations() {
             i++;
             // O interrupt handler será chamado periodicamente durante o loop
         }
-        console.log("Loop finalizado!");
         sum;
     "#;
 

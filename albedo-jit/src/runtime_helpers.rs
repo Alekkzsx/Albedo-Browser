@@ -87,6 +87,22 @@ pub extern "C" fn js_mul(lhs: u64, rhs: u64) -> u64 {
     JsValue::float64(f1 * f2).0
 }
 
+/// Divisão JS (`a / b`).
+#[no_mangle]
+pub extern "C" fn js_div(lhs: u64, rhs: u64) -> u64 {
+    let f1 = to_number(JsValue(lhs));
+    let f2 = to_number(JsValue(rhs));
+    JsValue::float64(f1 / f2).0
+}
+
+/// Módulo JS (`a % b`).
+#[no_mangle]
+pub extern "C" fn js_mod(lhs: u64, rhs: u64) -> u64 {
+    let f1 = to_number(JsValue(lhs));
+    let f2 = to_number(JsValue(rhs));
+    JsValue::float64(f1 % f2).0
+}
+
 /// Comparação Abstrata (==)
 #[no_mangle]
 pub extern "C" fn js_eq(lhs: u64, rhs: u64) -> u64 {
@@ -117,6 +133,30 @@ pub extern "C" fn js_lt(lhs: u64, rhs: u64) -> u64 {
     let f1 = to_number(a);
     let f2 = to_number(b);
     JsValue::bool(f1 < f2).0
+}
+
+/// Comparação Maior Que (>)
+#[no_mangle]
+pub extern "C" fn js_gt(lhs: u64, rhs: u64) -> u64 {
+    let f1 = to_number(JsValue(lhs));
+    let f2 = to_number(JsValue(rhs));
+    JsValue::bool(f1 > f2).0
+}
+
+/// Comparação Maior ou Igual (>=)
+#[no_mangle]
+pub extern "C" fn js_gte(lhs: u64, rhs: u64) -> u64 {
+    let f1 = to_number(JsValue(lhs));
+    let f2 = to_number(JsValue(rhs));
+    JsValue::bool(f1 >= f2).0
+}
+
+/// Comparação Menor ou Igual (<=)
+#[no_mangle]
+pub extern "C" fn js_lte(lhs: u64, rhs: u64) -> u64 {
+    let f1 = to_number(JsValue(lhs));
+    let f2 = to_number(JsValue(rhs));
+    JsValue::bool(f1 <= f2).0
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +276,43 @@ pub extern "C" fn js_set_prop(obj: u64, prop: u64, value: u64) -> u64 {
     value
 }
 
+#[no_mangle]
+pub extern "C" fn js_has_prop(obj: u64, prop: u64) -> u64 {
+    JsValue::bool(object_model::has_prop(JsValue(obj), JsValue(prop))).0
+}
+
+#[no_mangle]
+pub extern "C" fn js_delete_prop(obj: u64, prop: u64) -> u64 {
+    JsValue::bool(object_model::delete_prop(JsValue(obj), JsValue(prop))).0
+}
+
+#[no_mangle]
+pub extern "C" fn js_type_of(val: u64) -> u64 {
+    let v = JsValue(val);
+    let s = if v.is_int32() || v.is_float64() {
+        "number"
+    } else if v.is_bool() {
+        "boolean"
+    } else if v.is_string() {
+        "string"
+    } else if v.is_object() {
+        "object"
+    } else if v.is_undefined() {
+        "undefined"
+    } else if v.is_null() {
+        "object" // JS quirk
+    } else {
+        "unknown"
+    };
+    JsValue::string(object_model::intern_string(s.to_string()) as u64).0
+}
+
+#[no_mangle]
+pub extern "C" fn js_instance_of(obj: u64, _ctor: u64) -> u64 {
+    // V1 Simplificada: Apenas verifica se é objeto
+    JsValue::bool(JsValue(obj).is_object()).0
+}
+
 /// Helper para JumpIf (conversão para valor Booleano Real) ToBoolean
 #[no_mangle]
 pub extern "C" fn js_to_bool(val: u64) -> u64 {
@@ -257,6 +334,61 @@ pub extern "C" fn js_to_bool(val: u64) -> u64 {
 
     // Objetos/Strings não vazias = true
     JsValue::bool(true).0
+}
+
+/// Bitwise AND (&)
+#[no_mangle]
+pub extern "C" fn js_bit_and(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as i32;
+    let b = to_number(JsValue(rhs)) as i32;
+    JsValue::int32(a & b).0
+}
+
+/// Bitwise OR (|)
+#[no_mangle]
+pub extern "C" fn js_bit_or(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as i32;
+    let b = to_number(JsValue(rhs)) as i32;
+    JsValue::int32(a | b).0
+}
+
+/// Bitwise XOR (^)
+#[no_mangle]
+pub extern "C" fn js_bit_xor(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as i32;
+    let b = to_number(JsValue(rhs)) as i32;
+    JsValue::int32(a ^ b).0
+}
+
+/// Bitwise SHL (<<)
+#[no_mangle]
+pub extern "C" fn js_bit_shl(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as i32;
+    let b = to_number(JsValue(rhs)) as i32;
+    JsValue::int32(a << (b & 0x1F)).0
+}
+
+/// Bitwise SHR (>>)
+#[no_mangle]
+pub extern "C" fn js_bit_shr(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as i32;
+    let b = to_number(JsValue(rhs)) as i32;
+    JsValue::int32(a >> (b & 0x1F)).0
+}
+
+/// Bitwise USHR (>>>)
+#[no_mangle]
+pub extern "C" fn js_bit_ushr(lhs: u64, rhs: u64) -> u64 {
+    let a = to_number(JsValue(lhs)) as u32;
+    let b = to_number(JsValue(rhs)) as i32;
+    // USHR em JS sempre resulta em um valor positivo (unsigned), mas para caber no Int32
+    // do nosso sistema de tags, se for > MAX_INT32 ele deveria ser Float64.
+    let res = a >> (b & 0x1F);
+    if res <= i32::MAX as u32 {
+        JsValue::int32(res as i32).0
+    } else {
+        JsValue::float64(res as f64).0
+    }
 }
 
 /// Coerção abstrata simples JS ToNumber

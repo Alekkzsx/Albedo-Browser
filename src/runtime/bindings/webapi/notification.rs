@@ -25,7 +25,8 @@ impl Notification {
     }
 
     #[qjs(static)]
-    pub fn requestPermission<'js>(ctx: Ctx<'js>) -> Result<Value<'js>> {
+    #[qjs(static, rename = "requestPermission")]
+    pub fn request_permission<'js>(ctx: Ctx<'js>) -> Result<Value<'js>> {
         let (promise, resolve, _) = rquickjs::Promise::new(&ctx)?;
         let _ = resolve.call::<(&str,), ()>(("granted",));
         Ok(promise.into_value())

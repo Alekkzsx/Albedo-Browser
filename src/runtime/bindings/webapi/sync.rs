@@ -1,5 +1,5 @@
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result as JsResult, Value};
+use rquickjs::{Class, Ctx, Function, Object, Persistent, Result as JsResult, Value};
 use std::sync::{Arc, Mutex};
 
 // ============================================================================

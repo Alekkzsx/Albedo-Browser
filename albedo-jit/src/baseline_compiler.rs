@@ -8,8 +8,8 @@
 //! de 64 bits implícitos através de chamadas C nativas (runtime helpers).
 
 use cranelift_codegen::ir::types::I64;
-use cranelift_codegen::ir::{AbiParam, InstBuilder, StackSlotData, StackSlotKind, Type as ClType};
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_codegen::ir::{AbiParam, InstBuilder, StackSlotData, StackSlotKind};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ use crate::jit_engine::{AlbedoJitEngine, JitError};
 use crate::js_value::JsValue;
 
 // Função dummy de fallback enquanto todos helpers não estão implementados
-extern "C" fn js_unimplemented() -> u64 {
+extern "C" fn _js_unimplemented() -> u64 {
     JsValue::undefined().0
 }
 

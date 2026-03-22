@@ -47,17 +47,17 @@ pub enum JitError {
 // ---------------------------------------------------------------------------
 
 /// Entrada no cache de código compilado.
-struct CompiledFunction {
+struct _CompiledFunction {
     /// ID da função no módulo Cranelift.
     _func_id: FuncId,
     /// Ponteiro para o código de máquina nativo (após finalize_definitions).
-    native_ptr: *const u8,
+    _native_ptr: *const u8,
 }
 
 // SAFETY: Os ponteiros nativos são gerenciados pelo JITModule que garante
 // que o código permanece válido enquanto o módulo existe.
-unsafe impl Send for CompiledFunction {}
-unsafe impl Sync for CompiledFunction {}
+unsafe impl Send for _CompiledFunction {}
+unsafe impl Sync for _CompiledFunction {}
 
 /// AlbedoJitEngine — Motor JIT principal do Albedo Browser.
 ///
@@ -139,6 +139,22 @@ impl AlbedoJitEngine {
         builder.symbol(
             "js_deopt_bailout",
             crate::deopt::js_deopt_bailout as *const u8,
+        );
+        builder.symbol(
+            "js_has_prop",
+            crate::object_model::has_prop as *const u8,
+        );
+        builder.symbol(
+            "js_delete_prop",
+            crate::object_model::delete_prop as *const u8,
+        );
+        builder.symbol(
+            "js_type_of",
+            crate::runtime_helpers::js_type_of as *const u8,
+        );
+        builder.symbol(
+            "js_instance_of",
+            crate::runtime_helpers::js_instance_of as *const u8,
         );
 
         // Builtins Rápidos (Fase 1)
