@@ -14,11 +14,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator};
-use crate::deopt::{register_meta, DeoptMeta, DeoptPoint};
-use crate::jit_engine::{AlbedoJitEngine, JitError};
-use crate::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN};
-use crate::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET};
-use crate::type_feedback::{
+use crate::compiler::deopt::{register_meta, DeoptMeta, DeoptPoint};
+use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
+use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN};
+use crate::runtime::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET};
+use crate::runtime::type_feedback::{
     AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair,
     ValueType,
 };
@@ -292,6 +292,224 @@ impl<'a> Tier2Compiler<'a> {
             1,
             &mut ext_funcs,
         )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_acos",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_acosh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_asin",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_asinh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_atan",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_atan2",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_atanh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_cos",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_cosh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_sin",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_sinh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_tan",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_tanh",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_exp",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_expm1",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_log",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_log1p",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_log10",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_log2",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_cbrt",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_clz32",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_fround",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_hypot",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_imul",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_pow",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_random",
+            0,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_round",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_sign",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_trunc",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_max",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "fast_math_min",
+            2,
+            &mut ext_funcs,
+        )?;
+
 
         Self::declare_runtime_helper(
             &mut self.engine.module,
@@ -878,7 +1096,7 @@ impl<'a> Tier2Compiler<'a> {
         let tag_mask = builder.ins().iconst(I64, TAG_MASK as i64);
         let tag_obj = builder
             .ins()
-            .iconst(I64, crate::js_value::TAG_OBJECT as i64);
+            .iconst(I64, crate::runtime::js_value::TAG_OBJECT as i64);
         let obj_tag = builder.ins().band(obj, tag_mask);
         let is_obj = builder.ins().icmp(IntCC::Equal, obj_tag, tag_obj);
         builder.ins().brif(is_obj, obj_block, &[], slow_block, &[]);
@@ -887,7 +1105,7 @@ impl<'a> Tier2Compiler<'a> {
         // Guard: prop id match (string id)
         let tag_str = builder
             .ins()
-            .iconst(I64, crate::js_value::TAG_STRING as i64);
+            .iconst(I64, crate::runtime::js_value::TAG_STRING as i64);
         let prop_tag = builder.ins().band(prop, tag_mask);
         let is_str = builder.ins().icmp(IntCC::Equal, prop_tag, tag_str);
         builder.ins().brif(is_str, prop_block, &[], slow_block, &[]);
@@ -944,7 +1162,7 @@ impl<'a> Tier2Compiler<'a> {
         f: cranelift_codegen::ir::Value,
         arg_start: crate::bytecode::AirReg,
         num_args: u32,
-        snap: &crate::type_feedback::CallFeedbackSnapshot,
+        snap: &crate::runtime::type_feedback::CallFeedbackSnapshot,
         meta_id: u32,
         deopt_id: u32,
         spill_slot: StackSlot,
@@ -964,7 +1182,7 @@ impl<'a> Tier2Compiler<'a> {
         }
 
         let bid = callee.as_builtin_id() as u32;
-        use crate::builtins::BuiltinId;
+        use crate::runtime::builtins::BuiltinId;
 
         // Guard: callee must match monomorphic value exactly
         let slow_block = builder.create_block();
@@ -977,15 +1195,12 @@ impl<'a> Tier2Compiler<'a> {
         let res = match bid {
             x if x == BuiltinId::MathAbs as u32 && num_args >= 1 => {
                 let arg = builder.use_var(vars[arg_start.0 as usize]);
-                // Inlining puramente via Cranelift (FABS) para Float64
-                // Para Int32 usamos a chamada rápida que lida com abs(MIN_INT)
                 let func_ref = *ext_funcs.get("fast_math_abs").unwrap();
                 let call = builder.ins().call(func_ref, &[arg]);
                 Some(builder.inst_results(call)[0])
             }
             x if x == BuiltinId::MathSqrt as u32 && num_args >= 1 => {
                 let arg = builder.use_var(vars[arg_start.0 as usize]);
-                // Inlining v2: fsqrt direto se for Float64
                 let is_f64 = builder
                     .ins()
                     .icmp_imm(IntCC::UnsignedLessThan, arg, TAG_MIN as i64);
@@ -1029,6 +1244,197 @@ impl<'a> Tier2Compiler<'a> {
                 let call = builder.ins().call(func_ref, &[arg]);
                 Some(builder.inst_results(call)[0])
             }
+            x if x == BuiltinId::MathAcos as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_acos").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAcosh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_acosh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAsin as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_asin").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAsinh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_asinh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAtan as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_atan").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAtan2 as u32 && num_args >= 2 => {
+                let y = builder.use_var(vars[arg_start.0 as usize]);
+                let x = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_atan2").unwrap();
+                let call = builder.ins().call(func_ref, &[y, x]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathAtanh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_atanh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathCos as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_cos").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathCosh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_cosh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathSin as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_sin").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathSinh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_sinh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathTan as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_tan").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathTanh as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_tanh").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathExp as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_exp").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathExpm1 as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_expm1").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathLog as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_log").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathLog1p as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_log1p").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathLog10 as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_log10").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathLog2 as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_log2").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathCbrt as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_cbrt").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathClz32 as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_clz32").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathFround as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_fround").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathHypot as u32 && num_args >= 2 => {
+                let x = builder.use_var(vars[arg_start.0 as usize]);
+                let y = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_hypot").unwrap();
+                let call = builder.ins().call(func_ref, &[x, y]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathImul as u32 && num_args >= 2 => {
+                let x = builder.use_var(vars[arg_start.0 as usize]);
+                let y = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_imul").unwrap();
+                let call = builder.ins().call(func_ref, &[x, y]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathPow as u32 && num_args >= 2 => {
+                let x = builder.use_var(vars[arg_start.0 as usize]);
+                let y = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_pow").unwrap();
+                let call = builder.ins().call(func_ref, &[x, y]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathRandom as u32 => {
+                let func_ref = *ext_funcs.get("fast_math_random").unwrap();
+                let call = builder.ins().call(func_ref, &[]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathRound as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_round").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathSign as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_sign").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathTrunc as u32 && num_args >= 1 => {
+                let arg = builder.use_var(vars[arg_start.0 as usize]);
+                let func_ref = *ext_funcs.get("fast_math_trunc").unwrap();
+                let call = builder.ins().call(func_ref, &[arg]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathMax as u32 && num_args >= 2 => {
+                let x = builder.use_var(vars[arg_start.0 as usize]);
+                let y = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_max").unwrap();
+                let call = builder.ins().call(func_ref, &[x, y]);
+                Some(builder.inst_results(call)[0])
+            }
+            x if x == BuiltinId::MathMin as u32 && num_args >= 2 => {
+                let x = builder.use_var(vars[arg_start.0 as usize]);
+                let y = builder.use_var(vars[arg_start.0 as usize + 1]);
+                let func_ref = *ext_funcs.get("fast_math_min").unwrap();
+                let call = builder.ins().call(func_ref, &[x, y]);
+                Some(builder.inst_results(call)[0])
+            }
             x if x == BuiltinId::ArrayPush as u32 && num_args >= 1 => {
                 let arr = builder.use_var(vars[arg_start.0 as usize]);
                 let val = if num_args >= 2 {
@@ -1065,6 +1471,7 @@ impl<'a> Tier2Compiler<'a> {
             }
             _ => None,
         };
+
 
         if let Some(result) = res {
             let next_block = builder.create_block();
@@ -1656,8 +2063,8 @@ mod tests {
     use super::*;
     use crate::bytecode::opcodes::AirBlockId;
     use crate::bytecode::{AirBlock, AirConstantPool, AirOpcode, AirReg, AirTerminator};
-    use crate::jit_engine::AlbedoJitEngine;
-    use crate::js_value::JsValue;
+    use crate::engine::jit_engine::AlbedoJitEngine;
+    use crate::runtime::js_value::JsValue;
 
     /// Helper: compila com Tier2 e executa com 2 argumentos.
     fn tier2_run_2(air: &AirFunction, a: JsValue, b: JsValue) -> JsValue {
@@ -1794,7 +2201,7 @@ mod tests {
         };
 
         // 2. Gravar feedback Monomorphic(Int32, Int32) para o slot 0
-        crate::type_feedback::TypeFeedbackRegistry::record_add(
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_add(
             0,
             JsValue::int32(1),
             JsValue::int32(1),

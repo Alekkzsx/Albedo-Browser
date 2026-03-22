@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::mem::offset_of;
 use std::sync::OnceLock;
 
-use crate::js_value::JsValue;
+use crate::runtime::js_value::JsValue;
 use serde_json::Value as JsonValue;
 
 // ---------------------------------------------------------------------------

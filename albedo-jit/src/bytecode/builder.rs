@@ -3,8 +3,8 @@
 //! O QuickJS Decoder ou o Profiler utilizarão esse Builder.
 
 use super::opcodes::*;
-use crate::object_model;
-use crate::type_feedback::{IcKind, TypeFeedbackRegistry};
+use crate::runtime::object_model;
+use crate::runtime::type_feedback::{IcKind, TypeFeedbackRegistry};
 
 pub struct AirBuilder {
     name: String,

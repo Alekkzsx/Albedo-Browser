@@ -1,8 +1,10 @@
 use albedo_jit::{
-    air_interpreter::{AirInterpreter, OsrManager},
-    builtins::BuiltinId,
-    object_model, runtime_helpers, AirBuilder, AirOpcode, AlbedoJitEngine, JsValue, Tier2Compiler,
+    compiler::air_interpreter::{AirInterpreter, OsrManager},
+    runtime::builtins::BuiltinId,
+    runtime::{object_model, runtime_helpers},
+    AirBuilder, AirOpcode, AlbedoJitEngine, JsValue, Tier2Compiler,
 };
+
 
 #[test]
 fn test_deopt_type_change() {

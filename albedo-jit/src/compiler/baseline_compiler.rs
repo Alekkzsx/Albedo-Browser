@@ -14,8 +14,8 @@ use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 
 use crate::bytecode::{AirFunction, AirOpcode, AirTerminator};
-use crate::jit_engine::{AlbedoJitEngine, JitError};
-use crate::js_value::JsValue;
+use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
+use crate::runtime::js_value::JsValue;
 
 // Função dummy de fallback enquanto todos helpers não estão implementados
 extern "C" fn _js_unimplemented() -> u64 {
