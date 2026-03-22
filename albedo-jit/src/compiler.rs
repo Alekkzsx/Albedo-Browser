@@ -4,3 +4,4 @@ pub mod tier2_compiler;
 pub mod deopt;
 pub mod code_cache;
 pub mod loop_opts;
+pub mod escape_analysis;

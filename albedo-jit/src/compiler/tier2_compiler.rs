@@ -13,6 +13,7 @@ use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::escape_analysis::{EscapeAnalysis, EscapeAnalysisResult, EscapeStatus};
 use super::loop_opts::LoopOptimizer;
 use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator, AirReg};
 use crate::compiler::deopt::{register_meta, DeoptMeta, DeoptPoint};
@@ -30,17 +31,21 @@ const MIN_FEEDBACK_SAMPLES: u64 = 1;
 pub struct Tier2Compiler<'a> {
     engine: &'a mut AlbedoJitEngine,
     registry: &'a BytecodeRegistry,
+    escape_results: Option<EscapeAnalysisResult>,
 }
 
 impl<'a> Tier2Compiler<'a> {
     pub fn new(engine: &'a mut AlbedoJitEngine, registry: &'a BytecodeRegistry) -> Self {
-        Self { engine, registry }
+        Self { engine, registry, escape_results: None }
     }
 
     pub fn compile(&mut self, air_orig: &AirFunction) -> Result<FuncId, JitError> {
         let mut air = air_orig.clone();
         let mut loop_optimizer = LoopOptimizer::new(&mut air);
         loop_optimizer.run();
+
+        // 3.3 Escape Analysis
+        self.escape_results = Some(EscapeAnalysis::run(&air));
         let air = &air;
 
         let mut sig = self.engine.module.make_signature();
@@ -2158,16 +2163,93 @@ impl<'a> Tier2Compiler<'a> {
                 builder.def_var(vars[dst.0 as usize], res);
             }
             AirOpcode::CreateObj { dst } => {
-                let func_ref = *ext_funcs.get("js_create_obj").unwrap();
-                let call = builder.ins().call(func_ref, &[]);
-                let res = builder.inst_results(call)[0];
-                builder.def_var(vars[dst.0 as usize], res);
+                let status = self.escape_results.as_ref().and_then(|r| r.statuses.get(dst)).cloned().unwrap_or(EscapeStatus::Escaping);
+
+                if status == EscapeStatus::NonEscaping {
+                    // Alocação em stack
+                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
+                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8)); // 4 props
+                    
+                    let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
+                    let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
+
+                    // Inicializar JsObject
+                    // shape_id = fnv1a_seed (0xcbf29ce484222325)
+                    let empty_shape = builder.ins().iconst(I64, 0xcbf29ce484222325u64 as i64);
+                    builder.ins().store(MemFlags::trusted(), empty_shape, obj_addr, JSOBJ_SHAPE_OFFSET as i32);
+                    
+                    // kind = Object (0), func_id_idx = 0 -> combined into 64-bit store for speed? 
+                    // No, let's follow offsets.
+                    let kind = builder.ins().iconst(I32, ObjectKind::Object as i64);
+                    builder.ins().store(MemFlags::trusted(), kind, obj_addr, JSOBJ_KIND_OFFSET as i32);
+                    
+                    // props = props_addr
+                    builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
+                    
+                    // props_len = 0, props_cap = 4
+                    let len_cap = builder.ins().iconst(I64, 4i64 << 32); 
+                    let zero32 = builder.ins().iconst(I32, 0);
+                    let four32 = builder.ins().iconst(I32, 4);
+                    builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
+                    builder.ins().store(MemFlags::trusted(), four32, obj_addr, 28);
+
+                    // Initialize props with undefined
+                    let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 0);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 8);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 16);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 24);
+                    
+                    // Pack into JsValue (Object tag)
+                    let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
+                    let packed = builder.ins().bor(obj_addr, tag);
+                    builder.def_var(vars[dst.0 as usize], packed);
+                } else {
+                    let func_ref = *ext_funcs.get("js_create_obj").unwrap();
+                    let call = builder.ins().call(func_ref, &[]);
+                    let res = builder.inst_results(call)[0];
+                    builder.def_var(vars[dst.0 as usize], res);
+                }
             }
             AirOpcode::CreateArray { dst } => {
-                let func_ref = *ext_funcs.get("js_create_array").unwrap();
-                let call = builder.ins().call(func_ref, &[]);
-                let res = builder.inst_results(call)[0];
-                builder.def_var(vars[dst.0 as usize], res);
+                let status = self.escape_results.as_ref().and_then(|r| r.statuses.get(dst)).cloned().unwrap_or(EscapeStatus::Escaping);
+
+                if status == EscapeStatus::NonEscaping {
+                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
+                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8)); 
+                    
+                    let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
+                    let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
+
+                    let empty_shape = builder.ins().iconst(I64, 0xcbf29ce484222325u64 as i64);
+                    builder.ins().store(MemFlags::trusted(), empty_shape, obj_addr, JSOBJ_SHAPE_OFFSET as i32);
+                    
+                    let kind = builder.ins().iconst(I32, ObjectKind::Array as i64);
+                    builder.ins().store(MemFlags::trusted(), kind, obj_addr, JSOBJ_KIND_OFFSET as i32);
+                    
+                    builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
+                    
+                    let zero32 = builder.ins().iconst(I32, 0);
+                    let four32 = builder.ins().iconst(I32, 4);
+                    builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
+                    builder.ins().store(MemFlags::trusted(), four32, obj_addr, 28);
+
+                    // Initialize props with undefined
+                    let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 0);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 8);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 16);
+                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 24);
+                    
+                    let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
+                    let packed = builder.ins().bor(obj_addr, tag);
+                    builder.def_var(vars[dst.0 as usize], packed);
+                } else {
+                    let func_ref = *ext_funcs.get("js_create_array").unwrap();
+                    let call = builder.ins().call(func_ref, &[]);
+                    let res = builder.inst_results(call)[0];
+                    builder.def_var(vars[dst.0 as usize], res);
+                }
             }
             AirOpcode::HasProp { dst, obj, prop } => {
                 let o = builder.use_var(vars[obj.0 as usize]);
