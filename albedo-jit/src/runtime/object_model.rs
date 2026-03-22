@@ -20,13 +20,15 @@ use serde_json::Value as JsonValue;
 pub enum ObjectKind {
     Object = 0,
     Array = 1,
+    Function = 2,
 }
 
 #[repr(C)]
 pub struct JsObject {
     pub shape_id: u64,
     pub kind: u32,
-    pub _pad: u32,
+    /// Se kind == Function, contém o índice internado do FunctionId.
+    pub func_id_idx: u32,
     pub props: *mut JsValue,
     pub props_len: u32,
     pub props_cap: u32,
@@ -182,7 +184,7 @@ pub fn alloc_object() -> JsValue {
     let obj = Box::new(JsObject {
         shape_id,
         kind: ObjectKind::Object as u32,
-        _pad: 0,
+        func_id_idx: 0,
         props: std::ptr::null_mut(),
         props_len: 0,
         props_cap: 0,
@@ -196,7 +198,22 @@ pub fn alloc_array() -> JsValue {
     let obj = Box::new(JsObject {
         shape_id,
         kind: ObjectKind::Array as u32,
-        _pad: 0,
+        func_id_idx: 0,
+        props: std::ptr::null_mut(),
+        props_len: 0,
+        props_cap: 0,
+    });
+    let ptr = Box::into_raw(obj) as u64;
+    JsValue::object(ptr)
+}
+
+pub fn alloc_function(func_id_name: String) -> JsValue {
+    let shape_id = shape_registry().read().empty_shape();
+    let func_id_idx = intern_string(func_id_name);
+    let obj = Box::new(JsObject {
+        shape_id,
+        kind: ObjectKind::Function as u32,
+        func_id_idx,
         props: std::ptr::null_mut(),
         props_len: 0,
         props_cap: 0,

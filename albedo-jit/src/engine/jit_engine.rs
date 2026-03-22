@@ -6,8 +6,9 @@
 //! Este módulo é o coração do AlbedoJIT. Ele inicializa o backend Cranelift,
 //! compila funções para código nativo e gerencia o cache de código compilado.
 
-use crate::compiler::code_cache::{CachedCode, CodeCache, JitTier};
+use crate::compiler::code_cache::{CachedCode, CodeCache, JitTier, NativeCodePtr};
 use crate::infra::executable_memory::{CodePool, CodePoolStats, MemoryError};
+use std::sync::Arc;
 use crate::engine::profiler::FunctionId;
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, Function, InstBuilder, UserFuncName};
@@ -70,7 +71,7 @@ pub struct AlbedoJitEngine {
     /// Módulo JIT do Cranelift (gerencia memória executável).
     pub(crate) module: JITModule,
     /// Cache avançado de funções compiladas (metadados + invalidação).
-    pub(crate) code_cache: CodeCache,
+    pub(crate) code_cache: Arc<CodeCache>,
     /// Pool de memória executável própria para stubs e trampolines.
     code_pool: RwLock<CodePool>,
 }
@@ -324,10 +325,14 @@ impl AlbedoJitEngine {
         builder.symbol("js_unimplemented", js_unimplemented_mock as *const u8);
 
         let module = JITModule::new(builder);
+        let code_cache = Arc::new(CodeCache::new());
+
+        // Registrar o CodeCache globalmente para que o runtime possa acessá-lo
+        crate::compiler::code_cache::set_global_code_cache(Arc::clone(&code_cache));
 
         Ok(Self {
             module,
-            code_cache: CodeCache::new(),
+            code_cache,
             code_pool: RwLock::new(CodePool::new(budget_bytes)),
         })
     }
@@ -409,7 +414,7 @@ impl AlbedoJitEngine {
 
         // 7. Armazenar no Code Cache
         let id = FunctionId(func_name.to_string());
-        let entry = CachedCode::new(id, native_ptr, func_id, code_size, JitTier::Baseline);
+        let entry = CachedCode::new(id, NativeCodePtr(native_ptr), func_id, code_size, JitTier::Baseline);
         self.code_cache.insert(entry);
 
         Ok(())

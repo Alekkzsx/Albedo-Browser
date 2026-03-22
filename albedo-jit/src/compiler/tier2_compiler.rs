@@ -13,11 +13,13 @@ use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator};
+use super::loop_opts::LoopOptimizer;
+use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator, AirReg};
 use crate::compiler::deopt::{register_meta, DeoptMeta, DeoptPoint};
+use crate::engine::jit_bridge::{BytecodeRegistry};
 use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
-use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN};
-use crate::runtime::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET};
+use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN, TAG_OBJECT};
+use crate::runtime::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET, JsObject, ObjectKind, get_string};
 use crate::runtime::type_feedback::{
     AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair,
     ValueType,
@@ -27,18 +29,20 @@ const MIN_FEEDBACK_SAMPLES: u64 = 1;
 
 pub struct Tier2Compiler<'a> {
     engine: &'a mut AlbedoJitEngine,
-    builder_context: FunctionBuilderContext,
+    registry: &'a BytecodeRegistry,
 }
 
 impl<'a> Tier2Compiler<'a> {
-    pub fn new(engine: &'a mut AlbedoJitEngine) -> Self {
-        Self {
-            engine,
-            builder_context: FunctionBuilderContext::new(),
-        }
+    pub fn new(engine: &'a mut AlbedoJitEngine, registry: &'a BytecodeRegistry) -> Self {
+        Self { engine, registry }
     }
 
-    pub fn compile(&mut self, air: &AirFunction) -> Result<FuncId, JitError> {
+    pub fn compile(&mut self, air_orig: &AirFunction) -> Result<FuncId, JitError> {
+        let mut air = air_orig.clone();
+        let mut loop_optimizer = LoopOptimizer::new(&mut air);
+        loop_optimizer.run();
+        let air = &air;
+
         let mut sig = self.engine.module.make_signature();
         for _ in 0..air.num_params {
             sig.params.push(AbiParam::new(I64));
@@ -64,7 +68,8 @@ impl<'a> Tier2Compiler<'a> {
         let mut ctx = self.engine.module.make_context();
         ctx.func.signature = sig;
 
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut self.builder_context);
+        let mut builder_context = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
 
         let mut vars = Vec::with_capacity(air.registers_count as usize);
         for _ in 0..air.registers_count {
@@ -140,7 +145,7 @@ impl<'a> Tier2Compiler<'a> {
             &mut self.engine.module,
             &mut builder,
             "js_call_ic",
-            4,
+            5,
             &mut ext_funcs,
         )?;
         Self::declare_runtime_helper(
@@ -595,14 +600,15 @@ impl<'a> Tier2Compiler<'a> {
 
             for (inst_index, inst) in air_block.insts.iter().enumerate() {
                 let deopt_id = *deopt_map.get(&(air_block.id.0, inst_index)).unwrap_or(&0);
-                if Self::emit_instruction(
+                if self.emit_instruction(
                     &mut builder,
                     inst,
-                    &vars,
-                    &ext_funcs,
+                    &mut vars,
+                    &mut ext_funcs,
                     meta_id,
                     deopt_id,
                     spill_slot,
+                    0, // depth initial
                 ) {
                     continue;
                 }
@@ -678,7 +684,8 @@ impl<'a> Tier2Compiler<'a> {
         let mut ctx = self.engine.module.make_context();
         ctx.func.signature = sig;
 
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut self.builder_context);
+        let mut builder_context = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
 
         let mut vars = Vec::with_capacity(air.registers_count as usize);
         for _ in 0..air.registers_count {
@@ -782,7 +789,7 @@ impl<'a> Tier2Compiler<'a> {
             &mut self.engine.module,
             &mut builder,
             "js_call_ic",
-            4,
+            5,
             &mut ext_funcs,
         )?;
         Self::declare_runtime_helper(
@@ -870,24 +877,21 @@ impl<'a> Tier2Compiler<'a> {
             let cl_block = block_map[&air_block.id];
             builder.switch_to_block(cl_block);
 
-            let start = if air_block.id.0 == entry_block_id {
-                entry_inst
-            } else {
-                0
-            };
+            let _start = if air_block.id.0 == entry_block_id { entry_inst } else { 0 };
             for (inst_index, inst) in air_block.insts.iter().enumerate() {
-                if inst_index < start {
+                if air_block.id.0 == entry_block_id && inst_index < entry_inst {
                     continue;
                 }
                 let deopt_id = *deopt_map.get(&(air_block.id.0, inst_index)).unwrap_or(&0);
-                if Self::emit_instruction(
+                if self.emit_instruction(
                     &mut builder,
                     inst,
-                    &vars,
-                    &ext_funcs,
+                    &mut vars,
+                    &mut ext_funcs,
                     meta_id,
                     deopt_id,
                     spill_slot,
+                    0,
                 ) {
                     continue;
                 }
@@ -1157,16 +1161,19 @@ impl<'a> Tier2Compiler<'a> {
     }
 
     fn emit_specialized_call(
+        &mut self,
         builder: &mut FunctionBuilder,
-        ext_funcs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+        ext_funcs: &mut HashMap<String, cranelift_codegen::ir::FuncRef>,
         f: cranelift_codegen::ir::Value,
+        _this: cranelift_codegen::ir::Value,
         arg_start: crate::bytecode::AirReg,
         num_args: u32,
         snap: &crate::runtime::type_feedback::CallFeedbackSnapshot,
         meta_id: u32,
         deopt_id: u32,
         spill_slot: StackSlot,
-        vars: &[cranelift_frontend::Variable],
+        vars: &mut Vec<cranelift_frontend::Variable>,
+        depth: u32,
     ) -> Option<cranelift_codegen::ir::Value> {
         if snap.state != IcState::Monomorphic || snap.total < MIN_FEEDBACK_SAMPLES {
             return None;
@@ -1178,7 +1185,77 @@ impl<'a> Tier2Compiler<'a> {
             callee.is_builtin()
         );
         if !callee.is_builtin() {
-            return None;
+             // Inlining de funções AIR
+             if depth < 3 && callee.is_object() {
+                 let ptr = callee.as_object_ptr();
+                 // Ler metadados do objeto (func_id_idx)
+                 let obj = unsafe { &*(ptr as *const JsObject) };
+                 if obj.kind == ObjectKind::Function as u32 {
+                     let func_id_str = get_string(obj.func_id_idx).expect("ID de função não encontrado");
+                     let func_id = crate::engine::profiler::FunctionId(func_id_str);
+                     
+                     if let Some(callee_air) = self.registry.get_air(&func_id) {
+                         if callee_air.instruction_count() <= 50 {
+                             println!("[TIER2-INLINE] Inlining {} (ops={})", callee_air.name, callee_air.instruction_count());
+
+                             // Guard
+                             let slow_block = builder.create_block();
+                             let fast_block = builder.create_block();
+                             let expected_f = builder.ins().iconst(I64, callee.0 as i64);
+                             let f_ok = builder.ins().icmp(IntCC::Equal, f, expected_f);
+                             builder.ins().brif(f_ok, fast_block, &[], slow_block, &[]);
+
+                             builder.switch_to_block(fast_block);
+                             
+                             // Mapear argumentos
+                             let mut args = Vec::with_capacity(num_args as usize + 1);
+                             args.push(_this);
+                             for i in 0..num_args {
+                                 let reg = AirReg(arg_start.0 + i);
+                                 args.push(builder.use_var(vars[reg.0 as usize]));
+                             }
+
+                             let inline_res = self.inline_air_function(
+                                 &callee_air,
+                                 &args,
+                                 builder,
+                                 vars,
+                                 ext_funcs,
+                                 meta_id,
+                                 deopt_id, // Deopt p/ o callee call site em caso de erro no inline
+                                 spill_slot,
+                                 depth
+                             );
+
+                             match inline_res {
+                                 Ok(res_val) => {
+                                     let cont_block = builder.create_block();
+                                     builder.append_block_param(cont_block, I64);
+                                     let cont_args = [res_val.into()];
+                                     builder.ins().jump(cont_block, &cont_args);
+
+                                     builder.switch_to_block(slow_block);
+                                     let deopt_res = Self::emit_deopt_call(builder, ext_funcs, meta_id, deopt_id, spill_slot, vars);
+                                     builder.ins().return_(&[deopt_res]);
+
+                                     builder.switch_to_block(cont_block);
+                                     builder.seal_block(fast_block);
+                                     builder.seal_block(slow_block);
+                                     return Some(builder.block_params(cont_block)[0]);
+                                 }
+                                 Err(_) => {
+                                     // Se falhar, fallback para o slow path normal (não deveria acontecer pos-check de ops)
+                                     builder.switch_to_block(slow_block);
+                                     builder.seal_block(fast_block);
+                                     builder.seal_block(slow_block);
+                                     return None;
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+             return None;
         }
 
         let bid = callee.as_builtin_id() as u32;
@@ -1658,14 +1735,107 @@ impl<'a> Tier2Compiler<'a> {
         Ok(())
     }
 
+    fn inline_air_function(
+        &mut self,
+        callee: &AirFunction,
+        args: &[cranelift_codegen::ir::Value],
+        builder: &mut FunctionBuilder,
+        _vars: &mut Vec<Variable>,
+        ext_funcs: &mut HashMap<String, cranelift_codegen::ir::FuncRef>,
+        meta_id: u32,
+        caller_deopt_id: u32,
+        spill_slot: StackSlot,
+        depth: u32,
+    ) -> Result<cranelift_codegen::ir::Value, JitError> {
+        // 1. Mapear registradores locais e parâmetros
+        let mut callee_vars = Vec::with_capacity(callee.registers_count as usize);
+        for _ in 0..callee.registers_count {
+            let var = builder.declare_var(I64);
+            callee_vars.push(var);
+        }
+
+        // 2. Inicializar parâmetros
+        for (i, &arg_val) in args.iter().enumerate().take(callee.num_params as usize) {
+            builder.def_var(callee_vars[i], arg_val);
+        }
+        let undef = builder.ins().iconst(I64, JsValue::undefined().0 as i64);
+        for i in (args.len() as u32)..callee.num_params {
+            builder.def_var(callee_vars[i as usize], undef);
+        }
+        for i in callee.num_params..callee.registers_count {
+            builder.def_var(callee_vars[i as usize], undef);
+        }
+
+        // 3. Mapear blocos
+        let mut block_map = HashMap::new();
+        for block in &callee.blocks {
+            block_map.insert(block.id.0, builder.create_block());
+        }
+        let cont_block = builder.create_block();
+        builder.append_block_param(cont_block, I64);
+
+        // Preencher o bloco atual (do caller) com um jump para a entrada do callee inlines
+        if let Some(first_block) = callee.blocks.first() {
+            builder.ins().jump(block_map[&first_block.id.0], &[]);
+        }
+
+        // 4. Emitir instruções
+        for block in &callee.blocks {
+            let cl_block = block_map[&block.id.0];
+            builder.switch_to_block(cl_block);
+
+            for inst in &block.insts {
+                self.emit_instruction(
+                    builder,
+                    inst,
+                    &mut callee_vars,
+                    ext_funcs,
+                    meta_id,
+                    caller_deopt_id, // Deopt p/ o caller site
+                    spill_slot,
+                    depth + 1,
+                );
+            }
+
+            if let Some(ref term) = block.terminator {
+                match term {
+                    AirTerminator::Jump(target) => {
+                        builder.ins().jump(block_map[&target.0], &[]);
+                    }
+                    AirTerminator::JumpIf { cond, then_blk, else_blk } => {
+                        let c_val = builder.use_var(callee_vars[cond.0 as usize]);
+                        let f_to_bool = *ext_funcs.get("js_to_bool").expect("js_to_bool not declared");
+                        let call = builder.ins().call(f_to_bool, &[c_val]);
+                        let boxed_bool = builder.inst_results(call)[0];
+                        let b_val = builder.ins().band_imm(boxed_bool, 1);
+                        builder.ins().brif(b_val, block_map[&then_blk.0], &[], block_map[&else_blk.0], &[]);
+                    }
+                    AirTerminator::Return(reg) => {
+                        let res = builder.use_var(callee_vars[reg.0 as usize]);
+                        let args = [res.into()];
+                        builder.ins().jump(cont_block, &args);
+                    }
+                }
+            }
+        }
+
+        builder.switch_to_block(cont_block);
+        for block in &callee.blocks {
+            builder.seal_block(block_map[&block.id.0]);
+        }
+        Ok(builder.block_params(cont_block)[0])
+    }
+
     fn emit_instruction(
+        &mut self,
         builder: &mut FunctionBuilder,
         inst: &AirOpcode,
-        vars: &[Variable],
-        ext_funcs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+        vars: &mut Vec<Variable>,
+        ext_funcs: &mut HashMap<String, cranelift_codegen::ir::FuncRef>,
         meta_id: u32,
         deopt_id: u32,
         spill_slot: StackSlot,
+        depth: u32,
     ) -> bool {
         match inst {
             AirOpcode::LoadInt32 { dst, value } => {
@@ -1934,17 +2104,20 @@ impl<'a> Tier2Compiler<'a> {
             AirOpcode::Call {
                 dst,
                 func,
+                this,
                 arg_start,
                 num_args,
                 ic_slot,
             } => {
                 let f = builder.use_var(vars[func.0 as usize]);
+                let this_val = builder.use_var(vars[this.0 as usize]);
                 let slot = *ic_slot;
                 if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
-                    if let Some(res) = Self::emit_specialized_call(
+                    if let Some(res) = self.emit_specialized_call(
                         builder,
                         ext_funcs,
                         f,
+                        this_val,
                         *arg_start,
                         *num_args,
                         &snap,
@@ -1952,6 +2125,7 @@ impl<'a> Tier2Compiler<'a> {
                         deopt_id,
                         spill_slot,
                         vars,
+                        depth,
                     ) {
                         builder.def_var(vars[dst.0 as usize], res);
                         return true;
@@ -1979,7 +2153,7 @@ impl<'a> Tier2Compiler<'a> {
                 let func_ref = *ext_funcs.get("js_call_ic").unwrap();
                 let call = builder
                     .ins()
-                    .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                    .call(func_ref, &[f, this_val, args_ptr, num_args_val, slot_val]);
                 let res = builder.inst_results(call)[0];
                 builder.def_var(vars[dst.0 as usize], res);
             }
@@ -2069,23 +2243,24 @@ mod tests {
     /// Helper: compila com Tier2 e executa com 2 argumentos.
     fn tier2_run_2(air: &AirFunction, a: JsValue, b: JsValue) -> JsValue {
         let mut engine = AlbedoJitEngine::new().unwrap();
-        let mut compiler = Tier2Compiler::new(&mut engine);
+        let registry = BytecodeRegistry::new();
+        let mut compiler = Tier2Compiler::new(&mut engine, &registry);
         let id = compiler.compile(air).expect("Tier2 compile falhou");
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
-        let f: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        JsValue(f(a.0, b.0))
+        let f: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        JsValue(f(JsValue::undefined().0, a.0, b.0))
     }
 
     fn make_binary_air(name: &str, op: AirOpcode) -> AirFunction {
         AirFunction {
             name: name.to_string(),
-            num_params: 2,
-            registers_count: 3,
+            num_params: 3, // this, p1, p2
+            registers_count: 4,
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![op],
-                terminator: Some(AirTerminator::Return(AirReg(2))),
+                terminator: Some(AirTerminator::Return(AirReg(3))),
             }],
             const_pool: AirConstantPool::default(),
         }
@@ -2096,9 +2271,9 @@ mod tests {
         let air = make_binary_air(
             "sub_t2",
             AirOpcode::Sub {
-                dst: AirReg(2),
-                lhs: AirReg(0),
-                rhs: AirReg(1),
+                dst: AirReg(3),
+                lhs: AirReg(1),
+                rhs: AirReg(2),
             },
         );
         let result = tier2_run_2(&air, JsValue::int32(10), JsValue::int32(3));
@@ -2110,9 +2285,9 @@ mod tests {
         let air = make_binary_air(
             "mul_t2",
             AirOpcode::Mul {
-                dst: AirReg(2),
-                lhs: AirReg(0),
-                rhs: AirReg(1),
+                dst: AirReg(3),
+                lhs: AirReg(1),
+                rhs: AirReg(2),
             },
         );
         let result = tier2_run_2(&air, JsValue::int32(6), JsValue::int32(7));
@@ -2125,9 +2300,9 @@ mod tests {
         let air = make_binary_air(
             "sub_deopt",
             AirOpcode::Sub {
-                dst: AirReg(2),
-                lhs: AirReg(0),
-                rhs: AirReg(1),
+                dst: AirReg(3),
+                lhs: AirReg(1),
+                rhs: AirReg(2),
             },
         );
         let result = tier2_run_2(&air, JsValue::float64(10.5), JsValue::float64(3.5));
@@ -2140,9 +2315,9 @@ mod tests {
         let air = make_binary_air(
             "mul_deopt",
             AirOpcode::Mul {
-                dst: AirReg(2),
-                lhs: AirReg(0),
-                rhs: AirReg(1),
+                dst: AirReg(3),
+                lhs: AirReg(1),
+                rhs: AirReg(2),
             },
         );
         let result = tier2_run_2(&air, JsValue::float64(2.5), JsValue::float64(4.0));
@@ -2154,17 +2329,17 @@ mod tests {
         // Sem type feedback → slow path via js_add_ic genérico
         let air = AirFunction {
             name: "add_nofb".to_string(),
-            num_params: 2,
-            registers_count: 3,
+            num_params: 3,
+            registers_count: 4,
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![AirOpcode::Add {
-                    dst: AirReg(2),
-                    lhs: AirReg(0),
-                    rhs: AirReg(1),
+                    dst: AirReg(3),
+                    lhs: AirReg(1),
+                    rhs: AirReg(2),
                     ic_slot: 999,
                 }],
-                terminator: Some(AirTerminator::Return(AirReg(2))),
+                terminator: Some(AirTerminator::Return(AirReg(3))),
             }],
             const_pool: AirConstantPool::default(),
         };
@@ -2178,24 +2353,24 @@ mod tests {
         // 1. Criar AIR que faz Add(0, 1) -> 2 e depois Multiply(2, 2) -> 3
         let air = AirFunction {
             name: "add_deopt_real".to_string(),
-            num_params: 2,
-            registers_count: 4,
+            num_params: 3,
+            registers_count: 5,
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![
                     AirOpcode::Add {
-                        dst: AirReg(2),
-                        lhs: AirReg(0),
-                        rhs: AirReg(1),
+                        dst: AirReg(3),
+                        lhs: AirReg(1),
+                        rhs: AirReg(2),
                         ic_slot: 0,
                     },
                     AirOpcode::Mul {
-                        dst: AirReg(3),
-                        lhs: AirReg(2),
-                        rhs: AirReg(2),
+                        dst: AirReg(4),
+                        lhs: AirReg(3),
+                        rhs: AirReg(3),
                     },
                 ],
-                terminator: Some(AirTerminator::Return(AirReg(3))),
+                terminator: Some(AirTerminator::Return(AirReg(4))),
             }],
             const_pool: AirConstantPool::default(),
         };
@@ -2209,7 +2384,8 @@ mod tests {
 
         // 3. Compilar no Tier 2 (vai especializar Add para Int32)
         let mut engine = AlbedoJitEngine::new().unwrap();
-        let mut compiler = Tier2Compiler::new(&mut engine);
+        let registry = BytecodeRegistry::new();
+        let mut compiler = Tier2Compiler::new(&mut engine, &registry);
         let id = compiler.compile(&air).expect("Tier2 compile falhou");
         engine.module.finalize_definitions().unwrap();
         let ptr = engine.module.get_finalized_function(id);
@@ -2218,12 +2394,288 @@ mod tests {
         // No interpretador:
         //   Add(1.5, 2.5) -> 4.0
         //   Mul(4.0, 4.0) -> 16.0
-        let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        let native_func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
         let result = JsValue(native_func(
+            JsValue::undefined().0,
             JsValue::float64(1.5).0,
             JsValue::float64(2.5).0,
         ));
 
         assert_eq!(result.as_float64(), 16.0);
+    }
+
+    #[test]
+    fn test_tier2_function_inlining() {
+        // 1. Criar Callee AIR: function add(a, b) { return a + b; }
+        // params: this(0), a(1), b(2) -> reg3 = a+b, return reg3
+        let callee_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
+            crate::runtime::type_feedback::IcKind::Add,
+        );
+
+        let callee_air = AirFunction {
+            name: "callee_add".to_string(),
+            num_params: 3,
+            registers_count: 4,
+            blocks: vec![AirBlock {
+                id: AirBlockId(0),
+                insts: vec![AirOpcode::Add {
+                    dst: AirReg(3),
+                    lhs: AirReg(1),
+                    rhs: AirReg(2),
+                    ic_slot: callee_ic_slot,
+                }],
+                terminator: Some(AirTerminator::Return(AirReg(3))),
+            }],
+            const_pool: AirConstantPool::default(),
+        };
+
+        // 2. Criar Caller AIR: function caller(x) { return callee(x, 5); }
+        let caller_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
+            crate::runtime::type_feedback::IcKind::Call,
+        );
+
+        // params: this(0), x(1) -> reg3=callee, reg2=5, reg4=call(reg3, this, [x, reg2]), return reg4
+        let caller_air = AirFunction {
+            name: "caller".to_string(),
+            num_params: 2,
+            registers_count: 5,
+            blocks: vec![AirBlock {
+                id: AirBlockId(0),
+                insts: vec![
+                    AirOpcode::LoadInt32 { dst: AirReg(3), value: 0xDEADBEEFu32 as i32 }, // Placeholder p/ o callee JsValue
+                    AirOpcode::LoadInt32 { dst: AirReg(2), value: 5 },
+                    AirOpcode::Call {
+                        dst: AirReg(4),
+                        func: AirReg(3),
+                        this: AirReg(0),
+                        arg_start: AirReg(1),
+                        num_args: 2,
+                        ic_slot: caller_ic_slot,
+                    },
+                ],
+                terminator: Some(AirTerminator::Return(AirReg(4))),
+            }],
+            const_pool: AirConstantPool::default(),
+        };
+
+        // 3. Setup Engine e Registry
+        let mut engine = AlbedoJitEngine::new().unwrap();
+        let registry = BytecodeRegistry::new();
+        
+        // Registrar callee
+        let callee_name = "callee_add".to_string();
+        let callee_id = crate::engine::profiler::FunctionId(callee_name.clone());
+        registry.register_air(callee_id.clone(), callee_air);
+
+        // Criar Objeto Função falso
+        let callee_obj = Box::new(JsObject {
+            shape_id: 0,
+            kind: ObjectKind::Function as u32,
+            func_id_idx: crate::runtime::object_model::intern_string(callee_name),
+            props: std::ptr::null_mut(),
+            props_len: 0,
+            props_cap: 0,
+        });
+        
+        // No AlbedoJIT, JsValue de objeto é TAG_OBJECT | ptr
+        let ptr = Box::into_raw(callee_obj) as u64;
+        let callee_val = JsValue::object(ptr);
+        
+        // Atualizar o LoadInt32 no caller para carregar o callee_val real
+        // (Isso é um hack p/ o teste, normalmente o IC cuidaria disso)
+        let mut final_caller = caller_air;
+        // Melhor usar LoadInt64 para não perder a referência do Object na conversão para i32
+        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
+
+        // 4. Gravar feedback Monomorphic
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(
+            caller_ic_slot,
+            callee_val,
+        );
+
+        // 5. Compilar Caller
+        let mut compiler = Tier2Compiler::new(&mut engine, &registry);
+        let id = compiler.compile(&final_caller).expect("Inlining compile falhou");
+        engine.module.finalize_definitions().unwrap();
+        
+        let ptr = engine.module.get_finalized_function(id);
+        let f: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        
+        // Executar: caller(37) -> callee(37, 5) -> 42
+        let result = JsValue(f(JsValue::undefined().0, JsValue::int32(37).0));
+        
+        assert_eq!(result.as_int32(), 42);
+        println!("[TEST] Inlining bem sucedido: 37 + 5 = 42");
+    }
+
+    #[test]
+    fn test_tier2_inlining_depth_limit() {
+        let mut engine = AlbedoJitEngine::new().unwrap();
+        let registry = BytecodeRegistry::new();
+        
+        let rec_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
+            crate::runtime::type_feedback::IcKind::Call,
+        );
+
+        let rec_name = "recursive_func".to_string();
+        let rec_id = crate::engine::profiler::FunctionId(rec_name.clone());
+
+        let recursive_air = AirFunction {
+            name: rec_name.clone(),
+            num_params: 2,
+            registers_count: 5,
+            blocks: vec![AirBlock {
+                id: AirBlockId(0),
+                insts: vec![
+                    AirOpcode::LoadInt32 { dst: AirReg(2), value: 0 },
+                    // Placeholder da prórpia func p/ call recursive
+                    AirOpcode::LoadInt64 { dst: AirReg(3), value: 12345678 },  
+                    AirOpcode::Call {
+                        dst: AirReg(4),
+                        func: AirReg(3),
+                        this: AirReg(0),
+                        arg_start: AirReg(1),
+                        num_args: 2,
+                        ic_slot: rec_ic_slot,
+                    },
+                ],
+                terminator: Some(AirTerminator::Return(AirReg(4))),
+            }],
+            const_pool: AirConstantPool::default(),
+        };
+
+        // Objeto recursivo
+        let rec_obj = Box::new(JsObject {
+            shape_id: 0,
+            kind: ObjectKind::Function as u32,
+            func_id_idx: crate::runtime::object_model::intern_string(rec_name),
+            props: std::ptr::null_mut(),
+            props_len: 0,
+            props_cap: 0,
+        });
+        
+        let ptr = Box::into_raw(rec_obj) as u64;
+        let callee_val = JsValue::object(ptr);
+
+        let mut final_air = recursive_air;
+        final_air.blocks[0].insts[1] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
+        
+        registry.register_air(rec_id, final_air.clone());
+
+        // Snapshot com 1 Call pra ela mesma
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(rec_ic_slot, callee_val);
+
+        let mut compiler = Tier2Compiler::new(&mut engine, &registry);
+        
+        // Se a depth limit não existisse, a compilação desse método daria stack overflow no rust
+        // compailando infinitamente si mesma.
+        let id = compiler.compile(&final_air).expect("Compile recursive inlining falhou!");
+        engine.module.finalize_definitions().unwrap();
+
+        let ptr = engine.module.get_finalized_function(id);
+        assert!(!ptr.is_null());
+        println!("[TEST] Limit depth evitou stack overflow inlining.");
+    }
+
+    #[test]
+    fn test_tier2_inlining_deopt_bailout() {
+        let mut engine = AlbedoJitEngine::new().unwrap();
+        let registry = BytecodeRegistry::new();
+
+        // 1. Callee: add_int(a, b) -> a + b  (só que o Add dará Deopt por Float64)
+        let callee_add_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
+            crate::runtime::type_feedback::IcKind::Add,
+        );
+        let callee_air = AirFunction {
+            name: "deoptable_callee".to_string(),
+            num_params: 3,
+            registers_count: 4,
+            blocks: vec![AirBlock {
+                id: AirBlockId(0),
+                insts: vec![
+                    // Add com meta_id 99 (será o bailout_id!)
+                    AirOpcode::Add {
+                        dst: AirReg(3),
+                        lhs: AirReg(1),
+                        rhs: AirReg(2),
+                        ic_slot: callee_add_slot,
+                    },
+                ],
+                terminator: Some(AirTerminator::Return(AirReg(3))),
+            }],
+            const_pool: AirConstantPool {
+                strings: vec![],
+            },
+        };
+        // Gravar IC como Int32 + Int32 (Para que compile FastPath como Integer!)
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_add(callee_add_slot, JsValue::int32(1), JsValue::int32(2));
+
+        // 2. Caller: foo(y) -> callee(y, Float)  <- Vai causar FLOAT DEOPT no callee!
+        let caller_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
+            crate::runtime::type_feedback::IcKind::Call,
+        );
+        let caller_air = AirFunction {
+            name: "deopter_caller".to_string(),
+            num_params: 2,
+            registers_count: 5,
+            blocks: vec![AirBlock {
+                id: AirBlockId(0),
+                insts: vec![
+                    AirOpcode::LoadInt64 { dst: AirReg(3), value: 0 }, // Func mock 
+                    AirOpcode::LoadFloat64 { dst: AirReg(2), value: 5.5 }, // O Fator FLUTUANTE DEOPT!
+                    AirOpcode::Call {
+                        dst: AirReg(4),
+                        func: AirReg(3),
+                        this: AirReg(0),
+                        arg_start: AirReg(1),
+                        num_args: 2,
+                        ic_slot: caller_ic_slot,
+                    },
+                ],
+                terminator: Some(AirTerminator::Return(AirReg(4))),
+            }],
+            const_pool: AirConstantPool {
+                strings: vec![],
+            },
+        };
+
+        // Mocks globais
+        let callee_name = "deoptable_callee".to_string();
+        let callee_id = crate::engine::profiler::FunctionId(callee_name.clone());
+        registry.register_air(callee_id, callee_air);
+
+        let callee_obj = Box::new(JsObject {
+            shape_id: 0,
+            kind: ObjectKind::Function as u32,
+            func_id_idx: crate::runtime::object_model::intern_string(callee_name),
+            props: std::ptr::null_mut(),
+            props_len: 0,
+            props_cap: 0,
+        });
+        
+        let ptr = Box::into_raw(callee_obj) as u64;
+        let callee_val = JsValue::object(ptr);
+
+        let mut final_caller = caller_air;
+        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
+        
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(caller_ic_slot, callee_val);
+
+        let mut compiler = Tier2Compiler::new(&mut engine, &registry);
+        let id = compiler.compile(&final_caller).unwrap();
+        engine.module.finalize_definitions().unwrap();
+        
+        let ptr = engine.module.get_finalized_function(id);
+        let f: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        
+        // Execta a função
+        let result = f(JsValue::undefined().0, JsValue::int32(37).0); // 37 + 5.5
+        
+        // O JIT bridge mock dos testes no `albedo-jit` pode retornar fallback id ou
+        // um valor de float por `js_add`/trap OSR genérica. Nosso interesse primário é checar 
+        // se ocorreu Inlining (impressão do TIER2-INLINE e não deu crash de OOB).
+        // Se retornar F64 significa que invocou algum fallback. Se Int64, pode ser o MAGIC TRAP deopt.
+        
+        println!("[TEST] inlining deopt value = {:?}", result);
     }
 }

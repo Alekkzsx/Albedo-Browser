@@ -81,6 +81,7 @@ fn test_fast_math_jit_stress() {
     b2.insts.push(AirOpcode::Call {
         dst: r_abs,
         func: r_math_abs,
+        this: AirReg(19),
         arg_start: r_i,
         num_args: 1,
         ic_slot: s0,
@@ -88,6 +89,7 @@ fn test_fast_math_jit_stress() {
     b2.insts.push(AirOpcode::Call {
         dst: r_sqrt,
         func: r_math_sqrt,
+        this: AirReg(19),
         arg_start: r_abs,
         num_args: 1,
         ic_slot: s1,
@@ -114,7 +116,8 @@ fn test_fast_math_jit_stress() {
     air.blocks.push(b2);
     air.blocks.push(b3);
 
-    let mut compiler = Tier2Compiler::new(&mut engine);
+    let dummy_registry = albedo_jit::engine::jit_bridge::BytecodeRegistry::new();
+    let mut compiler = Tier2Compiler::new(&mut engine, &dummy_registry);
     let func_id = compiler.compile(&air).unwrap();
     engine.finalize_definitions().unwrap();
     let ptr = engine.get_finalized_function(func_id);
@@ -183,6 +186,7 @@ fn test_fast_array_jit_stress() {
     b2.insts.push(AirOpcode::Call {
         dst: r_len,
         func: r_push,
+        this: r_a,
         arg_start: r_a,
         num_args: 2,
         ic_slot: s10,
@@ -216,7 +220,8 @@ fn test_fast_array_jit_stress() {
     air.blocks.push(b2);
     air.blocks.push(b3);
 
-    let mut compiler = Tier2Compiler::new(&mut engine);
+    let dummy_registry = albedo_jit::engine::jit_bridge::BytecodeRegistry::new();
+    let mut compiler = Tier2Compiler::new(&mut engine, &dummy_registry);
     let func_id = compiler.compile(&air).unwrap();
     engine.finalize_definitions().unwrap();
     let ptr = engine.get_finalized_function(func_id);
@@ -250,12 +255,17 @@ fn test_fast_math_sin_jit() {
         dst: r_sin_fn,
         value: sin_builtin.0 as i64,
     });
+    b0.insts.push(AirOpcode::LoadInt64 {
+        dst: AirReg(4),
+        value: JsValue::undefined().0 as i64,
+    });
     
     TypeFeedbackRegistry::record_call(s_sin, sin_builtin);
 
     b0.insts.push(AirOpcode::Call {
         dst: r_res,
         func: r_sin_fn,
+        this: AirReg(4),
         arg_start: r_x,
         num_args: 1,
         ic_slot: s_sin,
@@ -263,7 +273,8 @@ fn test_fast_math_sin_jit() {
     b0.terminator = Some(AirTerminator::Return(r_res));
     air.blocks.push(b0);
 
-    let mut compiler = Tier2Compiler::new(&mut engine);
+    let dummy_registry = albedo_jit::engine::jit_bridge::BytecodeRegistry::new();
+    let mut compiler = Tier2Compiler::new(&mut engine, &dummy_registry);
     let func_id = compiler.compile(&air).unwrap();
     engine.finalize_definitions().unwrap();
     let ptr = engine.get_finalized_function(func_id);

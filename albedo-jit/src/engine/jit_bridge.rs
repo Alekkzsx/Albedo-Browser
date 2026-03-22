@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 
 use crate::compiler::baseline_compiler::BaselineCompiler;
-use crate::compiler::code_cache::CachedCode;
+use crate::compiler::code_cache::{CachedCode, NativeCodePtr};
 use crate::decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
 use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
 use crate::engine::profiler::{FunctionId, JitProfiler};
@@ -111,7 +111,7 @@ impl JitBridge {
                         let native_ptr = engine.module.get_finalized_function(func_id);
                         let entry = CachedCode::new(
                             id.clone(),
-                            native_ptr,
+                            NativeCodePtr(native_ptr),
                             func_id,
                             128, // Placeholder size
                             crate::compiler::code_cache::JitTier::Baseline,
@@ -135,9 +135,9 @@ impl JitBridge {
 
     /// Tenta obter um ponteiro para a versão nativa de uma função.
     pub fn try_native(&self, id: &FunctionId) -> Option<*const u8> {
-        self.engine.read().code_cache.lookup(id).map(|entry| {
+        self.engine.read().code_cache.lookup(id).map(|entry: Arc<crate::compiler::code_cache::CachedCode>| {
             entry.increment_execution();
-            entry.native_ptr
+            entry.native_ptr.0
         })
     }
 
@@ -222,7 +222,7 @@ impl JitBridge {
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine);
+            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
 
             // Compilação OSR (Tier 2)
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
@@ -231,7 +231,7 @@ impl JitBridge {
                     let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
                     let entry = CachedCode::new(
                         osr_key.clone(),
-                        ptr,
+                        NativeCodePtr(ptr),
                         func_id,
                         256,
                         crate::compiler::code_cache::JitTier::AlbedoTurbo, // Tier 2
@@ -256,13 +256,13 @@ impl JitBridge {
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine);
+            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
                 Ok(ptr) => {
                     let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
                     let entry = CachedCode::new(
                         osr_key.clone(),
-                        ptr,
+                        NativeCodePtr(ptr),
                         func_id,
                         256,
                         crate::compiler::code_cache::JitTier::AlbedoTurbo,
@@ -299,7 +299,7 @@ unsafe impl Sync for JitBridge {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytecode::{AirBuilder, AirOpcode, AirReg, AirTerminator};
+    use crate::bytecode::{AirBuilder, AirReg};
     use crate::decoder::QjsOpcode;
     use crate::runtime::js_value::JsValue;
     use crate::engine::profiler::ProfilerConfig;
@@ -341,9 +341,9 @@ mod tests {
         let ptr = bridge.try_native(&id).expect("Deveria ter compilado");
 
         // 6. Executar o código nativo resultante
-        // (i64: 20 -> JS(20) + JS(22) = JS(42))
-        let func: fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        let result = JsValue(func(JsValue::int32(20).0));
+        // (this: undefined, arg0: 20 -> JS(20) + JS(22) = JS(42))
+        let func: fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
+        let result = JsValue(func(JsValue::undefined().0, JsValue::int32(20).0));
 
         assert_eq!(result.as_int32(), 42);
         assert_eq!(bridge.stats().active_code_count, 1);

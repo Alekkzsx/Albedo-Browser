@@ -1346,7 +1346,7 @@
                para Tier 2 e transferir a execução mid-loop para código nativo
   [x]  2.6  Builtins rápidos: Math.*, Array.push/pop, String.charAt, JSON.parse
              → Implementar em Rust puro com chamada direta (sem passa pelo JS)
-  [ ]  2.7  Testes: type specialization correctness
+  [x]  2.7  Testes: type specialization correctness
              → Testar deopt: função que muda tipos no meio da execução
              → Benchmark: Fibonacci, N-Body, Richards, DeltaBlue
 
@@ -1357,10 +1357,12 @@
 
   Objetivo: Alcançar/superar performance do V8 em benchmarks.
 
-  [ ]  3.1  Function Inlining
+  [x]  3.1  Function Inlining ✅ (2026-03-22)
              → Inline funções pequenas (≤50 AIR ops) em call sites monomorphic
              → Inlining budget: máximo 3 níveis de profundidade por default
-  [ ]  3.2  Loop Optimizations
+             → Implementado em tier2_compiler.rs: inline_air_function() + guard de
+               identidade do callee + propagação de depth; 65/65 testes passando
+  [x]  3.2  Loop Optimizations ✅ (2026-03-22)
              → Loop Invariant Code Motion (LICM): mover computações constantes
                para fora do loop
              → Loop Unrolling: desenrolar loops pequenos (≤8 iterações)

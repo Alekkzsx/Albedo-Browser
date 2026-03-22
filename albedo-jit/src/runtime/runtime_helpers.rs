@@ -9,14 +9,16 @@
 
 use crate::runtime::builtins::{call_builtin, BuiltinId};
 use crate::runtime::js_value::{JsValue, TAG_MASK};
-use crate::runtime::object_model;
+use crate::runtime::object_model::{self, ObjectKind, JsObject};
 use crate::runtime::type_feedback::TypeFeedbackRegistry;
+use crate::compiler::code_cache::get_global_code_cache;
+use crate::engine::profiler::FunctionId;
 
 // ---------------------------------------------------------------------------
 // Helpers Aritméticos
 // ---------------------------------------------------------------------------
 
-/// Adição JS (`a + b`). Coerção de número simples (Strings ainda não tratadas nesta V1).
+/// Adição JS (`a + b`). Suporta números e concatenação de strings.
 #[no_mangle]
 pub extern "C" fn js_add(lhs: u64, rhs: u64) -> u64 {
     let a = JsValue(lhs);
@@ -36,10 +38,37 @@ pub extern "C" fn js_add(lhs: u64, rhs: u64) -> u64 {
         }
     }
 
-    // Slow-path: Converte ambos para float64 (na V1 pularemos ToPrimitive string)
+    // String Concatenation Path
+    if a.is_string() || b.is_string() {
+        let s1 = to_string_cloned(a);
+        let s2 = to_string_cloned(b);
+        let res = s1 + &s2;
+        let id = object_model::intern_string(res);
+        return JsValue::string(id as u64).0;
+    }
+
+    // Slow-path: Converte ambos para float64
     let f1 = to_number(a);
     let f2 = to_number(b);
     JsValue::float64(f1 + f2).0
+}
+
+fn to_string_cloned(val: JsValue) -> String {
+    if val.is_string() {
+        object_model::get_string(val.as_string_id() as u32).unwrap_or_default()
+    } else if val.is_int32() {
+        val.as_int32().to_string()
+    } else if val.is_float64() {
+        val.as_float64().to_string()
+    } else if val.is_bool() {
+        val.as_bool().to_string()
+    } else if val.is_null() {
+        "null".to_string()
+    } else if val.is_undefined() {
+        "undefined".to_string()
+    } else {
+        "[object Object]".to_string()
+    }
 }
 
 /// Adição JS com coleta de type feedback (IC slot).
@@ -190,20 +219,78 @@ pub extern "C" fn js_get_prop_ic(obj: u64, prop: u64, slot: u64) -> u64 {
     object_model::get_prop(o, p).0
 }
 
-/// Call com IC slot (agora despacha builtins rápidos).
+/// Call com IC slot (suporta builtins e funções JS JIT'eadas).
 #[no_mangle]
-pub extern "C" fn js_call_ic(func: u64, args_ptr: u64, num_args: u64, slot: u64) -> u64 {
+pub extern "C" fn js_call_ic(func: u64, this: u64, args_ptr: u64, num_args: u64, slot: u64) -> u64 {
     let f = JsValue(func);
+    let t = JsValue(this);
     TypeFeedbackRegistry::record_call(slot as u32, f);
+
     if f.is_builtin() {
         let id = f.as_builtin_id() as u32;
         if let Some(bid) = builtin_from_id(id) {
             let args =
                 unsafe { std::slice::from_raw_parts(args_ptr as *const u64, num_args as usize) };
             let vals: Vec<JsValue> = args.iter().map(|v| JsValue(*v)).collect();
+            // TODO: Builtins V1 ignoram 'this', mas deveriam suportar
             return call_builtin(bid, &vals).0;
         }
+    } else if f.is_object() {
+        unsafe {
+            let obj = &*(f.as_object_ptr() as *const JsObject);
+            if obj.kind == ObjectKind::Function as u32 {
+                if let Some(func_id_name) = object_model::get_string(obj.func_id_idx) {
+                    let fid = FunctionId(func_id_name);
+                    let cache = get_global_code_cache();
+                    
+                    if let Some(entry) = cache.lookup(&fid) {
+                        // Incrementar contador de execução do cache
+                        entry.increment_execution();
+
+                        // Chamada JIT: Passamos (this, p0, p1, ...) conforme a nova ABI.
+                        // f(this, args[0], args[1], ...)
+                        // NOTA: O JIT espera I64 individualmente para cada argumento,
+                        // mas como o baseline compiler no V1 empilha no stack via ptr se forCall,
+                        // precisamos de um "trampoline" ou tratar conforme num_args.
+                        // Para o V1 simplificado, se num_args for baixo, fazemos o match.
+                        
+                        let native_ptr = entry.native_ptr;
+                        
+                        // NOTA: No Tier 1 usamos um calling convention onde os argumentos
+                        // são passados via registradores/stack conforme a ABI do sistema.
+                        // Para simplificar o despacho dinâmico V1:
+                        match num_args {
+                            0 => {
+                                let func_ptr: extern "C" fn(u64) -> u64 = std::mem::transmute(native_ptr);
+                                return func_ptr(t.0);
+                            }
+                            1 => {
+                                let func_ptr: extern "C" fn(u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let args = std::slice::from_raw_parts(args_ptr as *const u64, 1);
+                                return func_ptr(t.0, args[0]);
+                            }
+                            2 => {
+                                let func_ptr: extern "C" fn(u64, u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let args = std::slice::from_raw_parts(args_ptr as *const u64, 2);
+                                return func_ptr(t.0, args[0], args[1]);
+                            }
+                            3 => {
+                                let func_ptr: extern "C" fn(u64, u64, u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let args = std::slice::from_raw_parts(args_ptr as *const u64, 3);
+                                return func_ptr(t.0, args[0], args[1], args[2]);
+                            }
+                            _ => {
+                                // Fallback para interpreter ou implementar Dispatcher de N argumentos
+                                // Por agora, crash amigável ou undefined
+                                println!("[Runtime] Chamada com {} argumentos não suportada no despacho baseline V1", num_args);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
+
     JsValue::undefined().0
 }
 
