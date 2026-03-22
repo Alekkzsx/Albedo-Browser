@@ -52,9 +52,11 @@ impl AirInterpreter {
                 if loop_headers.contains(&block.id.0) {
                     if osr_ctx.bump(air, block.id.0) {
                         let spill: Vec<u64> = regs.iter().map(|v| v.0).collect();
+                        println!("[OSR-TIER0] Jumping to JIT at block {}...", block.id.0);
                         let ptr = osr_ctx.get_or_compile(air, block.id.0, 0);
                         let func: extern "C" fn(u64) -> u64 = unsafe { std::mem::transmute(ptr) };
                         let res = func(spill.as_ptr() as u64);
+                        println!("[OSR-TIER0] JIT return value: {:016x}", res);
                         return JsValue(res);
                     }
                 }
@@ -67,6 +69,9 @@ impl AirInterpreter {
                     }
                     AirOpcode::LoadFloat64 { dst, value } => {
                         regs[dst.0 as usize] = JsValue::float64(*value);
+                    }
+                    AirOpcode::LoadInt64 { dst, value } => {
+                        regs[dst.0 as usize] = JsValue(*value as u64);
                     }
                     AirOpcode::LoadBool { dst, value } => {
                         regs[dst.0 as usize] = JsValue::bool(*value);

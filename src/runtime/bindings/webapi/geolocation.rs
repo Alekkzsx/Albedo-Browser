@@ -1,4 +1,4 @@
-use rquickjs::{prelude::*, Class, Ctx, Object, Result};
+use rquickjs::{Class, Ctx, Object, Result};
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]

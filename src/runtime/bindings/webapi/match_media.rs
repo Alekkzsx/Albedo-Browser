@@ -56,7 +56,8 @@ impl MediaQueryList {
 
     // ── addEventListener / removeEventListener ────────────────────────────────
 
-    pub fn addEventListener<'js>(
+    #[qjs(rename = "addEventListener")]
+    pub fn add_event_listener<'js>(
         &self,
         ctx: Ctx<'js>,
         event_type: String,
@@ -71,7 +72,8 @@ impl MediaQueryList {
         Ok(())
     }
 
-    pub fn removeEventListener<'js>(
+    #[qjs(rename = "removeEventListener")]
+    pub fn remove_event_listener<'js>(
         &self,
         event_type: String,
         _callback: Function<'js>,
@@ -89,19 +91,22 @@ impl MediaQueryList {
 
     // ── addListener / removeListener (deprecated, mas necessário) ────────────
 
-    pub fn addListener<'js>(&self, ctx: Ctx<'js>, callback: Function<'js>) -> Result<()> {
+    #[qjs(rename = "addListener")]
+    pub fn add_listener<'js>(&self, ctx: Ctx<'js>, callback: Function<'js>) -> Result<()> {
         let persistent = rquickjs::Persistent::save(&ctx, callback);
         self.listeners.lock().unwrap().push(persistent);
         Ok(())
     }
 
-    pub fn removeListener<'js>(&self, _callback: Function<'js>) -> Result<()> {
+    #[qjs(rename = "removeListener")]
+    pub fn remove_listener<'js>(&self, _callback: Function<'js>) -> Result<()> {
         self.listeners.lock().unwrap().clear();
         Ok(())
     }
 
     // ── dispatchEvent (stub de compatibilidade) ───────────────────────────────
-    pub fn dispatchEvent(&self, _event: Value<'_>) -> bool {
+    #[qjs(rename = "dispatchEvent")]
+    pub fn dispatch_event(&self, _event: Value<'_>) -> bool {
         true
     }
 }

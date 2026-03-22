@@ -1,6 +1,6 @@
 use crate::runtime::bindings::webapi::idb_service::worker::IDBWorkerCommand;
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Class, Ctx, Function, Object, Persistent, Result, Value};
+use rquickjs::{Class, Ctx, Function, Object, Persistent, Result, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -186,7 +186,8 @@ impl IDBDatabase {
         Class::instance(ctx, tx).map(|i| i.into_value())
     }
 
-    pub fn createObjectStore<'js>(
+    #[qjs(rename = "createObjectStore")]
+    pub fn create_object_store<'js>(
         &self,
         ctx: Ctx<'js>,
         name: String,
@@ -223,7 +224,8 @@ pub struct IDBTransaction {
 
 #[rquickjs::methods]
 impl IDBTransaction {
-    pub fn objectStore<'js>(&self, ctx: Ctx<'js>, name: String) -> Result<Value<'js>> {
+    #[qjs(rename = "objectStore")]
+    pub fn object_store<'js>(&self, ctx: Ctx<'js>, name: String) -> Result<Value<'js>> {
         let store = IDBObjectStore {
             name,
             transaction_id: self.tx_id,
@@ -311,7 +313,8 @@ impl IDBObjectStore {
         .map(|i| i.into_value())
     }
 
-    pub fn createIndex<'js>(
+    #[qjs(rename = "createIndex")]
+    pub fn create_index<'js>(
         &self,
         ctx: Ctx<'js>,
         name: String,
@@ -339,7 +342,8 @@ impl IDBObjectStore {
         Class::instance(ctx, idx).map(|i| i.into_value())
     }
 
-    pub fn openCursor<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+    #[qjs(rename = "openCursor")]
+    pub fn open_cursor<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let cb_id = NEXT_REQ_ID.fetch_add(1, Ordering::SeqCst);
         let _ = self.worker_tx.send(IDBWorkerCommand::OpenCursor {
             request_callback_id: cb_id,

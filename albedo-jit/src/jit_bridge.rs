@@ -12,7 +12,7 @@ use crate::decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
 use crate::jit_engine::{AlbedoJitEngine, JitError};
 use crate::profiler::{FunctionId, JitProfiler};
 use cranelift_codegen::ir::{types::I64, AbiParam};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::Module;
 
 #[derive(Default)]
 pub struct BytecodeRegistry {
@@ -168,12 +168,52 @@ impl JitBridge {
             // Mapear PC Offset do QuickJS para Bloco/Instrução no AIR
             // Para o protótipo V1, assumimos que loops começam em blocos específicos.
             // Em uma impl real, usaríamos o `map.block_to_qjs_offset`.
-            let target_block = map
+            // Mapeamento Robusto: Encontrar o bloco cujo offset inicial é o mais próximo (atrás) do PC atual.
+            let target_block_info = map
                 .block_to_qjs_offset
                 .iter()
-                .find(|(_, &offset)| offset == pc_offset as usize)
-                .map(|(&block_id, _)| block_id)
-                .unwrap_or(0); // Fallback para o bloco 0 se não mapeado exatamente
+                .filter(|(_, &offset)| offset <= pc_offset as usize)
+                .max_by_key(|(_, &offset)| offset);
+
+            let (target_block, _block_start_offset) = if let Some((&id, &off)) = target_block_info {
+                (id, off)
+            } else {
+                (0, 0)
+            };
+
+            // Dentro do bloco, encontrar a instrução correspondente ao offset exato, se possível.
+            let mut entry_inst = 0;
+            if let Some(blk) = air_func.blocks.iter().find(|b| b.id.0 == target_block) {
+                for (idx, inst) in blk.insts.iter().enumerate() {
+                    // Verificamos qual registrador essa instrução define e se ele mapeia pro PC atual.
+                    let reg_dst = match inst {
+                        crate::bytecode::AirOpcode::LoadInt32 { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Add { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Sub { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Mul { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Div { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::GetProp { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadFloat64 { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadBool { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadString { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Move { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Eq { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::StrictEq { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Lt { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Gt { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Lte { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::Gte { dst, ..} => Some(dst.0),
+                        _ => None,
+                    };
+
+                    if let Some(r) = reg_dst {
+                        if map.reg_to_qjs_offset.get(&r) == Some(&(pc_offset as usize)) {
+                            entry_inst = idx;
+                            break;
+                        }
+                    }
+                }
+            }
 
             let mut engine = self.engine.write();
 
@@ -185,7 +225,7 @@ impl JitBridge {
             let mut compiler = crate::tier2_compiler::Tier2Compiler::new(&mut engine);
 
             // Compilação OSR (Tier 2)
-            match compiler.compile_osr(&air_func, target_block, 0) {
+            match compiler.compile_osr(&air_func, target_block, entry_inst) {
                 Ok(ptr) => {
                     // Registrar no cache com a chave OSR
                     let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
@@ -200,7 +240,38 @@ impl JitBridge {
                     return Some(ptr);
                 }
                 Err(e) => {
-                    eprintln!("[JIT] Falha na compilação OSR: {}", e);
+                    eprintln!("[JIT] Falha na compilação OSR (Tier 2): {}", e);
+                }
+            }
+        } else if let Some(air_func) = registry.get_air(id) {
+            println!(
+                "[JIT] Compilando OSR Entry p/ {:?} a partir do AIR direto (Testing)",
+                id
+            );
+            let target_block = 0;
+            let entry_inst = 0;
+            
+            let mut engine = self.engine.write();
+            let mut sig = engine.module.make_signature();
+            sig.params.push(AbiParam::new(I64));
+            sig.returns.push(AbiParam::new(I64));
+
+            let mut compiler = crate::tier2_compiler::Tier2Compiler::new(&mut engine);
+            match compiler.compile_osr(&air_func, target_block, entry_inst) {
+                Ok(ptr) => {
+                    let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
+                    let entry = CachedCode::new(
+                        osr_key.clone(),
+                        ptr,
+                        func_id,
+                        256,
+                        crate::code_cache::JitTier::AlbedoTurbo,
+                    );
+                    engine.code_cache.insert(entry);
+                    return Some(ptr);
+                }
+                Err(e) => {
+                    eprintln!("[JIT] Falha na compilação OSR a partir do AIR puro: {}", e);
                 }
             }
         }

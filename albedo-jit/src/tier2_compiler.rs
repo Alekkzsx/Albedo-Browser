@@ -8,7 +8,7 @@ use cranelift_codegen::ir::types::{F64, I32, I64};
 use cranelift_codegen::ir::{
     AbiParam, InstBuilder, MemFlags, StackSlot, StackSlotData, StackSlotKind,
 };
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -52,7 +52,7 @@ impl<'a> Tier2Compiler<'a> {
             .declare_function(&func_name, Linkage::Export, &sig)?;
 
         // Pré-mapeamento de deopt points (1 por instrução AIR)
-        let (deopt_points, deopt_map) = build_deopt_points(air);
+        let (deopt_points, deopt_map) = Self::build_deopt_points(air);
         let meta_id = register_meta(DeoptMeta {
             air: Arc::new(air.clone()),
             points: deopt_points,
@@ -178,6 +178,90 @@ impl<'a> Tier2Compiler<'a> {
             0,
             &mut ext_funcs,
         )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_div",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_mod",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_gt",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_gte",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_lte",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_and",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_or",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_xor",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_shl",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_shr",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_bit_ushr",
+            2,
+            &mut ext_funcs,
+        )?;
 
         // Fast Builtins symbols
         Self::declare_runtime_helper(
@@ -238,6 +322,35 @@ impl<'a> Tier2Compiler<'a> {
             &mut ext_funcs,
         )?;
 
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_has_prop",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_delete_prop",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_type_of",
+            1,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_instance_of",
+            2,
+            &mut ext_funcs,
+        )?;
+
         let mut block_map = HashMap::new();
         for air_block in &air.blocks {
             let cl_block = builder.create_block();
@@ -264,253 +377,16 @@ impl<'a> Tier2Compiler<'a> {
 
             for (inst_index, inst) in air_block.insts.iter().enumerate() {
                 let deopt_id = *deopt_map.get(&(air_block.id.0, inst_index)).unwrap_or(&0);
-                match inst {
-                    AirOpcode::LoadInt32 { dst, value } => {
-                        let packed = JsValue::int32(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadFloat64 { dst, value } => {
-                        let packed = JsValue::float64(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadBool { dst, value } => {
-                        let packed = JsValue::bool(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadUndefined { dst } => {
-                        let packed = JsValue::undefined().0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadNull { dst } => {
-                        let packed = JsValue::null().0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadString { dst, str_id } => {
-                        let packed = JsValue::string(*str_id as u64).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::Move { dst, src } => {
-                        let val = builder.use_var(vars[src.0 as usize]);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::Add {
-                        dst,
-                        lhs,
-                        rhs,
-                        ic_slot,
-                    } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::add_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_add(
-                                &mut builder,
-                                &ext_funcs,
-                                a,
-                                b,
-                                slot,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let slot_val = builder.ins().iconst(I64, slot as i64);
-                        let func_ref = *ext_funcs.get("js_add_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::Sub { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        // Tentar specialization int32 com deopt
-                        if let Some(res) = Self::emit_sub_int32(
-                            &mut builder,
-                            &ext_funcs,
-                            a,
-                            b,
-                            meta_id,
-                            deopt_id,
-                            spill_slot,
-                            &vars,
-                        ) {
-                            builder.def_var(vars[dst.0 as usize], res);
-                        } else {
-                            let func_ref = *ext_funcs.get("js_sub").unwrap();
-                            let call = builder.ins().call(func_ref, &[a, b]);
-                            let res = builder.inst_results(call)[0];
-                            builder.def_var(vars[dst.0 as usize], res);
-                        }
-                    }
-                    AirOpcode::Mul { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        // Tentar specialization int32 com deopt
-                        if let Some(res) = Self::emit_mul_int32(
-                            &mut builder,
-                            &ext_funcs,
-                            a,
-                            b,
-                            meta_id,
-                            deopt_id,
-                            spill_slot,
-                            &vars,
-                        ) {
-                            builder.def_var(vars[dst.0 as usize], res);
-                        } else {
-                            let func_ref = *ext_funcs.get("js_mul").unwrap();
-                            let call = builder.ins().call(func_ref, &[a, b]);
-                            let res = builder.inst_results(call)[0];
-                            builder.def_var(vars[dst.0 as usize], res);
-                        }
-                    }
-                    AirOpcode::Eq { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_eq").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::Lt { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_lt").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::StrictEq { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_strict_eq").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::GetProp {
-                        dst,
-                        obj,
-                        prop,
-                        ic_slot,
-                    } => {
-                        let o = builder.use_var(vars[obj.0 as usize]);
-                        let p = builder.use_var(vars[prop.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::get_prop_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_get_prop(
-                                &mut builder,
-                                &ext_funcs,
-                                o,
-                                p,
-                                slot,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let slot_val = builder.ins().iconst(I64, slot as i64);
-                        let func_ref = *ext_funcs.get("js_get_prop_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[o, p, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::SetProp { obj, prop, value } => {
-                        let o = builder.use_var(vars[obj.0 as usize]);
-                        let p = builder.use_var(vars[prop.0 as usize]);
-                        let v = builder.use_var(vars[value.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_set_prop").unwrap();
-                        let _call = builder.ins().call(func_ref, &[o, p, v]);
-                    }
-                    AirOpcode::Call {
-                        dst,
-                        func,
-                        arg_start,
-                        num_args,
-                        ic_slot,
-                    } => {
-                        let f = builder.use_var(vars[func.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_call(
-                                &mut builder,
-                                &ext_funcs,
-                                f,
-                                *arg_start,
-                                *num_args,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let args_ptr = if *num_args == 0 {
-                            builder.ins().iconst(I64, 0)
-                        } else {
-                            let size = (*num_args as u32) * 8;
-                            let slot = builder.create_sized_stack_slot(StackSlotData::new(
-                                StackSlotKind::ExplicitSlot,
-                                size,
-                                8,
-                            ));
-                            for i in 0..*num_args {
-                                let reg = crate::bytecode::AirReg(arg_start.0 + i);
-                                let val = builder.use_var(vars[reg.0 as usize]);
-                                let offset = (i * 8) as i32;
-                                builder.ins().stack_store(val, slot, offset);
-                            }
-                            builder.ins().stack_addr(I64, slot, 0)
-                        };
-                        let num_args_val = builder.ins().iconst(I64, *num_args as i64);
-                        let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
-                        let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder
-                            .ins()
-                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::CreateObj { dst } => {
-                        let func_ref = *ext_funcs.get("js_create_obj").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::CreateArray { dst } => {
-                        let func_ref = *ext_funcs.get("js_create_array").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    _ => {
-                        let func_ref = *ext_funcs.get("js_unimplemented").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let _res = builder.inst_results(call)[0];
-                        println!(
-                            "[Tier2] Warning: Unsupported Opcode {:?} - fallback to undefined",
-                            inst
-                        );
-                    }
+                if Self::emit_instruction(
+                    &mut builder,
+                    inst,
+                    &vars,
+                    &ext_funcs,
+                    meta_id,
+                    deopt_id,
+                    spill_slot,
+                ) {
+                    continue;
                 }
             }
 
@@ -572,7 +448,7 @@ impl<'a> Tier2Compiler<'a> {
             .module
             .declare_function(&func_name, Linkage::Export, &sig)?;
 
-        let (deopt_points, deopt_map) = build_deopt_points(air);
+        let (deopt_points, deopt_map) = Self::build_deopt_points(air);
         let meta_id = register_meta(DeoptMeta {
             air: Arc::new(air.clone()),
             points: deopt_points,
@@ -625,6 +501,48 @@ impl<'a> Tier2Compiler<'a> {
             &mut self.engine.module,
             &mut builder,
             "js_strict_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_eq",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_lt",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_gt",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_lte",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_gte",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_div",
             2,
             &mut ext_funcs,
         )?;
@@ -685,6 +603,28 @@ impl<'a> Tier2Compiler<'a> {
             &mut ext_funcs,
         )?;
 
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_has_prop",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_delete_prop",
+            2,
+            &mut ext_funcs,
+        )?;
+        Self::declare_runtime_helper(
+            &mut self.engine.module,
+            &mut builder,
+            "js_instance_of",
+            2,
+            &mut ext_funcs,
+        )?;
+
         let mut block_map = HashMap::new();
         for air_block in &air.blocks {
             let cl_block = builder.create_block();
@@ -722,231 +662,16 @@ impl<'a> Tier2Compiler<'a> {
                     continue;
                 }
                 let deopt_id = *deopt_map.get(&(air_block.id.0, inst_index)).unwrap_or(&0);
-                match inst {
-                    AirOpcode::LoadInt32 { dst, value } => {
-                        let packed = JsValue::int32(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadFloat64 { dst, value } => {
-                        let packed = JsValue::float64(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadBool { dst, value } => {
-                        let packed = JsValue::bool(*value).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadUndefined { dst } => {
-                        let packed = JsValue::undefined().0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadNull { dst } => {
-                        let packed = JsValue::null().0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::LoadString { dst, str_id } => {
-                        let packed = JsValue::string(*str_id as u64).0 as i64;
-                        let val = builder.ins().iconst(I64, packed);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::Move { dst, src } => {
-                        let val = builder.use_var(vars[src.0 as usize]);
-                        builder.def_var(vars[dst.0 as usize], val);
-                    }
-                    AirOpcode::Add {
-                        dst,
-                        lhs,
-                        rhs,
-                        ic_slot,
-                    } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::add_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_add(
-                                &mut builder,
-                                &ext_funcs,
-                                a,
-                                b,
-                                slot,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let slot_val = builder.ins().iconst(I64, slot as i64);
-                        let func_ref = *ext_funcs.get("js_add_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::Sub { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        if let Some(res) = Self::emit_sub_int32(
-                            &mut builder,
-                            &ext_funcs,
-                            a,
-                            b,
-                            meta_id,
-                            deopt_id,
-                            spill_slot,
-                            &vars,
-                        ) {
-                            builder.def_var(vars[dst.0 as usize], res);
-                        } else {
-                            let func_ref = *ext_funcs.get("js_sub").unwrap();
-                            let call = builder.ins().call(func_ref, &[a, b]);
-                            let res = builder.inst_results(call)[0];
-                            builder.def_var(vars[dst.0 as usize], res);
-                        }
-                    }
-                    AirOpcode::Mul { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        if let Some(res) = Self::emit_mul_int32(
-                            &mut builder,
-                            &ext_funcs,
-                            a,
-                            b,
-                            meta_id,
-                            deopt_id,
-                            spill_slot,
-                            &vars,
-                        ) {
-                            builder.def_var(vars[dst.0 as usize], res);
-                        } else {
-                            let func_ref = *ext_funcs.get("js_mul").unwrap();
-                            let call = builder.ins().call(func_ref, &[a, b]);
-                            let res = builder.inst_results(call)[0];
-                            builder.def_var(vars[dst.0 as usize], res);
-                        }
-                    }
-                    AirOpcode::StrictEq { dst, lhs, rhs } => {
-                        let a = builder.use_var(vars[lhs.0 as usize]);
-                        let b = builder.use_var(vars[rhs.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_strict_eq").unwrap();
-                        let call = builder.ins().call(func_ref, &[a, b]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::GetProp {
-                        dst,
-                        obj,
-                        prop,
-                        ic_slot,
-                    } => {
-                        let o = builder.use_var(vars[obj.0 as usize]);
-                        let p = builder.use_var(vars[prop.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::get_prop_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_get_prop(
-                                &mut builder,
-                                &ext_funcs,
-                                o,
-                                p,
-                                slot,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let slot_val = builder.ins().iconst(I64, slot as i64);
-                        let func_ref = *ext_funcs.get("js_get_prop_ic").unwrap();
-                        let call = builder.ins().call(func_ref, &[o, p, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::SetProp { obj, prop, value } => {
-                        let o = builder.use_var(vars[obj.0 as usize]);
-                        let p = builder.use_var(vars[prop.0 as usize]);
-                        let v = builder.use_var(vars[value.0 as usize]);
-                        let func_ref = *ext_funcs.get("js_set_prop").unwrap();
-                        let _call = builder.ins().call(func_ref, &[o, p, v]);
-                    }
-                    AirOpcode::Call {
-                        dst,
-                        func,
-                        arg_start,
-                        num_args,
-                        ic_slot,
-                    } => {
-                        let f = builder.use_var(vars[func.0 as usize]);
-                        let slot = *ic_slot;
-                        if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
-                            if let Some(res) = Self::emit_specialized_call(
-                                &mut builder,
-                                &ext_funcs,
-                                f,
-                                *arg_start,
-                                *num_args,
-                                &snap,
-                                meta_id,
-                                deopt_id,
-                                spill_slot,
-                                &vars,
-                            ) {
-                                builder.def_var(vars[dst.0 as usize], res);
-                                continue;
-                            }
-                        }
-                        let args_ptr = if *num_args == 0 {
-                            builder.ins().iconst(I64, 0)
-                        } else {
-                            let size = (*num_args as u32) * 8;
-                            let slot = builder.create_sized_stack_slot(StackSlotData::new(
-                                StackSlotKind::ExplicitSlot,
-                                size,
-                                8,
-                            ));
-                            for i in 0..*num_args {
-                                let reg = crate::bytecode::AirReg(arg_start.0 + i);
-                                let val = builder.use_var(vars[reg.0 as usize]);
-                                let offset = (i * 8) as i32;
-                                builder.ins().stack_store(val, slot, offset);
-                            }
-                            builder.ins().stack_addr(I64, slot, 0)
-                        };
-                        let num_args_val = builder.ins().iconst(I64, *num_args as i64);
-                        let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
-                        let func_ref = *ext_funcs.get("js_call_ic").unwrap();
-                        let call = builder
-                            .ins()
-                            .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::CreateObj { dst } => {
-                        let func_ref = *ext_funcs.get("js_create_obj").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    AirOpcode::CreateArray { dst } => {
-                        let func_ref = *ext_funcs.get("js_create_array").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let res = builder.inst_results(call)[0];
-                        builder.def_var(vars[dst.0 as usize], res);
-                    }
-                    _ => {
-                        let func_ref = *ext_funcs.get("js_unimplemented").unwrap();
-                        let call = builder.ins().call(func_ref, &[]);
-                        let _res = builder.inst_results(call)[0];
-                    }
+                if Self::emit_instruction(
+                    &mut builder,
+                    inst,
+                    &vars,
+                    &ext_funcs,
+                    meta_id,
+                    deopt_id,
+                    spill_slot,
+                ) {
+                    continue;
                 }
             }
 
@@ -1525,24 +1250,405 @@ impl<'a> Tier2Compiler<'a> {
         ext_funcs.insert(name.to_string(), local_ref);
         Ok(())
     }
-}
 
-fn build_deopt_points(air: &AirFunction) -> (Vec<DeoptPoint>, HashMap<(u32, usize), u32>) {
-    let mut points = Vec::new();
-    let mut map = HashMap::new();
-
-    for block in &air.blocks {
-        for (idx, _inst) in block.insts.iter().enumerate() {
-            let id = points.len() as u32;
-            points.push(DeoptPoint {
-                block_id: block.id.0,
-                inst_index: idx as u32,
-            });
-            map.insert((block.id.0, idx), id);
+    fn emit_instruction(
+        builder: &mut FunctionBuilder,
+        inst: &AirOpcode,
+        vars: &[Variable],
+        ext_funcs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+        meta_id: u32,
+        deopt_id: u32,
+        spill_slot: StackSlot,
+    ) -> bool {
+        match inst {
+            AirOpcode::LoadInt32 { dst, value } => {
+                let packed = JsValue::int32(*value).0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadFloat64 { dst, value } => {
+                let packed = JsValue::float64(*value).0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadInt64 { dst, value } => {
+                let val = builder.ins().iconst(I64, *value);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadBool { dst, value } => {
+                let packed = JsValue::bool(*value).0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadUndefined { dst } => {
+                let packed = JsValue::undefined().0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadNull { dst } => {
+                let packed = JsValue::null().0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::LoadString { dst, str_id } => {
+                let packed = JsValue::string(*str_id as u64).0 as i64;
+                let val = builder.ins().iconst(I64, packed);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::Move { dst, src } => {
+                let val = builder.use_var(vars[src.0 as usize]);
+                builder.def_var(vars[dst.0 as usize], val);
+            }
+            AirOpcode::Add {
+                dst,
+                lhs,
+                rhs,
+                ic_slot,
+            } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let slot = *ic_slot;
+                if let Some(snap) = TypeFeedbackRegistry::add_snapshot(slot) {
+                    if let Some(res) = Self::emit_specialized_add(
+                        builder,
+                        ext_funcs,
+                        a,
+                        b,
+                        slot,
+                        &snap,
+                        meta_id,
+                        deopt_id,
+                        spill_slot,
+                        vars,
+                    ) {
+                        builder.def_var(vars[dst.0 as usize], res);
+                        return true;
+                    }
+                }
+                let slot_val = builder.ins().iconst(I64, slot as i64);
+                let func_ref = *ext_funcs.get("js_add_ic").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b, slot_val]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Sub { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                if let Some(res) = Self::emit_sub_int32(
+                    builder,
+                    ext_funcs,
+                    a,
+                    b,
+                    meta_id,
+                    deopt_id,
+                    spill_slot,
+                    vars,
+                ) {
+                    builder.def_var(vars[dst.0 as usize], res);
+                } else {
+                    let func_ref = *ext_funcs.get("js_sub").unwrap();
+                    let call = builder.ins().call(func_ref, &[a, b]);
+                    let res = builder.inst_results(call)[0];
+                    builder.def_var(vars[dst.0 as usize], res);
+                }
+            }
+            AirOpcode::Mul { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                if let Some(res) = Self::emit_mul_int32(
+                    builder,
+                    ext_funcs,
+                    a,
+                    b,
+                    meta_id,
+                    deopt_id,
+                    spill_slot,
+                    vars,
+                ) {
+                    builder.def_var(vars[dst.0 as usize], res);
+                } else {
+                    let func_ref = *ext_funcs.get("js_mul").unwrap();
+                    let call = builder.ins().call(func_ref, &[a, b]);
+                    let res = builder.inst_results(call)[0];
+                    builder.def_var(vars[dst.0 as usize], res);
+                }
+            }
+            AirOpcode::Eq { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_eq").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Lt { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_lt").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::StrictEq { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_strict_eq").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Div { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_div").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Mod { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_mod").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Gt { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_gt").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Gte { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_gte").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Lte { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_lte").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::BitAnd { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_and").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::BitOr { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_or").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::BitXor { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_xor").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Shl { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_shl").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::Shr { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_shr").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::UShr { dst, lhs, rhs } => {
+                let a = builder.use_var(vars[lhs.0 as usize]);
+                let b = builder.use_var(vars[rhs.0 as usize]);
+                let func_ref = *ext_funcs.get("js_bit_ushr").unwrap();
+                let call = builder.ins().call(func_ref, &[a, b]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::GetProp {
+                dst,
+                obj,
+                prop,
+                ic_slot,
+            } => {
+                let o = builder.use_var(vars[obj.0 as usize]);
+                let p = builder.use_var(vars[prop.0 as usize]);
+                let slot = *ic_slot;
+                if let Some(snap) = TypeFeedbackRegistry::get_prop_snapshot(slot) {
+                    if let Some(res) = Self::emit_specialized_get_prop(
+                        builder,
+                        ext_funcs,
+                        o,
+                        p,
+                        slot,
+                        &snap,
+                        meta_id,
+                        deopt_id,
+                        spill_slot,
+                        vars,
+                    ) {
+                        builder.def_var(vars[dst.0 as usize], res);
+                        return true;
+                    }
+                }
+                let slot_val = builder.ins().iconst(I64, slot as i64);
+                let func_ref = *ext_funcs.get("js_get_prop_ic").unwrap();
+                let call = builder.ins().call(func_ref, &[o, p, slot_val]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::SetProp { obj, prop, value } => {
+                let o = builder.use_var(vars[obj.0 as usize]);
+                let p = builder.use_var(vars[prop.0 as usize]);
+                let v = builder.use_var(vars[value.0 as usize]);
+                let func_ref = *ext_funcs.get("js_set_prop").unwrap();
+                let _call = builder.ins().call(func_ref, &[o, p, v]);
+            }
+            AirOpcode::Call {
+                dst,
+                func,
+                arg_start,
+                num_args,
+                ic_slot,
+            } => {
+                let f = builder.use_var(vars[func.0 as usize]);
+                let slot = *ic_slot;
+                if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
+                    if let Some(res) = Self::emit_specialized_call(
+                        builder,
+                        ext_funcs,
+                        f,
+                        *arg_start,
+                        *num_args,
+                        &snap,
+                        meta_id,
+                        deopt_id,
+                        spill_slot,
+                        vars,
+                    ) {
+                        builder.def_var(vars[dst.0 as usize], res);
+                        return true;
+                    }
+                }
+                let args_ptr = if *num_args == 0 {
+                    builder.ins().iconst(I64, 0)
+                } else {
+                    let size = (*num_args as u32) * 8;
+                    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        size,
+                        8,
+                    ));
+                    for i in 0..*num_args {
+                        let reg = crate::bytecode::AirReg(arg_start.0 + i);
+                        let val = builder.use_var(vars[reg.0 as usize]);
+                        let offset = (i * 8) as i32;
+                        builder.ins().stack_store(val, slot, offset);
+                    }
+                    builder.ins().stack_addr(I64, slot, 0)
+                };
+                let num_args_val = builder.ins().iconst(I64, *num_args as i64);
+                let slot_val = builder.ins().iconst(I64, *ic_slot as i64);
+                let func_ref = *ext_funcs.get("js_call_ic").unwrap();
+                let call = builder
+                    .ins()
+                    .call(func_ref, &[f, args_ptr, num_args_val, slot_val]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::CreateObj { dst } => {
+                let func_ref = *ext_funcs.get("js_create_obj").unwrap();
+                let call = builder.ins().call(func_ref, &[]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::CreateArray { dst } => {
+                let func_ref = *ext_funcs.get("js_create_array").unwrap();
+                let call = builder.ins().call(func_ref, &[]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::HasProp { dst, obj, prop } => {
+                let o = builder.use_var(vars[obj.0 as usize]);
+                let p = builder.use_var(vars[prop.0 as usize]);
+                let func_ref = *ext_funcs.get("js_has_prop").unwrap();
+                let call = builder.ins().call(func_ref, &[o, p]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::DeleteProp { dst, obj, prop } => {
+                let o = builder.use_var(vars[obj.0 as usize]);
+                let p = builder.use_var(vars[prop.0 as usize]);
+                let func_ref = *ext_funcs.get("js_delete_prop").unwrap();
+                let call = builder.ins().call(func_ref, &[o, p]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::TypeOf { dst, src } => {
+                let s = builder.use_var(vars[src.0 as usize]);
+                let func_ref = *ext_funcs.get("js_type_of").unwrap();
+                let call = builder.ins().call(func_ref, &[s]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            AirOpcode::InstanceOf { dst, obj, ctor } => {
+                let o = builder.use_var(vars[obj.0 as usize]);
+                let c = builder.use_var(vars[ctor.0 as usize]);
+                let func_ref = *ext_funcs.get("js_instance_of").unwrap();
+                let call = builder.ins().call(func_ref, &[o, c]);
+                let res = builder.inst_results(call)[0];
+                builder.def_var(vars[dst.0 as usize], res);
+            }
+            _ => {
+                let func_ref = *ext_funcs.get("js_unimplemented").unwrap();
+                let call = builder.ins().call(func_ref, &[]);
+                let _res = builder.inst_results(call)[0];
+                println!(
+                    "[Tier2] Warning: Unsupported Opcode {:?} - fallback to undefined",
+                    inst
+                );
+            }
         }
+        false
     }
 
-    (points, map)
+    fn build_deopt_points(air: &AirFunction) -> (Vec<DeoptPoint>, HashMap<(u32, usize), u32>) {
+        let mut points = Vec::new();
+        let mut map = HashMap::new();
+
+        for block in &air.blocks {
+            for (idx, _inst) in block.insts.iter().enumerate() {
+                let id = points.len() as u32;
+                points.push(DeoptPoint {
+                    block_id: block.id.0,
+                    inst_index: idx as u32,
+                });
+                map.insert((block.id.0, idx), id);
+            }
+        }
+
+        (points, map)
+    }
 }
 
 #[cfg(test)]

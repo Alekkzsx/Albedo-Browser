@@ -86,8 +86,8 @@ fn length_prop_id() -> u32 {
 #[derive(Debug, Clone)]
 struct Shape {
     id: u64, // hash of keys+order
-    parent: Option<u64>,
-    last_prop: Option<u32>,
+    _parent: Option<u64>,
+    _last_prop: Option<u32>,
     props: Vec<u32>, // property ids in order (offset = index)
     prop_index: HashMap<u32, usize>,
 }
@@ -96,8 +96,8 @@ impl Shape {
     fn new_empty() -> Self {
         Self {
             id: fnv1a_seed(),
-            parent: None,
-            last_prop: None,
+            _parent: None,
+            _last_prop: None,
             props: Vec::new(),
             prop_index: HashMap::new(),
         }
@@ -149,8 +149,8 @@ impl ShapeRegistry {
         let new_hash = fnv1a_extend(base.id, prop_id);
         let new_shape = Shape {
             id: new_hash,
-            parent: Some(from_shape),
-            last_prop: Some(prop_id),
+            _parent: Some(from_shape),
+            _last_prop: Some(prop_id),
             props,
             prop_index: index,
         };
@@ -276,12 +276,14 @@ pub fn get_prop(obj_val: JsValue, prop_val: JsValue) -> JsValue {
         let obj = &mut *(obj_val.as_object_ptr() as *mut JsObject);
         if obj.kind == ObjectKind::Array as u32 {
             if prop_id == length_prop_id() {
+                println!("[DEBUG-OBJ] Get length on array: len={}", obj.props_len);
                 return JsValue::int32(obj.props_len as i32);
             }
             if let Some(idx) = parse_array_index(prop_val) {
                 return array_get_index(obj, idx);
             }
         }
+        println!("[DEBUG-OBJ] Get other prop: id={} (length_id={})", prop_id, length_prop_id());
         let reg = shape_registry().read();
         if let Some(offset) = reg.get_offset(obj.shape_id, prop_id) {
             if (offset as u32) < obj.props_len {
@@ -290,6 +292,34 @@ pub fn get_prop(obj_val: JsValue, prop_val: JsValue) -> JsValue {
         }
         JsValue::undefined()
     }
+}
+
+pub fn has_prop(obj_val: JsValue, prop_val: JsValue) -> bool {
+    if !obj_val.is_object() || !prop_val.is_string() {
+        return false;
+    }
+    let prop_id = prop_val.as_string_id() as u32;
+    unsafe {
+        let obj = &*(obj_val.as_object_ptr() as *const JsObject);
+        if obj.kind == ObjectKind::Array as u32 {
+            if prop_id == length_prop_id() {
+                return true;
+            }
+            if let Some(idx) = parse_array_index(prop_val) {
+                return idx < obj.props_len as usize;
+            }
+        }
+        let reg = shape_registry().read();
+        reg.get_offset(obj.shape_id, prop_id).is_some()
+    }
+}
+
+pub fn delete_prop(obj_val: JsValue, prop_val: JsValue) -> bool {
+    if !obj_val.is_object() || !prop_val.is_string() {
+        return true;
+    }
+    set_prop(obj_val, prop_val, JsValue::undefined());
+    true
 }
 
 pub fn object_shape_id(val: JsValue) -> Option<u64> {

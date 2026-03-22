@@ -1,5 +1,5 @@
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Class, Ctx, Function, Result, Value};
+use rquickjs::{Class, Ctx, Function, Result, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -14,9 +14,9 @@ pub enum WorkerMessage {
 #[rquickjs::class]
 pub struct Worker {
     #[qjs(skip_trace)]
-    pub(crate) parent_rt_id: usize,
+    pub(crate) _parent_rt_id: usize,
     #[qjs(skip_trace)]
-    pub(crate) worker_rt_id: usize,
+    pub(crate) _worker_rt_id: usize,
     #[qjs(skip_trace)]
     pub(crate) sender: Arc<Mutex<Sender<WorkerMessage>>>,
     #[qjs(skip_trace)]
@@ -177,8 +177,8 @@ impl Worker {
         });
 
         Ok(Self {
-            parent_rt_id,
-            worker_rt_id,
+            _parent_rt_id: parent_rt_id,
+            _worker_rt_id: worker_rt_id,
             sender: tx_arc,
             is_terminated,
         })

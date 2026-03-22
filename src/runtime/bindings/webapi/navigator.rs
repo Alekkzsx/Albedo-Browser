@@ -30,7 +30,8 @@ impl Navigator {
     }
 
     #[qjs(get)]
-    pub fn onLine(&self) -> bool {
+    #[qjs(get, rename = "onLine")]
+    pub fn on_line(&self) -> bool {
         true
     }
 

@@ -53,9 +53,7 @@ pub struct CacheEntry {
 
 /// Disk cache manager for HTTP resources
 pub struct DiskCache {
-    cache_dir: PathBuf,
     content_dir: PathBuf,
-    db_path: PathBuf,
     conn: std::sync::Arc<std::sync::Mutex<Connection>>,
     max_size_bytes: u64, // 500 MB default
 }
@@ -108,9 +106,7 @@ impl DiskCache {
         )?;
 
         Ok(DiskCache {
-            cache_dir,
             content_dir,
-            db_path,
             conn: std::sync::Arc::new(std::sync::Mutex::new(conn)),
             max_size_bytes,
         })

@@ -1402,8 +1402,8 @@ fn parse_simple(source: &str) -> Stylesheet {
     };
     let mut input = cssparser::ParserInput::new(source);
     let mut parser = cssparser::Parser::new(&mut input);
-    let mut rule_Parser_instance = AceStyleRuleParser;
-    let mut rule_parser = cssparser::StyleSheetParser::new(&mut parser, &mut rule_Parser_instance);
+    let mut rule_parser_instance = AceStyleRuleParser;
+    let mut rule_parser = cssparser::StyleSheetParser::new(&mut parser, &mut rule_parser_instance);
     while let Some(result) = rule_parser.next() {
         match result {
             Ok(mut rule) => {
@@ -2334,7 +2334,7 @@ fn split_comma_top_level(s: &str) -> Vec<&str> {
     parts
 }
 
-fn parse_length_list(val: &str) -> Vec<CssLength> {
+fn _parse_length_list(val: &str) -> Vec<CssLength> {
     val.split_whitespace().map(parse_length).collect()
 }
 

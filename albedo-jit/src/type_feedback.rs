@@ -424,22 +424,24 @@ mod tests {
     #[test]
     fn test_call_feedback_monomorphic() {
         let mut fb = CallFeedback::default();
+        let callee = JsValue::object(0x1234);
         for _ in 0..8 {
-            fb.record(ValueType::Object);
+            fb.record(callee);
         }
         let snap = fb.snapshot();
         assert_eq!(snap.state, IcState::Monomorphic);
         assert_eq!(snap.total, 8);
+        assert_eq!(snap.monomorphic, Some(callee));
     }
 
     #[test]
     fn test_call_feedback_megamorphic() {
         let mut fb = CallFeedback::default();
-        fb.record(ValueType::Object);
-        fb.record(ValueType::Int32);
-        fb.record(ValueType::Float64);
-        fb.record(ValueType::String);
-        fb.record(ValueType::Array);
+        fb.record(JsValue::object(1));
+        fb.record(JsValue::object(2));
+        fb.record(JsValue::object(3));
+        fb.record(JsValue::object(4));
+        fb.record(JsValue::object(5));
         let snap = fb.snapshot();
         assert_eq!(snap.state, IcState::Megamorphic);
     }

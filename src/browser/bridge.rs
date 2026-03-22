@@ -47,15 +47,14 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
 
         let physical_w = (vw * scale_factor).ceil() as u32;
         let physical_h = (content_h * scale_factor).ceil() as u32;
-
-        let mut dirty_rects = Vec::new();
         let framebuffer = engine.framebuffer.clone();
 
-        {
+        let mut dirty_rects = {
             let mut im = engine.invalidation_manager.lock().unwrap();
-            dirty_rects = im.dirty_rects.clone();
+            let rects = im.dirty_rects.clone();
             im.clear();
-        }
+            rects
+        };
 
         let mut fb_size_changed = false;
         {

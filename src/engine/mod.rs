@@ -13,7 +13,7 @@ use self::text::TextMeasurer;
 use crate::engine::dom::AceDOM;
 use std::sync::{Arc, Mutex};
 use taffy::geometry::MinMax;
-use taffy::prelude::*;
+// taffy::prelude removed as it was unused
 
 /// Complete element geometry information including scroll and content dimensions
 #[derive(Clone, Debug)]
@@ -406,7 +406,7 @@ impl AceEngine {
 
     /// Extract box model (borders and padding) from element.
     /// Returns: (border_top, border_right, border_bottom, border_left, padding_top, padding_right, padding_bottom, padding_left)
-    fn extract_box_model(&self, _node_idx: usize) -> (f32, f32, f32, f32, f32, f32, f32, f32) {
+    fn _extract_box_model(&self, _node_idx: usize) -> (f32, f32, f32, f32, f32, f32, f32, f32) {
         // TODO: Read from DOM computed style
         // For now, return zeros
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -414,7 +414,7 @@ impl AceEngine {
 
     /// Calculate content dimensions based on children bounds.
     /// Returns: (content_width, content_height)
-    fn calculate_content_dimensions(&self, _node_idx: usize) -> (f32, f32) {
+    fn _calculate_content_dimensions(&self, _node_idx: usize) -> (f32, f32) {
         // TODO: Iterate children and find max bounds
         // For now, return zeros
         (0.0, 0.0)
@@ -422,7 +422,7 @@ impl AceEngine {
 
     /// Get overflow style (overflow-x, overflow-y) from element.
     /// Returns: (String, String)
-    fn get_overflow_style(&self, _node_idx: usize) -> (String, String) {
+    fn _get_overflow_style(&self, _node_idx: usize) -> (String, String) {
         // TODO: Read from DOM computed style
         // For now, return "visible" for both
         ("visible".to_string(), "visible".to_string())
@@ -1838,7 +1838,7 @@ impl AceEngine {
         }
     }
 
-    fn to_taffy_length_percentage_auto(
+    fn _to_taffy_length_percentage_auto(
         &self,
         len: &crate::engine::style::css_values::CssLength,
     ) -> taffy::prelude::LengthPercentageAuto {

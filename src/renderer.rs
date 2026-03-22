@@ -315,7 +315,6 @@ pub fn paint_layout_tree(
                     if !first_word_in_line && current_x + word_w > max_w {
                         current_x = 0.0;
                         current_y += line_height;
-                        first_word_in_line = true;
                     }
 
                     // Render the word
@@ -402,6 +401,7 @@ pub fn paint_layout_tree(
                     }
 
                     first_word_in_line = false;
+                    let _ = first_word_in_line;
                 }
             }
         }

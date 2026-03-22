@@ -1,7 +1,7 @@
 use crate::network::protocols::websocket::{WebSocketClient, WsEvent};
 use crate::runtime::core::event_loop::UnsafeSendVal;
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Class, Ctx, Function, Result, Value};
+use rquickjs::{Class, Ctx, Function, Result, Value};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, rquickjs::class::Trace)]

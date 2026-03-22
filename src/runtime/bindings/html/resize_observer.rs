@@ -1,12 +1,12 @@
 use crate::runtime::core::runtime::JsRuntime;
-use rquickjs::{prelude::*, Ctx, Function, Object, Persistent, Result, Value};
+use rquickjs::{Ctx, Function, Object, Persistent, Result, Value};
 use std::cell::RefCell;
 
 #[derive(Clone)]
 #[rquickjs::class]
 pub struct ResizeObserver {
-    rt: JsRuntime,
-    callback: Persistent<Function<'static>>,
+    _rt: JsRuntime,
+    _callback: Persistent<Function<'static>>,
     targets: RefCell<Vec<Value<'static>>>,
 }
 
@@ -28,8 +28,8 @@ impl ResizeObserver {
         let callback_persistent = Persistent::save(&ctx, callback);
 
         Ok(Self {
-            rt,
-            callback: callback_persistent,
+            _rt: rt,
+            _callback: callback_persistent,
             targets: RefCell::new(Vec::new()),
         })
     }
