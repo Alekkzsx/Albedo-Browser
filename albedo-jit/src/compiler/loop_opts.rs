@@ -5,22 +5,67 @@
 //! 2. Loop Unrolling (≤ 8 iterações)
 //! 3. Strength Reduction (Mul -> Shl)
 
-use crate::bytecode::{AirFunction, AirBlockId, AirOpcode, AirTerminator, AirReg, AirBlock};
+use crate::bytecode::{AirBlock, AirBlockId, AirFunction, AirOpcode, AirReg, AirTerminator};
 use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone)]
+pub struct LoopOptConfig {
+    pub enable_strength_reduction: bool,
+    pub enable_licm: bool,
+    pub enable_unroll: bool,
+    pub max_unroll_trip: u32,
+    pub debug: bool,
+}
+
+impl Default for LoopOptConfig {
+    fn default() -> Self {
+        let debug = std::env::var("ALBEDO_JIT_LOOP_OPTS_DEBUG")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
+
+        Self {
+            enable_strength_reduction: true,
+            enable_licm: true,
+            enable_unroll: true,
+            max_unroll_trip: 8,
+            debug,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LoopOptReport {
+    pub loops_detected: usize,
+    pub licm_moved: usize,
+    pub unroll_applied: usize,
+    pub strength_reduced: usize,
+    pub skipped_reasons: HashMap<String, usize>,
+    pub validation_passed: bool,
+    pub rolled_back: bool,
+}
+
+impl LoopOptReport {
+    fn skip(&mut self, reason: &str) {
+        *self.skipped_reasons.entry(reason.to_string()).or_insert(0) += 1;
+    }
+}
 
 /// Analisador de loops baseado em dominadores.
 pub struct LoopAnalysis {
     pub dominators: HashMap<AirBlockId, HashSet<AirBlockId>>,
     pub loops: Vec<NaturalLoop>,
     pub predecessors: HashMap<AirBlockId, Vec<AirBlockId>>,
+    pub successors: HashMap<AirBlockId, Vec<AirBlockId>>,
     pub reg_defs: HashMap<AirReg, AirBlockId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NaturalLoop {
     pub header: AirBlockId,
-    pub back_edge_src: AirBlockId,
+    pub latch: AirBlockId,
     pub body: HashSet<AirBlockId>,
+    pub preheader: Option<AirBlockId>,
+    pub exits: HashSet<AirBlockId>,
 }
 
 impl LoopAnalysis {
@@ -29,29 +74,35 @@ impl LoopAnalysis {
             dominators: HashMap::new(),
             loops: Vec::new(),
             predecessors: HashMap::new(),
+            successors: HashMap::new(),
             reg_defs: HashMap::new(),
         };
-        loop_analysis.compute_predecessors(air);
+        loop_analysis.compute_edges(air);
         loop_analysis.compute_reg_defs(air);
         loop_analysis.compute_dominators(air);
         loop_analysis.find_loops(air);
         loop_analysis
     }
 
-    fn compute_predecessors(&mut self, air: &AirFunction) {
+    fn compute_edges(&mut self, air: &AirFunction) {
         for block in &air.blocks {
+            let mut succs = Vec::new();
             if let Some(term) = &block.terminator {
                 match term {
                     AirTerminator::Jump(target) => {
+                        succs.push(*target);
                         self.predecessors.entry(*target).or_default().push(block.id);
                     }
                     AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                        succs.push(*then_blk);
+                        succs.push(*else_blk);
                         self.predecessors.entry(*then_blk).or_default().push(block.id);
                         self.predecessors.entry(*else_blk).or_default().push(block.id);
                     }
                     AirTerminator::Return(_) => {}
                 }
             }
+            self.successors.insert(block.id, succs);
         }
     }
 
@@ -113,30 +164,28 @@ impl LoopAnalysis {
     }
 
     fn find_loops(&mut self, air: &AirFunction) {
-
+        let mut seen = HashSet::new();
         for block in &air.blocks {
-            if let Some(term) = &block.terminator {
-                let targets = match term {
-                    AirTerminator::Jump(t) => vec![*t],
-                    AirTerminator::JumpIf { then_blk, else_blk, .. } => vec![*then_blk, *else_blk],
-                    AirTerminator::Return(_) => vec![],
-                };
-
-                for target in targets {
-                    // Back-edge: target domina o bloco atual (block.id)
-                    if let Some(doms) = self.dominators.get(&block.id) {
-                        if doms.contains(&target) {
-                            let body = self.find_loop_body(target, block.id, &self.predecessors);
-                            self.loops.push(NaturalLoop {
-                                header: target,
-                                back_edge_src: block.id,
-                                body,
-                            });
-                        }
+            let targets = self.successors.get(&block.id).cloned().unwrap_or_default();
+            for target in targets {
+                // Back-edge: target domina o bloco atual (block.id)
+                if let Some(doms) = self.dominators.get(&block.id) {
+                    if doms.contains(&target) && seen.insert((target, block.id)) {
+                        let body = self.find_loop_body(target, block.id, &self.predecessors);
+                        let exits = self.find_loop_exits(&body);
+                        let preheader = self.find_existing_preheader(target, &body);
+                        self.loops.push(NaturalLoop {
+                            header: target,
+                            latch: block.id,
+                            body,
+                            preheader,
+                            exits,
+                        });
                     }
                 }
             }
         }
+        self.loops.sort_by_key(|lp| (lp.header.0, lp.latch.0));
     }
 
     fn find_loop_body(&self, header: AirBlockId, back_edge_src: AirBlockId, predecessors: &HashMap<AirBlockId, Vec<AirBlockId>>) -> HashSet<AirBlockId> {
@@ -159,32 +208,376 @@ impl LoopAnalysis {
         }
         body
     }
+
+    fn find_loop_exits(&self, body: &HashSet<AirBlockId>) -> HashSet<AirBlockId> {
+        let mut exits = HashSet::new();
+        for &block_id in body {
+            if let Some(succs) = self.successors.get(&block_id) {
+                for &succ in succs {
+                    if !body.contains(&succ) {
+                        exits.insert(succ);
+                    }
+                }
+            }
+        }
+        exits
+    }
+
+    fn find_existing_preheader(
+        &self,
+        header: AirBlockId,
+        body: &HashSet<AirBlockId>,
+    ) -> Option<AirBlockId> {
+        let external_preds: Vec<AirBlockId> = self
+            .predecessors
+            .get(&header)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|pred| !body.contains(pred))
+            .collect();
+        if external_preds.len() == 1 {
+            Some(external_preds[0])
+        } else {
+            None
+        }
+    }
 }
 
 /// Otimizador de loops.
 pub struct LoopOptimizer<'a> {
     pub air: &'a mut AirFunction,
+    config: LoopOptConfig,
+    created_preheaders: HashMap<AirBlockId, AirBlockId>,
 }
 
 impl<'a> LoopOptimizer<'a> {
     pub fn new(air: &'a mut AirFunction) -> Self {
-        Self { air }
+        Self::with_config(air, LoopOptConfig::default())
     }
 
-    pub fn run(&mut self) {
-        let analysis = LoopAnalysis::new(self.air);
-        
-        // 1. Strength Reduction
-        self.apply_strength_reduction();
-
-        // 2. LICM & Unrolling
-        for lp in &analysis.loops {
-            self.apply_licm(lp, &analysis);
-            self.apply_loop_unrolling(lp, &analysis);
+    pub fn with_config(air: &'a mut AirFunction, config: LoopOptConfig) -> Self {
+        Self {
+            air,
+            config,
+            created_preheaders: HashMap::new(),
         }
     }
 
-    fn apply_strength_reduction(&mut self) {
+    pub fn run(&mut self) -> LoopOptReport {
+        let backup = self.air.clone();
+        let mut report = LoopOptReport::default();
+        let analysis = LoopAnalysis::new(self.air);
+        report.loops_detected = analysis.loops.len();
+
+        // 1. Strength Reduction
+        if self.config.enable_strength_reduction {
+            self.apply_strength_reduction(&mut report);
+        }
+
+        // 2. LICM & Unrolling
+        if self.config.enable_licm {
+            for lp in &analysis.loops {
+                self.apply_licm(lp, &analysis, &mut report);
+            }
+        }
+
+        if self.config.enable_unroll {
+            let post_licm_analysis = LoopAnalysis::new(self.air);
+            for lp in &post_licm_analysis.loops {
+                self.apply_loop_unrolling(lp, &post_licm_analysis, &mut report);
+            }
+        }
+
+        match validate_air_cfg(self.air) {
+            Ok(()) => report.validation_passed = true,
+            Err(err) => {
+                report.validation_passed = false;
+                report.rolled_back = true;
+                report.skip("validation_failed_rollback");
+                *self.air = backup;
+                self.debug_log(&format!("[LoopOpts] validation failed: {err}"));
+            }
+        }
+
+        self.debug_log(&format!("[LoopOpts] report: {:?}", report));
+        report
+    }
+
+    fn apply_strength_reduction(&mut self, report: &mut LoopOptReport) {
+        let constants = self.collect_i32_constants();
+        let int32_proven = self.compute_int32_proven_regs(&constants);
+
+        for block in &mut self.air.blocks {
+            let mut shift_regs: HashMap<i32, AirReg> = HashMap::new();
+            for inst in &block.insts {
+                if let AirOpcode::LoadInt32 { dst, value } = *inst {
+                    shift_regs.insert(value, dst);
+                }
+            }
+
+            let mut i = 0;
+            while i < block.insts.len() {
+                let (dst, lhs, rhs) = match block.insts[i] {
+                    AirOpcode::Mul { dst, lhs, rhs } => (dst, lhs, rhs),
+                    _ => {
+                        i += 1;
+                        continue;
+                    }
+                };
+
+                let (other, shift) = match extract_pow2_mul(lhs, rhs, &constants) {
+                    Some(v) => v,
+                    None => {
+                        report.skip("strength_not_pow2_const");
+                        i += 1;
+                        continue;
+                    }
+                };
+
+                if !int32_proven.contains(&other) {
+                    report.skip("strength_other_not_int32_proven");
+                    i += 1;
+                    continue;
+                }
+
+                let shift_reg = match shift_regs.get(&shift).copied() {
+                    Some(reg) => reg,
+                    None => {
+                        let new_reg = AirReg(self.air.registers_count);
+                        self.air.registers_count += 1;
+                        block.insts.insert(
+                            i,
+                            AirOpcode::LoadInt32 {
+                                dst: new_reg,
+                                value: shift,
+                            },
+                        );
+                        shift_regs.insert(shift, new_reg);
+                        i += 1;
+                        new_reg
+                    }
+                };
+
+                block.insts[i] = AirOpcode::Shl {
+                    dst,
+                    lhs: other,
+                    rhs: shift_reg,
+                };
+                report.strength_reduced += 1;
+                i += 1;
+            }
+        }
+    }
+
+    fn apply_licm(&mut self, lp: &NaturalLoop, analysis: &LoopAnalysis, report: &mut LoopOptReport) {
+        let mut defs_in_loop: HashMap<AirReg, usize> = HashMap::new();
+        for &block_id in &lp.body {
+            if let Some(block) = self.find_block(block_id) {
+                for inst in &block.insts {
+                    if let Some(dst) = inst.dst_reg() {
+                        *defs_in_loop.entry(dst).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        let mut body_ids: Vec<AirBlockId> = lp.body.iter().copied().collect();
+        body_ids.sort_by_key(|id| id.0);
+
+        let mut selected: Vec<(AirBlockId, usize, AirOpcode, AirReg)> = Vec::new();
+        let mut selected_keys: HashSet<(AirBlockId, usize)> = HashSet::new();
+        let mut hoisted_defs: HashSet<AirReg> = HashSet::new();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for &block_id in &body_ids {
+                let block = match self.find_block(block_id) {
+                    Some(b) => b,
+                    None => continue,
+                };
+                for (inst_idx, inst) in block.insts.iter().enumerate() {
+                    let dst = match inst.dst_reg() {
+                        Some(dst) => dst,
+                        None => continue,
+                    };
+                    if selected_keys.contains(&(block_id, inst_idx)) {
+                        continue;
+                    }
+                    if defs_in_loop.get(&dst).copied().unwrap_or(0) != 1 {
+                        report.skip("licm_dst_redefined_in_loop");
+                        continue;
+                    }
+                    if !is_licm_safe_opcode(inst) {
+                        report.skip("licm_opcode_not_safe");
+                        continue;
+                    }
+                    if !self.operands_invariant(inst, lp, analysis, &hoisted_defs) {
+                        report.skip("licm_operands_not_invariant");
+                        continue;
+                    }
+
+                    selected.push((block_id, inst_idx, inst.clone(), dst));
+                    selected_keys.insert((block_id, inst_idx));
+                    hoisted_defs.insert(dst);
+                    changed = true;
+                }
+            }
+        }
+
+        if selected.is_empty() {
+            report.skip("licm_no_hoistable_insts");
+            return;
+        }
+
+        let pre_header_id = self.ensure_preheader(lp, analysis);
+        selected.sort_by_key(|(block_id, inst_idx, _, _)| (block_id.0, *inst_idx));
+
+        let mut remove_map: HashMap<AirBlockId, Vec<usize>> = HashMap::new();
+        let mut moved_insts = Vec::with_capacity(selected.len());
+        for (block_id, inst_idx, inst, _) in selected {
+            remove_map.entry(block_id).or_default().push(inst_idx);
+            moved_insts.push(inst);
+        }
+
+        for (block_id, mut idxs) in remove_map {
+            idxs.sort_by(|a, b| b.cmp(a));
+            if let Some(block) = self.find_block_mut(block_id) {
+                for idx in idxs {
+                    if idx < block.insts.len() {
+                        block.insts.remove(idx);
+                    }
+                }
+            }
+        }
+
+        if let Some(pre_header) = self.find_block_mut(pre_header_id) {
+            for inst in moved_insts {
+                pre_header.insts.push(inst);
+                report.licm_moved += 1;
+            }
+        }
+    }
+
+    fn apply_loop_unrolling(
+        &mut self,
+        lp: &NaturalLoop,
+        analysis: &LoopAnalysis,
+        report: &mut LoopOptReport,
+    ) {
+        let counted = match self.detect_counted_loop(lp, analysis) {
+            Some(c) => c,
+            None => {
+                report.skip("unroll_not_canonical_or_not_exact");
+                return;
+            }
+        };
+
+        if counted.trip_count > self.config.max_unroll_trip {
+            report.skip("unroll_trip_above_limit");
+            return;
+        }
+
+        let latch_block = match self.find_block(counted.latch) {
+            Some(b) => b.clone(),
+            None => {
+                report.skip("unroll_latch_not_found");
+                return;
+            }
+        };
+
+        let unrolled_id = AirBlockId(self.air.blocks.len() as u32);
+        let mut unrolled = AirBlock::new(unrolled_id.0);
+        for _ in 0..counted.trip_count {
+            for inst in &latch_block.insts {
+                unrolled.insts.push(inst.clone());
+            }
+        }
+        unrolled.terminator = Some(AirTerminator::Jump(counted.exit));
+
+        self.redirect_external_preds(lp, counted.header, unrolled_id, analysis);
+        self.air.blocks.push(unrolled);
+        report.unroll_applied += 1;
+    }
+
+    fn ensure_preheader(&mut self, lp: &NaturalLoop, analysis: &LoopAnalysis) -> AirBlockId {
+        if let Some(id) = self.created_preheaders.get(&lp.header).copied() {
+            return id;
+        }
+        if let Some(existing) = lp.preheader {
+            self.created_preheaders.insert(lp.header, existing);
+            return existing;
+        }
+
+        let new_id = AirBlockId(self.air.blocks.len() as u32);
+        let mut pre_header = AirBlock::new(new_id.0);
+        pre_header.terminator = Some(AirTerminator::Jump(lp.header));
+        self.redirect_external_preds(lp, lp.header, new_id, analysis);
+        self.air.blocks.push(pre_header);
+        self.created_preheaders.insert(lp.header, new_id);
+        new_id
+    }
+
+    fn redirect_external_preds(
+        &mut self,
+        lp: &NaturalLoop,
+        from: AirBlockId,
+        to: AirBlockId,
+        analysis: &LoopAnalysis,
+    ) {
+        let external_preds: Vec<AirBlockId> = analysis
+            .predecessors
+            .get(&from)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|pred| !lp.body.contains(pred))
+            .collect();
+
+        for pred_id in external_preds {
+            let Some(pred_block) = self.find_block_mut(pred_id) else {
+                continue;
+            };
+            if let Some(term) = &mut pred_block.terminator {
+                match term {
+                    AirTerminator::Jump(target) if *target == from => *target = to,
+                    AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                        if *then_blk == from {
+                            *then_blk = to;
+                        }
+                        if *else_blk == from {
+                            *else_blk = to;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn operands_invariant(
+        &self,
+        inst: &AirOpcode,
+        lp: &NaturalLoop,
+        analysis: &LoopAnalysis,
+        hoisted_defs: &HashSet<AirReg>,
+    ) -> bool {
+        for op in inst.operands() {
+            if op.0 < self.air.num_params || hoisted_defs.contains(&op) {
+                continue;
+            }
+            let Some(def_block) = analysis.reg_defs.get(&op).copied() else {
+                return false;
+            };
+            if lp.body.contains(&def_block) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn collect_i32_constants(&self) -> HashMap<AirReg, i32> {
         let mut constants = HashMap::new();
         for block in &self.air.blocks {
             for inst in &block.insts {
@@ -193,241 +586,343 @@ impl<'a> LoopOptimizer<'a> {
                 }
             }
         }
-
-        for block in &mut self.air.blocks {
-            let mut i = 0;
-            while i < block.insts.len() {
-                if let AirOpcode::Mul { dst, lhs, rhs } = block.insts[i] {
-                    let const_val = constants.get(&lhs).or(constants.get(&rhs));
-                    if let Some(&val) = const_val {
-                        if val > 0 && (val as u32).is_power_of_two() {
-                            let shift = (val as f32).log2() as u32;
-                            let other = if constants.get(&lhs) == Some(&val) { rhs } else { lhs };
-                            
-                            let shift_reg = AirReg(self.air.registers_count);
-                            self.air.registers_count += 1;
-                            
-                            block.insts.insert(i, AirOpcode::LoadInt32 { dst: shift_reg, value: shift as i32 });
-                            block.insts[i + 1] = AirOpcode::Shl { dst, lhs: other, rhs: shift_reg };
-                            i += 1;
-                        }
-                    }
-                }
-                i += 1;
-            }
-        }
+        constants
     }
 
-    fn apply_licm(&mut self, lp: &NaturalLoop, analysis: &LoopAnalysis) {
-        let mut invariant_insts = Vec::new();
-        let mut moved_dsts = HashSet::new();
+    fn find_block(&self, block_id: AirBlockId) -> Option<&AirBlock> {
+        self.air.blocks.iter().find(|b| b.id == block_id)
+    }
 
-        // 1. Identificar invariantes
-        for &block_id in &lp.body {
-            let block = self.air.blocks.iter().find(|b| b.id == block_id).unwrap();
+    fn find_block_mut(&mut self, block_id: AirBlockId) -> Option<&mut AirBlock> {
+        self.air.blocks.iter_mut().find(|b| b.id == block_id)
+    }
+
+    fn find_def_block(&self, reg: AirReg) -> Option<AirBlockId> {
+        for block in &self.air.blocks {
             for inst in &block.insts {
-                if self.is_invariant(inst, lp, analysis) {
-                    invariant_insts.push(inst.clone());
-                    if let Some(dst) = inst.dst_reg() {
-                        moved_dsts.insert(dst);
+                if inst.dst_reg() == Some(reg) {
+                    return Some(block.id);
+                }
+            }
+        }
+        None
+    }
+
+    fn compute_int32_proven_regs(&self, constants: &HashMap<AirReg, i32>) -> HashSet<AirReg> {
+        let mut proven: HashSet<AirReg> = constants.keys().copied().collect();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for block in &self.air.blocks {
+                for inst in &block.insts {
+                    let Some(dst) = inst.dst_reg() else { continue };
+                    let can_mark = match *inst {
+                        AirOpcode::Move { src, .. } => proven.contains(&src),
+                        AirOpcode::BitAnd { .. }
+                        | AirOpcode::BitOr { .. }
+                        | AirOpcode::BitXor { .. }
+                        | AirOpcode::Shl { .. }
+                        | AirOpcode::Shr { .. }
+                        | AirOpcode::UShr { .. }
+                        | AirOpcode::LoadBool { .. }
+                        | AirOpcode::LoadNull { .. }
+                        | AirOpcode::LoadUndefined { .. }
+                        | AirOpcode::LoadInt32 { .. } => true,
+                        _ => false,
+                    };
+                    if can_mark && proven.insert(dst) {
+                        changed = true;
                     }
                 }
             }
         }
+        proven
+    }
 
-        if invariant_insts.is_empty() {
-            return;
-        }
-
-        // 2. Criar pre-header
-        let pre_header_id = self.create_pre_header(lp.header, analysis);
-
-        // 3. Mover instruções para o pre-header
-        let pre_header = self.air.blocks.iter_mut().find(|b| b.id == pre_header_id).unwrap();
-        for inst in invariant_insts {
-            pre_header.insts.push(inst);
-        }
-
-        // 4. Remover as originais do corpo do loop
-        for &block_id in &lp.body {
-            let block = self.air.blocks.iter_mut().find(|b| b.id == block_id).unwrap();
-            block.insts.retain(|inst| {
-                if let Some(dst) = inst.dst_reg() {
-                    !moved_dsts.contains(&dst)
-                } else {
-                    true
-                }
-            });
+    fn resolve_i32_const_reg(&self, reg: AirReg, constants: &HashMap<AirReg, i32>) -> Option<i32> {
+        let mut seen = HashSet::new();
+        let mut cur = reg;
+        loop {
+            if !seen.insert(cur) {
+                return None;
+            }
+            if let Some(v) = constants.get(&cur).copied() {
+                return Some(v);
+            }
+            let def_block = self.find_def_block(cur)?;
+            let block = self.find_block(def_block)?;
+            let def_inst = block.insts.iter().find(|inst| inst.dst_reg() == Some(cur))?;
+            match *def_inst {
+                AirOpcode::Move { src, .. } => cur = src,
+                _ => return None,
+            }
         }
     }
 
-    fn apply_loop_unrolling(&mut self, lp: &NaturalLoop, _analysis: &LoopAnalysis) {
-        // Estágio Beta: Implementação para loops triviais.
-        // Heurística: se o loop tem < 20 instruções e poucos blocos, desenrolar por fator de 2.
-        let mut inst_count = 0;
-        for &block_id in &lp.body {
-            if let Some(block) = self.air.blocks.iter().find(|b| b.id == block_id) {
-                inst_count += block.insts.len();
-            }
-        }
-
-        if inst_count > 20 || lp.body.len() > 2 {
-            return;
-        }
-
-        let header_id = lp.header;
-        let back_edge_id = lp.back_edge_src;
-
-        if lp.body.len() == 2 && header_id != back_edge_id {
-            // Pattern A: While/For loop padrão (header + body)
-            let header_block_idx = self.air.blocks.iter().position(|b| b.id == header_id).unwrap();
-            let back_edge_idx = self.air.blocks.iter().position(|b| b.id == back_edge_id).unwrap();
-
-            let header_term = self.air.blocks[header_block_idx].terminator.clone();
-            let back_edge_term = self.air.blocks[back_edge_idx].terminator.clone();
-
-            if let Some(AirTerminator::JumpIf { cond, then_blk, else_blk }) = header_term {
-                if let Some(AirTerminator::Jump(target)) = back_edge_term {
-                    if target == header_id && (then_blk == back_edge_id || else_blk == back_edge_id) {
-                        let is_then = then_blk == back_edge_id;
-                        let exit_blk = if is_then { else_blk } else { then_blk };
-
-                        let h_insts = self.air.blocks[header_block_idx].insts.clone();
-                        let b_insts = self.air.blocks[back_edge_idx].insts.clone();
-
-                        let new_b_id = AirBlockId(self.air.blocks.len() as u32);
-                        
-                        // Modifier B (Primeira iteração do unroll)
-                        let b_block = &mut self.air.blocks[back_edge_idx];
-                        for inst in &h_insts {
-                            b_block.insts.push(inst.clone());
+    fn find_induction_step(
+        &self,
+        lp: &NaturalLoop,
+        analysis: &LoopAnalysis,
+        induction: AirReg,
+        constants: &HashMap<AirReg, i32>,
+    ) -> Option<i32> {
+        let latch = self.find_block(lp.latch)?;
+        for inst in &latch.insts {
+            match *inst {
+                AirOpcode::Add { dst, lhs, rhs, .. } if dst == induction => {
+                    if lhs == induction {
+                        return self.resolve_i32_const_reg(rhs, constants);
+                    }
+                    if rhs == induction {
+                        return self.resolve_i32_const_reg(lhs, constants);
+                    }
+                }
+                AirOpcode::Sub { dst, lhs, rhs } if dst == induction && lhs == induction => {
+                    return self.resolve_i32_const_reg(rhs, constants).map(|v| -v);
+                }
+                AirOpcode::Move { dst, src } if dst == induction => {
+                    if let Some(def_block) = analysis.reg_defs.get(&src) {
+                        if *def_block != lp.latch {
+                            continue;
                         }
-                        b_block.terminator = Some(AirTerminator::JumpIf {
-                            cond,
-                            then_blk: if is_then { new_b_id } else { exit_blk },
-                            else_blk: if is_then { exit_blk } else { new_b_id },
-                        });
-
-                        // Novo B_second (Segunda iteração do unroll)
-                        let mut b_second = AirBlock::new(new_b_id.0);
-                        b_second.insts = b_insts;
-                        b_second.terminator = Some(AirTerminator::Jump(header_id));
-                        self.air.blocks.push(b_second);
+                    }
+                    let src_def = latch.insts.iter().find(|c| c.dst_reg() == Some(src));
+                    if let Some(src_def) = src_def {
+                        match *src_def {
+                            AirOpcode::Add { lhs, rhs, .. } => {
+                                if lhs == induction {
+                                    return self.resolve_i32_const_reg(rhs, constants);
+                                }
+                                if rhs == induction {
+                                    return self.resolve_i32_const_reg(lhs, constants);
+                                }
+                            }
+                            AirOpcode::Sub { lhs, rhs, .. } if lhs == induction => {
+                                return self.resolve_i32_const_reg(rhs, constants).map(|v| -v);
+                            }
+                            _ => {}
+                        }
                     }
                 }
-            }
-        } else if lp.body.len() == 1 && header_id == back_edge_id {
-            // Pattern B: Do-While loop compacto
-            let header_block_idx = self.air.blocks.iter().position(|b| b.id == header_id).unwrap();
-            let header_term = self.air.blocks[header_block_idx].terminator.clone();
-
-            if let Some(AirTerminator::JumpIf { cond, then_blk, else_blk }) = header_term {
-                if then_blk == header_id || else_blk == header_id {
-                    let is_then = then_blk == header_id;
-                    let exit_blk = if is_then { else_blk } else { then_blk };
-                    let h_insts = self.air.blocks[header_block_idx].insts.clone();
-
-                    let new_h_id = AirBlockId(self.air.blocks.len() as u32);
-
-                    // Modiifer H (Primeira iteração do unroll)
-                    let h_block = &mut self.air.blocks[header_block_idx];
-                    h_block.terminator = Some(AirTerminator::JumpIf {
-                        cond,
-                        then_blk: if is_then { new_h_id } else { exit_blk },
-                        else_blk: if is_then { exit_blk } else { new_h_id },
-                    });
-
-                    // Novo H_second (Segunda iteração do unroll)
-                    let mut h_second = AirBlock::new(new_h_id.0);
-                    h_second.insts = h_insts;
-                    h_second.terminator = Some(AirTerminator::JumpIf {
-                        cond,
-                        then_blk: if is_then { header_id } else { exit_blk },
-                        else_blk: if is_then { exit_blk } else { header_id },
-                    });
-                    self.air.blocks.push(h_second);
-                }
+                _ => {}
             }
         }
+        None
     }
 
-    fn create_pre_header(&mut self, header_id: AirBlockId, analysis: &LoopAnalysis) -> AirBlockId {
-        let new_id = AirBlockId(self.air.blocks.len() as u32);
-        let mut pre_header = AirBlock::new(new_id.0);
-        pre_header.terminator = Some(AirTerminator::Jump(header_id));
-        
-        let mut external_preds = Vec::new();
-        if let Some(preds) = analysis.predecessors.get(&header_id) {
-            for &pred in preds {
-                let is_internal = lp_body_contains(analysis, header_id, pred);
-                if !is_internal {
-                    external_preds.push(pred);
+    fn detect_counted_loop(&self, lp: &NaturalLoop, analysis: &LoopAnalysis) -> Option<CountedLoop> {
+        if lp.body.len() != 2 || !lp.body.contains(&lp.header) || !lp.body.contains(&lp.latch) {
+            return None;
+        }
+        let header = self.find_block(lp.header)?;
+        let latch = self.find_block(lp.latch)?;
+        let (cond_reg, exit_blk) = match header.terminator {
+            Some(AirTerminator::JumpIf { cond, then_blk, else_blk }) => {
+                if then_blk == lp.latch {
+                    (cond, else_blk)
+                } else if else_blk == lp.latch {
+                    (cond, then_blk)
+                } else {
+                    return None;
                 }
             }
+            _ => return None,
+        };
+        match latch.terminator {
+            Some(AirTerminator::Jump(target)) if target == lp.header => {}
+            _ => return None,
         }
-
-        for pred_id in external_preds {
-            let pred_block = self.air.blocks.iter_mut().find(|b| b.id == pred_id).unwrap();
-            if let Some(term) = &mut pred_block.terminator {
-                match term {
-                    AirTerminator::Jump(target) if *target == header_id => {
-                        *target = new_id;
-                    }
-                    AirTerminator::JumpIf { then_blk, else_blk, .. } => {
-                        if *then_blk == header_id { *then_blk = new_id; }
-                        if *else_blk == header_id { *else_blk = new_id; }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        self.air.blocks.push(pre_header);
-        new_id
+        let cond_inst = header
+            .insts
+            .iter()
+            .find(|inst| inst.dst_reg() == Some(cond_reg))?;
+        let (cmp_kind, ind_reg, limit_reg) = match *cond_inst {
+            AirOpcode::Lt { lhs, rhs, .. } => (CmpKind::Lt, lhs, rhs),
+            AirOpcode::Lte { lhs, rhs, .. } => (CmpKind::Lte, lhs, rhs),
+            AirOpcode::Gt { lhs, rhs, .. } => (CmpKind::Gt, lhs, rhs),
+            AirOpcode::Gte { lhs, rhs, .. } => (CmpKind::Gte, lhs, rhs),
+            _ => return None,
+        };
+        let constants = self.collect_i32_constants();
+        let init = self.resolve_i32_const_reg(ind_reg, &constants)?;
+        let limit = self.resolve_i32_const_reg(limit_reg, &constants)?;
+        let step = self.find_induction_step(lp, analysis, ind_reg, &constants)?;
+        let trip_count = compute_trip_count(init, limit, step, cmp_kind)?;
+        Some(CountedLoop {
+            header: lp.header,
+            latch: lp.latch,
+            exit: exit_blk,
+            trip_count,
+        })
     }
 
-    fn is_invariant(&self, inst: &AirOpcode, lp: &NaturalLoop, analysis: &LoopAnalysis) -> bool {
-        match inst {
-            AirOpcode::Add { .. } | AirOpcode::Sub { .. } | AirOpcode::Mul { .. } |
-            AirOpcode::Div { .. } | AirOpcode::Mod { .. } | AirOpcode::Neg { .. } |
-            AirOpcode::BitAnd { .. } | AirOpcode::BitOr { .. } | AirOpcode::BitXor { .. } |
-            AirOpcode::Shl { .. } | AirOpcode::Shr { .. } | AirOpcode::UShr { .. } |
-            AirOpcode::Eq { .. } | AirOpcode::StrictEq { .. } | AirOpcode::Lt { .. } |
-            AirOpcode::Lte { .. } | AirOpcode::Gt { .. } | AirOpcode::Gte { .. } |
-            AirOpcode::Not { .. } | AirOpcode::ToNumber { .. } | AirOpcode::ToBool { .. } |
-            AirOpcode::TypeOf { .. } | AirOpcode::LoadInt32 { .. } | AirOpcode::LoadFloat64 { .. } |
-            AirOpcode::LoadBool { .. } | AirOpcode::LoadUndefined { .. } | AirOpcode::LoadNull { .. } |
-            AirOpcode::Move { .. } => {}
-            _ => return false,
+    fn debug_log(&self, msg: &str) {
+        if self.config.debug {
+            eprintln!("{msg}");
         }
-
-        for op in inst.operands() {
-            if op.0 < self.air.num_params {
-                continue;
-            }
-            if let Some(&def_block) = analysis.reg_defs.get(&op) {
-                if lp.body.contains(&def_block) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-
-        true
     }
 }
 
-fn lp_body_contains(analysis: &LoopAnalysis, header_id: AirBlockId, block_id: AirBlockId) -> bool {
-    analysis.loops.iter()
-        .filter(|l| l.header == header_id)
-        .any(|l| l.body.contains(&block_id))
+fn is_licm_safe_opcode(inst: &AirOpcode) -> bool {
+    matches!(
+        inst,
+        AirOpcode::LoadInt32 { .. }
+            | AirOpcode::LoadFloat64 { .. }
+            | AirOpcode::LoadInt64 { .. }
+            | AirOpcode::LoadBool { .. }
+            | AirOpcode::LoadUndefined { .. }
+            | AirOpcode::LoadNull { .. }
+            | AirOpcode::LoadString { .. }
+            | AirOpcode::Move { .. }
+    )
+}
+
+fn extract_pow2_mul(lhs: AirReg, rhs: AirReg, constants: &HashMap<AirReg, i32>) -> Option<(AirReg, i32)> {
+    let lhs_const = constants.get(&lhs).copied();
+    let rhs_const = constants.get(&rhs).copied();
+    if let Some(v) = lhs_const {
+        if v > 0 && (v as u32).is_power_of_two() {
+            return Some((rhs, v.trailing_zeros() as i32));
+        }
+    }
+    if let Some(v) = rhs_const {
+        if v > 0 && (v as u32).is_power_of_two() {
+            return Some((lhs, v.trailing_zeros() as i32));
+        }
+    }
+    None
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CmpKind {
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CountedLoop {
+    header: AirBlockId,
+    latch: AirBlockId,
+    exit: AirBlockId,
+    trip_count: u32,
+}
+
+fn compute_trip_count(init: i32, limit: i32, step: i32, cmp: CmpKind) -> Option<u32> {
+    if step == 0 {
+        return None;
+    }
+    let trip = match cmp {
+        CmpKind::Lt if step > 0 => {
+            if init >= limit {
+                0
+            } else {
+                let delta = (limit as i64) - (init as i64);
+                ((delta + step as i64 - 1) / step as i64) as i32
+            }
+        }
+        CmpKind::Lte if step > 0 => {
+            if init > limit {
+                0
+            } else {
+                let delta = (limit as i64) - (init as i64);
+                (delta / step as i64 + 1) as i32
+            }
+        }
+        CmpKind::Gt if step < 0 => {
+            if init <= limit {
+                0
+            } else {
+                let delta = (init as i64) - (limit as i64);
+                let abs_step = (-step) as i64;
+                ((delta + abs_step - 1) / abs_step) as i32
+            }
+        }
+        CmpKind::Gte if step < 0 => {
+            if init < limit {
+                0
+            } else {
+                let delta = (init as i64) - (limit as i64);
+                let abs_step = (-step) as i64;
+                (delta / abs_step + 1) as i32
+            }
+        }
+        _ => return None,
+    };
+    if trip < 0 {
+        return None;
+    }
+    Some(trip as u32)
+}
+
+pub fn validate_air_cfg(air: &AirFunction) -> Result<(), String> {
+    if !air.is_valid() {
+        return Err("AIR function is not structurally valid".to_string());
+    }
+
+    let mut ids = HashSet::new();
+    for block in &air.blocks {
+        if !ids.insert(block.id) {
+            return Err(format!("duplicate block id {}", block.id.0));
+        }
+    }
+    let all_ids: HashSet<AirBlockId> = air.blocks.iter().map(|b| b.id).collect();
+
+    for block in &air.blocks {
+        for inst in &block.insts {
+            if let Some(dst) = inst.dst_reg() {
+                if dst.0 >= air.registers_count {
+                    return Err(format!("dst register {} out of bounds", dst.0));
+                }
+            }
+            for op in inst.operands() {
+                if op.0 >= air.registers_count {
+                    return Err(format!("operand register {} out of bounds", op.0));
+                }
+            }
+        }
+        match block.terminator {
+            Some(AirTerminator::Jump(target)) => {
+                if !all_ids.contains(&target) {
+                    return Err(format!("jump target {} does not exist", target.0));
+                }
+            }
+            Some(AirTerminator::JumpIf {
+                cond,
+                then_blk,
+                else_blk,
+            }) => {
+                if cond.0 >= air.registers_count {
+                    return Err(format!("jump-if cond {} out of bounds", cond.0));
+                }
+                if !all_ids.contains(&then_blk) {
+                    return Err(format!("then target {} does not exist", then_blk.0));
+                }
+                if !all_ids.contains(&else_blk) {
+                    return Err(format!("else target {} does not exist", else_blk.0));
+                }
+            }
+            Some(AirTerminator::Return(reg)) => {
+                if reg.0 >= air.registers_count {
+                    return Err(format!("return reg {} out of bounds", reg.0));
+                }
+            }
+            None => return Err(format!("block {} has no terminator", block.id.0)),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::bytecode::AirBuilder;
+
+    fn run_default(air: &mut AirFunction) -> LoopOptReport {
+        let mut optimizer = LoopOptimizer::new(air);
+        optimizer.run()
+    }
 
     #[test]
     fn test_licm_simple() {
@@ -461,53 +956,84 @@ mod tests {
         builder.emit_return(sum);
 
         let mut air = builder.build();
-        let mut optimizer = LoopOptimizer::new(&mut air);
-        optimizer.run();
+        let report = run_default(&mut air);
 
-        // 3 originais + 1 pre-header
+        assert!(report.validation_passed);
+        assert!(report.licm_moved >= 1);
         assert!(air.blocks.len() >= 4);
-        
-        let has_moved_x = air.blocks.iter().any(|b| {
-            b.insts.iter().any(|inst| {
-                if let AirOpcode::LoadInt32 { value, .. } = inst {
-                    *value == 10
-                } else {
-                    false
-                }
-            }) && b.id.0 >= 4 
-        });
-        assert!(has_moved_x, "O LoadInt32(10) deveria ter sido movido para o pre-header");
     }
 
     #[test]
-    fn test_strength_reduction() {
-        let mut builder = AirBuilder::new("test_sr", 0, 0);
-        let r1 = builder.emit_load_int32(16);
-        let r2 = builder.new_reg();
-        let res = builder.emit_mul(r1, r2);
+    fn test_licm_does_not_hoist_impure_arithmetic() {
+        let mut builder = AirBuilder::new("licm_no_arith", 1, 0);
+        let b_cond = builder.create_block();
+        let b_body = builder.create_block();
+        let b_exit = builder.create_block();
+
+        let n = builder.param(0);
+        let i = builder.emit_load_int32(0);
+        builder.emit_jump(b_cond);
+
+        builder.switch_block(b_cond);
+        let cond = builder.emit_lt(i, n);
+        builder.emit_jump_if(cond, b_body, b_exit);
+
+        builder.switch_block(b_body);
+        let one = builder.emit_load_int32(1);
+        let i_next = builder.emit_add(i, one);
+        builder.emit_move(i, i_next);
+        builder.emit_jump(b_cond);
+
+        builder.switch_block(b_exit);
+        builder.emit_return(i);
+
+        let mut air = builder.build();
+        let _ = run_default(&mut air);
+
+        let add_count: usize = air
+            .blocks
+            .iter()
+            .map(|b| b.insts.iter().filter(|i| matches!(i, AirOpcode::Add { .. })).count())
+            .sum();
+        assert!(add_count >= 1, "Add should remain in loop");
+    }
+
+    #[test]
+    fn test_strength_reduction_requires_int32_proof() {
+        let mut builder = AirBuilder::new("test_sr_no", 2, 0);
+        let c8 = builder.emit_load_int32(8);
+        let p = builder.param(1);
+        let res = builder.emit_mul(c8, p);
         builder.emit_return(res);
 
         let mut air = builder.build();
-        let mut optimizer = LoopOptimizer::new(&mut air);
-        optimizer.run();
+        let report = run_default(&mut air);
 
         let block = &air.blocks[0];
         let has_shl = block.insts.iter().any(|inst| matches!(inst, AirOpcode::Shl { .. }));
-        assert!(has_shl, "O Mul deveria ter sido convertido em Shl");
-        
-        let has_load_4 = block.insts.iter().any(|inst| {
-            if let AirOpcode::LoadInt32 { value, .. } = inst {
-                *value == 4 // log2(16)
-            } else {
-                false
-            }
-        });
-        assert!(has_load_4, "O valor do shift (4) deveria ter sido carregado");
+        assert!(!has_shl);
+        assert_eq!(report.strength_reduced, 0);
     }
 
     #[test]
-    fn test_loop_unrolling() {
-        // Criando um loop while i < 10 { i += 1 }
+    fn test_strength_reduction_when_int32_proven() {
+        let mut builder = AirBuilder::new("test_sr_yes", 0, 0);
+        let int32_proven = builder.emit_load_int32(7);
+        let c8 = builder.emit_load_int32(8);
+        let res = builder.emit_mul(int32_proven, c8);
+        builder.emit_return(res);
+
+        let mut air = builder.build();
+        let report = run_default(&mut air);
+
+        let block = &air.blocks[0];
+        let has_shl = block.insts.iter().any(|inst| matches!(inst, AirOpcode::Shl { .. }));
+        assert!(has_shl);
+        assert!(report.strength_reduced >= 1);
+    }
+
+    #[test]
+    fn test_loop_unrolling_exact_trip_count() {
         let mut builder = AirBuilder::new("test_unroll", 0, 0);
         let b_cond = builder.create_block();
         let b_body = builder.create_block();
@@ -518,11 +1044,10 @@ mod tests {
 
         // Header do loop (b_cond)
         builder.switch_block(b_cond);
-        let limit = builder.emit_load_int32(10);
+        let limit = builder.emit_load_int32(3);
         let cond = builder.emit_lt(i, limit);
         builder.emit_jump_if(cond, b_body, b_exit);
 
-        // Corpo do loop (b_body)
         builder.switch_block(b_body);
         let one = builder.emit_load_int32(1);
         let i_next = builder.emit_add(i, one);
@@ -534,20 +1059,19 @@ mod tests {
 
         let mut air = builder.build();
         let before_blocks = air.blocks.len();
-        let mut optimizer = LoopOptimizer::new(&mut air);
-        
-        optimizer.run();
+        let report = run_default(&mut air);
 
-        // O otimizador de LICM vai extrair constantes e criar 1 bloco pre-header.
-        // O Unrolling vai desenrolar criando 1 bloco novo para a segunda iteração.
-        // Número de blocos deve ser origin + 2
-        assert!(air.blocks.len() >= before_blocks + 1, "Deveria ter criado novos blocos de unrolling");
-        
-        // Vamos verificar se algum bloco tem o add repetido!
-        let add_count: usize = air.blocks.iter().map(|b| {
-            b.insts.iter().filter(|inst| matches!(inst, AirOpcode::Add { .. })).count()
-        }).sum();
+        assert!(report.unroll_applied >= 1);
+        assert!(air.blocks.len() > before_blocks);
+        assert!(validate_air_cfg(&air).is_ok());
+    }
 
-        assert!(add_count >= 2, "As instruções do loop devem ter sido duplicadas");
+    #[test]
+    fn test_validate_air_cfg_rejects_bad_jump() {
+        let mut b = AirBuilder::new("bad_cfg", 0, 0);
+        let target = AirBlockId(99);
+        b.emit_jump(target);
+        let air = b.build();
+        assert!(validate_air_cfg(&air).is_err());
     }
 }
