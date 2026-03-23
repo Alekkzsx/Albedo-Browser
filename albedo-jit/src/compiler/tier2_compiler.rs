@@ -13,14 +13,19 @@ use cranelift_module::{FuncId, Linkage, Module};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::escape_analysis::{EscapeAnalysis, EscapeAnalysisResult, EscapeStatus};
-use super::loop_opts::LoopOptimizer;
+use super::escape_analysis::{run_field_sensitive, EscapeAnalysisResult};
+use super::scalar_replacement::{ScalarReplacer, ScalarTransformResult};
+use super::stack_allocator::{StackAllocation, StackAllocator};
+use super::loop_opts::{validate_air_cfg, LoopOptimizer};
 use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator, AirReg};
 use crate::compiler::deopt::{register_meta, DeoptMeta, DeoptPoint};
 use crate::engine::jit_bridge::{BytecodeRegistry};
 use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
-use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN, TAG_OBJECT};
-use crate::runtime::object_model::{JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET, JsObject, ObjectKind, get_string};
+use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN, TAG_OBJECT, TAG_UNDEFINED};
+use crate::runtime::object_model::{
+    get_string, JSOBJ_KIND_OFFSET, JSOBJ_PROPS_CAP_OFFSET, JSOBJ_PROPS_LEN_OFFSET,
+    JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET, JsObject, ObjectKind,
+};
 use crate::runtime::type_feedback::{
     AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair,
     ValueType,
@@ -32,20 +37,69 @@ pub struct Tier2Compiler<'a> {
     engine: &'a mut AlbedoJitEngine,
     registry: &'a BytecodeRegistry,
     escape_results: Option<EscapeAnalysisResult>,
+    stack_plan: HashMap<AirReg, StackAllocation>,
 }
 
 impl<'a> Tier2Compiler<'a> {
     pub fn new(engine: &'a mut AlbedoJitEngine, registry: &'a BytecodeRegistry) -> Self {
-        Self { engine, registry, escape_results: None }
+        Self {
+            engine,
+            registry,
+            escape_results: None,
+            stack_plan: HashMap::new(),
+        }
     }
 
     pub fn compile(&mut self, air_orig: &AirFunction) -> Result<FuncId, JitError> {
+        self.stack_plan.clear();
         let mut air = air_orig.clone();
         let mut loop_optimizer = LoopOptimizer::new(&mut air);
-        loop_optimizer.run();
+        let _loop_report = loop_optimizer.run();
+        if !air.is_valid() {
+            return Err(JitError::Compilation(
+                "AIR invalid after loop optimizer pass".to_string(),
+            ));
+        }
+        if let Err(err) = validate_air_cfg(&air) {
+            return Err(JitError::Compilation(format!(
+                "AIR CFG validation failed after loop optimizer pass: {err}"
+            )));
+        }
 
         // 3.3 Escape Analysis
-        self.escape_results = Some(EscapeAnalysis::run(&air));
+        let escape_results = run_field_sensitive(&air);
+        
+        // 3.4 Scalar Replacement (SROA)
+        let mut replacer = ScalarReplacer::new(AirReg(air.registers_count));
+        for (&obj_reg, candidate) in &escape_results.scalar_candidates {
+            if matches!(
+                replacer.replace_object_with_scalars(&mut air, obj_reg, &candidate.properties),
+                ScalarTransformResult::RejectedCoverage
+            ) {
+                // Conservative fallback: keep object path untouched if coverage is incomplete.
+            }
+        }
+        air.registers_count = replacer.get_next_reg().0;
+
+        // 3.5 Stack allocation planning (for non-scalarized non-escaping objects)
+        let mut allocator = StackAllocator::new();
+        for (&obj_reg, candidate) in &escape_results.stack_candidates {
+            let alloc = allocator.allocate_object(obj_reg, candidate.num_slots.max(1));
+            self.stack_plan.insert(obj_reg, alloc);
+        }
+
+        if !air.is_valid() {
+            return Err(JitError::Compilation(
+                "AIR invalid after scalar replacement".to_string(),
+            ));
+        }
+        if let Err(err) = validate_air_cfg(&air) {
+            return Err(JitError::Compilation(format!(
+                "AIR CFG validation failed after scalar replacement: {err}"
+            )));
+        }
+        
+        self.escape_results = Some(escape_results);
         let air = &air;
 
         let mut sig = self.engine.module.make_signature();
@@ -2163,12 +2217,16 @@ impl<'a> Tier2Compiler<'a> {
                 builder.def_var(vars[dst.0 as usize], res);
             }
             AirOpcode::CreateObj { dst } => {
-                let status = self.escape_results.as_ref().and_then(|r| r.statuses.get(dst)).cloned().unwrap_or(EscapeStatus::Escaping);
+                let stack_alloc = self.stack_plan.get(dst).cloned();
 
-                if status == EscapeStatus::NonEscaping {
-                    // Alocação em stack
+                if let Some(stack_alloc) = stack_alloc {
+                    // Stack allocation planned by StackAllocator.
                     let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
-                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8)); // 4 props
+                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        (stack_alloc.num_properties as u32 * 8).max(8),
+                        8,
+                    ));
                     
                     let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
                     let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
@@ -2186,19 +2244,19 @@ impl<'a> Tier2Compiler<'a> {
                     // props = props_addr
                     builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
                     
-                    // props_len = 0, props_cap = 4
-                    let len_cap = builder.ins().iconst(I64, 4i64 << 32); 
+                    // props_len = 0, props_cap = planned num_properties
                     let zero32 = builder.ins().iconst(I32, 0);
-                    let four32 = builder.ins().iconst(I32, 4);
+                    let cap32 = builder.ins().iconst(I32, stack_alloc.num_properties as i64);
                     builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
-                    builder.ins().store(MemFlags::trusted(), four32, obj_addr, 28);
+                    builder.ins().store(MemFlags::trusted(), cap32, obj_addr, JSOBJ_PROPS_CAP_OFFSET as i32);
 
                     // Initialize props with undefined
                     let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 0);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 8);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 16);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 24);
+                    for i in 0..stack_alloc.num_properties {
+                        builder
+                            .ins()
+                            .store(MemFlags::trusted(), undefined, props_addr, (i as i32) * 8);
+                    }
                     
                     // Pack into JsValue (Object tag)
                     let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
@@ -2212,11 +2270,15 @@ impl<'a> Tier2Compiler<'a> {
                 }
             }
             AirOpcode::CreateArray { dst } => {
-                let status = self.escape_results.as_ref().and_then(|r| r.statuses.get(dst)).cloned().unwrap_or(EscapeStatus::Escaping);
+                let stack_alloc = self.stack_plan.get(dst).cloned();
 
-                if status == EscapeStatus::NonEscaping {
+                if let Some(stack_alloc) = stack_alloc {
                     let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
-                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8)); 
+                    let props_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        (stack_alloc.num_properties as u32 * 8).max(8),
+                        8,
+                    ));
                     
                     let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
                     let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
@@ -2230,16 +2292,17 @@ impl<'a> Tier2Compiler<'a> {
                     builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
                     
                     let zero32 = builder.ins().iconst(I32, 0);
-                    let four32 = builder.ins().iconst(I32, 4);
+                    let cap32 = builder.ins().iconst(I32, stack_alloc.num_properties as i64);
                     builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
-                    builder.ins().store(MemFlags::trusted(), four32, obj_addr, 28);
+                    builder.ins().store(MemFlags::trusted(), cap32, obj_addr, JSOBJ_PROPS_CAP_OFFSET as i32);
 
                     // Initialize props with undefined
                     let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 0);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 8);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 16);
-                    builder.ins().store(MemFlags::trusted(), undefined, props_addr, 24);
+                    for i in 0..stack_alloc.num_properties {
+                        builder
+                            .ins()
+                            .store(MemFlags::trusted(), undefined, props_addr, (i as i32) * 8);
+                    }
                     
                     let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
                     let packed = builder.ins().bor(obj_addr, tag);

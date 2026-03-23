@@ -27,6 +27,12 @@ pub use compiler::baseline_compiler::BaselineCompiler;
 pub use compiler::tier2_compiler::Tier2Compiler;
 pub use compiler::code_cache::{CacheStatsSnapshot, CachedCode, CodeCache, JitTier};
 pub use compiler::deopt::{DeoptMeta, DeoptPoint};
+pub use compiler::escape_analysis::{
+    run_field_sensitive, AllocationKind, EscapeAnalysisResult, EscapeReason, EscapeStatus,
+    ScalarCandidate, ScalarProperty, StackCandidate,
+};
+pub use compiler::stack_allocator::{StackAllocator, StackAllocation};
+pub use compiler::scalar_replacement::ScalarReplacer;
 
 pub use runtime::js_value::JsValue;
 pub use runtime::builtins::BuiltinId;
@@ -38,4 +44,3 @@ pub use engine::profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConf
 pub use infra::executable_memory::{CodePool, CodePoolStats, CodeRegion};
 
 pub use decoder::{QjsBytecodeFunction, StackToRegisterTranslator};
-

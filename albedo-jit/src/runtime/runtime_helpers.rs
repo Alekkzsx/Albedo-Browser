@@ -245,7 +245,7 @@ pub extern "C" fn js_call_ic(func: u64, this: u64, args_ptr: u64, num_args: u64,
                     
                     if let Some(entry) = cache.lookup(&fid) {
                         // Incrementar contador de execução do cache
-                        entry.increment_execution();
+                        let _ = entry.increment_execution();
 
                         // Chamada JIT: Passamos (this, p0, p1, ...) conforme a nova ABI.
                         // f(this, args[0], args[1], ...)

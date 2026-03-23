@@ -38,6 +38,7 @@ pub const JSOBJ_SHAPE_OFFSET: u32 = offset_of!(JsObject, shape_id) as u32;
 pub const JSOBJ_KIND_OFFSET: u32 = offset_of!(JsObject, kind) as u32;
 pub const JSOBJ_PROPS_OFFSET: u32 = offset_of!(JsObject, props) as u32;
 pub const JSOBJ_PROPS_LEN_OFFSET: u32 = offset_of!(JsObject, props_len) as u32;
+pub const JSOBJ_PROPS_CAP_OFFSET: u32 = offset_of!(JsObject, props_cap) as u32;
 
 // ---------------------------------------------------------------------------
 // String Interning (payload = id)

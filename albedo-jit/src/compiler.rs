@@ -5,3 +5,5 @@ pub mod deopt;
 pub mod code_cache;
 pub mod loop_opts;
 pub mod escape_analysis;
+pub mod stack_allocator;
+pub mod scalar_replacement;
