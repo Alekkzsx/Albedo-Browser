@@ -1367,10 +1367,10 @@
                para fora do loop
              → Loop Unrolling: desenrolar loops pequenos (≤8 iterações)
              → Strength Reduction: multiplicação → shift quando possível
-  [ ]  3.3  Escape Analysis
-             → Objetos que não escapam da função → alocar no stack (não no heap)
-             → Scalar Replacement: substituir objeto por variáveis individuais
-             → Elimina pressão no GC para objetos temporários
+  [x]  3.3  Escape Analysis
+             → Objetos que não escapam da função → alocar no stack (não no heap) ✅
+             → Scalar Replacement: substituir objeto por variáveis individuais ✅
+             → Elimina pressão no GC para objetos temporários ✅
   [ ]  3.4  Dead Code Elimination + Constant Folding
              → Remover código inalcançável após inlining
              → Avaliar expressões constantes em compile time
