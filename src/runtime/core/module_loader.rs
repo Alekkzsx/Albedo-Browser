@@ -105,7 +105,7 @@ pub fn resolve_module_specifier(specifier: &str, referrer: &str, base_url: &str)
             base_url
         };
 
-        if let Ok(base) = url::Url::parse(effective_base) {
+        if let Ok(base) = crate::ace::url::parse(effective_base, None) {
             if let Ok(resolved) = base.join(specifier) {
                 return Some(resolved.to_string());
             }
@@ -115,7 +115,7 @@ pub fn resolve_module_specifier(specifier: &str, referrer: &str, base_url: &str)
 
     // 5. Caminhos absolutos (/lib/foo.js) — resolve contra a origem da página
     if specifier.starts_with('/') {
-        if let Ok(base) = url::Url::parse(base_url) {
+        if let Ok(base) = crate::ace::url::parse(base_url, None) {
             if let Ok(resolved) = base.join(specifier) {
                 return Some(resolved.to_string());
             }
@@ -148,7 +148,7 @@ fn fetch_module_source(url: &str) -> Option<String> {
                     return String::from_utf8(decoded).ok();
                 }
             } else {
-                return Some(urlencoding::decode(data).unwrap_or_default().to_string());
+                return Some(crate::ace::url::percent_encoding::decode(data));
             }
         }
         return None;
@@ -322,12 +322,12 @@ pub struct ImportMap {
 impl ImportMap {
     /// Faz parse do JSON de um import map
     pub fn parse(json_str: &str) -> Option<Self> {
-        let parsed: serde_json::Value = serde_json::from_str(json_str).ok()?;
+        let parsed: crate::ace::json::JsonValue = crate::ace::json::parse(json_str).ok()?;
         let mut import_map = ImportMap::default();
 
         if let Some(imports) = parsed.get("imports").and_then(|v| v.as_object()) {
             for (key, value) in imports {
-                if let Some(url_str) = value.as_str() {
+                if let Some(url_str) = value.as_string() {
                     import_map.imports.insert(key.clone(), url_str.to_string());
                 }
             }
@@ -338,7 +338,7 @@ impl ImportMap {
                 if let Some(scope_map) = scope_value.as_object() {
                     let mut map = HashMap::new();
                     for (key, value) in scope_map {
-                        if let Some(url_str) = value.as_str() {
+                        if let Some(url_str) = value.as_string() {
                             map.insert(key.clone(), url_str.to_string());
                         }
                     }

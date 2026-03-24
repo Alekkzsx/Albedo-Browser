@@ -27,7 +27,7 @@ impl WebSocket {
 
         let rt_send = UnsafeSendVal(rt);
 
-        let url_parsed = url::Url::parse(&url)
+        let url_parsed = crate::ace::url::parse(&url, None)
             .map_err(|_| rquickjs::Error::new_from_js("URL", "Invalid WebSocket URL"))?;
 
         tokio::spawn(async move {

@@ -500,8 +500,8 @@ impl Element {
     #[qjs(get, rename = "origin")]
     pub fn origin(&self) -> String {
         let href = self::props::href(self);
-        if let Ok(u) = url::Url::parse(&href) {
-            return format!("{}://{}", u.scheme(), u.host_str().unwrap_or(""));
+        if let Ok(u) = crate::ace::url::parse(&href, None) {
+            return u.origin();
         }
         "".to_string()
     }
@@ -509,8 +509,8 @@ impl Element {
     #[qjs(get, rename = "pathname")]
     pub fn pathname(&self) -> String {
         let href = self::props::href(self);
-        if let Ok(u) = url::Url::parse(&href) {
-            return u.path().to_string();
+        if let Ok(u) = crate::ace::url::parse(&href, None) {
+            return u.path();
         }
         "".to_string()
     }

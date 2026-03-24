@@ -1,9 +1,8 @@
 use rusqlite::{params, Connection, Result as SqliteResult};
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct SwRegistrationData {
     pub id: String,
     pub scope: String,
@@ -12,7 +11,7 @@ pub struct SwRegistrationData {
     pub last_update_check: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct SwSyncTaskData {
     pub id: String,
     pub tag: String,
@@ -21,7 +20,7 @@ pub struct SwSyncTaskData {
     pub retry_count: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct SwCacheEntryData {
     pub id: String,
     pub cache_name: String,

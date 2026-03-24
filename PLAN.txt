@@ -822,7 +822,7 @@
   GRUPO 15 — Utilitários (Substituir crates auxiliares)
   ─────────────────────────────────────────────────────
 
-  [ ]  AFS-26 ACE-JSON próprio (parser/serializer)
+  [x]  AFS-26 ACE-JSON próprio (parser/serializer)
          → Substituir: serde (1.0) + serde_json (1.0)
          O que fazer:
            1. Criar src/ace/json/parser.rs — Parser JSON (RFC 8259).

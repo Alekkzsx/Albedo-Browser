@@ -209,8 +209,9 @@ pub struct WindowSync {
 // STORAGE MANAGER FOR SYNC PERSISTENCE
 // ============================================================================
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct SyncTaskPersisted {
+极
     pub id: String,
     pub tag: String,
     pub registration_id: String,
@@ -220,7 +221,7 @@ pub struct SyncTaskPersisted {
     pub max_retries: u32,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct PeriodicSyncTaskPersisted {
     pub id: String,
     pub tag: String,

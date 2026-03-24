@@ -1,5 +1,5 @@
 use std::fmt;
-use url::Url;
+use crate::ace::url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Origin {
@@ -10,7 +10,7 @@ pub struct Origin {
 
 impl Origin {
     pub fn from_url(url: &str) -> Option<Self> {
-        let parsed = Url::parse(url).ok()?;
+        let parsed = crate::ace::url::parse(url, None).ok()?;
         Some(Self {
             scheme: parsed.scheme().to_string(),
             host: parsed.host_str()?.to_string(),

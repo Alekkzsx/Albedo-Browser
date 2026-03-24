@@ -1,7 +1,7 @@
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwCacheEntryData};
 use rquickjs::{Class, Ctx, Object, Persistent, Result as JsResult, Value};
-use serde::{Deserialize, Serialize};
+use crate::ace::json::{self, JsonValue};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 // CACHE ENTRY STORAGE (for IndexedDB persistence)
 // ============================================================================
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct CacheEntry {
     pub url: String,
     pub status: u16,
@@ -20,7 +20,7 @@ pub struct CacheEntry {
     pub expires_at: Option<u64>, // unix timestamp or None = no expiry
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct CacheMetadata {
     pub name: String,
     pub created_at: u64,
@@ -79,7 +79,13 @@ impl Cache {
                         origin,
                         url: url_clone,
                         status: resp.status,
-                        headers: serde_json::to_string(&resp.headers).unwrap_or_default(),
+                        headers: {
+                            let mut h_map = HashMap::new();
+                            for (k, v) in &resp.headers {
+                                h_map.insert(k.clone(), JsonValue::String(v.clone()));
+                            }
+                            json::stringify(&JsonValue::Object(h_map), false)
+                        },
                         body: resp.body_bytes,
                         created_at: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -123,7 +129,19 @@ impl Cache {
             let resp = Response {
                 status: entry.status,
                 status_text: "OK".to_string(),
-                headers: serde_json::from_str(&entry.headers).unwrap_or_default(),
+                headers: {
+                    if let Ok(JsonValue::Object(map)) = json::parse(&entry.headers) {
+                        let mut h = HashMap::new();
+                        for (k, v) in map {
+                            if let Some(s) = v.as_string() {
+                                h.insert(k, s.to_string());
+                            }
+                        }
+                        h
+                    } else {
+                        HashMap::new()
+                    }
+                },
                 body: entry.body,
                 url,
                 redirected: false,
@@ -342,13 +360,9 @@ impl Response {
     }
 
     pub async fn json<'js>(&self, ctx: Ctx<'js>) -> JsResult<Value<'js>> {
-        let json_str = String::from_utf8_lossy(&self.body);
-        let json_val: serde_json::Value = serde_json::from_str(&json_str)
-            .map_err(|_| rquickjs::Error::new_from_js("Response", "JSON parse error"))?;
-
-        // Convert serde_json::Value to rquickjs Value
-        let json_bytes = serde_json::to_string(&json_val).unwrap().into_bytes();
-        ctx.json_parse(json_bytes)
+        // Otimização: QuickJS já tem um parser de JSON nativo rápido.
+        // Passamos os bytes diretamente para o motor JS.
+        ctx.json_parse(self.body.clone())
     }
 
     pub fn clone_response(&self) -> Response {

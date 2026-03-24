@@ -111,8 +111,8 @@ impl URLSearchParams {
         self.params
             .iter()
             .map(|(k, v)| {
-                let encoded_k = urlencoding::encode(k);
-                let encoded_v = urlencoding::encode(v);
+                let encoded_k = crate::ace::url::percent_encoding::encode(k, crate::ace::url::percent_encoding::EncodeSet::Query);
+                let encoded_v = crate::ace::url::percent_encoding::encode(v, crate::ace::url::percent_encoding::EncodeSet::Query);
                 format!("{}={}", encoded_k, encoded_v)
             })
             .collect::<Vec<_>>()

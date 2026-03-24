@@ -1,5 +1,5 @@
 use rquickjs::{Class, Ctx, Result};
-use serde_json;
+use crate::ace::json::{self, JsonValue};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -22,8 +22,12 @@ impl StorageData {
         if let Some(ref path) = path {
             if path.exists() {
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Ok(json) = serde_json::from_str::<HashMap<String, String>>(&content) {
-                        items = json;
+                    if let Ok(JsonValue::Object(map)) = json::parse(&content) {
+                        for (k, v) in map {
+                            if let Some(s) = v.as_string() {
+                                items.insert(k, s.to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -39,9 +43,12 @@ impl StorageData {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            if let Ok(json) = serde_json::to_string_pretty(&self.items) {
-                let _ = std::fs::write(path, json);
+            let mut map = HashMap::new();
+            for (k, v) in &self.items {
+                map.insert(k.clone(), JsonValue::String(v.clone()));
             }
+            let json = json::stringify(&JsonValue::Object(map), true);
+            let _ = std::fs::write(path, json);
         }
     }
 }

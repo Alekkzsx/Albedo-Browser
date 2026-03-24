@@ -1,0 +1,9 @@
+[package]
+name = "ace-json"
+version = "0.1.0"
+edition = "2021"
+authors = ["AlbedoUser"]
+description = "ACE-JSON — Motor JSON nativo do Albedo (Zero-dependency)"
+
+[dependencies]
+# Nenhuma dependência externa!
