@@ -3,7 +3,7 @@
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use url::Url;
+use crate::ace::url::Url;
 
 /// Eventos que o Navegador recebe do WebSocket
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl WebSocketClient {
     /// Conecta em um URL (ex: wss://echo.websocket.org) e retorna o Cliente + O Canal de Escuta
     pub fn connect(url_str: &str, id: String) -> (Option<Self>, mpsc::Receiver<WsEvent>) {
         // Valida URL
-        let url = match Url::parse(url_str) {
+        let url = match Url::parse(url_str, None) {
             Ok(u) => u,
             Err(e) => return (None, create_error_receiver(format!("URL Inválida: {}", e))),
         };

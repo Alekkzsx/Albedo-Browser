@@ -27,7 +27,7 @@ pub enum UpdateViaCache {
     None,    // Never check (cache always)
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub enum CacheMode {
     Default,
     NoStore,
@@ -37,14 +37,14 @@ pub enum CacheMode {
     OnlyIfCached,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub enum RedirectMode {
     Follow,
     Error,
     Manual,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CacheSource {
     Network,
     ServiceWorkerCache,
@@ -55,7 +55,7 @@ pub enum CacheSource {
 // REQUEST/RESPONSE CONTEXT
 // ============================================================================
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct RequestContext {
     pub method: String,
     pub url: String,
@@ -67,7 +67,7 @@ pub struct RequestContext {
     pub redirect: RedirectMode,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct ResponseContext {
     pub status: u16,
     pub status_text: String,

@@ -3,8 +3,7 @@
 use crate::network::http3::Http3Client;
 use crate::network::security::{AccessControl, Origin};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use crate::ace::json::{self, JsonValue};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -26,12 +25,30 @@ pub enum FetchError {
 }
 
 // Modos de Segurança de Fetch
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FetchMode {
     Cors,
     NoCors,
     SameOrigin,
+}
+
+impl FetchMode {
+    pub fn to_json(&self) -> JsonValue {
+        match self {
+            FetchMode::Cors => JsonValue::String("cors".to_string()),
+            FetchMode::NoCors => JsonValue::String("no-cors".to_string()),
+            FetchMode::SameOrigin => JsonValue::String("same-origin".to_string()),
+        }
+    }
+
+    pub fn from_json(value: &JsonValue) -> Option<Self> {
+        match value.as_string()? {
+            "cors" => Some(FetchMode::Cors),
+            "no-cors" => Some(FetchMode::NoCors),
+            "same-origin" => Some(FetchMode::SameOrigin),
+            _ => None,
+        }
+    }
 }
 
 impl Default for FetchMode {
@@ -41,13 +58,65 @@ impl Default for FetchMode {
 }
 
 // Configuração da Requisição (Espelha o objeto 'init' do JS)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct FetchOptions {
     pub method: String, // GET, POST, PUT...
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
     pub mode: FetchMode,
     pub timeout_ms: u64,
+}
+
+impl FetchOptions {
+    pub fn to_json(&self) -> JsonValue {
+        let mut map = HashMap::new();
+        map.insert("method".to_string(), JsonValue::String(self.method.clone()));
+        
+        let mut headers_map = HashMap::new();
+        for (k, v) in &self.headers {
+            headers_map.insert(k.clone(), JsonValue::String(v.clone()));
+        }
+        map.insert("headers".to_string(), JsonValue::Object(headers_map));
+        
+        map.insert("body".to_string(), match &self.body {
+            Some(b) => JsonValue::String(b.clone()),
+            None => JsonValue::Null,
+        });
+        
+        map.insert("mode".to_string(), self.mode.to_json());
+        map.insert("timeout_ms".to_string(), JsonValue::Number(self.timeout_ms as f64));
+        
+        JsonValue::Object(map)
+    }
+
+    pub fn from_json(value: &JsonValue) -> Option<Self> {
+        let obj = value.as_object()?;
+        
+        let method = obj.get("method")?.as_string()?.to_string();
+        
+        let mut headers = HashMap::new();
+        if let Some(h_val) = obj.get("headers") {
+            if let Some(h_obj) = h_val.as_object() {
+                for (k, v) in h_obj {
+                    if let Some(s) = v.as_string() {
+                        headers.insert(k.clone(), s.to_string());
+                    }
+                }
+            }
+        }
+        
+        let body = obj.get("body").and_then(|v| v.as_string().map(|s| s.to_string()));
+        let mode = obj.get("mode").and_then(|v| FetchMode::from_json(v)).unwrap_or_default();
+        let timeout_ms = obj.get("timeout_ms").and_then(|v| v.as_number()).map(|n| n as u64).unwrap_or(10_000);
+
+        Some(Self {
+            method,
+            headers,
+            body,
+            mode,
+            timeout_ms,
+        })
+    }
 }
 
 // Padrões do objeto fetch
@@ -84,11 +153,11 @@ impl FetchResponse {
     }
 
     // Tenta retornar o corpo como JSON
-    pub fn json(&self) -> Result<Value, serde_json::Error> {
+    pub fn json(&self) -> Result<JsonValue, String> {
         if self.opaque {
-            return serde_json::from_str("{}");
+            return Ok(JsonValue::Object(HashMap::new()));
         }
-        serde_json::from_slice(&self.body_bytes)
+        json::parse(&self.text())
     }
 
     // Retorna se deu sucesso (200-299)

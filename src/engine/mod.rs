@@ -668,7 +668,7 @@ impl AceEngine {
                     {
                         if let Some(href) = el.attributes.get("href") {
                             // Resolve relative URL
-                            if let Ok(base_url) = url::Url::parse(&self.current_url) {
+                            if let Ok(base_url) = crate::ace::url::parse(&self.current_url, None) {
                                 if let Ok(abs_url) = base_url.join(href) {
                                     let url_str = abs_url.to_string();
 

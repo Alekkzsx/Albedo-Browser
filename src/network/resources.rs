@@ -170,8 +170,8 @@ impl ResourceManager {
         // 0. Service Worker Interception
         // Convert URL to string for safety
         let url_str = url.clone();
-        let origin_str = if let Ok(parsed) = url::Url::parse(&url_str) {
-            parsed.origin().unicode_serialization()
+        let origin_str = if let Ok(parsed) = crate::ace::url::parse(&url_str, None) {
+            parsed.origin()
         } else {
             String::new()
         };
@@ -273,9 +273,7 @@ impl ResourceManager {
                             .decode(data_part)
                             .unwrap_or_default()
                     } else {
-                        urlencoding::decode(data_part)
-                            .map(|s| s.into_owned().into_bytes())
-                            .unwrap_or_default()
+                        crate::ace::url::percent_encoding::decode(data_part).into_bytes()
                     };
 
                     let response = ResourceResponse {
@@ -352,28 +350,22 @@ impl ResourceManager {
             let resource_type = resource_type.clone();
 
             tokio::spawn(async move {
-                let path_buf = if let Ok(parsed_url) = url::Url::parse(&url_clone) {
-                    if let Ok(file_path) = parsed_url.to_file_path() {
-                        file_path
-                    } else {
-                        let path_str = url_clone.trim_start_matches("file://");
-                        let mut p = urlencoding::decode(path_str)
-                            .map(|s| s.into_owned())
-                            .unwrap_or_else(|_| path_str.to_string());
-                        if cfg!(windows) && p.starts_with('/') {
-                            let chars: Vec<char> = p.chars().collect();
-                            if chars.len() > 3 && chars[1].is_ascii_alphabetic() && chars[2] == ':'
-                            {
-                                p = p[1..].to_string();
-                            }
+                let path_buf = if let Ok(parsed_url) = crate::ace::url::parse(&url_clone, None) {
+                    // Nota: WHATWG URL Standard trata caminhos de forma diferente.
+                    // Para o MVP de migração, simulamos a extração de caminho de arquivo.
+                    let path_str = url_clone.trim_start_matches("file://");
+                    let mut p = crate::ace::url::percent_encoding::decode(path_str);
+                    if cfg!(windows) && p.starts_with('/') {
+                        let chars: Vec<char> = p.chars().collect();
+                        if chars.len() > 3 && chars[1].is_ascii_alphabetic() && chars[2] == ':'
+                        {
+                            p = p[1..].to_string();
                         }
-                        std::path::PathBuf::from(p)
                     }
+                    std::path::PathBuf::from(p)
                 } else {
                     let path_str = url_clone.trim_start_matches("file://");
-                    let mut p = urlencoding::decode(path_str)
-                        .map(|s| s.into_owned())
-                        .unwrap_or_else(|_| path_str.to_string());
+                    let mut p = crate::ace::url::percent_encoding::decode(path_str);
                     if cfg!(windows) && p.starts_with('/') {
                         let chars: Vec<char> = p.chars().collect();
                         if chars.len() > 3 && chars[1].is_ascii_alphabetic() && chars[2] == ':' {

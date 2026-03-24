@@ -9,7 +9,7 @@ use std::mem::offset_of;
 use std::sync::OnceLock;
 
 use crate::runtime::js_value::JsValue;
-use serde_json::Value as JsonValue;
+use ace_json::JsonValue;
 
 // ---------------------------------------------------------------------------
 // Layout do Objeto (estável para geração de código)
@@ -450,7 +450,7 @@ pub fn json_parse(s: JsValue) -> JsValue {
         None => return JsValue::undefined(),
     };
 
-    match serde_json::from_str::<JsonValue>(&text) {
+    match ace_json::parse(&text) {
         Ok(v) => json_to_jsvalue(&v),
         Err(_) => JsValue::undefined(),
     }
@@ -460,17 +460,11 @@ fn json_to_jsvalue(v: &JsonValue) -> JsValue {
     match v {
         JsonValue::Null => JsValue::null(),
         JsonValue::Bool(b) => JsValue::bool(*b),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                if i >= i32::MIN as i64 && i <= i32::MAX as i64 {
-                    JsValue::int32(i as i32)
-                } else {
-                    JsValue::float64(i as f64)
-                }
-            } else if let Some(f) = n.as_f64() {
-                JsValue::float64(f)
+        JsonValue::Number(f) => {
+            if f.fract() == 0.0 && *f >= i32::MIN as f64 && *f <= i32::MAX as f64 {
+                JsValue::int32(*f as i32)
             } else {
-                JsValue::float64(f64::NAN)
+                JsValue::float64(*f)
             }
         }
         JsonValue::String(s) => {

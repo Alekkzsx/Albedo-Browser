@@ -47,7 +47,7 @@ impl TabManager {
             col.tabs[pos].favicon_data = None; // Reset favicon
 
             // Requisita o favicon hardcoded pelo Google Service
-            if let Ok(parsed) = url::Url::parse(&url) {
+            if let Ok(parsed) = crate::ace::url::parse(&url, None) {
                 if let Some(host) = parsed.host_str() {
                     let favicon_url =
                         format!("https://www.google.com/s2/favicons?domain={}&sz=64", host);

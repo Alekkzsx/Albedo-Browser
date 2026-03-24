@@ -6,7 +6,7 @@ use rquickjs::{prelude::*, Class, Ctx, Object, Persistent, Result, Value};
 #[rquickjs::class]
 pub struct URL {
     #[qjs(skip_trace)]
-    pub(crate) url: url::Url,
+    pub(crate) url: crate::ace::url::Url,
     #[qjs(skip_trace)]
     pub(crate) search_params: Persistent<Object<'static>>,
 }
@@ -16,13 +16,13 @@ impl URL {
     #[qjs(constructor)]
     pub fn new(ctx: Ctx<'_>, input: String, base: Option<String>) -> Result<Self> {
         let url = if let Some(base_str) = base {
-            let base_url = url::Url::parse(&base_str)
+            let base_url = crate::ace::url::parse(&base_str, None)
                 .map_err(|_| rquickjs::Error::new_from_js("URL", "Invalid base URL"))?;
             base_url
                 .join(&input)
                 .map_err(|_| rquickjs::Error::new_from_js("URL", "Invalid URL parsing"))?
         } else {
-            url::Url::parse(&input)
+            crate::ace::url::parse(&input, None)
                 .map_err(|_| rquickjs::Error::new_from_js("URL", "Invalid URL"))?
         };
 
@@ -46,14 +46,14 @@ impl URL {
 
     #[qjs(set, rename = "href")]
     pub fn href_setter(&mut self, val: String) -> Result<()> {
-        self.url = url::Url::parse(&val)
+        self.url = crate::ace::url::parse(&val, None)
             .map_err(|_| rquickjs::Error::new_from_js("URL", "Invalid URL"))?;
         Ok(())
     }
 
     #[qjs(get)]
     pub fn origin(&self) -> String {
-        self.url.origin().unicode_serialization()
+        self.url.origin()
     }
 
     #[qjs(get)]
