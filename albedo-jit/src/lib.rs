@@ -11,6 +11,7 @@
 //! O QuickJS continua como interpretador base. O AlbedoJIT compila hot paths
 //! para código de máquina nativo, acelerando funções executadas repetidamente.
 
+pub mod contracts;
 pub mod compiler;
 pub mod runtime;
 pub mod engine;
@@ -39,6 +40,7 @@ pub use runtime::builtins::BuiltinId;
 
 pub use engine::jit_engine::AlbedoJitEngine;
 pub use engine::jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
+pub use engine::engine_stats::EngineStats; // Fixed missing reference during refactor
 pub use engine::profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
 
 pub use infra::executable_memory::{CodePool, CodePoolStats, CodeRegion};

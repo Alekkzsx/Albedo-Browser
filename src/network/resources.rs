@@ -268,10 +268,7 @@ impl ResourceManager {
                     };
 
                     let data = if is_base64 {
-                        use base64::{engine::general_purpose, Engine as _};
-                        general_purpose::STANDARD
-                            .decode(data_part)
-                            .unwrap_or_default()
+                        crate::ace::util::base64::decode(data_part).unwrap_or_default()
                     } else {
                         crate::ace::url::percent_encoding::decode(data_part).into_bytes()
                     };
