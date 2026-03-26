@@ -836,7 +836,7 @@
          Estimativa: ~500-800 LOC | ~30-50h
          Critério de aceite: parse/stringify de JSON de APIs reais.
 
-  [ ]  AFS-27 ACE-URL próprio (parser de URLs)
+  [x]  AFS-27 ACE-URL próprio (parser de URLs)
          → Substituir: url (2.5) + urlencoding (2.1)
          O que fazer:
            1. Criar src/ace/url/parser.rs — Parser WHATWG URL Standard.

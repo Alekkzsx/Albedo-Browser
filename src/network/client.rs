@@ -157,7 +157,7 @@ impl FetchResponse {
         if self.opaque {
             return Ok(JsonValue::Object(HashMap::new()));
         }
-        json::parse(&self.text())
+        json::parse(&self.text()).map_err(|e| format!("{:?}", e))
     }
 
     // Retorna se deu sucesso (200-299)

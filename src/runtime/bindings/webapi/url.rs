@@ -65,7 +65,7 @@ impl URL {
     pub fn host(&self) -> String {
         format!(
             "{}{}",
-            self.url.host_str().unwrap_or(""),
+            self.url.host_str().unwrap_or_default(),
             self.url
                 .port()
                 .map(|p| format!(":{}", p))
@@ -75,7 +75,7 @@ impl URL {
 
     #[qjs(get)]
     pub fn hostname(&self) -> String {
-        self.url.host_str().unwrap_or("").to_string()
+        self.url.host_str().unwrap_or_default()
     }
 
     #[qjs(get)]

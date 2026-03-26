@@ -41,3 +41,21 @@ fn test_percent_decoding() {
     let decoded = albedo::ace::url::percent_encoding::decode("hello%20world%21");
     assert_eq!(decoded, "hello world!");
 }
+
+#[test]
+fn test_search_params_complex() {
+    let mut params = url::UrlSearchParams::new(Some("a=1&b=2&a=3"));
+    params.set("a", "4");
+    assert_eq!(params.get_all("a"), vec!["4".to_string()]);
+    assert_eq!(params.to_string(), "a=4&b=2");
+    
+    params.append("a", "5");
+    assert_eq!(params.get_all("a"), vec!["4".to_string(), "5".to_string()]);
+    assert_eq!(params.to_string(), "a=4&b=2&a=5");
+}
+
+#[test]
+fn test_url_as_str_integration() {
+    let u = url::parse("https://example.com/p", None).unwrap();
+    assert_eq!(u.as_str(), "https://example.com/p");
+}

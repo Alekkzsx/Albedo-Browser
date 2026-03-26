@@ -32,7 +32,7 @@ impl WebSocket {
 
         tokio::spawn(async move {
             let (ws_client_opt, mut events) =
-                WebSocketClient::connect(url_parsed.as_str(), "web_socket".to_string());
+                WebSocketClient::connect(&url_parsed.as_str(), "web_socket".to_string());
             if let Some(ws_client) = ws_client_opt {
                 *client_clone.lock().unwrap() = Some(ws_client);
 
