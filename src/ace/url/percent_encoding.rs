@@ -1,25 +1,30 @@
 pub fn decode(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let h1 = chars.next();
-            let h2 = chars.next();
+    let mut bytes = Vec::with_capacity(input.len());
+    let mut it = input.as_bytes().iter().peekable();
+    
+    while let Some(&b) = it.next() {
+        if b == b'%' {
+            let h1 = it.next().copied();
+            let h2 = it.next().copied();
             if let (Some(h1), Some(h2)) = (h1, h2) {
-                if let Ok(byte) = u8::from_str_radix(&format!("{}{}", h1, h2), 16) {
-                    result.push(byte as char);
+                if let Ok(byte) = u8::from_str_radix(&format!("{}{}", h1 as char, h2 as char), 16) {
+                    bytes.push(byte);
                     continue;
                 }
+                // Fallback
+                bytes.push(b'%');
+                bytes.push(h1);
+                bytes.push(h2);
+            } else {
+                bytes.push(b'%');
+                if let Some(h1) = h1 { bytes.push(h1); }
+                if let Some(h2) = h2 { bytes.push(h2); }
             }
-            // Fallback se não for hex válido
-            result.push('%');
-            if let Some(h1) = h1 { result.push(h1); }
-            if let Some(h2) = h2 { result.push(h2); }
         } else {
-            result.push(c);
+            bytes.push(b);
         }
     }
-    result
+    String::from_utf8_lossy(&bytes).to_string()
 }
 
 pub fn encode(input: &str, set: EncodeSet) -> String {

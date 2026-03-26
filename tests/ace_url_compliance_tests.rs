@@ -71,3 +71,34 @@ fn test_whatwg_percent_encoding_robustness() {
     let u = parse("https://ex.com/#f o", None).unwrap();
     assert_eq!(u.fragment.as_ref().map(|s| s.as_str()), Some("f%20o"));
 }
+
+#[test]
+fn test_whatwg_file_urls() {
+    // File URL with drive letter
+    let u = parse("file:///C:/a/b", None).unwrap();
+    // In our simplified parser, we treat it as path segments
+    assert_eq!(u.path(), "/C:/a/b");
+    
+    // File URL relative
+    let base = parse("file:///etc/hosts", None).unwrap();
+    let u = base.join("passwd").unwrap();
+    assert_eq!(u.to_string(), "file:///etc/passwd");
+}
+
+#[test]
+fn test_whatwg_authority_override() {
+    let base = parse("https://example.com/p1", None).unwrap();
+    let u = parse("//new.com/p2", Some(&base)).unwrap();
+    assert_eq!(u.to_string(), "https://new.com/p2");
+}
+
+#[test]
+fn test_utf8_percent_decoding() {
+    // ma%C3%B1ana -> mañana
+    let decoded = percent_encoding::decode("ma%C3%B1ana");
+    assert_eq!(decoded, "mañana");
+    
+    // complex UTF-8
+    let decoded = percent_encoding::decode("%F0%9F%A6%80"); // 🦀
+    assert_eq!(decoded, "🦀");
+}

@@ -61,6 +61,10 @@ pub struct Url {
 }
 
 impl Url {
+    pub fn parse(input: &str, base: Option<&Url>) -> std::result::Result<Url, UrlError> {
+        super::parser::parse(input, base)
+    }
+
     pub fn is_special(&self) -> bool {
         matches!(
             self.scheme.as_str(),
@@ -74,6 +78,10 @@ impl Url {
 
     pub fn host_str(&self) -> Option<String> {
         self.host.as_ref().map(|h| h.to_string())
+    }
+
+    pub fn as_str(&self) -> String {
+        self.to_string()
     }
 
     pub fn port(&self) -> Option<u16> {

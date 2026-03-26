@@ -49,7 +49,7 @@ impl WebSocketClient {
 
         // SPIDER TASK: Cria uma thread leve (Green Thread) isolada para cuidar da rede
         tokio::spawn(async move {
-            match connect_async(url.to_string()).await {
+            match connect_async(url.as_str()).await {
                 Ok((ws_stream, _response)) => {
                     let _ = event_tx_clone.send(WsEvent::Connected).await;
 

@@ -13,9 +13,9 @@ impl UrlSearchParams {
             for pair in q.split('&') {
                 if pair.is_empty() { continue; }
                 let mut parts = pair.splitn(2, '=');
-                let key = percent_encoding::decode(parts.next().unwrap_or(""));
-                let val = percent_encoding::decode(parts.next().unwrap_or(""));
-                search_params.append(&key, &val);
+                let key = parts.next().unwrap_or("").replace('+', " ");
+                let val = parts.next().unwrap_or("").replace('+', " ");
+                search_params.append(&percent_encoding::decode(&key), &percent_encoding::decode(&val));
             }
         }
         search_params
@@ -63,12 +63,12 @@ impl UrlSearchParams {
     }
 
     pub fn to_string(&self) -> String {
-        let mut result = String::new();
+        let mut result = String::with_capacity(self.params.len() * 20); // Heuristic
         for (i, (k, v)) in self.params.iter().enumerate() {
             if i > 0 { result.push('&'); }
-            result.push_str(&percent_encoding::encode(k, EncodeSet::Query));
+            result.push_str(&percent_encoding::encode(k, EncodeSet::Query).replace("%20", "+"));
             result.push('=');
-            result.push_str(&percent_encoding::encode(v, EncodeSet::Query));
+            result.push_str(&percent_encoding::encode(v, EncodeSet::Query).replace("%20", "+"));
         }
         result
     }

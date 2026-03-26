@@ -8,14 +8,12 @@ enum State {
     Scheme,
     NoScheme,
     SpecialRelativeOrAuthority,
-    PathOrAuthority,
     Relative,
     RelativeSlash,
     SpecialAuthoritySlashes,
     SpecialAuthorityIgnoreSlashes,
     Authority,
     Host,
-    Hostname,
     Ipv6,
     Port,
     File,
@@ -47,6 +45,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
 
     while i < chars.len() {
         let c = chars[i];
+        let mut advance = true;
         match state {
             State::SchemeStart => {
                 if c.is_ascii_alphabetic() {
@@ -55,7 +54,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 } else if let Some(base_url) = base {
                     url.scheme = base_url.scheme.clone();
                     state = State::NoScheme;
-                    i = i.saturating_sub(1);
+                    advance = false;
                 } else {
                     return Err(UrlError::MissingScheme);
                 }
@@ -78,7 +77,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 } else if let Some(base_url) = base {
                     url.scheme = base_url.scheme.clone();
                     state = State::NoScheme;
-                    i = i.saturating_sub(1);
+                    advance = false;
                 } else {
                     return Err(UrlError::InvalidScheme);
                 }
@@ -87,20 +86,20 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 if let Some(base_url) = base {
                     url.scheme = base_url.scheme.clone();
                     if c == '/' || (url.is_special() && c == '\\') {
-                        // Inherit authority, reset path
-                        url.username = base_url.username.clone();
-                        url.password = base_url.password.clone();
-                        url.host = base_url.host.clone();
-                        url.port = base_url.port;
-                        url.query = base_url.query.clone(); // Inherit query
-                        url.fragment = base_url.fragment.clone(); // Inherit fragment
-                        
                         if i + 1 < chars.len() && (chars[i+1] == '/' || (url.is_special() && chars[i+1] == '\\')) {
+                            // '//' - override authority entirely (do NOT inherit base host/port)
+                            url.path.clear();
                             state = State::SpecialAuthoritySlashes;
-                            i += 1;
+                            advance = false;
                         } else {
+                            // Single '/' - root-relative, inherit authority but reset path
+                            url.username = base_url.username.clone();
+                            url.password = base_url.password.clone();
+                            url.host = base_url.host.clone();
+                            url.port = base_url.port;
                             url.path.clear();
                             state = State::PathStart;
+                            advance = false;
                         }
                     } else if c == '?' {
                         url.username = base_url.username.clone();
@@ -133,25 +132,137 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                             url.path.pop(); 
                         }
                         state = State::Path;
-                        i -= 1;
+                        advance = false;
                     }
                 } else {
                     return Err(UrlError::MissingScheme);
                 }
             }
+            State::SpecialRelativeOrAuthority => {
+                if c == '/' && i + 1 < chars.len() && (chars[i+1] == '/' || chars[i+1] == '\\') {
+                    state = State::SpecialAuthoritySlashes;
+                    // advance=true: consume this '/', SpecialAuthoritySlashes will consume the next one
+                } else {
+                    state = State::Relative;
+                    advance = false;
+                }
+            }
+            State::Relative => {
+                if let Some(base_url) = base {
+                    url.scheme = base_url.scheme.clone();
+                    if c == '/' || (url.is_special() && c == '\\') {
+                        state = State::RelativeSlash;
+                    } else if c == '?' {
+                        url.username = base_url.username.clone();
+                        url.password = base_url.password.clone();
+                        url.host = base_url.host.clone();
+                        url.port = base_url.port;
+                        url.path = base_url.path.clone();
+                        url.query = Some(String::new());
+                        state = State::Query;
+                    } else if c == '#' {
+                        url.username = base_url.username.clone();
+                        url.password = base_url.password.clone();
+                        url.host = base_url.host.clone();
+                        url.port = base_url.port;
+                        url.path = base_url.path.clone();
+                        url.query = base_url.query.clone();
+                        url.fragment = Some(String::new());
+                        state = State::Fragment;
+                    } else {
+                        url.username = base_url.username.clone();
+                        url.password = base_url.password.clone();
+                        url.host = base_url.host.clone();
+                        url.port = base_url.port;
+                        url.path = base_url.path.clone();
+                        if !url.path.is_empty() {
+                            url.path.pop();
+                        }
+                        state = State::Path;
+                        advance = false;
+                    }
+                }
+            }
+            State::RelativeSlash => {
+                if url.is_special() && (c == '/' || c == '\\') {
+                    state = State::SpecialAuthoritySlashes;
+                } else {
+                    url.username = base.unwrap().username.clone();
+                    url.password = base.unwrap().password.clone();
+                    url.host = base.unwrap().host.clone();
+                    url.port = base.unwrap().port;
+                    state = State::Path;
+                    advance = false;
+                }
+            }
+            State::File => {
+                url.scheme = "file".to_string();
+                url.host = Some(super::types::Host::Empty);
+                if c == '/' || c == '\\' {
+                    state = State::FileSlash;
+                } else if let Some(base_url) = base {
+                    if base_url.scheme == "file" {
+                        url.host = base_url.host.clone();
+                        url.path = base_url.path.clone();
+                        url.query = base_url.query.clone();
+                        if c == '?' {
+                            url.query = Some(String::new());
+                            state = State::Query;
+                        } else if c == '#' {
+                            url.fragment = Some(String::new());
+                            state = State::Fragment;
+                        } else {
+                            if !url.path.is_empty() {
+                                url.path.pop();
+                            }
+                            state = State::Path;
+                            advance = false;
+                        }
+                    } else {
+                        state = State::Path;
+                        advance = false;
+                    }
+                } else {
+                    state = State::Path;
+                    advance = false;
+                }
+            }
+            State::FileSlash => {
+                if c == '/' || c == '\\' {
+                    state = State::FileHost;
+                } else {
+                    if let Some(base_url) = base {
+                        if base_url.scheme == "file" {
+                            url.host = base_url.host.clone();
+                        }
+                    }
+                    state = State::Path;
+                    advance = false;
+                }
+            }
+            State::FileHost => {
+                if c == '/' || c == '\\' || c == '?' || c == '#' {
+                    state = State::PathStart;
+                    advance = false;
+                } else {
+                    buffer.push(c);
+                    // Simplify: handle as hostname if it doesn't look like drive letter
+                    // In real WHATWG, we should check for Windows drive letters here
+                }
+            }
             State::SpecialAuthoritySlashes => {
-                if c == '/' && i + 1 < chars.len() && chars[i+1] == '/' {
-                    i += 1;
-                    state = State::SpecialAuthorityIgnoreSlashes;
+                // Consume all leading slashes (both '/' of '//')
+                if c == '/' || c == '\\' {
+                    // just skip
                 } else {
                     state = State::SpecialAuthorityIgnoreSlashes;
-                    if i > 0 { i -= 1; }
+                    advance = false;
                 }
             }
             State::SpecialAuthorityIgnoreSlashes => {
                 if c != '/' && c != '\\' {
                     state = State::Authority;
-                    if i > 0 { i -= 1; }
+                    advance = false;
                 }
             }
             State::Authority => {
@@ -164,14 +275,45 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                         url.username = percent_encoding::decode(&user_pass);
                     }
                     buffer.clear();
-                } else if c == '/' || c == '\\' || c == '?' || c == '#' {
                     state = State::Host;
-                    if i > 0 { i -= 1; }
+                } else if c == '/' || c == '\\' || c == '?' || c == '#' {
+                    // Authority ended without '@'. Buffer contains 'host' or 'host:port'
+                    let auth_str = buffer.clone();
+                    buffer.clear();
+                    // Handle IPv6: if buffer starts with '[', find ']' first
+                    if auth_str.starts_with('[') {
+                        if let Some(bracket_end) = auth_str.find(']') {
+                            let ipv6_part = &auth_str[1..bracket_end];
+                            if let Ok(addr) = ipv6_part.parse::<std::net::Ipv6Addr>() {
+                                url.host = Some(super::types::Host::Ipv6(addr));
+                            } else {
+                                url.host = Some(parse_host(&auth_str[..=bracket_end]));
+                            }
+                            // Check for port after ']'
+                            let after_bracket = &auth_str[bracket_end + 1..];
+                            if let Some(port_str) = after_bracket.strip_prefix(':') {
+                                url.port = port_str.parse().ok();
+                            }
+                        } else {
+                            url.host = Some(parse_host(&auth_str));
+                        }
+                    } else if let Some(colon_idx) = auth_str.find(':') {
+                        let host_part = &auth_str[..colon_idx];
+                        let port_part = &auth_str[colon_idx + 1..];
+                        url.host = Some(parse_host(host_part));
+                        if !port_part.is_empty() {
+                            url.port = port_part.parse().ok();
+                        }
+                    } else {
+                        url.host = Some(parse_host(&auth_str));
+                    }
+                    state = State::PathStart;
+                    advance = false;
                 } else {
                     buffer.push(c);
                 }
             }
-            State::Host | State::Hostname => {
+            State::Host => {
                 if c == '[' {
                     // Start of IPv6
                     buffer.clear();
@@ -186,7 +328,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                     url.host = Some(parse_host(&host_str));
                     buffer.clear();
                     state = State::PathStart;
-                    if i > 0 { i -= 1; }
+                    advance = false;
                 } else {
                     buffer.push(c.to_ascii_lowercase());
                 }
@@ -212,17 +354,18 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                     buffer.push(c);
                 } else {
                     if !buffer.is_empty() {
+                        // println!("DEBUG: Port ending, buffer='{}'", buffer);
                         url.port = buffer.parse().ok();
                     }
                     buffer.clear();
                     state = State::PathStart;
-                    if i > 0 { i -= 1; }
+                    advance = false;
                 }
             }
             State::PathStart => {
                 state = State::Path;
                 if c != '/' && c != '\\' {
-                    if i > 0 { i -= 1; }
+                    advance = false;
                 }
             }
             State::Path => {
@@ -267,7 +410,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
             }
             _ => {}
         }
-        i += 1;
+        if advance { i += 1; }
     }
 
     // Final buffers
@@ -303,10 +446,13 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
         }
         State::Query => url.query = Some(percent_encoding::encode(&buffer, percent_encoding::EncodeSet::Query)),
         State::Fragment => url.fragment = Some(percent_encoding::encode(&buffer, percent_encoding::EncodeSet::Fragment)),
-        State::Host | State::Hostname => {
-             url.host = Some(parse_host(&buffer));
-        },
-        State::Port => if !buffer.is_empty() { url.port = buffer.parse().ok(); },
+        State::Host | State::Ipv6 | State::Port => {
+             if state == State::Port && !buffer.is_empty() {
+                 url.port = buffer.parse().ok();
+             } else if state == State::Host && !buffer.is_empty() {
+                 url.host = Some(parse_host(&buffer));
+             }
+        }
         State::Path => if !buffer.is_empty() {
             let decoded = percent_encoding::decode(&buffer);
             if decoded == ".." {

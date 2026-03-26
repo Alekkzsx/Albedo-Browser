@@ -211,7 +211,6 @@ pub struct WindowSync {
 
 #[derive(Clone, Debug)]
 pub struct SyncTaskPersisted {
-极
     pub id: String,
     pub tag: String,
     pub registration_id: String,
