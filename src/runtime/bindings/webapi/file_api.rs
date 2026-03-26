@@ -241,8 +241,7 @@ impl FileReader {
         let mime_type = blob.mime_type.clone();
 
         // Perform conversion synchronously (data in memory)
-        use base64::{engine::general_purpose, Engine as _};
-        let base64_str = general_purpose::STANDARD.encode(&blob_data);
+        let base64_str = crate::ace::util::base64::encode(&blob_data);
         let result_str = format!("data:{};base64,{}", mime_type, base64_str);
         rt.with_context(|ctx| {
             ctx.with(|ctx| {

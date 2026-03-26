@@ -1,4 +1,4 @@
-use hex::encode as hex_encode;
+use crate::ace::util::hex::encode as hex_encode;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;

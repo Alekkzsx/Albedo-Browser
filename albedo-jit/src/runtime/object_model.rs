@@ -9,7 +9,7 @@ use std::mem::offset_of;
 use std::sync::OnceLock;
 
 use crate::runtime::js_value::JsValue;
-use ace_json::JsonValue;
+use crate::contracts::core::JsonValue;
 
 // ---------------------------------------------------------------------------
 // Layout do Objeto (estável para geração de código)
@@ -450,7 +450,7 @@ pub fn json_parse(s: JsValue) -> JsValue {
         None => return JsValue::undefined(),
     };
 
-    match ace_json::parse(&text) {
+    match crate::contracts::core::json_parse(&text) {
         Ok(v) => json_to_jsvalue(&v),
         Err(_) => JsValue::undefined(),
     }

@@ -1,4 +1,4 @@
-use crate::{parse, stringify, JsonValue};
+use super::{parse, stringify, JsonValue};
 
 #[test]
 fn test_real_world_github_api() {
@@ -74,9 +74,12 @@ fn test_real_world_github_api() {
     assert_eq!(topics[0].as_string(), Some("octocat"));
 
     // Round-trip
-    let serialized = stringify(&parsed, false);
+    let serialized = stringify(&parsed);
     let parsed2 = parse(&serialized).expect("Deve parsear novamente");
     assert_eq!(parsed, parsed2);
+
+    let pretty = super::stringify_pretty(&parsed);
+    assert!(pretty.contains("\n"));
 }
 
 #[test]

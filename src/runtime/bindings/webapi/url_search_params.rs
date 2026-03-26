@@ -130,24 +130,18 @@ pub fn register(ctx: &Ctx<'_>) -> Result<()> {
         rquickjs::Class::<URLSearchParams>::register(&ctx.clone())?,
     )?;
 
-    // Base64 (using engine::base64 or similar if available, but for now fixed base64 crate usage)
-    use base64::Engine;
-    let b64_engine = base64::engine::general_purpose::STANDARD;
-
-    let engine_clone = b64_engine.clone();
+    // Native ACE-Base64 atob/btoa
     globals.set(
         "btoa",
         rquickjs::Function::new(ctx.clone(), move |s: String| -> String {
-            engine_clone.encode(s)
+            crate::ace::util::base64::encode(s.as_bytes())
         }),
     )?;
 
-    let engine_clone = b64_engine.clone();
     globals.set(
         "atob",
         rquickjs::Function::new(ctx.clone(), move |s: String| -> Result<String> {
-            engine_clone
-                .decode(s)
+            crate::ace::util::base64::decode(&s)
                 .map(|b| String::from_utf8_lossy(&b).to_string())
                 .map_err(|_| rquickjs::Error::new_from_js("Invalid base64", "Error"))
         }),
