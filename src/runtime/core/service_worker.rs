@@ -2,7 +2,7 @@ use rquickjs::Result as JsResult;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use uuid::Uuid;
+use crate::ace::util::uuid::Uuid;
 
 use crate::runtime::core::runtime::JsRuntime;
 use crate::runtime::core::sw_db::{ServiceWorkerDatabase, SwRegistrationData, SwSyncTaskData};

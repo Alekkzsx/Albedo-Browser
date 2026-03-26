@@ -31,7 +31,7 @@ impl BlobStore {
             size,
         };
 
-        let uuid = uuid::Uuid::new_v4().to_string();
+        let uuid = crate::ace::util::uuid::Uuid::new_v4().to_string();
         let url = format!("blob:{}", uuid);
 
         let mut blobs = self.blobs.lock().unwrap();

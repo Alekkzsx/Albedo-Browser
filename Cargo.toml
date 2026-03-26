@@ -18,7 +18,6 @@ slint = { version = "1.9", features = ["raw-window-handle-06"] }
 rfd = "0.14"
 tokio = { version = "1", features = ["full"] }
 raw-window-handle = "0.6.2"
-uuid = { version = "1.20.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 sysinfo = "0.38.1"
 html5ever = "0.25"
 kuchiki = "0.8"

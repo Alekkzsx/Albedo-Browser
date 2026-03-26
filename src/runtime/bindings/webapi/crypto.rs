@@ -158,7 +158,7 @@ impl Crypto {
     }
 
     pub fn random_uuid(&self) -> String {
-        uuid::Uuid::new_v4().to_string()
+        crate::ace::util::uuid::Uuid::new_v4().to_string()
     }
 }
 
