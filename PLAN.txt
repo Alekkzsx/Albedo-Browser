@@ -849,7 +849,7 @@
          Estimativa: ~600-1.000 LOC | ~40-60h
          Critério de aceite: parse de URLs reais sem o crate url.
 
-  [ ]  AFS-28 ACE-UUID próprio
+  ----[ ]  AFS-28 ACE-UUID próprio
          → Substituir: uuid (1.20)
          O que fazer:
            1. Criar src/ace/util/uuid.rs — Gerador UUID v4.

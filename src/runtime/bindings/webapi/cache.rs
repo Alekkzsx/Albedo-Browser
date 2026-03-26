@@ -74,7 +74,7 @@ impl Cache {
             ) {
                 Ok(resp) => {
                     let entry = SwCacheEntryData {
-                        id: uuid::Uuid::new_v4().to_string(),
+                        id: crate::ace::util::uuid::Uuid::new_v4().to_string(),
                         cache_name,
                         origin,
                         url: url_clone,
