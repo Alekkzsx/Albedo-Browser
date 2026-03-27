@@ -125,7 +125,7 @@ impl File {
         options: Option<Object<'_>>,
     ) -> Result<Self> {
         let blob = Blob::new(ctx, parts, options.clone())?;
-        let mut last_modified = chrono::Utc::now().timestamp_millis();
+        let mut last_modified = crate::ace::util::time::now().unix_timestamp_millis();
         if let Some(opts) = options {
             last_modified = opts.get("lastModified").unwrap_or(last_modified);
         }

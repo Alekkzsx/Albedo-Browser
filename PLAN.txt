@@ -866,7 +866,7 @@
               bytes → hex string, hex string → bytes.
          Estimativa: ~150-250 LOC | ~5-10h
 
-  [ ]  AFS-30 ACE-Time próprio
+  [X]  AFS-30 ACE-Time próprio
          → Substituir: chrono (0.4)
          O que fazer:
            1. Criar src/ace/util/time.rs — Data/hora.
