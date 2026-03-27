@@ -18,3 +18,7 @@ pub use super::types::*;
 pub use crate::ace::json::{parse as json_parse, stringify as json_stringify};
 pub use crate::ace::util::base64::{decode as base64_decode, encode as base64_encode};
 pub use crate::ace::util::hex::{decode as hex_decode, encode as hex_encode};
+pub use crate::ace::util::time::{
+    duration_since_epoch, format_http_date, format_iso8601, now as time_now, parse_http_date,
+    unix_timestamp, unix_timestamp_millis,
+};

@@ -10,10 +10,12 @@
 pub use crate::ace::json::JsonValue;
 pub use crate::ace::url::Url;
 pub use crate::ace::util::uuid::Uuid;
+pub use crate::ace::util::time::{AceTime, DateTimeParts, Weekday};
 
 // Motores de codificação nativos (AFS-29)
 pub use crate::ace::util::base64;
 pub use crate::ace::util::hex;
+pub use crate::ace::util::time;
 
 // Re-exports diretos para API fluída
 pub use crate::ace::json::parse as parse_json;
