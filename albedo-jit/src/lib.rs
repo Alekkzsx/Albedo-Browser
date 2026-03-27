@@ -40,7 +40,6 @@ pub use runtime::builtins::BuiltinId;
 
 pub use engine::jit_engine::AlbedoJitEngine;
 pub use engine::jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
-pub use engine::engine_stats::EngineStats; // Fixed missing reference during refactor
 pub use engine::profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
 
 pub use infra::executable_memory::{CodePool, CodePoolStats, CodeRegion};
