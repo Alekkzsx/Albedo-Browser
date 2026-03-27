@@ -37,13 +37,20 @@ impl TexturePool {
     }
 }
 
-use bytemuck::{Pod, Zeroable};
-
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub uv: [f32; 2],
+}
+
+fn slice_as_bytes<T>(slice: &[T]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            slice.as_ptr() as *const u8,
+            std::mem::size_of_val(slice),
+        )
+    }
 }
 
 impl Vertex {
@@ -288,7 +295,7 @@ impl GpuCompositor {
             mapped_at_creation: false,
         });
         self.queue
-            .write_buffer(&camera_uniform, 0, bytemuck::cast_slice(&[transform]));
+            .write_buffer(&camera_uniform, 0, slice_as_bytes(&[transform]));
 
         let camera_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.camera_bind_group_layout,
@@ -426,7 +433,7 @@ impl GpuCompositor {
                         mapped_at_creation: false,
                     });
                     self.queue
-                        .write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+                        .write_buffer(&vertex_buffer, 0, slice_as_bytes(&vertices));
 
                     rpass.set_bind_group(1, &bind_group, &[]);
                     rpass.set_vertex_buffer(0, vertex_buffer.slice(..));

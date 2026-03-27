@@ -2,6 +2,7 @@
 
 use albedo::browser;
 use albedo::ui;
+use albedo::ace::util::sysinfo::AceSysInfo;
 
 use albedo::browser::tabs::manager::TabManager;
 use slint::ComponentHandle;
@@ -20,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tab_manager = TabManager::new();
 
     // System Monitor
-    let system = std::rc::Rc::new(std::cell::RefCell::new(sysinfo::System::new_all()));
+    let system = std::rc::Rc::new(std::cell::RefCell::new(AceSysInfo::new()));
     let sys_clone = system.clone();
     let ui_handle_clone = ui_handle.clone();
 

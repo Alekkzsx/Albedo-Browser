@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 /// Represents a Blob object in memory
 #[derive(Debug, Clone)]
@@ -54,6 +54,4 @@ impl BlobStore {
 }
 
 // Global instance helper (if needed, but usually passed via ResourceManager)
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_BLOB_STORE: BlobStore = BlobStore::new();
-}
+pub static GLOBAL_BLOB_STORE: LazyLock<BlobStore> = LazyLock::new(BlobStore::new);

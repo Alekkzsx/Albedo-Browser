@@ -876,7 +876,7 @@
               Dias da semana, dias por mês, leap year calculation.
          Estimativa: ~300-500 LOC | ~20-30h
 
-  [ ]  AFS-31 ACE-SysInfo próprio
+  ------[ ]  AFS-31 ACE-SysInfo próprio
          → Substituir: sysinfo (0.38)
          O que fazer:
            1. Criar src/ace/util/sysinfo.rs — Info de sistema.
@@ -886,7 +886,7 @@
               API: cpu_count(), cpu_usage(), total_memory(), used_memory().
          Estimativa: ~200-400 LOC | ~15-25h
 
-  [ ]  AFS-32 ACE-Random próprio
+  -------[ ]  AFS-32 ACE-Random próprio
          → Substituir: rand (0.10)
          O que fazer:
            1. Criar src/ace/util/random.rs — PRNG.
@@ -895,7 +895,7 @@
               API: next_u32(), next_u64(), next_f64(), gen_range(min, max).
          Estimativa: ~100-200 LOC | ~5-10h
 
-  [ ]  AFS-33 Substituir utilitários menores
+  -------[ ]  AFS-33 Substituir utilitários menores
          O que fazer:
            1. lazy_static → trocar todas as ocorrências por std::sync::LazyLock
               (estável desde Rust 1.80). Buscar no código: grep -r "lazy_static".
