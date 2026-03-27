@@ -5,7 +5,7 @@ use wgpu::util::DeviceExt;
 
 // Representa 1 retângulo HTML para ser instanciado na GPU
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct QuadInstance {
     pub position: [f32; 2],      // x, y (top-left)
     pub size: [f32; 2],          // width, height
@@ -13,6 +13,15 @@ pub struct QuadInstance {
     pub border_radius: [f32; 4], // tl, tr, br, bl
     pub z_index: f32, // Opcional para profundidade, mas no WGPU com back-to-front array position é suficiente
     pub _pad: [f32; 3], // Padding de alinhamento 16-bytes
+}
+
+fn slice_as_bytes<T>(slice: &[T]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            slice.as_ptr() as *const u8,
+            std::mem::size_of_val(slice),
+        )
+    }
 }
 
 impl QuadInstance {
@@ -247,7 +256,7 @@ impl GpuContext {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("ACE Rect Instance Buffer"),
-                contents: bytemuck::cast_slice(instances),
+                contents: slice_as_bytes(instances),
                 usage: wgpu::BufferUsages::VERTEX,
             });
 

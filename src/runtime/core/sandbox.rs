@@ -1,24 +1,5 @@
-
-bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct SandboxFlags: u32 {
-        const NONE = 0;
-        /// allow-scripts: Enables JavaScript execution
-        const ALLOW_SCRIPTS = 1 << 0;
-        /// allow-same-origin: Allows the content to be treated as being from its real origin
-        const ALLOW_SAME_ORIGIN = 1 << 1;
-        /// allow-forms: Allows form submission
-        const ALLOW_FORMS = 1 << 2;
-        /// allow-popups: Allows window.open and similar
-        const ALLOW_POPUPS = 1 << 3;
-        /// allow-top-navigation: Allows the subframe to navigate the top-level browsing context
-        const ALLOW_TOP_NAVIGATION = 1 << 4;
-        /// allow-modals: Allows window.alert, etc.
-        const ALLOW_MODALS = 1 << 5;
-        /// allow-downloads: Allows triggering downloads
-        const ALLOW_DOWNLOADS = 1 << 6;
-    }
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SandboxFlags(pub u32);
 
 impl Default for SandboxFlags {
     fn default() -> Self {
@@ -29,6 +10,23 @@ impl Default for SandboxFlags {
 }
 
 impl SandboxFlags {
+    pub const NONE: Self = Self(0);
+    pub const ALLOW_SCRIPTS: Self = Self(1 << 0);
+    pub const ALLOW_SAME_ORIGIN: Self = Self(1 << 1);
+    pub const ALLOW_FORMS: Self = Self(1 << 2);
+    pub const ALLOW_POPUPS: Self = Self(1 << 3);
+    pub const ALLOW_TOP_NAVIGATION: Self = Self(1 << 4);
+    pub const ALLOW_MODALS: Self = Self(1 << 5);
+    pub const ALLOW_DOWNLOADS: Self = Self(1 << 6);
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    pub fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
     pub fn from_attr(attr: &str) -> Self {
         let mut flags = Self::NONE;
         for part in attr.split_whitespace() {

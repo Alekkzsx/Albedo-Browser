@@ -62,16 +62,9 @@ impl DiskCache {
     /// Initialize disk cache with database and directories
     pub fn new(max_size_bytes: u64) -> Result<Self, Box<dyn std::error::Error>> {
         // Determine cache directory: $HOME/.cache/albedo/http_cache/
-        let cache_dir = if let Some(cache_home) = dirs::cache_dir() {
-            cache_home.join("albedo").join("http_cache")
-        } else if let Ok(home) = std::env::var("HOME") {
-            PathBuf::from(home)
-                .join(".cache")
-                .join("albedo")
-                .join("http_cache")
-        } else {
-            PathBuf::from("./cache/http_cache")
-        };
+        let cache_dir = crate::ace::util::paths::cache_dir()
+            .join("albedo")
+            .join("http_cache");
 
         let content_dir = cache_dir.join("content");
         let db_path = cache_dir.join("cache.db");

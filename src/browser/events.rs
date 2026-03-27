@@ -1,19 +1,19 @@
 use crate::browser::bridge::sync_ace_visuals;
 use crate::browser::tabs::manager::TabManager;
 use crate::ui::{AppWindow, TabData};
+use crate::ace::util::sysinfo::AceSysInfo;
 use slint::{ComponentHandle, SharedString, VecModel, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
-use sysinfo::System;
 
-pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<System>>) {
+pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<AceSysInfo>>) {
     if let Some(ui) = ui_handle.upgrade() {
         let mut sys = system.borrow_mut();
-        sys.refresh_all();
+        sys.refresh();
 
-        let total_ram = sys.total_memory() / 1024 / 1024;
-        let used_ram = sys.used_memory() / 1024 / 1024;
-        let cpu_usage = sys.global_cpu_usage();
+        let total_ram = sys.total_memory();
+        let used_ram = sys.used_memory();
+        let cpu_usage = sys.cpu_usage();
 
         let stats = format!(
             "RAM: {}/{} MB | CPU: {:.1}% | MODE: EFFICIENT",
