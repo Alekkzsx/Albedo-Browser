@@ -228,7 +228,8 @@ impl DiskCache {
                 .as_nanos()
                 .to_le_bytes(),
         );
-        let file_hash = hex_encode(hasher.finalize());
+        let digest = hasher.finalize();
+        let file_hash = hex_encode(&digest);
 
         // Write compressed data to disk
         let file_path = self.content_dir.join(&file_hash);

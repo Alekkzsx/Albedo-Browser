@@ -23,6 +23,16 @@ pub fn encode_url_safe(data: &[u8]) -> String {
     encode_config(data, Base64Config::UrlSafe)
 }
 
+/// Decodifica Base64 padrão (RFC 4648, alfabeto `+/`).
+pub fn decode_standard(input: &str) -> Result<Vec<u8>, &'static str> {
+    decode_config(input, Base64Config::Standard)
+}
+
+/// Decodifica Base64 URL-safe (RFC 4648, alfabeto `-_`).
+pub fn decode_url_safe(input: &str) -> Result<Vec<u8>, &'static str> {
+    decode_config(input, Base64Config::UrlSafe)
+}
+
 fn encode_config(data: &[u8], config: Base64Config) -> String {
     let alphabet = match config {
         Base64Config::Standard => STANDARD_ALPHABET,
@@ -64,39 +74,93 @@ fn encode_config(data: &[u8], config: Base64Config) -> String {
 
 /// Decodifica uma string Base64 (Standard ou URL-Safe) em um vetor de bytes.
 pub fn decode(input: &str) -> Result<Vec<u8>, &'static str> {
-    if input.is_empty() {
+    // Auto-detect simples de variante para manter compatibilidade da API antiga.
+    if input.contains('-') || input.contains('_') {
+        decode_url_safe(input)
+    } else {
+        decode_standard(input)
+    }
+}
+
+fn decode_config(input: &str, config: Base64Config) -> Result<Vec<u8>, &'static str> {
+    let compact: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    if compact.is_empty() {
         return Ok(Vec::new());
     }
 
-    let input = input.trim_end_matches('=');
-    let mut result = Vec::with_capacity(input.len() * 3 / 4);
-    let mut buffer = 0u32;
-    let mut bits_accumulator = 0u8;
+    if compact.len() % 4 != 0 {
+        return Err("Invalid Base64 length");
+    }
 
-    for c in input.chars() {
-        if c.is_whitespace() {
-            continue;
+    let bytes = compact.as_bytes();
+    let mut pad_count = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'=' {
+            pad_count += 1;
+            if i < bytes.len() - 2 {
+                return Err("Invalid Base64 padding position");
+            }
+        } else if pad_count > 0 {
+            return Err("Invalid Base64 padding sequence");
+        }
+    }
+    if pad_count > 2 {
+        return Err("Invalid Base64 padding");
+    }
+
+    let mut result = Vec::with_capacity((bytes.len() / 4) * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let mut vals = [0u8; 4];
+        let mut chunk_pad = 0usize;
+
+        for (i, &c) in chunk.iter().enumerate() {
+            if c == b'=' {
+                vals[i] = 0;
+                chunk_pad += 1;
+                continue;
+            }
+            vals[i] = decode_char(c, config)?;
         }
 
-        let val = match c {
-            'A'..='Z' => c as u8 - b'A',
-            'a'..='z' => c as u8 - b'a' + 26,
-            '0'..='9' => c as u8 - b'0' + 52,
-            '+' | '-' => 62,
-            '/' | '_' => 63,
-            _ => return Err("Invalid character in Base64 input"),
-        };
+        if chunk_pad > 0 {
+            // Apenas o último chunk pode conter '='
+            if chunk.as_ptr() != bytes[bytes.len() - 4..].as_ptr() {
+                return Err("Invalid Base64 padding position");
+            }
+            // '=' só pode aparecer no final do chunk: xx== ou xxx=
+            if chunk[2] == b'=' && chunk[3] != b'=' {
+                return Err("Invalid Base64 padding sequence");
+            }
+        }
 
-        buffer = (buffer << 6) | (val as u32);
-        bits_accumulator += 6;
+        let n = ((vals[0] as u32) << 18)
+            | ((vals[1] as u32) << 12)
+            | ((vals[2] as u32) << 6)
+            | (vals[3] as u32);
 
-        if bits_accumulator >= 8 {
-            bits_accumulator -= 8;
-            result.push(((buffer >> bits_accumulator) & 0xFF) as u8);
+        result.push(((n >> 16) & 0xFF) as u8);
+        if chunk[2] != b'=' {
+            result.push(((n >> 8) & 0xFF) as u8);
+        }
+        if chunk[3] != b'=' {
+            result.push((n & 0xFF) as u8);
         }
     }
 
     Ok(result)
+}
+
+fn decode_char(c: u8, config: Base64Config) -> Result<u8, &'static str> {
+    match c {
+        b'A'..=b'Z' => Ok(c - b'A'),
+        b'a'..=b'z' => Ok(c - b'a' + 26),
+        b'0'..=b'9' => Ok(c - b'0' + 52),
+        b'+' if matches!(config, Base64Config::Standard) => Ok(62),
+        b'/' if matches!(config, Base64Config::Standard) => Ok(63),
+        b'-' if matches!(config, Base64Config::UrlSafe) => Ok(62),
+        b'_' if matches!(config, Base64Config::UrlSafe) => Ok(63),
+        _ => Err("Invalid character in Base64 input"),
+    }
 }
 
 #[cfg(test)]
@@ -133,6 +197,12 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_url_safe_explicit() {
+        assert_eq!(decode_url_safe("-_-_").unwrap(), [251, 255, 191]);
+        assert!(decode_standard("-_-_").is_err());
+    }
+
+    #[test]
     fn test_roundtrip() {
         let cases = [
             "Albedo Browser",
@@ -151,5 +221,9 @@ mod tests {
     #[test]
     fn test_invalid_decode() {
         assert!(decode("Zg?=").is_err());
+        assert!(decode_standard("Zg=").is_err()); // len inválido
+        assert!(decode_standard("Z===").is_err()); // padding inválido
+        assert!(decode_standard("=m9v").is_err()); // padding em posição inválida
+        assert!(decode_standard("Zm=v").is_err()); // padding interno inválido
     }
 }

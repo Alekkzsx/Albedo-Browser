@@ -84,7 +84,7 @@ impl Cache {
                             for (k, v) in &resp.headers {
                                 h_map.insert(k.clone(), JsonValue::String(v.clone()));
                             }
-                            json::stringify(&JsonValue::Object(h_map), false)
+                            json::stringify(&JsonValue::Object(h_map))
                         },
                         body: resp.body_bytes,
                         created_at: std::time::SystemTime::now()

@@ -857,7 +857,7 @@
               Formatar como string: 8-4-4-4-12 hex.
          Estimativa: ~50-80 LOC | ~2-4h
 
-  [ ]  AFS-29 ACE-Base64 próprio
+  [X]  AFS-29 ACE-Base64 próprio
          → Substituir: base64 (0.22) + hex (0.4)
          O que fazer:
            1. Criar src/ace/util/base64.rs — Base64 encode/decode (RFC 4648).

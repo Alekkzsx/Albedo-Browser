@@ -47,7 +47,7 @@ impl StorageData {
             for (k, v) in &self.items {
                 map.insert(k.clone(), JsonValue::String(v.clone()));
             }
-            let json = json::stringify(&JsonValue::Object(map), true);
+            let json = json::stringify(&JsonValue::Object(map));
             let _ = std::fs::write(path, json);
         }
     }
