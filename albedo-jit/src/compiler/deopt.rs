@@ -2,7 +2,7 @@
 //!
 //! Registra metadados de deopt e expõe o bailout usado pelo JIT.
 
-use parking_lot::RwLock;
+use crate::parking_lot::RwLock;
 use std::sync::{Arc, OnceLock};
 
 use crate::compiler::air_interpreter::AirInterpreter;

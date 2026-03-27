@@ -3,7 +3,7 @@
 //! Armazena e gerencia o ciclo de vida do código de máquina gerado pelo JIT.
 //! Indexado por `FunctionId`, permitindo lookup rápido e invalidação de código.
 
-use parking_lot::RwLock;
+use crate::parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};

@@ -3,7 +3,7 @@
 //! Modelo mínimo de objetos/arrays com "hidden class" (shape) para suportar
 //! inline caches e specialization no Tier 2.
 
-use parking_lot::RwLock;
+use crate::parking_lot::RwLock;
 use std::collections::HashMap;
 use std::mem::offset_of;
 use std::sync::OnceLock;

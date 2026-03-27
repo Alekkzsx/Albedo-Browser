@@ -1,4 +1,4 @@
-use parking_lot::{Mutex, RwLock};
+use crate::parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

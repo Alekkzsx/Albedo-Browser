@@ -18,6 +18,7 @@ pub mod engine;
 pub mod infra;
 pub mod bytecode;
 pub mod decoder;
+pub mod parking_lot;
 
 // Re-exports públicos para manter compatibilidade
 pub use bytecode::{AirBuilder, AirFunction, AirOpcode};
