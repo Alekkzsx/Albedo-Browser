@@ -175,7 +175,7 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
         BuiltinId::MathPow => {
             JsValue::float64(to_number(arg(args, 0)).powf(to_number(arg(args, 1))))
         }
-        BuiltinId::MathRandom => JsValue::float64(rand::random::<f64>()),
+        BuiltinId::MathRandom => JsValue::float64(crate::runtime::random::next_f64()),
         BuiltinId::MathRound => {
             let x = to_number(arg(args, 0));
             let r = if x >= 0.0 {

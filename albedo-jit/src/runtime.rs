@@ -4,3 +4,4 @@ pub mod builtins;
 pub mod fast_builtins;
 pub mod runtime_helpers;
 pub mod type_feedback;
+pub mod random;

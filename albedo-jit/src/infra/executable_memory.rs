@@ -1,22 +1,22 @@
-//! # Alocador de Memória Executável (W^X)
+﻿//! # Alocador de MemÃ³ria ExecutÃ¡vel (W^X)
 //!
-//! Gerencia a alocação de memória virtual protegida para execução de código JIT.
-//! Implementa a política W^X (Write XOR Execute) para segurança.
+//! Gerencia a alocaÃ§Ã£o de memÃ³ria virtual protegida para execuÃ§Ã£o de cÃ³digo JIT.
+//! Implementa a polÃ­tica W^X (Write XOR Execute) para seguranÃ§a.
 
 use std::ptr::{self, NonNull};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MemoryError {
-    #[error("Falha na alocação de memória: {0}")]
+    #[error("Falha na alocaÃ§Ã£o de memÃ³ria: {0}")]
     AllocationFailed(String),
-    #[error("Falha ao mudar proteção de memória: {0}")]
+    #[error("Falha ao mudar proteÃ§Ã£o de memÃ³ria: {0}")]
     ProtectionFailed(String),
-    #[error("A região de memória é muito pequena para a escrita solicitada")]
+    #[error("A regiÃ£o de memÃ³ria Ã© muito pequena para a escrita solicitada")]
     BufferOverflow,
-    #[error("Região de memória não é mais gravável (está em modo RX)")]
+    #[error("RegiÃ£o de memÃ³ria nÃ£o Ã© mais gravÃ¡vel (estÃ¡ em modo RX)")]
     NotWritable,
-    #[error("Budget de memória JIT excedido")]
+    #[error("Budget de memÃ³ria JIT excedido")]
     BudgetExceeded,
 }
 
@@ -26,7 +26,7 @@ pub enum ProtectionState {
     ReadExecute,
 }
 
-/// Região de memória virtual alocada do sistema operacional.
+/// RegiÃ£o de memÃ³ria virtual alocada do sistema operacional.
 pub struct CodeRegion {
     ptr: NonNull<u8>,
     size: usize,
@@ -35,7 +35,7 @@ pub struct CodeRegion {
 }
 
 impl CodeRegion {
-    /// Aloca uma nova região de memória virtual com o tamanho especificado (page-aligned).
+    /// Aloca uma nova regiÃ£o de memÃ³ria virtual com o tamanho especificado (page-aligned).
     pub fn allocate(size: usize) -> Result<Self, MemoryError> {
         let page_size = get_page_size();
         let aligned_size = (size + page_size - 1) & !(page_size - 1);
@@ -51,7 +51,7 @@ impl CodeRegion {
         })
     }
 
-    /// Escreve bytes de código na região. Só funciona se o estado for ReadWrite.
+    /// Escreve bytes de cÃ³digo na regiÃ£o. SÃ³ funciona se o estado for ReadWrite.
     pub fn write(&mut self, code: &[u8]) -> Result<usize, MemoryError> {
         if self.state != ProtectionState::ReadWrite {
             return Err(MemoryError::NotWritable);
@@ -70,7 +70,7 @@ impl CodeRegion {
         Ok(offset)
     }
 
-    /// Muda a proteção da memória para ReadExecute.
+    /// Muda a proteÃ§Ã£o da memÃ³ria para ReadExecute.
     pub fn make_executable(&mut self) -> Result<(), MemoryError> {
         if self.state == ProtectionState::ReadExecute {
             return Ok(());
@@ -83,7 +83,7 @@ impl CodeRegion {
         Ok(())
     }
 
-    /// Muda a proteção da memória para ReadWrite.
+    /// Muda a proteÃ§Ã£o da memÃ³ria para ReadWrite.
     pub fn make_writable(&mut self) -> Result<(), MemoryError> {
         if self.state == ProtectionState::ReadWrite {
             return Ok(());
@@ -121,7 +121,7 @@ impl Drop for CodeRegion {
     }
 }
 
-// SAFETY: Ponteiros para memória JIT são Thread-safe se controlados por Mutex/RwLock
+// SAFETY: Ponteiros para memÃ³ria JIT sÃ£o Thread-safe se controlados por Mutex/RwLock
 unsafe impl Send for CodeRegion {}
 unsafe impl Sync for CodeRegion {}
 
@@ -178,7 +178,7 @@ impl CodePool {
 }
 
 // ---------------------------------------------------------
-// Implementações de Plataforma (Windows)
+// ImplementaÃ§Ãµes de Plataforma (Windows)
 // ---------------------------------------------------------
 
 #[cfg(target_os = "windows")]
@@ -237,7 +237,7 @@ unsafe fn platform_free(ptr: *mut u8, _size: usize) {
 }
 
 // ---------------------------------------------------------
-// Implementações de Plataforma (Unix)
+// ImplementaÃ§Ãµes de Plataforma (Unix)
 // ---------------------------------------------------------
 
 #[cfg(unix)]
@@ -314,11 +314,11 @@ mod tests {
     fn test_write_and_execute_simple() {
         let mut region = CodeRegion::allocate(4096).unwrap();
 
-        // Código para retornar 42 (x86_64: mov eax, 42; ret)
+        // CÃ³digo para retornar 42 (x86_64: mov eax, 42; ret)
         #[cfg(target_arch = "x86_64")]
         let code = [0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3];
 
-        // Código para retornar 42 (AArch64: mov w0, #42; ret)
+        // CÃ³digo para retornar 42 (AArch64: mov w0, #42; ret)
         #[cfg(target_arch = "aarch64")]
         let code = [0x40, 0x05, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6];
 
@@ -351,3 +351,4 @@ mod tests {
         assert!(matches!(result, Err(MemoryError::NotWritable)));
     }
 }
+

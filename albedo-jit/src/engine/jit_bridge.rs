@@ -3,7 +3,7 @@
 //! Orquestra o fluxo: Profiler → Decoder → Compiler → CodeCache.
 
 use hashbrown::HashMap;
-use parking_lot::RwLock;
+use crate::parking_lot::RwLock;
 use std::sync::Arc;
 
 use crate::compiler::baseline_compiler::BaselineCompiler;

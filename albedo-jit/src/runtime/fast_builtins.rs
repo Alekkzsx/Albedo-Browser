@@ -224,7 +224,7 @@ pub extern "C" fn fast_math_pow(x: u64, y: u64) -> u64 {
 /// Math.random()
 #[no_mangle]
 pub extern "C" fn fast_math_random() -> u64 {
-    JsValue::float64(rand::random::<f64>()).0
+    JsValue::float64(crate::runtime::random::next_f64()).0
 }
 
 /// Math.round(x)

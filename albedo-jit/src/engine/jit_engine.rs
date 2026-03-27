@@ -1,10 +1,10 @@
-//! # AlbedoJitEngine — Motor JIT principal
+﻿//! # AlbedoJitEngine â€” Motor JIT principal
 //!
-//! Gerencia o pipeline de compilação JIT:
-//! Bytecode → Cranelift IR → Código de máquina nativo (x86-64 / ARM64).
+//! Gerencia o pipeline de compilaÃ§Ã£o JIT:
+//! Bytecode â†’ Cranelift IR â†’ CÃ³digo de mÃ¡quina nativo (x86-64 / ARM64).
 //!
-//! Este módulo é o coração do AlbedoJIT. Ele inicializa o backend Cranelift,
-//! compila funções para código nativo e gerencia o cache de código compilado.
+//! Este mÃ³dulo Ã© o coraÃ§Ã£o do AlbedoJIT. Ele inicializa o backend Cranelift,
+//! compila funÃ§Ãµes para cÃ³digo nativo e gerencia o cache de cÃ³digo compilado.
 
 use crate::compiler::code_cache::{CachedCode, CodeCache, JitTier, NativeCodePtr};
 use crate::infra::executable_memory::{CodePool, CodePoolStats, MemoryError};
@@ -17,29 +17,28 @@ use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
-use parking_lot::RwLock;
-use thiserror::Error;
+use crate::parking_lot::RwLock;
 
 // ---------------------------------------------------------------------------
 // Erros
 // ---------------------------------------------------------------------------
 
-/// Erros que podem ocorrer durante a compilação JIT.
+/// Erros que podem ocorrer durante a compilaÃ§Ã£o JIT.
 #[derive(Debug, Error)]
 pub enum JitError {
     #[error("Falha ao criar ISA nativa: {0}")]
     IsaCreation(String),
 
-    #[error("Falha ao declarar função: {0}")]
+    #[error("Falha ao declarar funÃ§Ã£o: {0}")]
     FuncDeclaration(#[from] cranelift_module::ModuleError),
 
-    #[error("Falha na compilação Cranelift: {0}")]
+    #[error("Falha na compilaÃ§Ã£o Cranelift: {0}")]
     Compilation(String),
 
-    #[error("Função '{0}' não encontrada no cache")]
+    #[error("FunÃ§Ã£o '{0}' nÃ£o encontrada no cache")]
     FunctionNotFound(String),
 
-    #[error("Erro de memória JIT: {0}")]
+    #[error("Erro de memÃ³ria JIT: {0}")]
     MemoryError(#[from] MemoryError),
 }
 
@@ -47,47 +46,47 @@ pub enum JitError {
 // Estrutura principal
 // ---------------------------------------------------------------------------
 
-/// Entrada no cache de código compilado.
+/// Entrada no cache de cÃ³digo compilado.
 struct _CompiledFunction {
-    /// ID da função no módulo Cranelift.
+    /// ID da funÃ§Ã£o no mÃ³dulo Cranelift.
     _func_id: FuncId,
-    /// Ponteiro para o código de máquina nativo (após finalize_definitions).
+    /// Ponteiro para o cÃ³digo de mÃ¡quina nativo (apÃ³s finalize_definitions).
     _native_ptr: *const u8,
 }
 
-// SAFETY: Os ponteiros nativos são gerenciados pelo JITModule que garante
-// que o código permanece válido enquanto o módulo existe.
+// SAFETY: Os ponteiros nativos sÃ£o gerenciados pelo JITModule que garante
+// que o cÃ³digo permanece vÃ¡lido enquanto o mÃ³dulo existe.
 unsafe impl Send for _CompiledFunction {}
 unsafe impl Sync for _CompiledFunction {}
 
-/// AlbedoJitEngine — Motor JIT principal do Albedo Browser.
+/// AlbedoJitEngine â€” Motor JIT principal do Albedo Browser.
 ///
-/// Responsável por:
+/// ResponsÃ¡vel por:
 /// - Inicializar o backend Cranelift para a ISA nativa (x86-64 ou ARM64)
-/// - Compilar funções de Cranelift IR para código de máquina nativo
-/// - Gerenciar cache de funções compiladas
-/// - Prover API para executar código JIT compilado
+/// - Compilar funÃ§Ãµes de Cranelift IR para cÃ³digo de mÃ¡quina nativo
+/// - Gerenciar cache de funÃ§Ãµes compiladas
+/// - Prover API para executar cÃ³digo JIT compilado
 pub struct AlbedoJitEngine {
-    /// Módulo JIT do Cranelift (gerencia memória executável).
+    /// MÃ³dulo JIT do Cranelift (gerencia memÃ³ria executÃ¡vel).
     pub(crate) module: JITModule,
-    /// Cache avançado de funções compiladas (metadados + invalidação).
+    /// Cache avanÃ§ado de funÃ§Ãµes compiladas (metadados + invalidaÃ§Ã£o).
     pub(crate) code_cache: Arc<CodeCache>,
-    /// Pool de memória executável própria para stubs e trampolines.
+    /// Pool de memÃ³ria executÃ¡vel prÃ³pria para stubs e trampolines.
     code_pool: RwLock<CodePool>,
 }
 
 impl AlbedoJitEngine {
-    /// Cria uma nova instância do AlbedoJitEngine com budget padrão de 64MB.
+    /// Cria uma nova instÃ¢ncia do AlbedoJitEngine com budget padrÃ£o de 64MB.
     pub fn new() -> Result<Self, JitError> {
         Self::with_budget(64 * 1024 * 1024)
     }
 
-    /// Cria uma nova instância com um budget de memória JIT específico.
+    /// Cria uma nova instÃ¢ncia com um budget de memÃ³ria JIT especÃ­fico.
     pub fn with_budget(budget_bytes: usize) -> Result<Self, JitError> {
-        // Configurações do Cranelift
+        // ConfiguraÃ§Ãµes do Cranelift
         let mut flag_builder = settings::builder();
 
-        // Otimizações habilitadas por padrão
+        // OtimizaÃ§Ãµes habilitadas por padrÃ£o
         flag_builder
             .set("opt_level", "speed")
             .map_err(|e| JitError::IsaCreation(e.to_string()))?;
@@ -99,7 +98,7 @@ impl AlbedoJitEngine {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| JitError::IsaCreation(e.to_string()))?;
 
-        // Criar o módulo JIT — gerencia alocação de memória executável
+        // Criar o mÃ³dulo JIT â€” gerencia alocaÃ§Ã£o de memÃ³ria executÃ¡vel
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
         // Registrar as C-ABI helper functions do runtime para serem resolvidas pelo JIT Module
@@ -158,7 +157,7 @@ impl AlbedoJitEngine {
             crate::runtime::runtime_helpers::js_instance_of as *const u8,
         );
 
-        // Builtins Rápidos (Fase 1)
+        // Builtins RÃ¡pidos (Fase 1)
         builder.symbol(
             "fast_math_abs",
             crate::runtime::fast_builtins::fast_math_abs as *const u8,
@@ -318,7 +317,7 @@ impl AlbedoJitEngine {
             crate::runtime::fast_builtins::fast_json_parse as *const u8,
         );
 
-        // Dummy placeholder pra coisas não-feitas que crashariam de unresolved symbol exception
+        // Dummy placeholder pra coisas nÃ£o-feitas que crashariam de unresolved symbol exception
         extern "C" fn js_unimplemented_mock() -> u64 {
             crate::runtime::js_value::JsValue::undefined().0
         }
@@ -327,7 +326,7 @@ impl AlbedoJitEngine {
         let module = JITModule::new(builder);
         let code_cache = Arc::new(CodeCache::new());
 
-        // Registrar o CodeCache globalmente para que o runtime possa acessá-lo
+        // Registrar o CodeCache globalmente para que o runtime possa acessÃ¡-lo
         crate::compiler::code_cache::set_global_code_cache(Arc::clone(&code_cache));
 
         Ok(Self {
@@ -337,31 +336,31 @@ impl AlbedoJitEngine {
         })
     }
 
-    /// Compila uma função de demonstração: `add(a: i64, b: i64) -> i64`
+    /// Compila uma funÃ§Ã£o de demonstraÃ§Ã£o: `add(a: i64, b: i64) -> i64`
     ///
-    /// Esta função serve como prova de conceito do pipeline completo:
-    /// Cranelift IR → código de máquina nativo → cache.
+    /// Esta funÃ§Ã£o serve como prova de conceito do pipeline completo:
+    /// Cranelift IR â†’ cÃ³digo de mÃ¡quina nativo â†’ cache.
     ///
     /// # Pipeline
-    /// 1. Declara a assinatura da função (dois i64 → um i64)
-    /// 2. Constrói o corpo via Cranelift FunctionBuilder
-    /// 3. Compila para código de máquina nativo da CPU atual
+    /// 1. Declara a assinatura da funÃ§Ã£o (dois i64 â†’ um i64)
+    /// 2. ConstrÃ³i o corpo via Cranelift FunctionBuilder
+    /// 3. Compila para cÃ³digo de mÃ¡quina nativo da CPU atual
     /// 4. Armazena no cache por nome
     pub fn compile_add_function(&mut self) -> Result<(), JitError> {
         let func_name = "jit_add";
 
-        // 1. Declarar a assinatura da função
+        // 1. Declarar a assinatura da funÃ§Ã£o
         let mut sig = self.module.make_signature();
         sig.params.push(AbiParam::new(I64)); // param a: i64
         sig.params.push(AbiParam::new(I64)); // param b: i64
         sig.returns.push(AbiParam::new(I64)); // return: i64
 
-        // 2. Declarar a função no módulo
+        // 2. Declarar a funÃ§Ã£o no mÃ³dulo
         let func_id = self
             .module
             .declare_function(func_name, Linkage::Export, &sig)?;
 
-        // 3. Construir o corpo da função com Cranelift IR
+        // 3. Construir o corpo da funÃ§Ã£o com Cranelift IR
         let mut func =
             Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig.clone());
 
@@ -372,44 +371,44 @@ impl AlbedoJitEngine {
             // Criar bloco de entrada (entry block)
             let entry_block = builder.create_block();
 
-            // Adicionar parâmetros do bloco (correspondem aos params da sig)
+            // Adicionar parÃ¢metros do bloco (correspondem aos params da sig)
             builder.append_block_params_for_function_params(entry_block);
 
             // Posicionar o builder no bloco de entrada
             builder.switch_to_block(entry_block);
             builder.seal_block(entry_block);
 
-            // Obter os valores dos parâmetros
+            // Obter os valores dos parÃ¢metros
             let param_a = builder.block_params(entry_block)[0];
             let param_b = builder.block_params(entry_block)[1];
 
-            // Gerar instrução: result = a + b (instrução nativa IADD da CPU)
+            // Gerar instruÃ§Ã£o: result = a + b (instruÃ§Ã£o nativa IADD da CPU)
             let sum = builder.ins().iadd(param_a, param_b);
 
             // Retornar o resultado
             builder.ins().return_(&[sum]);
 
-            // Finalizar a construção da função
+            // Finalizar a construÃ§Ã£o da funÃ§Ã£o
             builder.finalize();
         }
 
-        // 4. Compilar para código de máquina nativo
+        // 4. Compilar para cÃ³digo de mÃ¡quina nativo
         let mut ctx = Context::for_function(func);
         self.module
             .define_function(func_id, &mut ctx)
             .map_err(|e| JitError::Compilation(e.to_string()))?;
 
-        // 5. Materializar o código na memória executável
+        // 5. Materializar o cÃ³digo na memÃ³ria executÃ¡vel
         self.module.clear_context(&mut ctx);
         self.module
             .finalize_definitions()
             .map_err(|e| JitError::Compilation(e.to_string()))?;
 
-        // 6. Obter ponteiro para o código de máquina nativo
+        // 6. Obter ponteiro para o cÃ³digo de mÃ¡quina nativo
         let native_ptr = self.module.get_finalized_function(func_id);
 
-        // TODO: No futuro, o JITModule deve nos dar o tamanho real em bytes do código.
-        // Por enquanto usamos um placeholder de 128 bytes para estatísticas.
+        // TODO: No futuro, o JITModule deve nos dar o tamanho real em bytes do cÃ³digo.
+        // Por enquanto usamos um placeholder de 128 bytes para estatÃ­sticas.
         let code_size = 128;
 
         // 7. Armazenar no Code Cache
@@ -420,14 +419,14 @@ impl AlbedoJitEngine {
         Ok(())
     }
 
-    /// Executa a função `jit_add` compilada com os argumentos fornecidos.
+    /// Executa a funÃ§Ã£o `jit_add` compilada com os argumentos fornecidos.
     ///
     /// # Safety
     ///
-    /// Esta função é segura porque:
-    /// - O código nativo foi gerado pelo Cranelift com tipagem verificada
-    /// - O ponteiro é válido enquanto o AlbedoJitEngine existir
-    /// - A calling convention é a padrão do sistema (SystemV / Windows)
+    /// Esta funÃ§Ã£o Ã© segura porque:
+    /// - O cÃ³digo nativo foi gerado pelo Cranelift com tipagem verificada
+    /// - O ponteiro Ã© vÃ¡lido enquanto o AlbedoJitEngine existir
+    /// - A calling convention Ã© a padrÃ£o do sistema (SystemV / Windows)
     pub fn execute_add(&self, a: i64, b: i64) -> Result<i64, JitError> {
         let id = FunctionId("jit_add".to_string());
         let compiled = self
@@ -435,17 +434,17 @@ impl AlbedoJitEngine {
             .lookup(&id)
             .ok_or_else(|| JitError::FunctionNotFound("jit_add".to_string()))?;
 
-        // Incrementar contador de execução do cache
+        // Incrementar contador de execuÃ§Ã£o do cache
         compiled.increment_execution();
 
-        // SAFETY: O código nativo foi compilado pelo Cranelift com assinatura
-        // (i64, i64) -> i64. O ponteiro é válido enquanto o módulo JIT existir.
+        // SAFETY: O cÃ³digo nativo foi compilado pelo Cranelift com assinatura
+        // (i64, i64) -> i64. O ponteiro Ã© vÃ¡lido enquanto o mÃ³dulo JIT existir.
         let func_ptr: fn(i64, i64) -> i64 = unsafe { std::mem::transmute(compiled.native_ptr) };
 
         Ok(func_ptr(a, b))
     }
 
-    /// Retorna o número de funções compiladas no cache.
+    /// Retorna o nÃºmero de funÃ§Ãµes compiladas no cache.
     pub fn compiled_function_count(&self) -> usize {
         self.code_cache.len()
     }
@@ -460,15 +459,15 @@ impl AlbedoJitEngine {
         self.module.get_finalized_function(id)
     }
 
-    /// Aloca uma nova região de memória executável no pool do engine.
-    /// Útil para trampolines, stubs e código gerado manualmente.
+    /// Aloca uma nova regiÃ£o de memÃ³ria executÃ¡vel no pool do engine.
+    /// Ãštil para trampolines, stubs e cÃ³digo gerado manualmente.
     pub fn allocate_code_region(&self, size: usize) -> Result<*const u8, JitError> {
         let mut pool = self.code_pool.write();
         let region = pool.allocate(size)?;
         Ok(region.as_ptr())
     }
 
-    /// Retorna as estatísticas atuais de uso de memória executável (Pool).
+    /// Retorna as estatÃ­sticas atuais de uso de memÃ³ria executÃ¡vel (Pool).
     pub fn code_pool_stats(&self) -> CodePoolStats {
         self.code_pool.read().stats().clone()
     }
@@ -484,21 +483,21 @@ mod tests {
 
     /// Teste de sanidade: comprova que o pipeline completo funciona.
     ///
-    /// Cranelift IR → código de máquina nativo x86-64/ARM64 → execução → resultado correto.
+    /// Cranelift IR â†’ cÃ³digo de mÃ¡quina nativo x86-64/ARM64 â†’ execuÃ§Ã£o â†’ resultado correto.
     #[test]
     fn test_cranelift_add() {
         // Criar engine JIT
         let mut engine = AlbedoJitEngine::new().expect("Falha ao criar AlbedoJitEngine");
 
-        // Compilar função add(a, b) -> a + b
+        // Compilar funÃ§Ã£o add(a, b) -> a + b
         engine
             .compile_add_function()
-            .expect("Falha ao compilar função add");
+            .expect("Falha ao compilar funÃ§Ã£o add");
 
-        // Verificar que está no cache
+        // Verificar que estÃ¡ no cache
         assert_eq!(engine.compiled_function_count(), 1);
 
-        // Executar código nativo e verificar resultado
+        // Executar cÃ³digo nativo e verificar resultado
         let result = engine
             .execute_add(10, 20)
             .expect("Falha ao executar jit_add");
@@ -514,21 +513,21 @@ mod tests {
             .expect("Falha ao executar jit_add");
         assert_eq!(result, -50, "add(-100, 50) deve retornar -50");
 
-        // Testar com números grandes
+        // Testar com nÃºmeros grandes
         let result = engine
             .execute_add(i64::MAX - 1, 1)
             .expect("Falha ao executar jit_add");
         assert_eq!(result, i64::MAX, "add(MAX-1, 1) deve retornar MAX");
     }
 
-    /// Teste: função não encontrada no cache retorna erro adequado.
+    /// Teste: funÃ§Ã£o nÃ£o encontrada no cache retorna erro adequado.
     #[test]
     fn test_function_not_found() {
         let engine = AlbedoJitEngine::new().expect("Falha ao criar AlbedoJitEngine");
         let result = engine.execute_add(1, 2);
         assert!(
             result.is_err(),
-            "Deve retornar erro para função não compilada"
+            "Deve retornar erro para funÃ§Ã£o nÃ£o compilada"
         );
     }
 
@@ -539,7 +538,7 @@ mod tests {
         assert_eq!(engine.compiled_function_count(), 0);
     }
 
-    /// Teste: Integração com o CodePool.
+    /// Teste: IntegraÃ§Ã£o com o CodePool.
     #[test]
     fn test_code_pool_integration() {
         let engine = AlbedoJitEngine::new().expect("Falha ao criar AlbedoJitEngine");
@@ -548,7 +547,7 @@ mod tests {
         // Aloca 1KB
         let ptr = engine
             .allocate_code_region(1024)
-            .expect("Falha ao alocar região");
+            .expect("Falha ao alocar regiÃ£o");
         assert!(!ptr.is_null());
 
         let stats_after = engine.code_pool_stats();
@@ -558,3 +557,4 @@ mod tests {
         assert!(stats_after.total_allocated > stats_before.total_allocated);
     }
 }
+

@@ -2,7 +2,7 @@
 //!
 //! Coleta feedback de tipos em tempo de execução para guiar o Tier 2.
 
-use parking_lot::RwLock;
+use crate::parking_lot::RwLock;
 use std::sync::OnceLock;
 
 use hashbrown::HashMap;
