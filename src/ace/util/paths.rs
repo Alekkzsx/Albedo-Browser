@@ -3,7 +3,9 @@ use std::path::PathBuf;
 pub fn cache_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        return known_folder_roaming_appdata().unwrap_or_else(fallback_home).join("Cache");
+        return known_folder_roaming_appdata()
+            .unwrap_or_else(fallback_home)
+            .join("Cache");
     }
 
     #[cfg(target_os = "linux")]
@@ -120,9 +122,7 @@ fn known_folder_roaming_appdata() -> Option<PathBuf> {
         d3: FOLDERID_RoamingAppData.d3,
         d4: FOLDERID_RoamingAppData.d4,
     };
-    let hr = unsafe {
-        SHGetKnownFolderPath(&guid, KF_FLAG_DEFAULT, 0, &mut raw as *mut *mut u16)
-    };
+    let hr = unsafe { SHGetKnownFolderPath(&guid, KF_FLAG_DEFAULT, 0, &mut raw as *mut *mut u16) };
     if hr != S_OK || raw.is_null() {
         return None;
     }

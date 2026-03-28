@@ -2,12 +2,12 @@ use super::JsonError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    BraceOpen,   // {
-    BraceClose,  // }
-    BracketOpen, // [
-    BracketClose,// ]
-    Colon,       // :
-    Comma,       // ,
+    BraceOpen,    // {
+    BraceClose,   // }
+    BracketOpen,  // [
+    BracketClose, // ]
+    Colon,        // :
+    Comma,        // ,
     String(String),
     Number(f64),
     Bool(bool),
@@ -139,6 +139,7 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
-        s.parse::<f64>().map_err(|_| JsonError::InvalidNumber(start_pos))
+        s.parse::<f64>()
+            .map_err(|_| JsonError::InvalidNumber(start_pos))
     }
 }

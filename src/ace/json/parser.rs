@@ -7,11 +7,14 @@ pub fn parse(input: &str) -> Result<JsonValue, JsonError> {
     let mut tokenizer = Tokenizer::new(&chars);
     let mut parser = Parser::new(&mut tokenizer)?;
     let result = parser.parse_value()?;
-    
+
     if tokenizer.next_token()?.is_some() {
-        return Err(JsonError::UnexpectedCharacter(chars[tokenizer.current_pos()-1], tokenizer.current_pos()-1));
+        return Err(JsonError::UnexpectedCharacter(
+            chars[tokenizer.current_pos() - 1],
+            tokenizer.current_pos() - 1,
+        ));
     }
-    
+
     Ok(result)
 }
 
@@ -23,11 +26,17 @@ struct Parser<'a, 'b> {
 impl<'a, 'b> Parser<'a, 'b> {
     fn new(tokenizer: &'a mut Tokenizer<'b>) -> Result<Self, JsonError> {
         let first = tokenizer.next_token()?;
-        Ok(Self { tokenizer, lookahead: first })
+        Ok(Self {
+            tokenizer,
+            lookahead: first,
+        })
     }
 
     fn consume(&mut self) -> Result<Token, JsonError> {
-        let current = self.lookahead.take().ok_or(JsonError::UnexpectedEndOfInput)?;
+        let current = self
+            .lookahead
+            .take()
+            .ok_or(JsonError::UnexpectedEndOfInput)?;
         self.lookahead = self.tokenizer.next_token()?;
         Ok(current)
     }
@@ -73,7 +82,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn parse_object(&mut self) -> Result<JsonValue, JsonError> {
-        self.consume()?; 
+        self.consume()?;
         let mut map = std::collections::HashMap::new();
 
         if let Some(Token::BraceClose) = self.peek() {
@@ -84,12 +93,22 @@ impl<'a, 'b> Parser<'a, 'b> {
         loop {
             let key = match self.consume()? {
                 Token::String(s) => s,
-                _ => return Err(JsonError::ExpectedToken("string key".to_string(), self.tokenizer.current_pos())),
+                _ => {
+                    return Err(JsonError::ExpectedToken(
+                        "string key".to_string(),
+                        self.tokenizer.current_pos(),
+                    ))
+                }
             };
 
             match self.consume()? {
                 Token::Colon => (),
-                _ => return Err(JsonError::ExpectedToken(":".to_string(), self.tokenizer.current_pos())),
+                _ => {
+                    return Err(JsonError::ExpectedToken(
+                        ":".to_string(),
+                        self.tokenizer.current_pos(),
+                    ))
+                }
             }
 
             let value = self.parse_value()?;
@@ -103,7 +122,12 @@ impl<'a, 'b> Parser<'a, 'b> {
                     self.consume()?;
                     break;
                 }
-                _ => return Err(JsonError::ExpectedToken(", or }".to_string(), self.tokenizer.current_pos())),
+                _ => {
+                    return Err(JsonError::ExpectedToken(
+                        ", or }".to_string(),
+                        self.tokenizer.current_pos(),
+                    ))
+                }
             }
         }
 
@@ -111,7 +135,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn parse_array(&mut self) -> Result<JsonValue, JsonError> {
-        self.consume()?; 
+        self.consume()?;
         let mut vec = Vec::new();
 
         if let Some(Token::BracketClose) = self.peek() {
@@ -131,7 +155,12 @@ impl<'a, 'b> Parser<'a, 'b> {
                     self.consume()?;
                     break;
                 }
-                _ => return Err(JsonError::ExpectedToken(", or ]".to_string(), self.tokenizer.current_pos())),
+                _ => {
+                    return Err(JsonError::ExpectedToken(
+                        ", or ]".to_string(),
+                        self.tokenizer.current_pos(),
+                    ))
+                }
             }
         }
 

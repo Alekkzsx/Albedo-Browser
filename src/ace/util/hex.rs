@@ -78,11 +78,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_hex() {
-        let cases = [
-          "Albedo",
-          "Rustlang",
-          "1234567890",
-        ];
+        let cases = ["Albedo", "Rustlang", "1234567890"];
         for case in cases {
             let encoded = encode(case.as_bytes());
             let decoded = decode(&encoded).unwrap();

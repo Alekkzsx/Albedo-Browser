@@ -195,7 +195,7 @@
   🟡  Barra de endereços, sistema de abas, área de renderização, barra de nav
          → Todo em .slint → migrar para ACE-UI
   🟡  Monitor de sistema (CPU/RAM)
-         → Depende de: sysinfo → migrar para ACE-SysInfo
+         → Usa ACE-SysInfo próprio; UI ainda depende de slint → migrar para ACE-UI
   🟡  Página inicial (albedo://start)
          → Em .slint → migrar para ACE-UI
   🟡  Scrollbars custom interativas
@@ -232,7 +232,7 @@
               Implementar "adoption agency algorithm" para tags formatadoras.
               Implementar "foster parenting" para nós inseridos em contextos errados.
               Implementar stack de elementos abertos e lista de active formatting elements.
-           4. Criar src/ace/html/entities.rs — Tabela de named character references
+           --4. Criar src/ace/html/entities.rs — Tabela de named character references
               (~2200 entidades do HTML5 spec) via HashMap<&str, &str> gerado por build script
               ou const array.
            5. Criar tests/ace_html_tests.rs — Suite de testes contra html5lib-tests
@@ -240,6 +240,21 @@
          Arquivos atuais que usam html5ever (a migrar depois):
            - engine/dom/mod.rs (parsing principal)
            - engine/mod.rs (build_layout_tree usa NodeData de kuchiki)
+         Status atual:
+           ✅ src/ace/html/lexer.rs criado com tokens próprios
+           ✅ src/ace/html/tokenizer.rs criado (tokens tipados + recovery de parse error)
+           ✅ src/ace/html/tree_builder.rs criado (insertion modes + stack de elementos abertos)
+           ✅ active formatting elements + adoption agency algorithm (versão simplificada)
+           ✅ foster parenting implementado para conteúdo fora de contexto de tabela
+           ✅ src/ace/html/mod.rs criado com parse_document + parse_fragment
+           ✅ character references básicas e numéricas implementadas
+           ✅ tree builder leve implementado (stack de elementos abertos + auto-close básico)
+           ✅ engine/mod.rs migrado para usar AceDOM::from_html
+           ✅ runtime DOMParser e setters de innerHTML/outerHTML migrados para o parser próprio
+           ✅ cargo check fecha com sucesso
+           ⚠️ tokenizer/tree builder ainda não cobrem a state machine HTML5 completa
+           ⚠️ tabela de entidades ainda é parcial, não as ~2200 entidades do spec
+           ⚠️ html5ever/kuchiki ainda permanecem no workspace para caminhos antigos e testes
          Estimativa: ~3.000-5.000 LOC | ~200-400h
          Critério de aceite: paridade com html5ever nos html5lib-tests (≥95%).
 
@@ -772,6 +787,24 @@
            8. Criar src/ace/crypto/ecdh.rs — ECDH key exchange.
               Curva P-256 (secp256r1): ponto em curva, multiplicação escalar.
               X25519 (Curve25519): Montgomery ladder.
+         Status atual:
+           ✅ src/ace/crypto/sha1.rs implementado
+           ✅ src/ace/crypto/sha2.rs implementado (SHA-256/384/512)
+           ✅ src/ace/crypto/hmac.rs implementado
+           ✅ src/ace/crypto/hkdf.rs implementado
+           ✅ src/ace/crypto/random.rs implementado com backends por plataforma
+           ✅ src/ace/crypto/aes.rs implementado (AES-128/256)
+           ✅ src/ace/crypto/gcm.rs implementado (AES-GCM)
+           ✅ src/ace/crypto/ecdh.rs implementado com X25519 e P-256
+           ✅ runtime/bindings/webapi/crypto.rs migrado para ACE-Crypto
+           ✅ SubtleCrypto expõe digest, generateKey, importKey, exportKey,
+              sign/verify (HMAC), encrypt/decrypt (AES-GCM) e deriveBits (ECDH)
+           ✅ network/cache.rs migrado para ACE-Crypto
+           ✅ dependências sha1, sha2 e getrandom removidas do package principal
+           ✅ cargo check fecha com sucesso
+           ⚠️ Testes de lib continuam bloqueados por erros antigos e não relacionados
+              em src/engine/dom_tests.rs
+           ⚠️ Critério final de TLS handshake ainda não atingido
          Estimativa: ~3.000-5.000 LOC | ~200-350h
          Critério de aceite: SubtleCrypto API funcional + TLS handshake.
 
@@ -876,7 +909,7 @@
               Dias da semana, dias por mês, leap year calculation.
          Estimativa: ~300-500 LOC | ~20-30h
 
-  ------[ ]  AFS-31 ACE-SysInfo próprio
+  [X]  AFS-31 ACE-SysInfo próprio
          → Substituir: sysinfo (0.38)
          O que fazer:
            1. Criar src/ace/util/sysinfo.rs — Info de sistema.
@@ -884,18 +917,27 @@
               Linux: /proc/cpuinfo, /proc/meminfo, /proc/stat.
               macOS: sysctl(hw.ncpu), host_statistics (mach).
               API: cpu_count(), cpu_usage(), total_memory(), used_memory().
+         Status atual:
+           ✅ src/ace/util/sysinfo.rs implementado
+           ✅ Integração ativa no monitor da UI
+           ✅ Testes básicos de smoke/consistência adicionados
          Estimativa: ~200-400 LOC | ~15-25h
 
-  -------[ ]  AFS-32 ACE-Random próprio
+  [X]  AFS-32 ACE-Random próprio
          → Substituir: rand (0.10)
          O que fazer:
            1. Criar src/ace/util/random.rs — PRNG.
               Xoshiro256** para uso geral (rápido, boa distribuição).
               Seed via ACE-Crypto CSPRNG.
               API: next_u32(), next_u64(), next_f64(), gen_range(min, max).
+         Status atual:
+           ✅ src/ace/util/random.rs implementado com Xoshiro256**
+           ✅ Seed via ACE-Crypto CSPRNG
+           ✅ Testes básicos adicionados
+           ✅ Dependência rand removida do workspace
          Estimativa: ~100-200 LOC | ~5-10h
 
-  -------[ ]  AFS-33 Substituir utilitários menores
+  [X]  AFS-33 Substituir utilitários menores
          O que fazer:
            1. lazy_static → trocar todas as ocorrências por std::sync::LazyLock
               (estável desde Rust 1.80). Buscar no código: grep -r "lazy_static".
@@ -912,6 +954,13 @@
               Windows: SHGetKnownFolderPath (shell32).
               Linux: XDG_DATA_HOME ou ~/.local/share.
               macOS: NSSearchPathForDirectoriesInDomains.
+         Status atual:
+           ✅ lazy_static removido; usos migrados para std::sync::LazyLock
+           ✅ bitflags substituído por tipo próprio leve (NodeDirtyFlags)
+           ✅ thiserror removido; erros reescritos com Display/Error manual
+           ✅ parking_lot removido dos manifests; JIT usa wrapper local sobre std::sync
+           ✅ crossbeam-channel, bytemuck e dirs removidos dos manifests
+           ✅ cargo check fecha com sucesso
          Estimativa: ~300-500 LOC de mudanças | ~20-40h
 
   GATE FINAL
@@ -1467,7 +1516,7 @@
   ONDA 1 — Utilitários (rápidos de implementar, desbl. stack)
   [ ]  ACE-JSON, ACE-URL, ACE-UUID, ACE-Base64, ACE-Time
   [ ]  ACE-Random, ACE-SysInfo, ACE-Crypto
-  [ ]  Substituir lazy_static, bitflags, bytemuck, thiserror, crossbeam, parking_lot
+  [X]  Substituir lazy_static, bitflags, bytemuck, thiserror, crossbeam, parking_lot
 
   ONDA 2 — Compressão + Storage
   [ ]  ACE-Compress (DEFLATE/gzip, Brotli, Zstd)

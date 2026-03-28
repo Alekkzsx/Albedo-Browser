@@ -1,6 +1,5 @@
 use super::{mark_mutation, Element};
 use crate::engine::dom::{AceDOM, AceNode, AceNodeType};
-use kuchiki::traits::*;
 use rquickjs::{Class, Ctx, Result, Value};
 
 pub fn tag_name(el: &Element) -> String {
@@ -237,19 +236,7 @@ fn serialize_node(dom: &AceDOM, node_idx: usize) -> String {
 
 pub fn set_inner_html(el: &Element, html: String) {
     if let Ok(mut dom) = el.dom.lock() {
-        // Parse HTML como um documento completo (mais simples que fragmento no kuchiki)
-        let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
-
-        // Encontrar o body do fragmento analisado
-        if let Ok(body_match) = kuchiki_root.select_first("body") {
-            let body_node = body_match.as_node().clone();
-            dom.set_inner_html_from_kuchiki(el.index, body_node.children());
-        } else {
-            // Se não houver body (ex: texto puro ou fragmento sem tags estruturais),
-            // kuchiki_root costuma ter o conteúdo no html ou diretamente.
-            // Vamos tentar pegar os filhos da raiz se o body falhar.
-            dom.set_inner_html_from_kuchiki(el.index, kuchiki_root.children());
-        }
+        dom.set_inner_html_from_html(el.index, &html);
     }
     mark_mutation(el);
 }
@@ -269,22 +256,12 @@ pub fn set_outer_html(el: &Element, html: String) {
         if let Some(p_idx) = parent_idx {
             let ref_idx = dom.get_node(el.index).and_then(|n| n.next_sibling);
 
-            // Parse HTML
-            let kuchiki_root = kuchiki::parse_html().from_utf8().one(html.as_bytes());
-
             // Remove old node
             dom.remove_node_from_parent(el.index);
 
             // Insert new nodes from fragment
-            if let Ok(body_match) = kuchiki_root.select_first("body") {
-                for child in body_match.as_node().children() {
-                    let child_idx = crate::engine::dom::AceDOM::convert_recursive(
-                        &child,
-                        &mut dom.nodes,
-                        Some(p_idx),
-                    );
-                    dom.insert_before(p_idx, child_idx, ref_idx);
-                }
+            for child_idx in dom.import_html_fragment(&html, Some(p_idx)) {
+                dom.insert_before(p_idx, child_idx, ref_idx);
             }
         }
     }

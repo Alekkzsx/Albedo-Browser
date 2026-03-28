@@ -3,8 +3,10 @@
 //! Implementação nativa de codificação/decodificação Base64 para a engine ACE.
 //! Suporta os alfabetos Standard e URL-Safe com tratamento rigoroso de padding.
 
-const STANDARD_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const URL_SAFE_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const STANDARD_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const URL_SAFE_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Opções de configuração para codificação Base64.
 #[derive(Debug, Clone, Copy)]

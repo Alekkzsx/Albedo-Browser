@@ -64,11 +64,20 @@ fn test_real_world_github_api() {
     }"#;
 
     let parsed = parse(json).expect("Deve parsear JSON do GitHub");
-    assert_eq!(parsed.get("name").and_then(|v| v.as_string()), Some("Hello-World"));
-    assert_eq!(parsed.get("owner").and_then(|v| v.get("login")).and_then(|v| v.as_string()), Some("octocat"));
+    assert_eq!(
+        parsed.get("name").and_then(|v| v.as_string()),
+        Some("Hello-World")
+    );
+    assert_eq!(
+        parsed
+            .get("owner")
+            .and_then(|v| v.get("login"))
+            .and_then(|v| v.as_string()),
+        Some("octocat")
+    );
     assert_eq!(parsed.get("private").and_then(|v| v.as_bool()), Some(false));
     assert!(parsed.get("language").unwrap().is_null());
-    
+
     let topics = parsed.get("topics").and_then(|v| v.as_array()).unwrap();
     assert_eq!(topics.len(), 4);
     assert_eq!(topics[0].as_string(), Some("octocat"));
@@ -99,18 +108,30 @@ fn test_import_map_complex() {
 
     let parsed = parse(json).expect("Deve parsear Import Map");
     let imports = parsed.get("imports").and_then(|v| v.as_object()).unwrap();
-    assert_eq!(imports.get("react").and_then(|v| v.as_string()), Some("https://cdn.esm.sh/react@18"));
+    assert_eq!(
+        imports.get("react").and_then(|v| v.as_string()),
+        Some("https://cdn.esm.sh/react@18")
+    );
 
     let scopes = parsed.get("scopes").and_then(|v| v.as_object()).unwrap();
-    let esm_scope = scopes.get("https://cdn.esm.sh/").and_then(|v| v.as_object()).unwrap();
-    assert_eq!(esm_scope.get("react").and_then(|v| v.as_string()), Some("https://cdn.esm.sh/react@17"));
+    let esm_scope = scopes
+        .get("https://cdn.esm.sh/")
+        .and_then(|v| v.as_object())
+        .unwrap();
+    assert_eq!(
+        esm_scope.get("react").and_then(|v| v.as_string()),
+        Some("https://cdn.esm.sh/react@17")
+    );
 }
 
 #[test]
 fn test_edge_cases_escapes() {
     let json = r#""Line 1\nLine 2\tTab\rCarriage\\Backslash\"Quote\/\u0041""#;
     let parsed = parse(json).expect("Deve parsear escapes");
-    assert_eq!(parsed.as_string(), Some("Line 1\nLine 2\tTab\rCarriage\\Backslash\"Quote/A"));
+    assert_eq!(
+        parsed.as_string(),
+        Some("Line 1\nLine 2\tTab\rCarriage\\Backslash\"Quote/A")
+    );
 }
 
 #[test]

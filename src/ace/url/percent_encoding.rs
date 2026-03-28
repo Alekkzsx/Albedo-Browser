@@ -1,7 +1,7 @@
 pub fn decode(input: &str) -> String {
     let mut bytes = Vec::with_capacity(input.len());
     let mut it = input.as_bytes().iter().peekable();
-    
+
     while let Some(&b) = it.next() {
         if b == b'%' {
             let h1 = it.next().copied();
@@ -17,8 +17,12 @@ pub fn decode(input: &str) -> String {
                 bytes.push(h2);
             } else {
                 bytes.push(b'%');
-                if let Some(h1) = h1 { bytes.push(h1); }
-                if let Some(h2) = h2 { bytes.push(h2); }
+                if let Some(h1) = h1 {
+                    bytes.push(h1);
+                }
+                if let Some(h2) = h2 {
+                    bytes.push(h2);
+                }
             }
         } else {
             bytes.push(b);
@@ -67,8 +71,28 @@ fn should_encode(b: u8, set: EncodeSet) -> bool {
         EncodeSet::Path => matches!(c, ' ' | '"' | '#' | '<' | '>' | '?' | '`' | '{' | '}'),
         EncodeSet::UserInfo => matches!(
             c,
-            ' ' | '"' | '#' | '<' | '>' | '?' | '`' | '{' | '}' | '/' | ':' | ';' | '=' | '@' | '[' | '\\' | ']' | '^' | '|'
+            ' ' | '"'
+                | '#'
+                | '<'
+                | '>'
+                | '?'
+                | '`'
+                | '{'
+                | '}'
+                | '/'
+                | ':'
+                | ';'
+                | '='
+                | '@'
+                | '['
+                | '\\'
+                | ']'
+                | '^'
+                | '|'
         ),
-        EncodeSet::Component => !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')'),
+        EncodeSet::Component => {
+            !c.is_ascii_alphanumeric()
+                && !matches!(c, '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')')
+        }
     }
 }

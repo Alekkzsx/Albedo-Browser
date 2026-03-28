@@ -1,24 +1,44 @@
-﻿//! # Alocador de MemÃ³ria ExecutÃ¡vel (W^X)
+//! # Alocador de MemÃ³ria ExecutÃ¡vel (W^X)
 //!
 //! Gerencia a alocaÃ§Ã£o de memÃ³ria virtual protegida para execuÃ§Ã£o de cÃ³digo JIT.
 //! Implementa a polÃ­tica W^X (Write XOR Execute) para seguranÃ§a.
 
+use std::fmt;
 use std::ptr::{self, NonNull};
-use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum MemoryError {
-    #[error("Falha na alocaÃ§Ã£o de memÃ³ria: {0}")]
     AllocationFailed(String),
-    #[error("Falha ao mudar proteÃ§Ã£o de memÃ³ria: {0}")]
     ProtectionFailed(String),
-    #[error("A regiÃ£o de memÃ³ria Ã© muito pequena para a escrita solicitada")]
     BufferOverflow,
-    #[error("RegiÃ£o de memÃ³ria nÃ£o Ã© mais gravÃ¡vel (estÃ¡ em modo RX)")]
     NotWritable,
-    #[error("Budget de memÃ³ria JIT excedido")]
     BudgetExceeded,
 }
+
+impl fmt::Display for MemoryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemoryError::AllocationFailed(msg) => {
+                write!(f, "Falha na alocação de memória: {}", msg)
+            }
+            MemoryError::ProtectionFailed(msg) => {
+                write!(f, "Falha ao mudar proteção de memória: {}", msg)
+            }
+            MemoryError::BufferOverflow => {
+                write!(
+                    f,
+                    "A região de memória é muito pequena para a escrita solicitada"
+                )
+            }
+            MemoryError::NotWritable => {
+                write!(f, "Região de memória não é mais gravável (está em modo RX)")
+            }
+            MemoryError::BudgetExceeded => write!(f, "Budget de memória JIT excedido"),
+        }
+    }
+}
+
+impl std::error::Error for MemoryError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtectionState {
@@ -351,4 +371,3 @@ mod tests {
         assert!(matches!(result, Err(MemoryError::NotWritable)));
     }
 }
-

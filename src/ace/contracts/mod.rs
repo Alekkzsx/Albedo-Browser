@@ -1,5 +1,5 @@
 //! # ACE-Contracts (Supervisor)
-//! 
+//!
 //! Este módulo atua como o **Supervisor** de integração do Albedo Browser.
 //! Ele define o contrato único entre o core da engine e os módulos externos (JIT, Runtime, etc.).
 //!
@@ -8,7 +8,7 @@
 //! Use sempre as exportações consolidadas abaixo.
 //!
 //! > [!IMPORTANT]
-//! > **AVISO DE MANUTENÇÃO**: Este arquivo e seus submódulos serão atualizados 
+//! > **AVISO DE MANUTENÇÃO**: Este arquivo e seus submódulos serão atualizados
 //! > quase sempre que novas funcionalidades de engine forem estabilizadas.
 
 pub mod capabilities;
@@ -17,6 +17,6 @@ pub mod prelude;
 pub mod types;
 
 // Re-exports principais para conveniência
-pub use capabilities::{ContractVersion, AlbedoCapabilities};
+pub use capabilities::{AlbedoCapabilities, ContractVersion};
 pub use errors::{AlbedoError, AlbedoResult};
 pub use types::*;

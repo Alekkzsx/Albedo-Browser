@@ -1,4 +1,4 @@
-﻿//! # AlbedoJitEngine â€” Motor JIT principal
+//! # AlbedoJitEngine â€” Motor JIT principal
 //!
 //! Gerencia o pipeline de compilaÃ§Ã£o JIT:
 //! Bytecode â†’ Cranelift IR â†’ CÃ³digo de mÃ¡quina nativo (x86-64 / ARM64).
@@ -7,9 +7,9 @@
 //! compila funÃ§Ãµes para cÃ³digo nativo e gerencia o cache de cÃ³digo compilado.
 
 use crate::compiler::code_cache::{CachedCode, CodeCache, JitTier, NativeCodePtr};
-use crate::infra::executable_memory::{CodePool, CodePoolStats, MemoryError};
-use std::sync::Arc;
 use crate::engine::profiler::FunctionId;
+use crate::infra::executable_memory::{CodePool, CodePoolStats, MemoryError};
+use crate::parking_lot::RwLock;
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, Function, InstBuilder, UserFuncName};
 use cranelift_codegen::settings::{self, Configurable};
@@ -17,29 +17,49 @@ use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
-use crate::parking_lot::RwLock;
+use std::fmt;
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Erros
 // ---------------------------------------------------------------------------
 
 /// Erros que podem ocorrer durante a compilaÃ§Ã£o JIT.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum JitError {
-    #[error("Falha ao criar ISA nativa: {0}")]
     IsaCreation(String),
-
-    #[error("Falha ao declarar funÃ§Ã£o: {0}")]
-    FuncDeclaration(#[from] cranelift_module::ModuleError),
-
-    #[error("Falha na compilaÃ§Ã£o Cranelift: {0}")]
+    FuncDeclaration(cranelift_module::ModuleError),
     Compilation(String),
-
-    #[error("FunÃ§Ã£o '{0}' nÃ£o encontrada no cache")]
     FunctionNotFound(String),
+    MemoryError(MemoryError),
+}
 
-    #[error("Erro de memÃ³ria JIT: {0}")]
-    MemoryError(#[from] MemoryError),
+impl fmt::Display for JitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JitError::IsaCreation(msg) => write!(f, "Falha ao criar ISA nativa: {}", msg),
+            JitError::FuncDeclaration(err) => write!(f, "Falha ao declarar função: {}", err),
+            JitError::Compilation(msg) => write!(f, "Falha na compilação Cranelift: {}", msg),
+            JitError::FunctionNotFound(name) => {
+                write!(f, "Função '{}' não encontrada no cache", name)
+            }
+            JitError::MemoryError(err) => write!(f, "Erro de memória JIT: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for JitError {}
+
+impl From<cranelift_module::ModuleError> for JitError {
+    fn from(value: cranelift_module::ModuleError) -> Self {
+        JitError::FuncDeclaration(value)
+    }
+}
+
+impl From<MemoryError> for JitError {
+    fn from(value: MemoryError) -> Self {
+        JitError::MemoryError(value)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,10 +122,22 @@ impl AlbedoJitEngine {
         let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
 
         // Registrar as C-ABI helper functions do runtime para serem resolvidas pelo JIT Module
-        builder.symbol("js_add", crate::runtime::runtime_helpers::js_add as *const u8);
-        builder.symbol("js_add_ic", crate::runtime::runtime_helpers::js_add_ic as *const u8);
-        builder.symbol("js_sub", crate::runtime::runtime_helpers::js_sub as *const u8);
-        builder.symbol("js_mul", crate::runtime::runtime_helpers::js_mul as *const u8);
+        builder.symbol(
+            "js_add",
+            crate::runtime::runtime_helpers::js_add as *const u8,
+        );
+        builder.symbol(
+            "js_add_ic",
+            crate::runtime::runtime_helpers::js_add_ic as *const u8,
+        );
+        builder.symbol(
+            "js_sub",
+            crate::runtime::runtime_helpers::js_sub as *const u8,
+        );
+        builder.symbol(
+            "js_mul",
+            crate::runtime::runtime_helpers::js_mul as *const u8,
+        );
         builder.symbol(
             "js_strict_eq",
             crate::runtime::runtime_helpers::js_strict_eq as *const u8,
@@ -299,7 +331,6 @@ impl AlbedoJitEngine {
             crate::runtime::fast_builtins::fast_math_min as *const u8,
         );
 
-
         builder.symbol(
             "fast_array_push",
             crate::runtime::fast_builtins::fast_array_push as *const u8,
@@ -413,7 +444,13 @@ impl AlbedoJitEngine {
 
         // 7. Armazenar no Code Cache
         let id = FunctionId(func_name.to_string());
-        let entry = CachedCode::new(id, NativeCodePtr(native_ptr), func_id, code_size, JitTier::Baseline);
+        let entry = CachedCode::new(
+            id,
+            NativeCodePtr(native_ptr),
+            func_id,
+            code_size,
+            JitTier::Baseline,
+        );
         self.code_cache.insert(entry);
 
         Ok(())
@@ -557,4 +594,3 @@ mod tests {
         assert!(stats_after.total_allocated > stats_before.total_allocated);
     }
 }
-

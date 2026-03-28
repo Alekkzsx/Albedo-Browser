@@ -1,3 +1,8 @@
+#![cfg(test)]
+
+use crate::engine::dom::{AceDOM, AceNodeType};
+use kuchiki::traits::TendrilSink;
+
 #[test]
 fn test_acedom_parsing() {
     let html = r#"
@@ -16,7 +21,7 @@ fn test_acedom_parsing() {
     "#;
 
     let _document = kuchiki::parse_html().one(html);
-    let dom = AceDOM::new();
+    let dom = AceDOM::from_html(html);
 
     // Verify Metadata
     // assert_eq!(dom.metadata.title, "Test Page".to_string());
