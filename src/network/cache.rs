@@ -1,6 +1,5 @@
 use crate::ace::util::hex::encode as hex_encode;
 use rusqlite::{params, Connection};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -213,15 +212,15 @@ impl DiskCache {
         let compressed_size = compressed_data.len();
 
         // Generate hash for file storage
-        let mut hasher = Sha256::new();
-        hasher.update(url.as_bytes());
-        hasher.update(
-            SystemTime::now()
+        let mut entropy = Vec::with_capacity(url.len() + 16);
+        entropy.extend_from_slice(url.as_bytes());
+        entropy.extend_from_slice(
+            &SystemTime::now()
                 .duration_since(UNIX_EPOCH)?
                 .as_nanos()
                 .to_le_bytes(),
         );
-        let digest = hasher.finalize();
+        let digest = crate::ace::crypto::sha2::sha256(&entropy);
         let file_hash = hex_encode(&digest);
 
         // Write compressed data to disk

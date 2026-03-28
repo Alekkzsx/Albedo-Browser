@@ -9,17 +9,17 @@ const INITIAL_N: u32 = 128;
 
 pub fn encode(input: &str) -> Result<String, &'static str> {
     let mut output = String::new();
-    
+
     for label in input.split('.') {
         if !output.is_empty() {
             output.push('.');
         }
-        
+
         if label.chars().all(|c| c.is_ascii()) {
             output.push_str(label);
             continue;
         }
-        
+
         output.push_str("xn--");
         let mut n = INITIAL_N;
         let mut delta = 0;
@@ -72,7 +72,9 @@ pub fn encode(input: &str) -> Result<String, &'static str> {
                         } else {
                             k - bias
                         };
-                        if q < t { break; }
+                        if q < t {
+                            break;
+                        }
                         let char_val = t + (q - t) % (BASE - t);
                         output.push(value_to_digit(char_val));
                         q = (q - t) / (BASE - t);

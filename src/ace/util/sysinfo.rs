@@ -550,3 +550,29 @@ fn cpu_usage_platform(_prev: &mut Option<CpuSample>) -> f32 {
 fn memory_platform() -> (u64, u64) {
     (0, 0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_returns_consistent_snapshot() {
+        let sys = AceSysInfo::new();
+
+        assert!(sys.cpu_count() >= 1);
+        assert!(sys.cpu_usage().is_finite());
+        assert!((0.0..=100.0).contains(&sys.cpu_usage()));
+        assert!(sys.total_memory() >= sys.used_memory());
+    }
+
+    #[test]
+    fn refresh_keeps_values_in_valid_ranges() {
+        let mut sys = AceSysInfo::new();
+        sys.refresh();
+
+        assert!(sys.cpu_count() >= 1);
+        assert!(sys.cpu_usage().is_finite());
+        assert!((0.0..=100.0).contains(&sys.cpu_usage()));
+        assert!(sys.total_memory() >= sys.used_memory());
+    }
+}

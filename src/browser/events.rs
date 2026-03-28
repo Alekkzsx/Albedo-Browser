@@ -1,7 +1,7 @@
+use crate::ace::util::sysinfo::AceSysInfo;
 use crate::browser::bridge::sync_ace_visuals;
 use crate::browser::tabs::manager::TabManager;
 use crate::ui::{AppWindow, TabData};
-use crate::ace::util::sysinfo::AceSysInfo;
 use slint::{ComponentHandle, SharedString, VecModel, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,13 +11,14 @@ pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<Ac
         let mut sys = system.borrow_mut();
         sys.refresh();
 
+        let cpu_count = sys.cpu_count();
         let total_ram = sys.total_memory();
         let used_ram = sys.used_memory();
         let cpu_usage = sys.cpu_usage();
 
         let stats = format!(
-            "RAM: {}/{} MB | CPU: {:.1}% | MODE: EFFICIENT",
-            used_ram, total_ram, cpu_usage
+            "RAM: {}/{} MB | CPU: {:.1}% | CORES: {} | MODE: EFFICIENT",
+            used_ram, total_ram, cpu_usage, cpu_count
         );
         ui.set_system_stats(stats.into());
     }

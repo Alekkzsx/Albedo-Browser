@@ -1,10 +1,10 @@
 //! # ACE-Contracts: Engine Capabilities
-//! 
+//!
 //! Define o versionamento do Albedo Browser e as flags de funcionalidades ativas.
 //! Essencial para o JIT e as WebAPIs consultarem o que a engine suporta no momento.
 //!
 //! > [!IMPORTANT]
-//! > **ATUALIZAÇÃO QUASE SEMPRE**: À medida que novas camadas (Tier 2, WebGL) 
+//! > **ATUALIZAÇÃO QUASE SEMPRE**: À medida que novas camadas (Tier 2, WebGL)
 //! > forem ativadas, este arquivo será atualizado.
 
 /// Versão semântica oficial do Albedo Browser.

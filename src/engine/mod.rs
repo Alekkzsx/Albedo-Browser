@@ -2757,12 +2757,8 @@ impl AceEngine {
     }
 
     pub fn load_html(&mut self, html: &str) {
-        use html5ever::tendril::TendrilSink;
-        use kuchiki::parse_html;
-
         println!("[AceEngine] Parsing HTML...");
-        let dom_tree = parse_html().one(html);
-        let ace_dom = AceDOM::from_kuchiki(dom_tree);
+        let ace_dom = AceDOM::from_html(html);
         println!(
             "[AceEngine] DOM Tree created with {} nodes",
             ace_dom.nodes.len()

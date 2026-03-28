@@ -1,6 +1,6 @@
-use super::types::{Url, UrlError};
 use super::percent_encoding;
 use super::punycode;
+use super::types::{Url, UrlError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -67,7 +67,10 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                     buffer.clear();
                     if url.scheme == "file" {
                         state = State::File;
-                    } else if url.is_special() && base.is_some() && base.unwrap().scheme == url.scheme {
+                    } else if url.is_special()
+                        && base.is_some()
+                        && base.unwrap().scheme == url.scheme
+                    {
                         state = State::SpecialRelativeOrAuthority;
                     } else if url.is_special() {
                         state = State::SpecialAuthoritySlashes;
@@ -86,7 +89,9 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 if let Some(base_url) = base {
                     url.scheme = base_url.scheme.clone();
                     if c == '/' || (url.is_special() && c == '\\') {
-                        if i + 1 < chars.len() && (chars[i+1] == '/' || (url.is_special() && chars[i+1] == '\\')) {
+                        if i + 1 < chars.len()
+                            && (chars[i + 1] == '/' || (url.is_special() && chars[i + 1] == '\\'))
+                        {
                             // '//' - override authority entirely (do NOT inherit base host/port)
                             url.path.clear();
                             state = State::SpecialAuthoritySlashes;
@@ -129,7 +134,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                         url.query = base_url.query.clone(); // Inherit query
                         url.fragment = base_url.fragment.clone(); // Inherit fragment
                         if !url.path.is_empty() {
-                            url.path.pop(); 
+                            url.path.pop();
                         }
                         state = State::Path;
                         advance = false;
@@ -139,7 +144,8 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 }
             }
             State::SpecialRelativeOrAuthority => {
-                if c == '/' && i + 1 < chars.len() && (chars[i+1] == '/' || chars[i+1] == '\\') {
+                if c == '/' && i + 1 < chars.len() && (chars[i + 1] == '/' || chars[i + 1] == '\\')
+                {
                     state = State::SpecialAuthoritySlashes;
                     // advance=true: consume this '/', SpecialAuthoritySlashes will consume the next one
                 } else {
@@ -270,7 +276,7 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                     let user_pass = buffer.clone();
                     if let Some(colon_idx) = user_pass.find(':') {
                         url.username = percent_encoding::decode(&user_pass[..colon_idx]);
-                        url.password = Some(percent_encoding::decode(&user_pass[colon_idx+1..]));
+                        url.password = Some(percent_encoding::decode(&user_pass[colon_idx + 1..]));
                     } else {
                         url.username = percent_encoding::decode(&user_pass);
                     }
@@ -369,9 +375,14 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 }
             }
             State::Path => {
-                if c == '/' || (url.is_special() && c == '\\') || (i + 1 == chars.len() && !buffer.is_empty()) || c == '?' || c == '#' {
+                if c == '/'
+                    || (url.is_special() && c == '\\')
+                    || (i + 1 == chars.len() && !buffer.is_empty())
+                    || c == '?'
+                    || c == '#'
+                {
                     if c != '?' && c != '#' && i + 1 == chars.len() && !buffer.is_empty() {
-                         buffer.push(c);
+                        buffer.push(c);
                     }
 
                     if !buffer.is_empty() {
@@ -382,11 +393,14 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                                 // WHATWG: se termina em /.. deve garantir que o path termine em /
                             }
                         } else if decoded != "." {
-                            url.path.push(percent_encoding::encode(&decoded, percent_encoding::EncodeSet::Path));
+                            url.path.push(percent_encoding::encode(
+                                &decoded,
+                                percent_encoding::EncodeSet::Path,
+                            ));
                         }
                         buffer.clear();
                     }
-                    
+
                     if c == '?' {
                         state = State::Query;
                     } else if c == '#' {
@@ -398,7 +412,10 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
             }
             State::Query => {
                 if c == '#' {
-                    url.query = Some(percent_encoding::encode(&buffer, percent_encoding::EncodeSet::Query));
+                    url.query = Some(percent_encoding::encode(
+                        &buffer,
+                        percent_encoding::EncodeSet::Query,
+                    ));
                     buffer.clear();
                     state = State::Fragment;
                 } else {
@@ -410,7 +427,9 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
             }
             _ => {}
         }
-        if advance { i += 1; }
+        if advance {
+            i += 1;
+        }
     }
 
     // Final buffers
@@ -444,23 +463,38 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 return Err(UrlError::MissingScheme);
             }
         }
-        State::Query => url.query = Some(percent_encoding::encode(&buffer, percent_encoding::EncodeSet::Query)),
-        State::Fragment => url.fragment = Some(percent_encoding::encode(&buffer, percent_encoding::EncodeSet::Fragment)),
-        State::Host | State::Ipv6 | State::Port => {
-             if state == State::Port && !buffer.is_empty() {
-                 url.port = buffer.parse().ok();
-             } else if state == State::Host && !buffer.is_empty() {
-                 url.host = Some(parse_host(&buffer));
-             }
+        State::Query => {
+            url.query = Some(percent_encoding::encode(
+                &buffer,
+                percent_encoding::EncodeSet::Query,
+            ))
         }
-        State::Path => if !buffer.is_empty() {
-            let decoded = percent_encoding::decode(&buffer);
-            if decoded == ".." {
-                url.path.pop();
-            } else if decoded != "." {
-                url.path.push(percent_encoding::encode(&decoded, percent_encoding::EncodeSet::Path));
+        State::Fragment => {
+            url.fragment = Some(percent_encoding::encode(
+                &buffer,
+                percent_encoding::EncodeSet::Fragment,
+            ))
+        }
+        State::Host | State::Ipv6 | State::Port => {
+            if state == State::Port && !buffer.is_empty() {
+                url.port = buffer.parse().ok();
+            } else if state == State::Host && !buffer.is_empty() {
+                url.host = Some(parse_host(&buffer));
             }
-        },
+        }
+        State::Path => {
+            if !buffer.is_empty() {
+                let decoded = percent_encoding::decode(&buffer);
+                if decoded == ".." {
+                    url.path.pop();
+                } else if decoded != "." {
+                    url.path.push(percent_encoding::encode(
+                        &decoded,
+                        percent_encoding::EncodeSet::Path,
+                    ));
+                }
+            }
+        }
         _ => {}
     }
 
@@ -484,6 +518,6 @@ fn parse_host(input: &str) -> super::types::Host {
     } else {
         domain
     };
-    
+
     super::types::Host::Domain(idn_domain)
 }

@@ -1,10 +1,10 @@
 //! # ACE-Contracts: Unified Errors
-//! 
-//! Define o sistema de erros padrão do Albedo. Todos os módulos externos 
+//!
+//! Define o sistema de erros padrão do Albedo. Todos os módulos externos
 //! (JIT, Runtime, Bridge) devem emitir e consumir AlbedoError.
 //!
 //! > [!IMPORTANT]
-//! > **ATUALIZAÇÃO QUASE SEMPRE**: À medida que novos subsistemas (ex: Graphics, WebGL) 
+//! > **ATUALIZAÇÃO QUASE SEMPRE**: À medida que novos subsistemas (ex: Graphics, WebGL)
 //! > forem integrados, o AlbedoError evoluirá.
 
 use crate::ace::json::JsonError;

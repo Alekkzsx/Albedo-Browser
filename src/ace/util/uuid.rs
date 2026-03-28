@@ -1,14 +1,14 @@
 use std::fmt;
 
 /// A 128-bit Universally Unique Identifier (UUID) v4.
-/// 
+///
 /// Following RFC 4122, this is a random-based UUID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Uuid([u8; 16]);
 
 impl Uuid {
-    /// Generates a new UUID v4 using the `getrandom` library for entropy.
-    /// 
+    /// Generates a new UUID v4 using ACE-Crypto entropy.
+    ///
     /// # Panics
     /// Panics if the system's random number generator fails.
     pub fn new_v4() -> Self {
@@ -57,25 +57,29 @@ mod tests {
     fn test_uuid_v4_format() {
         let uuid = Uuid::new_v4();
         let s = uuid.to_string();
-        
+
         // Check length: 8 + 4 + 4 + 4 + 12 + 4 hyphens = 36
         assert_eq!(s.len(), 36);
-        
+
         // Check hyphens at 8, 13, 18, 23
         let bytes = s.as_bytes();
         assert_eq!(bytes[8], b'-');
         assert_eq!(bytes[13], b'-');
         assert_eq!(bytes[18], b'-');
         assert_eq!(bytes[23], b'-');
-        
+
         // Check version 4 (character at index 14)
         assert_eq!(bytes[14], b'4');
-        
+
         // Check variant 1 (character at index 19 must be 8, 9, a, or b)
         let variant_char = bytes[19] as char;
         assert!(
-            variant_char == '8' || variant_char == '9' || variant_char == 'a' || variant_char == 'b',
-            "Invalid variant: {}", variant_char
+            variant_char == '8'
+                || variant_char == '9'
+                || variant_char == 'a'
+                || variant_char == 'b',
+            "Invalid variant: {}",
+            variant_char
         );
     }
 

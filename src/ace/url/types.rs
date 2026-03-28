@@ -107,7 +107,11 @@ impl Url {
         if !self.is_special() {
             return "null".to_string();
         }
-        let host_display = self.host.as_ref().map(|h| h.to_string()).unwrap_or_default();
+        let host_display = self
+            .host
+            .as_ref()
+            .map(|h| h.to_string())
+            .unwrap_or_default();
         let mut origin = format!("{}://{}", self.scheme, host_display);
         if let Some(p) = self.port {
             if Some(p) != self.default_port() {
@@ -216,7 +220,7 @@ impl std::fmt::Display for Url {
                 write!(f, "/{}", segment)?;
             }
         } else if self.host.is_some() || self.scheme == "file" {
-             write!(f, "/")?;
+            write!(f, "/")?;
         }
 
         if let Some(ref query) = self.query {

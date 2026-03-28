@@ -50,9 +50,9 @@ impl Weekday {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DateTimeParts {
     pub year: i32,
-    pub month: u8, // 1..=12
-    pub day: u8,   // 1..=31
-    pub hour: u8,  // 0..=23
+    pub month: u8,  // 1..=12
+    pub day: u8,    // 1..=31
+    pub hour: u8,   // 0..=23
     pub minute: u8, // 0..=59
     pub second: u8, // 0..=59
 }
@@ -409,4 +409,3 @@ mod tests {
         assert!(parse_http_date("garbage").is_err());
     }
 }
-

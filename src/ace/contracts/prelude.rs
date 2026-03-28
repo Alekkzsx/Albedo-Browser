@@ -1,5 +1,5 @@
 //! # ACE-Contracts: Standard Prelude
-//! 
+//!
 //! O cabeçalho padrão para todos os módulos que consomem o contrato de integração.
 //! Oferece importação rápida para os tipos estáveis e erros do Supervisor.
 //!
@@ -7,7 +7,7 @@
 //! `use crate::ace::contracts::prelude::*;`
 //!
 //! > [!IMPORTANT]
-//! > **ATUALIZAÇÃO QUASE SEMPRE**: Este arquivo será atualizado sempre que 
+//! > **ATUALIZAÇÃO QUASE SEMPRE**: Este arquivo será atualizado sempre que
 //! > novos módulos básicos forem integrados ao Supervisor.
 
 pub use super::capabilities::*;

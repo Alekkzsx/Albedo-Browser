@@ -1,4 +1,9 @@
+use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
+#[cfg(feature = "ace_html_parser")]
+use crate::ace::html::build_document_with_errors;
 use kuchiki::NodeRef;
+#[cfg(any(not(feature = "ace_html_parser"), feature = "legacy_html_fallback"))]
+use kuchiki::traits::TendrilSink;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -64,14 +69,44 @@ pub struct MutationRecord {
     pub old_value: Option<String>,
 }
 
-bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct NodeDirtyFlags: u32 {
-        const NONE = 0;
-        const STYLE = 1 << 0;     // Estilo precisa ser recalculado
-        const LAYOUT = 1 << 1;    // Taffy precisa atualizar propriedades físicas
-        const CHILDREN = 1 << 2;  // Lista de filhos mudou (ordem/adição/remoção)
-        const SUBTREE = 1 << 3;   // Algum descendente está sujo
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodeDirtyFlags(u32);
+
+impl NodeDirtyFlags {
+    pub const NONE: Self = Self(0);
+    pub const STYLE: Self = Self(1 << 0);
+    pub const LAYOUT: Self = Self(1 << 1);
+    pub const CHILDREN: Self = Self(1 << 2);
+    pub const SUBTREE: Self = Self(1 << 3);
+
+    pub fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
+
+    pub fn intersects(self, other: Self) -> bool {
+        (self.0 & other.0) != 0
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+}
+
+impl std::ops::BitOr for NodeDirtyFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for NodeDirtyFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
     }
 }
 
@@ -162,6 +197,57 @@ impl AceDOM {
         dom.find_head_body();
         dom
     }
+
+    pub fn from_html(html: &str) -> Self {
+        #[cfg(feature = "ace_html_parser")]
+        {
+            let parsed = build_document_with_errors(html);
+            let should_fallback =
+                should_fallback_to_legacy(html, parsed.errors.len(), &parsed.document);
+
+            if should_fallback {
+                #[cfg(feature = "legacy_html_fallback")]
+                {
+                    eprintln!(
+                        "[AceDOM] Falling back to legacy parser due to parser diagnostics."
+                    );
+                    let document = kuchiki::parse_html().one(html);
+                    return Self::from_kuchiki(document);
+                }
+            }
+
+            return Self::from_html_document(&parsed.document);
+        }
+
+        #[cfg(not(feature = "ace_html_parser"))]
+        {
+            let document = kuchiki::parse_html().one(html);
+            Self::from_kuchiki(document)
+        }
+    }
+
+    pub fn from_html_document(document: &HtmlDocument) -> Self {
+        let mut dom = Self::new();
+        dom.nodes[dom.root].children.clear();
+
+        let mut root_children = Vec::new();
+        for node in &document.children {
+            if let Some(child_idx) =
+                Self::convert_html_node_recursive(node, &mut dom.nodes, Some(dom.root))
+            {
+                root_children.push(child_idx);
+            }
+        }
+
+        Self::link_children(&mut dom.nodes, &root_children);
+        if let Some(root) = dom.nodes.get_mut(dom.root) {
+            root.children = root_children;
+        }
+
+        dom.find_head_body();
+        dom
+    }
+
     pub fn get_node(&self, id: usize) -> Option<&AceNode> {
         self.nodes.get(id)
     }
@@ -230,6 +316,65 @@ impl AceDOM {
         }
 
         current_idx
+    }
+
+    fn convert_html_node_recursive(
+        html_node: &HtmlNode,
+        nodes: &mut Vec<AceNode>,
+        parent_idx: Option<usize>,
+    ) -> Option<usize> {
+        let node_type = match html_node {
+            HtmlNode::Element(element) => AceNodeType::Element(AceElement {
+                tag: element.tag.clone(),
+                attributes: element.attributes.clone(),
+            }),
+            HtmlNode::Text(text) => AceNodeType::Text(std::sync::Arc::from(text.as_str())),
+            HtmlNode::Comment(text) => AceNodeType::Comment(std::sync::Arc::from(text.as_str())),
+        };
+
+        let current_idx = nodes.len();
+        nodes.push(AceNode {
+            node_type,
+            parent: parent_idx,
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+            shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
+        });
+
+        if let HtmlNode::Element(element) = html_node {
+            let mut children = Vec::new();
+            for child in &element.children {
+                if let Some(child_idx) =
+                    Self::convert_html_node_recursive(child, nodes, Some(current_idx))
+                {
+                    children.push(child_idx);
+                }
+            }
+            Self::link_children(nodes, &children);
+            if let Some(node) = nodes.get_mut(current_idx) {
+                node.children = children;
+            }
+        }
+
+        Some(current_idx)
+    }
+
+    fn link_children(nodes: &mut [AceNode], children: &[usize]) {
+        for (i, &curr) in children.iter().enumerate() {
+            let prev = if i > 0 { Some(children[i - 1]) } else { None };
+            let next = if i + 1 < children.len() {
+                Some(children[i + 1])
+            } else {
+                None
+            };
+
+            if let Some(node) = nodes.get_mut(curr) {
+                node.prev_sibling = prev;
+                node.next_sibling = next;
+            }
+        }
     }
 
     fn find_head_body(&mut self) {
@@ -537,6 +682,66 @@ impl AceDOM {
                 old_value: None,
             },
         );
+    }
+
+    pub fn set_inner_html_from_nodes(&mut self, parent_idx: usize, html_nodes: &[HtmlNode]) {
+        let old_children = self
+            .get_node(parent_idx)
+            .map(|n| n.children.clone())
+            .unwrap_or_default();
+        if let Some(node) = self.nodes.get_mut(parent_idx) {
+            node.children.clear();
+        }
+
+        let mut new_children = Vec::new();
+        for child in html_nodes {
+            if let Some(child_idx) =
+                Self::convert_html_node_recursive(child, &mut self.nodes, Some(parent_idx))
+            {
+                new_children.push(child_idx);
+            }
+        }
+
+        Self::link_children(&mut self.nodes, &new_children);
+
+        if let Some(node) = self.nodes.get_mut(parent_idx) {
+            node.children = new_children;
+        }
+
+        self.notify_mutation(
+            parent_idx,
+            MutationRecord {
+                type_: MutationType::ChildList,
+                target: parent_idx,
+                added_nodes: self
+                    .get_node(parent_idx)
+                    .map(|n| n.children.clone())
+                    .unwrap_or_default(),
+                removed_nodes: old_children,
+                previous_sibling: None,
+                next_sibling: None,
+                attribute_name: None,
+                old_value: None,
+            },
+        );
+    }
+
+    pub fn set_inner_html_from_html(&mut self, parent_idx: usize, html: &str) {
+        let fragment = parse_fragment(html);
+        self.set_inner_html_from_nodes(parent_idx, &fragment);
+    }
+
+    pub fn import_html_fragment(&mut self, html: &str, parent_idx: Option<usize>) -> Vec<usize> {
+        let fragment = parse_fragment(html);
+        let mut imported = Vec::new();
+        for node in &fragment {
+            if let Some(idx) = Self::convert_html_node_recursive(node, &mut self.nodes, parent_idx)
+            {
+                imported.push(idx);
+            }
+        }
+        Self::link_children(&mut self.nodes, &imported);
+        imported
     }
 
     pub fn set_text_content_notify(&mut self, node_idx: usize, text: String) {
@@ -857,27 +1062,7 @@ impl AceDOM {
     }
 
     pub fn insert_adjacent_html(&mut self, target_idx: usize, position: &str, html: &str) {
-        use kuchiki::traits::TendrilSink;
-        let parser = kuchiki::parse_html().from_utf8();
-        let dom = parser.one(html.as_bytes());
-
-        // Always look for <body> because kuchiki always creates one for HTML
-        let mut body = None;
-        for node in dom.inclusive_descendants() {
-            if let Some(el) = node.as_element() {
-                if el.name.local.as_ref() == "body" {
-                    body = Some(node);
-                    break;
-                }
-            }
-        }
-
-        let source = body.unwrap_or(dom);
-        let mut imported_indices = Vec::new();
-        for child in source.children() {
-            let idx = Self::convert_recursive(&child, &mut self.nodes, None);
-            imported_indices.push(idx);
-        }
+        let imported_indices = self.import_html_fragment(html, None);
 
         if imported_indices.is_empty() {
             return;
@@ -917,5 +1102,22 @@ impl AceDOM {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(feature = "ace_html_parser")]
+fn should_fallback_to_legacy(html: &str, error_count: usize, document: &HtmlDocument) -> bool {
+    #[cfg(feature = "legacy_html_fallback")]
+    {
+        let html_len = html.chars().count().max(1);
+        let max_error_budget = (html_len / 16).max(24);
+        let has_document_root = !document.children.is_empty();
+        !has_document_root || error_count > max_error_budget
+    }
+
+    #[cfg(not(feature = "legacy_html_fallback"))]
+    {
+        let _ = (html, error_count, document);
+        false
     }
 }

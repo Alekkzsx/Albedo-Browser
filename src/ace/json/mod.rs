@@ -22,11 +22,15 @@ pub enum JsonError {
 impl std::fmt::Display for JsonError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            JsonError::UnexpectedCharacter(c, pos) => write!(f, "Unexpected character '{}' at position {}", c, pos),
+            JsonError::UnexpectedCharacter(c, pos) => {
+                write!(f, "Unexpected character '{}' at position {}", c, pos)
+            }
             JsonError::UnexpectedEndOfInput => write!(f, "Unexpected end of input"),
             JsonError::InvalidNumber(pos) => write!(f, "Invalid number at position {}", pos),
             JsonError::InvalidString(pos) => write!(f, "Invalid string at position {}", pos),
-            JsonError::ExpectedToken(expected, pos) => write!(f, "Expected {} at position {}", expected, pos),
+            JsonError::ExpectedToken(expected, pos) => {
+                write!(f, "Expected {} at position {}", expected, pos)
+            }
         }
     }
 }

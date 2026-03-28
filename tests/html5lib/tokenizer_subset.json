@@ -1,0 +1,181 @@
+[
+  {
+    "id": "basic_element",
+    "category": "tags",
+    "input": "<p>Hello</p>",
+    "expected": [
+      {"type": "StartTag", "name": "p", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "Hello"},
+      {"type": "EndTag", "name": "p"}
+    ]
+  },
+  {
+    "id": "self_closing_with_attrs",
+    "category": "attributes",
+    "input": "<img alt='hi' src=a.png/>",
+    "expected": [
+      {"type": "StartTag", "name": "img", "attrs": {"alt": "hi", "src": "a.png/"}, "self_closing": false}
+    ]
+  },
+  {
+    "id": "comment_token",
+    "category": "comments",
+    "input": "<!-- note -->",
+    "expected": [
+      {"type": "Comment", "data": " note "}
+    ]
+  },
+  {
+    "id": "doctype_valid",
+    "category": "doctype",
+    "input": "<!DOCTYPE html>",
+    "expected": [
+      {"type": "Doctype", "name": "html", "public_id": null, "system_id": null, "force_quirks": false}
+    ]
+  },
+  {
+    "id": "doctype_public_system",
+    "category": "doctype",
+    "input": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"about:legacy-compat\">",
+    "expected": [
+      {"type": "Doctype", "name": "html", "public_id": "-//W3C//DTD XHTML 1.0 Transitional//EN", "system_id": "about:legacy-compat", "force_quirks": false}
+    ]
+  },
+  {
+    "id": "doctype_invalid_missing_name",
+    "category": "doctype",
+    "input": "<!DOCTYPE>",
+    "expected": []
+  },
+  {
+    "id": "entity_named",
+    "category": "entities",
+    "input": "A &amp; B",
+    "expected": [
+      {"type": "Character", "data": "A & B"}
+    ]
+  },
+  {
+    "id": "entity_numeric_hex",
+    "category": "entities",
+    "input": "&#x1F600;",
+    "expected": [
+      {"type": "Character", "data": "😀"}
+    ]
+  },
+  {
+    "id": "entity_numeric_dec",
+    "category": "entities",
+    "input": "&#169;",
+    "expected": [
+      {"type": "Character", "data": "©"}
+    ]
+  },
+  {
+    "id": "entity_missing_semicolon",
+    "category": "entities",
+    "input": "x &amp y",
+    "expected": [
+      {"type": "Character", "data": "x & y"}
+    ]
+  },
+  {
+    "id": "ambiguous_ampersand_attribute",
+    "category": "entities",
+    "input": "<a href='?x=1&notit=2'>x</a>",
+    "expected": [
+      {"type": "StartTag", "name": "a", "attrs": {"href": "?x=1&notit=2"}, "self_closing": false},
+      {"type": "Character", "data": "x"},
+      {"type": "EndTag", "name": "a"}
+    ]
+  },
+  {
+    "id": "entity_in_attribute",
+    "category": "entities",
+    "input": "<a title=\"Tom &amp; Jerry\"></a>",
+    "expected": [
+      {"type": "StartTag", "name": "a", "attrs": {"title": "Tom & Jerry"}, "self_closing": false},
+      {"type": "EndTag", "name": "a"}
+    ]
+  },
+  {
+    "id": "script_rawtext",
+    "category": "script",
+    "input": "<script>if (a < b) ok();</script>",
+    "expected": [
+      {"type": "StartTag", "name": "script", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "if (a < b) ok();"},
+      {"type": "EndTag", "name": "script"}
+    ]
+  },
+  {
+    "id": "textarea_rcdata",
+    "category": "script",
+    "input": "<textarea>A &lt; B</textarea>",
+    "expected": [
+      {"type": "StartTag", "name": "textarea", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "A < B"},
+      {"type": "EndTag", "name": "textarea"}
+    ]
+  },
+  {
+    "id": "null_character",
+    "category": "errors",
+    "input": "a\u0000b",
+    "expected": [
+      {"type": "Character", "data": "a�b"}
+    ]
+  },
+  {
+    "id": "invalid_end_tag_recovery",
+    "category": "errors",
+    "input": "</><p>x</p>",
+    "expected": [
+      {"type": "StartTag", "name": "p", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "x"},
+      {"type": "EndTag", "name": "p"}
+    ]
+  },
+  {
+    "id": "bogus_comment_recovery",
+    "category": "comments",
+    "input": "<!foo><p>x</p>",
+    "expected": [
+      {"type": "Comment", "data": "foo"},
+      {"type": "StartTag", "name": "p", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "x"},
+      {"type": "EndTag", "name": "p"}
+    ]
+  },
+  {
+    "id": "comment_eof_recovery",
+    "category": "comments",
+    "input": "<!--x",
+    "expected": [
+      {"type": "Comment", "data": "x"}
+    ]
+  },
+  {
+    "id": "missing_attr_value_recovery",
+    "category": "attributes",
+    "input": "<div class=>ok</div>",
+    "expected": [
+      {"type": "StartTag", "name": "div", "attrs": {"class": ""}, "self_closing": false},
+      {"type": "Character", "data": "ok"},
+      {"type": "EndTag", "name": "div"}
+    ]
+  },
+  {
+    "id": "adjacent_tokens_after_error",
+    "category": "errors",
+    "input": "<!DOCTYPE><p>a</p><p>b</p>",
+    "expected": [
+      {"type": "StartTag", "name": "p", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "a"},
+      {"type": "EndTag", "name": "p"},
+      {"type": "StartTag", "name": "p", "attrs": {}, "self_closing": false},
+      {"type": "Character", "data": "b"},
+      {"type": "EndTag", "name": "p"}
+    ]
+  }
+]
