@@ -130,117 +130,54 @@ impl<'a> HtmlTokenizer<'a> {
 
     pub fn convert_raw_token(&mut self, raw: RawHtmlToken) -> Option<HtmlToken> {
         match raw {
-            RawHtmlToken::StartTag(tag) => self.convert_start_tag(tag),
-            RawHtmlToken::EndTag(name) => self.convert_end_tag(name),
-            RawHtmlToken::Character(data) => self.convert_character(data),
+            RawHtmlToken::StartTag(tag) => {
+                let mut attributes = HashMap::new();
+                for (name, value) in tag.attributes {
+                    attributes.insert(name.to_ascii_lowercase(), value);
+                }
+                Some(HtmlToken::StartTag(StartTagToken {
+                    name: tag.name.to_ascii_lowercase(),
+                    attributes,
+                    self_closing: tag.self_closing,
+                }))
+            }
+            RawHtmlToken::EndTag(name) => Some(HtmlToken::EndTag(EndTagToken {
+                name: name.to_ascii_lowercase(),
+            })),
+            RawHtmlToken::Character(data) => {
+                if data.is_empty() {
+                    return None;
+                }
+                Some(HtmlToken::Character(CharacterToken { data }))
+            }
             RawHtmlToken::Comment(data) => Some(HtmlToken::Comment(CommentToken { data })),
-            RawHtmlToken::Doctype(dt) => self.convert_doctype(dt),
+            RawHtmlToken::Doctype(dt) => Some(HtmlToken::Doctype(DoctypeToken {
+                name: dt.name.map(|name| name.to_ascii_lowercase()),
+                public_id: dt.public_id,
+                system_id: dt.system_id,
+                force_quirks: dt.force_quirks,
+            }))
+            .and_then(|token| {
+                let HtmlToken::Doctype(ref doc) = token else {
+                    return Some(token);
+                };
+
+                // Recovery: malformed `<!DOCTYPE>` without name should raise parse
+                // error and be ignored in the output stream.
+                if doc.name.is_none() && doc.public_id.is_none() && doc.system_id.is_none() {
+                    self.errors.push(TokenizerError::new(
+                        TokenizerErrorSource::Tokenizer,
+                        TokenizerErrorKind::InvalidDoctype,
+                        "TOK003",
+                        "invalid doctype without name",
+                    ));
+                    None
+                } else {
+                    Some(token)
+                }
+            }),
             RawHtmlToken::Eof => Some(HtmlToken::Eof),
         }
-    }
-
-    fn push_tokenizer_error(
-        &mut self,
-        kind: TokenizerErrorKind,
-        code: &'static str,
-        message: impl Into<String>,
-    ) {
-        self.errors.push(TokenizerError::new(
-            TokenizerErrorSource::Tokenizer,
-            kind,
-            code,
-            message,
-        ));
-    }
-
-    fn convert_start_tag(&mut self, tag: RawStartTagToken) -> Option<HtmlToken> {
-        if !is_valid_tag_name(&tag.name) {
-            self.push_tokenizer_error(
-                TokenizerErrorKind::InvalidStartTagName,
-                "TOK001",
-                format!("invalid start tag name: '{}'", tag.name),
-            );
-            return None;
-        }
-
-        let mut attributes = HashMap::new();
-        for (name, value) in tag.attributes {
-            if name.trim().is_empty() {
-                self.push_tokenizer_error(
-                    TokenizerErrorKind::EmptyAttributeName,
-                    "TOK002",
-                    "attribute name is empty",
-                );
-                continue;
-            }
-            attributes.insert(name, value);
-        }
-
-        Some(HtmlToken::StartTag(StartTagToken {
-            name: tag.name.to_ascii_lowercase(),
-            attributes,
-            self_closing: tag.self_closing,
-        }))
-    }
-
-    fn convert_end_tag(&mut self, name: String) -> Option<HtmlToken> {
-        if !is_valid_tag_name(&name) {
-            self.push_tokenizer_error(
-                TokenizerErrorKind::InvalidEndTagName,
-                "TOK003",
-                format!("invalid end tag name: '{}'", name),
-            );
-            return None;
-        }
-
-        Some(HtmlToken::EndTag(EndTagToken {
-            name: name.to_ascii_lowercase(),
-        }))
-    }
-
-    fn convert_character(&mut self, data: String) -> Option<HtmlToken> {
-        if data.is_empty() {
-            return None;
-        }
-
-        let mut had_null = false;
-        let mut normalized = String::with_capacity(data.len());
-        for ch in data.chars() {
-            if ch == '\0' {
-                had_null = true;
-                normalized.push('\u{FFFD}');
-            } else {
-                normalized.push(ch);
-            }
-        }
-
-        if had_null {
-            self.push_tokenizer_error(
-                TokenizerErrorKind::NullCharacter,
-                "TOK004",
-                "null character replaced with U+FFFD",
-            );
-        }
-
-        Some(HtmlToken::Character(CharacterToken { data: normalized }))
-    }
-
-    fn convert_doctype(&mut self, dt: RawDoctypeToken) -> Option<HtmlToken> {
-        if dt.force_quirks || dt.name.is_none() {
-            self.push_tokenizer_error(
-                TokenizerErrorKind::InvalidDoctype,
-                "TOK005",
-                "invalid DOCTYPE token ignored",
-            );
-            return None;
-        }
-
-        Some(HtmlToken::Doctype(DoctypeToken {
-            name: dt.name.map(|name| name.to_ascii_lowercase()),
-            public_id: dt.public_id,
-            system_id: dt.system_id,
-            force_quirks: dt.force_quirks,
-        }))
     }
 }
 
@@ -258,16 +195,6 @@ fn map_lexer_error(err: RawLexerError) -> TokenizerError {
     )
 }
 
-fn is_valid_tag_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !first.is_ascii_alphabetic() {
-        return false;
-    }
-    chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ':' | '_' | '-' | '.'))
-}
 
 #[cfg(test)]
 mod tests {
