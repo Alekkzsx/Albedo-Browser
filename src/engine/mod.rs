@@ -3000,3 +3000,6 @@ impl std::fmt::Debug for AceEngine {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod dom_tests;

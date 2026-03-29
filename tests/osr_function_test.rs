@@ -1,8 +1,5 @@
 use albedo::runtime::core::runtime::JsRuntime;
-use albedo_jit::jit_bridge::BytecodeRegistry;
-use albedo_jit::profiler::{FunctionId, JitProfiler, ProfilerConfig};
-use albedo_jit::jit_bridge::JitBridge;
-use albedo_jit::decoder::QjsBytecodeFunction;
+use albedo_jit::{BytecodeRegistry, JitBridge, FunctionId, JitProfiler, ProfilerConfig, QjsBytecodeFunction, StackToRegisterTranslator};
 use albedo_jit::decoder::qjs_opcodes::QjsOpcode;
 use std::sync::Arc;
 use std::time::Instant;
@@ -70,7 +67,7 @@ async fn test_osr_named_function_loop() {
     // No ambiente real, o QuickJS dispararia o interrupt. 
     // Aqui validamos se a conversão PC -> AIR está funcionando via JitBridge diretamente.
     let qjs_func_reg = registry.get(&id).unwrap();
-    let translator = albedo_jit::decoder::StackToRegisterTranslator::new(&qjs_func_reg);
+    let translator = StackToRegisterTranslator::new(&qjs_func_reg);
     let (air, map) = translator.translate(qjs_func_reg);
     
     // O loop header deve estar no offset 4.

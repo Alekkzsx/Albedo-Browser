@@ -21,7 +21,7 @@ fn generate_html_entities() -> Result<(), Box<dyn std::error::Error>> {
     let mut map = BTreeMap::<String, String>::new();
 
     for (key, entry) in obj {
-        let name = key.trim_start_matches('&').trim_end_matches(';').to_string();
+        let name = key.to_string();
         if name.is_empty() {
             continue;
         }
@@ -31,8 +31,7 @@ fn generate_html_entities() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(serde_json::Value::as_str)
             .ok_or("entity entry missing 'characters'")?;
 
-        // Keep first canonical value for duplicate keys (with/without semicolon variants).
-        map.entry(name).or_insert_with(|| characters.to_string());
+        map.insert(name, characters.to_string());
     }
 
     let mut generated = String::new();

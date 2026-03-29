@@ -2214,27 +2214,68 @@ impl<'a> HtmlLexer<'a> {
     }
 
     fn state_named_character_reference(&mut self, ch: Option<char>) {
-        match ch {
-            Some(';') => {
-                self.temporary_buffer.push(';');
-                self.perform_entity_lookup(true);
+        // Spec 13.2.5.73: Consume the maximum number of characters possible...
+        let mut longest_match: Option<(&'static str, bool)> = None;
+        let mut match_len = 0;
+
+        // `state_named_character_reference` is entered after already consuming one
+        // input character in the main loop. Include that character in the match window.
+        let start_pos = if ch.is_some() && self.pos > 0 {
+            self.pos - 1
+        } else {
+            self.pos
+        };
+        let mut i = 0;
+        
+        while start_pos + i <= self.chars.len() {
+            let buffer = &self.chars[start_pos..start_pos + i];
+            let buffer_str: String = buffer.iter().collect();
+            let full_buffer = format!("&{}", buffer_str);
+            
+            // Optimization: check if full_buffer is a prefix of ANY entity
+            if !self.has_entity_starting_with(&full_buffer) {
+                break;
             }
-            Some(c) if is_ascii_alnum(c) => {
-                self.temporary_buffer.push(c);
+            
+            // Check if it's an exact match
+            if let Some(decoded) = self.lookup_exact_entity(&full_buffer) {
+                longest_match = Some((decoded, full_buffer.ends_with(';')));
+                match_len = i;
             }
-            Some(c) => {
-                // If not followed by semicolon, check if it's a match without semicolon
-                if !self.perform_entity_lookup(false) {
-                    self.flush_temporary_buffer();
-                    self.reconsume_in_with_char(self.return_state, c);
+            
+            i += 1;
+        }
+
+        if let Some((decoded, matches_semicolon)) = longest_match {
+            // Skip matched characters
+            self.pos = start_pos + match_len;
+            
+            if self.is_attribute_return_state() && !matches_semicolon {
+                let next = self.chars.get(self.pos);
+                if let Some(&c) = next {
+                    if c == '=' || c.is_ascii_alphanumeric() {
+                        // Historical reasons: fail the match
+                        self.pos = start_pos; // Backtrack to after the '&'
+                        self.flush_temporary_buffer();
+                        self.state = self.return_state;
+                        return;
+                    }
                 }
             }
-            None => {
-                if !self.perform_entity_lookup(false) {
-                    self.flush_temporary_buffer();
-                    self.reconsume_in(self.return_state);
-                }
+            
+            if !matches_semicolon {
+                self.parse_error(LexerErrorKind::MissingSemicolonAfterCharacterReference, "missing semicolon in named entity");
             }
+            
+            for c in decoded.chars() {
+                self.emit_character(c);
+            }
+            self.state = self.return_state;
+        } else {
+            // No match found
+            self.pos = start_pos;
+            self.flush_temporary_buffer();
+            self.state = self.return_state;
         }
     }
 
@@ -2381,19 +2422,38 @@ impl<'a> HtmlLexer<'a> {
         }
     }
 
-    fn perform_entity_lookup(&mut self, _ended_with_semicolon: bool) -> bool {
-        // This is a placeholder for the prefix matching required by the spec.
-        // For now, use the decode_named_entity helper.
-        use crate::ace::html::entities::decode_named_entity;
-        if let Some(decoded) = decode_named_entity(&self.temporary_buffer) {
-            for c in decoded.chars() {
-                self.emit_character(c);
+    fn is_attribute_return_state(&self) -> bool {
+        matches!(
+            self.return_state,
+            LexerState::AttributeValueDoubleQuoted
+                | LexerState::AttributeValueSingleQuoted
+                | LexerState::AttributeValueUnquoted
+        )
+    }
+
+    fn has_entity_starting_with(&self, prefix: &str) -> bool {
+        use crate::ace::html::entities::HTML_ENTITIES;
+        match HTML_ENTITIES.binary_search_by(|(name, _)| {
+            if name.starts_with(prefix) {
+                std::cmp::Ordering::Equal
+            } else {
+                name.cmp(&prefix)
             }
-            self.state = self.return_state;
-            true
-        } else {
-            false
+        }) {
+            Ok(_) => true,
+            Err(idx) => {
+                if idx < HTML_ENTITIES.len() {
+                    HTML_ENTITIES[idx].0.starts_with(prefix)
+                } else {
+                    false
+                }
+            }
         }
+    }
+
+    fn lookup_exact_entity(&self, name: &str) -> Option<&'static str> {
+        use crate::ace::html::entities::lookup_named_entity;
+        lookup_named_entity(name)
     }
 
     fn flush_temporary_buffer(&mut self) {

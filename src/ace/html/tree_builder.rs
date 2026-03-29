@@ -40,6 +40,7 @@ pub enum TreeBuilderErrorKind {
     FosterParenting,
     AdoptionAgency,
     TokenizerError,
+    UnexpectedEof,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +117,7 @@ pub struct HtmlTreeBuilder<'a> {
     scripting_enabled: bool,
     frameset_ok: bool,
     foster_parenting: bool,
+    quirks_mode: bool,
 }
 
 impl<'a> HtmlTreeBuilder<'a> {
@@ -147,6 +149,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             scripting_enabled: true,
             frameset_ok: true,
             foster_parenting: false,
+            quirks_mode: false,
         }
     }
 
@@ -266,10 +269,11 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn insert_at_appropriate_place(&mut self, node_id: usize, override_target: Option<usize>) {
-        let target = override_target.unwrap_or_else(|| self.current_node());
-        
+        let mut target = override_target.unwrap_or_else(|| self.current_node());
+        let mut adjusted_insertion_location = None;
+
         if self.foster_parenting && matches!(self.arena[target].data, InternalNodeData::Element { ref tag, .. } if matches!(tag.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr")) {
-            // Find foster parent
+            // WHATWG 13.2.6.4.1: Find the foster parent
             let mut last_table = None;
             for &id in self.open_elements.iter().rev() {
                 if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
@@ -282,20 +286,25 @@ impl<'a> HtmlTreeBuilder<'a> {
 
             if let Some(table_id) = last_table {
                 if let Some(parent_id) = self.arena[table_id].parent {
-                    // Insert before table_id in parent's children
-                    let pos = self.arena[parent_id].children.iter().position(|&x| x == table_id).unwrap();
-                    self.arena[node_id].parent = Some(parent_id);
-                    self.arena[parent_id].children.insert(pos, node_id);
-                    return;
+                    adjusted_insertion_location = Some((parent_id, table_id));
                 } else {
-                    // Parent is root or document
-                    self.append_node(self.root_id, node_id);
-                    return;
+                    let prev_idx = self.open_elements.iter().position(|&x| x == table_id).unwrap();
+                    if prev_idx > 0 {
+                        adjusted_insertion_location = Some((self.open_elements[prev_idx - 1], table_id));
+                    } else {
+                        adjusted_insertion_location = Some((self.root_id, table_id));
+                    }
                 }
             }
         }
 
-        self.append_node(target, node_id);
+        if let Some((parent_id, before_id)) = adjusted_insertion_location {
+            let pos = self.arena[parent_id].children.iter().position(|&x| x == before_id).unwrap_or(self.arena[parent_id].children.len());
+            self.arena[node_id].parent = Some(parent_id);
+            self.arena[parent_id].children.insert(pos, node_id);
+        } else {
+            self.append_node(target, node_id);
+        }
     }
 
     fn insert_html_element(&mut self, tag: StartTagToken) -> usize {
@@ -308,12 +317,6 @@ impl<'a> HtmlTreeBuilder<'a> {
         id
     }
 
-    fn insert_element_at_root(&mut self, tag: String, attributes: HashMap<String, String>) -> usize {
-        let id = self.create_node(InternalNodeData::Element { tag, attributes });
-        self.append_node(self.root_id, id);
-        self.open_elements.push(id);
-        id
-    }
 
     fn insert_element_at_current(
         &mut self,
@@ -354,14 +357,77 @@ impl<'a> HtmlTreeBuilder<'a> {
         })
     }
 
-    fn has_open_element(&self, tag_name: &str) -> bool {
-        self.open_elements.iter().any(|&id| {
-            match &self.arena[id].data {
-                InternalNodeData::Element { tag, .. } => tag == tag_name,
-                _ => false,
+    fn has_element_in_scope_with_id(&self, target_id: usize) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if id == target_id {
+                return true;
             }
-        })
+            if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                if matches!(tag.as_str(), "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "template") {
+                    return false;
+                }
+            }
+        }
+        false
     }
+
+    fn has_element_in_scope(&self, tag_name: &str) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                if tag == tag_name {
+                    return true;
+                }
+                if matches!(tag.as_str(), "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "template") {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
+    fn has_element_in_list_item_scope(&self, tag_name: &str) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                if tag == tag_name {
+                    return true;
+                }
+                if matches!(tag.as_str(), "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "template" | "ol" | "ul") {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
+    fn has_element_in_button_scope(&self, tag_name: &str) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                if tag == tag_name {
+                    return true;
+                }
+                if matches!(tag.as_str(), "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "template" | "button") {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
+
+    fn has_element_in_select_scope(&self, tag_name: &str) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                if tag == tag_name {
+                    return true;
+                }
+                if !matches!(tag.as_str(), "optgroup" | "option") {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
 
     fn pop_until(&mut self, tag_name: &str) {
         while let Some(&id) = self.open_elements.last() {
@@ -396,6 +462,14 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn handle_initial(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
             HtmlToken::Doctype(dt) => {
+                let name = dt.name.as_deref().unwrap_or("");
+                let public_id = dt.public_id.as_deref().unwrap_or("");
+                let system_id = dt.system_id.as_deref().unwrap_or("");
+                
+                if dt.force_quirks || name != "html" || self.is_quirky_doctype(public_id, system_id) {
+                    self.quirks_mode = true;
+                }
+                
                 self.doctype = Some(dt);
                 self.insertion_mode = InsertionMode::BeforeHtml;
                 None
@@ -407,11 +481,33 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             other => {
+                self.quirks_mode = true;
                 self.insertion_mode = InsertionMode::BeforeHtml;
                 Some(other)
             }
         }
     }
+
+    fn is_quirky_doctype(&self, public_id: &str, system_id: &str) -> bool {
+        // WHATWG 13.2.6.4.1
+        let p = public_id.to_lowercase();
+        let s = system_id.to_lowercase();
+        
+        if p.contains("transitional") || p.contains("frameset") {
+            return true;
+        }
+        
+        if p == "-//w3c//dtd html 3.2//en" || p == "-//w3c//dtd html 4.01 transitional//en" {
+            return true;
+        }
+
+        if s.is_empty() && p == "-//w3c//dtd html 4.01//en" {
+            return true;
+        }
+
+        false
+    }
+
 
     fn handle_before_html(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
@@ -571,6 +667,9 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.append_node(current, id);
                 None
             }
+            HtmlToken::StartTag(tag) if tag.name == "html" => {
+                self.handle_in_body(HtmlToken::StartTag(tag))
+            }
             HtmlToken::StartTag(tag) if tag.name == "body" => {
                 self.insert_html_element(tag);
                 self.frameset_ok = false;
@@ -582,10 +681,27 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.insertion_mode = InsertionMode::InFrameset;
                 None
             }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "base" | "basefont" | "bgsound" | "link" | "meta" | "noframes" | "script" | "style" | "template" | "title") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "head element in after-head");
+                let head_id = self.head_element_id.expect("head element should exist");
+                self.open_elements.push(head_id);
+                let ret = self.handle_in_head(HtmlToken::StartTag(tag));
+                self.open_elements.retain(|&id| id != head_id);
+                ret
+            }
+            HtmlToken::EndTag(tag) if tag.name == "template" => {
+                self.handle_in_head(HtmlToken::EndTag(tag))
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "html" | "br") => {
+                let id = self.create_node(InternalNodeData::Element { tag: "body".to_string(), attributes: HashMap::new() });
+                self.insert_at_appropriate_place(id, None);
+                self.open_elements.push(id);
+                self.insertion_mode = InsertionMode::InBody;
+                Some(HtmlToken::EndTag(tag))
+            }
             other => {
                 let id = self.create_node(InternalNodeData::Element { tag: "body".to_string(), attributes: HashMap::new() });
-                let current = self.current_node();
-                self.append_node(current, id);
+                self.insert_at_appropriate_place(id, None);
                 self.open_elements.push(id);
                 self.insertion_mode = InsertionMode::InBody;
                 Some(other)
@@ -623,7 +739,6 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn handle_in_body_start_tag(&mut self, tag: StartTagToken) -> Option<HtmlToken> {
         match tag.name.as_str() {
             "html" => {
-                // Merge attributes into <html>
                 if let Some(&html_id) = self.open_elements.first() {
                     if let InternalNodeData::Element { ref mut attributes, .. } = self.arena[html_id].data {
                         for (k, v) in tag.attributes {
@@ -634,10 +749,9 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             "body" => {
-                if self.open_elements.len() < 2 || self.current_tag() != Some("body") {
+                if self.open_elements.len() < 2 || !matches!(self.arena[self.open_elements[1]].data, InternalNodeData::Element { ref tag, .. } if tag == "body") {
                     // Ignore
                 } else {
-                    // Merge attributes into <body>
                     if let InternalNodeData::Element { ref mut attributes, .. } = self.arena[self.open_elements[1]].data {
                         for (k, v) in tag.attributes {
                             attributes.entry(k).or_insert(v);
@@ -646,23 +760,111 @@ impl<'a> HtmlTreeBuilder<'a> {
                 }
                 None
             }
-            "div" | "p" | "article" | "aside" | "main" | "nav" | "section" | "address" | "blockquote" | "center" | "details" | "dialog" | "dir" | "dl" | "fieldset" | "figcaption" | "figure" | "footer" | "header" | "hgroup" | "menu" | "ol" | "ul" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                if self.has_open_element("p") {
+            "p" | "address" | "article" | "aside" | "blockquote" | "center" | "details" | "dialog" | "dir" | "div" | "dl" | "fieldset" | "figcaption" | "figure" | "footer" | "header" | "hgroup" | "main" | "menu" | "nav" | "ol" | "section" | "ul" => {
+                if self.has_element_in_button_scope("p") {
                     self.close_p_element();
                 }
                 self.insert_html_element(tag);
                 None
             }
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                if matches!(self.current_tag(), Some("h1") | Some("h2") | Some("h3") | Some("h4") | Some("h5") | Some("h6")) {
+                    self.open_elements.pop();
+                }
+                self.insert_html_element(tag);
+                None
+            }
+            "pre" | "listing" => {
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                self.insert_html_element(tag);
+                self.frameset_ok = false;
+                None
+            }
+            "form" => {
+                if self.form_element_id.is_none() {
+                    if self.has_element_in_button_scope("p") {
+                        self.close_p_element();
+                    }
+                    let id = self.insert_html_element(tag);
+                    self.form_element_id = Some(id);
+                }
+                None
+            }
             "li" => {
                 self.frameset_ok = false;
-                self.generate_implied_end_tags(Some("li"));
+                for &id in self.open_elements.iter().rev() {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                        if tag == "li" {
+                            self.pop_until("li");
+                            break;
+                        }
+                        if self.is_special_element(id) && !matches!(tag.as_str(), "address" | "div" | "p") {
+                            break;
+                        }
+                    }
+                }
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
                 self.insert_html_element(tag);
+                None
+            }
+            "dd" | "dt" => {
+                self.frameset_ok = false;
+                let mut to_pop = None;
+                for &id in self.open_elements.iter().rev() {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                        if tag == "dd" || tag == "dt" {
+                            to_pop = Some(tag.clone());
+                            break;
+                        }
+                        if self.is_special_element(id) && !matches!(tag.as_str(), "address" | "div" | "p") {
+                            break;
+                        }
+                    }
+                }
+                if let Some(tag_name) = to_pop {
+                    self.pop_until(&tag_name);
+                }
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                self.insert_html_element(tag);
+                None
+            }
+            "plaintext" => {
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                self.insert_html_element(tag);
+                self.tokenizer.set_raw_text_tag(Some("plaintext".to_string()));
+                None
+            }
+            "button" => {
+                if self.has_element_in_scope("button") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "nested button");
+                    self.handle_in_body_end_tag(EndTagToken { name: "button".to_string() });
+                    return self.handle_in_body_start_tag(tag);
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_html_element(tag);
+                self.frameset_ok = false;
                 None
             }
             "a" => {
                 if let Some(pos) = self.active_formatting_elements.iter().rposition(|e| matches!(e, ActiveFormattingEntry::Element(id) if matches!(self.arena[*id].data, InternalNodeData::Element { ref tag, .. } if tag == "a"))) {
+                    self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "nested anchor");
                     self.adoption_agency_algorithm("a");
-                    // Step 3 says remove it if still there? Usually AAA handles it.
+                    // Remove from open elements if it stayed there
+                    if let Some(id) = self.active_formatting_elements.get(pos).and_then(|e| match e { ActiveFormattingEntry::Element(id) => Some(*id), _ => None }) {
+                        self.open_elements.retain(|&oid| oid != id);
+                        self.active_formatting_elements.remove(pos);
+                    }
                 }
                 self.reconstruct_active_formatting_elements();
                 let id = self.insert_html_element(tag);
@@ -675,8 +877,26 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.active_formatting_elements.push(ActiveFormattingEntry::Element(id));
                 None
             }
+            "nobr" => {
+                self.reconstruct_active_formatting_elements();
+                if self.has_element_in_scope("nobr") {
+                    self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "nested nobr");
+                    self.adoption_agency_algorithm("nobr");
+                    self.reconstruct_active_formatting_elements();
+                }
+                let id = self.insert_html_element(tag);
+                self.active_formatting_elements.push(ActiveFormattingEntry::Element(id));
+                None
+            }
+            "applet" | "marquee" | "object" => {
+                self.reconstruct_active_formatting_elements();
+                self.insert_html_element(tag);
+                self.active_formatting_elements.push(ActiveFormattingEntry::Marker);
+                self.frameset_ok = false;
+                None
+            }
             "table" => {
-                if self.has_open_element("p") {
+                if !self.quirks_mode && self.has_element_in_button_scope("p") {
                     self.close_p_element();
                 }
                 self.insert_html_element(tag);
@@ -684,7 +904,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.insertion_mode = InsertionMode::InTable;
                 None
             }
-            "area" | "br" | "embed" | "img" | "input" | "keygen" | "wbr" => {
+            "area" | "br" | "embed" | "img" | "keygen" | "wbr" => {
                 self.reconstruct_active_formatting_elements();
                 self.insert_html_element(tag);
                 self.open_elements.pop();
@@ -692,7 +912,6 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             "input" => {
-                // Specific handling for type=hidden doesn't clear frameset_ok
                 self.reconstruct_active_formatting_elements();
                 let type_attr = tag.attributes.get("type").map(|s| s.to_lowercase());
                 self.insert_html_element(tag);
@@ -700,6 +919,50 @@ impl<'a> HtmlTreeBuilder<'a> {
                 if type_attr.as_deref() != Some("hidden") {
                     self.frameset_ok = false;
                 }
+                None
+            }
+            "hr" => {
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                self.insert_html_element(tag);
+                self.open_elements.pop();
+                self.frameset_ok = false;
+                None
+            }
+            "image" => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "saw <image> tag");
+                let mut new_tag = tag;
+                new_tag.name = "img".to_string();
+                self.handle_in_body_start_tag(new_tag)
+            }
+            "textarea" => {
+                self.insert_html_element(tag);
+                self.tokenizer.set_raw_text_tag(Some("textarea".to_string()));
+                self.original_insertion_mode = self.insertion_mode;
+                self.frameset_ok = false;
+                self.insertion_mode = InsertionMode::Text;
+                None
+            }
+            "xmp" => {
+                if self.has_element_in_button_scope("p") {
+                    self.close_p_element();
+                }
+                self.reconstruct_active_formatting_elements();
+                self.frameset_ok = false;
+                self.insert_html_element(tag);
+                self.tokenizer.set_raw_text_tag(Some("xmp".to_string()));
+                self.original_insertion_mode = self.insertion_mode;
+                self.insertion_mode = InsertionMode::Text;
+                None
+            }
+            "iframe" | "noembed" | "noscript" => {
+                self.frameset_ok = false;
+                let tag_name = tag.name.clone();
+                self.insert_html_element(tag);
+                self.tokenizer.set_raw_text_tag(Some(tag_name));
+                self.original_insertion_mode = self.insertion_mode;
+                self.insertion_mode = InsertionMode::Text;
                 None
             }
             "select" => {
@@ -714,6 +977,31 @@ impl<'a> HtmlTreeBuilder<'a> {
                 }
                 None
             }
+            "optgroup" | "option" => {
+                if self.current_tag() == Some("option") {
+                    self.open_elements.pop();
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_html_element(tag);
+                None
+            }
+            "rb" | "rt" | "rtc" | "rp" => {
+                if self.has_element_in_scope("ruby") {
+                    self.generate_implied_end_tags(None);
+                }
+                self.insert_html_element(tag);
+                None
+            }
+            "math" | "svg" => {
+                // Simplified foreign content
+                self.reconstruct_active_formatting_elements();
+                self.insert_html_element(tag);
+                None
+            }
+            "caption" | "col" | "colgroup" | "frame" | "head" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr" => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, format!("unexpected {} in InBody", tag.name));
+                None
+            }
             _ => {
                 self.reconstruct_active_formatting_elements();
                 self.insert_html_element(tag);
@@ -723,35 +1011,121 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn handle_in_body_end_tag(&mut self, tag: EndTagToken) -> Option<HtmlToken> {
-        match tag.name.as_str() {
+        match tag.name.as_ref() {
             "body" => {
+                if !self.has_element_in_scope("body") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </body> not in scope");
+                    return None;
+                }
+                // Check if there are other elements in scope than body/html
+                for &id in self.open_elements.iter().skip(2) {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                        if !matches!(tag.as_str(), "body" | "html") {
+                            self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </body> with open {} element", tag));
+                            break;
+                        }
+                    }
+                }
                 self.insertion_mode = InsertionMode::AfterBody;
                 None
             }
             "html" => {
+                if !self.has_element_in_scope("body") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </html> but <body> not in scope");
+                    return None;
+                }
+                for &id in self.open_elements.iter().skip(2) {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                        if !matches!(tag.as_str(), "body" | "html") {
+                            self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </html> with open {} element", tag));
+                            break;
+                        }
+                    }
+                }
                 self.insertion_mode = InsertionMode::AfterBody;
                 Some(HtmlToken::EndTag(tag))
             }
-            "div" | "p" | "article" | "aside" | "main" | "nav" | "section" | "address" | "blockquote" | "center" | "details" | "dialog" | "dir" | "dl" | "fieldset" | "figcaption" | "figure" | "footer" | "header" | "hgroup" | "menu" | "ol" | "ul" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                if !self.has_open_element(&tag.name) {
-                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> ignored", tag.name));
+            "div" | "article" | "aside" | "blockquote" | "center" | "details" | "dialog" | "dir" | "dl" | "fieldset" | "figcaption" | "figure" | "footer" | "header" | "hgroup" | "main" | "menu" | "nav" | "ol" | "section" | "ul" => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
                     return None;
                 }
-                self.generate_implied_end_tags(Some(&tag.name));
-                self.pop_until(&tag.name);
+                self.generate_implied_end_tags(Some(tag.name.as_str()));
+                self.pop_until(tag.name.as_str());
+                None
+            }
+            "p" => {
+                if !self.has_element_in_button_scope("p") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </p> not in button scope");
+                    self.handle_in_body_start_tag(StartTagToken { name: "p".to_string(), attributes: HashMap::new(), self_closing: false });
+                    return self.handle_in_body_end_tag(tag);
+                }
+                self.close_p_element();
                 None
             }
             "li" => {
+                if !self.has_element_in_list_item_scope("li") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </li> not in scope");
+                    return None;
+                }
                 self.generate_implied_end_tags(Some("li"));
                 self.pop_until("li");
                 None
             }
-            "a" | "b" | "big" | "code" | "em" | "font" | "i" | "s" | "small" | "strike" | "strong" | "tt" | "u" => {
-                self.adoption_agency_algorithm(&tag.name);
+            "dd" | "dt" => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
+                    return None;
+                }
+                self.generate_implied_end_tags(Some(tag.name.as_str()));
+                self.pop_until(tag.name.as_str());
+                None
+            }
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                if !self.has_element_in_scope("h1") && !self.has_element_in_scope("h2") && !self.has_element_in_scope("h3") && !self.has_element_in_scope("h4") && !self.has_element_in_scope("h5") && !self.has_element_in_scope("h6") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
+                    return None;
+                }
+                self.generate_implied_end_tags(Some(tag.name.as_str()));
+                self.pop_until(tag.name.as_str());
+                None
+            }
+            "a" | "b" | "big" | "code" | "em" | "font" | "i" | "nobr" | "s" | "small" | "strike" | "strong" | "tt" | "u" => {
+                self.adoption_agency_algorithm(tag.name.as_str());
+                None
+            }
+            "applet" | "marquee" | "object" => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
+                    return None;
+                }
+                self.generate_implied_end_tags(Some(tag.name.as_str()));
+                self.pop_until(tag.name.as_str());
+                self.clear_formatting_to_last_marker();
+                None
+            }
+            "br" => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "saw end tag </br>");
+                self.handle_in_body_start_tag(StartTagToken { name: "br".to_string(), attributes: HashMap::new(), self_closing: false });
                 None
             }
             _ => {
-                self.pop_until(&tag.name);
+                // Poppy search logic
+                for i in (0..self.open_elements.len()).rev() {
+                    let id = self.open_elements[i];
+                    if let InternalNodeData::Element { tag: ref element_tag, .. } = self.arena[id].data {
+                        if element_tag == &tag.name {
+                            let tag_to_generate = element_tag.clone();
+                            self.generate_implied_end_tags(Some(&tag_to_generate));
+                            self.open_elements.truncate(i);
+                            break;
+                        }
+                        if self.is_special_element(id) {
+                            self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}>", tag.name));
+                            break;
+                        }
+                    }
+                }
                 None
             }
         }
@@ -765,9 +1139,10 @@ impl<'a> HtmlTreeBuilder<'a> {
     // --- Adoption Agency Algorithm (Full) ---
 
     fn adoption_agency_algorithm(&mut self, subject: &str) {
-        // Step 1: Loop
+        // WHATWG 13.2.6.4.7
+        // Step 1: Loop 8 times
         for _ in 0..8 {
-            // Step 2
+            // Step 2: Find formatting element
             let formatting_element_pos = self.active_formatting_elements.iter().rposition(|e| {
                 match e {
                     ActiveFormattingEntry::Element(id) => {
@@ -790,7 +1165,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 _ => unreachable!(),
             };
 
-            // Step 3
+            // Step 3: Find in open stack
             let open_pos = self.open_elements.iter().position(|&id| id == formatting_element_id);
             if open_pos.is_none() {
                 self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "formatting element not in open stack");
@@ -799,10 +1174,18 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
             let open_pos = open_pos.unwrap();
 
-            // Step 4
-            // (Is it in scope? Simplified check: if it's in open stack it's usually in scope)
+            // Step 4: Check if in scope
+            if !self.has_element_in_scope_with_id(formatting_element_id) {
+                self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "formatting element not in scope");
+                return;
+            }
 
-            // Step 5: Find furthest block
+            // Step 5: Check if node is formatting element
+            if self.open_elements[open_pos] != formatting_element_id {
+                self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "node is not formatting element");
+            }
+
+            // Step 6: Find furthest block
             let mut furthest_block_pos = None;
             for i in open_pos + 1..self.open_elements.len() {
                 let id = self.open_elements[i];
@@ -812,36 +1195,39 @@ impl<'a> HtmlTreeBuilder<'a> {
                 }
             }
 
-            // Step 6: If no furthest block
+            // Step 7: If no furthest block, pop until formatting element and return
             let Some(fb_pos) = furthest_block_pos else {
-                self.open_elements.truncate(open_pos);
+                while let Some(id) = self.open_elements.pop() {
+                    if id == formatting_element_id { break; }
+                }
                 self.active_formatting_elements.remove(f_pos);
                 return;
             };
 
-            // Step 7: Common ancestor
+            // Step 8: Common ancestor
             let common_ancestor_id = self.open_elements[open_pos - 1];
 
-            // Step 8: Bookmark
-            let bookmark = f_pos;
+            // Step 9: Bookmark
+            let mut bookmark = f_pos;
 
-            // Step 9: Inner loop
+            // Step 10: Inner loop
             let mut node_pos = fb_pos;
             let mut last_node_id = self.open_elements[fb_pos];
             
-            for _ in 0..3 {
+            for _j in 0..3 {
                 node_pos -= 1;
                 let node_id = self.open_elements[node_pos];
 
-                // Check if node is in formatting elements
+                // If node is not in active formatting elements, remove from stack and continue
                 let f_entry_pos = self.active_formatting_elements.iter().position(|e| matches!(e, ActiveFormattingEntry::Element(id) if *id == node_id));
                 
                 if f_entry_pos.is_none() {
                     self.open_elements.remove(node_pos);
+                    // Adjust node_pos/fb_pos as stack shifted
                     continue;
                 }
 
-                // If node is formatting element
+                // If node is formatting element, break inner loop
                 if node_id == formatting_element_id {
                     break;
                 }
@@ -853,39 +1239,39 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.active_formatting_elements[f_e_pos] = ActiveFormattingEntry::Element(cloned_id);
                 self.open_elements[node_pos] = cloned_id;
                 
-                // Reparent
                 let current_node_id = cloned_id;
-                // Move last_node_id to be a child of current_node_id
+                if last_node_id == self.open_elements[fb_pos] {
+                    bookmark = f_e_pos + 1;
+                }
+                
                 self.append_node(current_node_id, last_node_id);
                 last_node_id = current_node_id;
             }
 
-            // Step 10: Reparent last node to common ancestor
+            // Step 11: Reparent last node to common ancestor
             self.insert_at_appropriate_place(last_node_id, Some(common_ancestor_id));
 
-            // Step 11: Clone formatting element
+            // Step 12: Clone formatting element
             let new_formatting_id = self.clone_element(formatting_element_id);
             
-            // Step 12: Move children of fb into new formatting element
+            // Step 13: Move children of fb into new formatting element
             let fb_id = self.open_elements[fb_pos];
             let fb_children = self.arena[fb_id].children.clone();
             for child_id in fb_children {
                 self.append_node(new_formatting_id, child_id);
             }
 
-            // Step 13: Append new formatting element to furthest block
+            // Step 14: Append new formatting element to furthest block
             self.append_node(fb_id, new_formatting_id);
 
-            // Step 14: Remove old formatting element from active formatting elements
+            // Step 15: Remove old formatting element from active formatting elements, insert new
             self.active_formatting_elements.remove(f_pos);
-            // Insert bookmark
-            self.active_formatting_elements.insert(bookmark, ActiveFormattingEntry::Element(new_formatting_id));
+            self.active_formatting_elements.insert(bookmark.min(self.active_formatting_elements.len()), ActiveFormattingEntry::Element(new_formatting_id));
 
-            // Step 15: Remove formatting element from stack of open elements
-            self.open_elements.remove(open_pos);
-            // Insert after fb
-            let new_fb_pos = self.open_elements.iter().position(|&id| id == fb_id).unwrap();
-            self.open_elements.insert(new_fb_pos + 1, new_formatting_id);
+            // Step 16: Remove formatting element from stack, insert new after fb
+            self.open_elements.retain(|&id| id != formatting_element_id);
+            let fb_stack_pos = self.open_elements.iter().position(|&id| id == fb_id).unwrap();
+            self.open_elements.insert(fb_stack_pos + 1, new_formatting_id);
         }
     }
 
@@ -1057,6 +1443,18 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_in_select(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
+            HtmlToken::Character(text) => {
+                self.insert_text(text.data);
+                None
+            }
+            HtmlToken::Comment(comment) => {
+                let id = self.create_node(InternalNodeData::Comment(comment.data));
+                self.append_node(self.current_node(), id);
+                None
+            }
+            HtmlToken::StartTag(tag) if tag.name == "html" => {
+                self.handle_in_body(HtmlToken::StartTag(tag))
+            }
             HtmlToken::StartTag(tag) if tag.name == "option" => {
                 if self.current_tag() == Some("option") {
                     self.open_elements.pop();
@@ -1064,13 +1462,61 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.insert_html_element(tag);
                 None
             }
+            HtmlToken::StartTag(tag) if tag.name == "optgroup" => {
+                if self.current_tag() == Some("option") {
+                    self.open_elements.pop();
+                }
+                if self.current_tag() == Some("optgroup") {
+                    self.open_elements.pop();
+                }
+                self.insert_html_element(tag);
+                None
+            }
+            HtmlToken::EndTag(tag) if tag.name == "optgroup" => {
+                if self.current_tag() == Some("option") && self.open_elements.len() >= 2 && matches!(self.arena[self.open_elements[self.open_elements.len()-2]].data, InternalNodeData::Element { ref tag, .. } if tag == "optgroup") {
+                    self.open_elements.pop();
+                }
+                if self.current_tag() == Some("optgroup") {
+                    self.open_elements.pop();
+                } else {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </optgroup> ignored");
+                }
+                None
+            }
+            HtmlToken::EndTag(tag) if tag.name == "option" => {
+                if self.current_tag() == Some("option") {
+                    self.open_elements.pop();
+                } else {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </option> ignored");
+                }
+                None
+            }
             HtmlToken::EndTag(tag) if tag.name == "select" => {
+                if !self.has_element_in_select_scope("select") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </select> not in scope");
+                    return None;
+                }
                 self.pop_until("select");
                 self.reset_insertion_mode_appropriately();
                 None
             }
-            other => {
-                // Ignore or handle basic text
+            HtmlToken::StartTag(tag) if tag.name == "select" => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected <select> in InSelect");
+                if !self.has_element_in_select_scope("select") {
+                    return None;
+                }
+                self.pop_until("select");
+                self.reset_insertion_mode_appropriately();
+                None
+            }
+            HtmlToken::Eof => {
+                if self.current_tag() != Some("html") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEof, "EOF in select");
+                }
+                None
+            }
+            _ => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token in InSelect");
                 None
             }
         }
@@ -1111,7 +1557,73 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn reset_insertion_mode_appropriately(&mut self) {
-        // Simplified reset
+        // WHATWG 13.2.6.4.1: Reset the insertion mode appropriately
+        let mut last = false;
+        for i in (0..self.open_elements.len()).rev() {
+            let id = self.open_elements[i];
+            match &self.arena[id].data {
+                InternalNodeData::Element { tag, .. } => {
+                    if i == 0 { last = true; }
+                    match tag.as_str() {
+                        "select" => {
+                            self.insertion_mode = InsertionMode::InSelect;
+                            return;
+                        }
+                        "td" | "th" if !last => {
+                            self.insertion_mode = InsertionMode::InCell;
+                            return;
+                        }
+                        "tr" => {
+                            self.insertion_mode = InsertionMode::InRow;
+                            return;
+                        }
+                        "tbody" | "thead" | "tfoot" => {
+                            self.insertion_mode = InsertionMode::InTableBody;
+                            return;
+                        }
+                        "caption" => {
+                            self.insertion_mode = InsertionMode::InCaption;
+                            return;
+                        }
+                        "colgroup" => {
+                            self.insertion_mode = InsertionMode::InColumnGroup;
+                            return;
+                        }
+                        "table" => {
+                            self.insertion_mode = InsertionMode::InTable;
+                            return;
+                        }
+                        "head" if !last => {
+                            self.insertion_mode = InsertionMode::InHead;
+                            return;
+                        }
+                        "body" => {
+                            self.insertion_mode = InsertionMode::InBody;
+                            return;
+                        }
+                        "frameset" => {
+                            self.insertion_mode = InsertionMode::InFrameset;
+                            return;
+                        }
+                        "html" => {
+                            if self.head_element_id.is_none() {
+                                self.insertion_mode = InsertionMode::BeforeHead;
+                            } else {
+                                self.insertion_mode = InsertionMode::AfterHead;
+                            }
+                            return;
+                        }
+                        _ => {
+                            if last {
+                                self.insertion_mode = InsertionMode::InBody;
+                                return;
+                            }
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
         self.insertion_mode = InsertionMode::InBody;
     }
 
@@ -1175,14 +1687,34 @@ pub fn build_document_with_errors(input: &str) -> TreeBuildOutput {
 }
 
 pub fn build_fragment(input: &str) -> Vec<HtmlNode> {
-    // Simplified fragment for now
-    let builder = HtmlTreeBuilder::new(input);
-    builder.run().document.children
+    let output = HtmlTreeBuilder::new(input).run();
+    extract_fragment_children(&output.document.children)
 }
 
 pub fn build_fragment_with_errors(input: &str) -> TreeBuildOutput {
-    let builder = HtmlTreeBuilder::new(input);
-    builder.run()
+    let mut output = HtmlTreeBuilder::new(input).run();
+    output.document.children = extract_fragment_children(&output.document.children);
+    output
+}
+
+fn extract_fragment_children(document_children: &[HtmlNode]) -> Vec<HtmlNode> {
+    for node in document_children {
+        if let HtmlNode::Element(html) = node {
+            if html.tag != "html" {
+                continue;
+            }
+
+            for html_child in &html.children {
+                if let HtmlNode::Element(body) = html_child {
+                    if body.tag == "body" {
+                        return body.children.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    document_children.to_vec()
 }
 
 #[cfg(test)]
@@ -1196,30 +1728,33 @@ mod tests {
         let html = "<p><b><i>x</b>y</i></p>";
         let doc = build_document(html);
         // HTML Spec AAA expectation: <p><b><i>x</i></b><i>y</i></p>
-        
-        let p = &doc.children[0]; // In our arena builder, html nodes are flushed to children.
-        if let HtmlNode::Element(el_p) = p {
-            assert_eq!(el_p.tag, "p");
-            // Element 0: <b><i>x</i></b>
-            let b = &el_p.children[0];
-            if let HtmlNode::Element(el_b) = b {
-                assert_eq!(el_b.tag, "b");
-                let i = &el_b.children[0];
-                if let HtmlNode::Element(el_i) = i {
-                    assert_eq!(el_i.tag, "i");
-                    assert_eq!(el_i.children[0], HtmlNode::Text("x".to_string()));
-                } else { panic!("Expected <i>"); }
-            } else { panic!("Expected <b>"); }
 
-            // Element 1: <i>y</i>
-            let i2 = &el_p.children[1];
-            if let HtmlNode::Element(el_i2) = i2 {
-                assert_eq!(el_i2.tag, "i");
-                assert_eq!(el_i2.children[0], HtmlNode::Text("y".to_string()));
-            } else { panic!("Expected second <i>"); }
-        } else {
-            panic!("Expected <p> at root children, found {:?}", p);
-        }
+        let HtmlNode::Element(html) = &doc.children[0] else {
+            panic!("expected html element");
+        };
+        let HtmlNode::Element(body) = &html.children[1] else {
+            panic!("expected body element");
+        };
+        let HtmlNode::Element(el_p) = &body.children[0] else {
+            panic!("expected p element");
+        };
+
+        assert_eq!(el_p.tag, "p");
+        let HtmlNode::Element(el_b) = &el_p.children[0] else {
+            panic!("expected b");
+        };
+        assert_eq!(el_b.tag, "b");
+        let HtmlNode::Element(el_i) = &el_b.children[0] else {
+            panic!("expected i");
+        };
+        assert_eq!(el_i.tag, "i");
+        assert_eq!(el_i.children[0], HtmlNode::Text("x".to_string()));
+
+        let HtmlNode::Element(el_i2) = &el_p.children[1] else {
+            panic!("expected second i");
+        };
+        assert_eq!(el_i2.tag, "i");
+        assert_eq!(el_i2.children[0], HtmlNode::Text("y".to_string()));
     }
 
     #[test]
@@ -1227,10 +1762,19 @@ mod tests {
         let html = "<table>hello<tr><td>cell</td></tr></table>";
         let doc = build_document(html);
         // Expectation: "hello" is foster-parented before the table
-        assert_eq!(doc.children.len(), 2);
-        assert_eq!(doc.children[0], HtmlNode::Text("hello".to_string()));
-        if let HtmlNode::Element(el_table) = &doc.children[1] {
-            assert_eq!(el_table.tag, "table");
-        } else { panic!("Expected table"); }
+
+        let HtmlNode::Element(html) = &doc.children[0] else {
+            panic!("expected html element");
+        };
+        let HtmlNode::Element(body) = &html.children[1] else {
+            panic!("expected body element");
+        };
+
+        assert_eq!(body.children.len(), 2);
+        assert_eq!(body.children[0], HtmlNode::Text("hello".to_string()));
+        let HtmlNode::Element(el_table) = &body.children[1] else {
+            panic!("expected table element");
+        };
+        assert_eq!(el_table.tag, "table");
     }
 }
