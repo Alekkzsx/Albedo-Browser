@@ -1,7 +1,17 @@
 #![cfg(test)]
 
 use crate::engine::dom::{AceDOM, AceNodeType};
-use kuchiki::traits::TendrilSink;
+
+fn find_first_element_by_tag(dom: &AceDOM, tag: &str) -> usize {
+    dom.nodes
+        .iter()
+        .enumerate()
+        .find_map(|(idx, node)| match &node.node_type {
+            AceNodeType::Element(el) if el.tag == tag => Some(idx),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("element <{}> not found", tag))
+}
 
 #[test]
 fn test_acedom_parsing() {
@@ -62,4 +72,41 @@ fn test_css_parsing() {
         2,
         "Deveria ter extraido 2 regras do CSS"
     );
+}
+
+#[test]
+fn test_inner_html_respects_textarea_context() {
+    let mut dom = AceDOM::from_html("<textarea></textarea>");
+    let textarea_idx = find_first_element_by_tag(&dom, "textarea");
+
+    dom.set_inner_html_from_html(textarea_idx, "A &lt; B");
+    assert_eq!(dom.serialize_subtree_text(textarea_idx), "A < B");
+}
+
+#[test]
+fn test_inner_html_respects_table_context() {
+    let mut dom = AceDOM::from_html("<table></table>");
+    let table_idx = find_first_element_by_tag(&dom, "table");
+
+    dom.set_inner_html_from_html(table_idx, "<tr><td>cell</td></tr>");
+    let serialized = dom.serialize_subtree_html(table_idx);
+
+    assert!(serialized.contains("<tr>"), "expected table row in: {}", serialized);
+    assert!(serialized.contains("cell"), "expected cell text in: {}", serialized);
+}
+
+#[test]
+fn test_import_html_fragment_uses_parent_context() {
+    let mut dom = AceDOM::from_html("<select></select>");
+    let select_idx = find_first_element_by_tag(&dom, "select");
+
+    let imported = dom.import_html_fragment("<option>one</option>", Some(select_idx));
+    assert_eq!(imported.len(), 1);
+
+    let first = imported[0];
+    let node = dom.get_node(first).expect("imported node must exist");
+    match &node.node_type {
+        AceNodeType::Element(el) => assert_eq!(el.tag, "option"),
+        _ => panic!("expected imported fragment root to be <option>"),
+    }
 }

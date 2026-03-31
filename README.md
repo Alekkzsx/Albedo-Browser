@@ -1,41 +1,48 @@
 # 🌑 Albedo Browser
-> "Velocidade da luz em qualquer hardware."
+> "Velocidade da luz em hardware comum. Soberania tecnológica em cada linha de código."
 
 [![Built with Rust](https://img.shields.io/badge/Built_with-Rust-orange?logo=rust)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**Albedo** é uma reação contra o inchaço da web moderna. Um navegador real desenhado para a filosofia *minimalista* e *brutalista*, focado em eficiência térmica e baixo uso de memória RAM. Ao contrário de outros navegadores "leves" que usam WebViews do sistema, o Albedo utiliza sua própria engine: a **ACE (Albedo Core Engine)**.
+**Albedo** não é apenas um navegador; é um manifesto técnico contra a obesidade da web moderna. Desenhado sob a filosofia *minimalista* e *independente*, o Albedo rejeita a hegemonia do motor Blink/Chromium para construir seu próprio caminho: a **ACE (Albedo Core Engine)**.
 
-## ⚡ Por que Albedo?
-A maioria dos navegadores hoje são Sistemas Operacionais disfarçados. Eles consomem 1GB de RAM apenas para exibir texto. O Albedo é diferente:
-- **ACE Engine:** Uma engine de renderização customizada escrita do zero em Rust para máxima performance.
-- **Networking Paralelo:** Carregamento assíncrono de recursos (HTML, CSS, imagens) para uma experiência de navegação sem travamentos.
-- **QuickJS Integration:** Um interpretador de JavaScript leve e extremamente rápido integrado ao DOM.
-- **Interface Neural:** GUI feita em **Slint**, leve como sistemas embarcados e acelerada por hardware.
-- **Privacy First:** Sem telemetria, sem processos fantasmas e focado em total transparência.
+## ⚡ A Filosofia Albedo
+Hoje, um navegador consome 1GB de RAM para exibir uma página de texto. O Albedo quebra essa norma através de:
+- **ACE Engine:** Motor de renderização **100% nativo** escrito em Rust, focado em performance pura.
+- **Independência Total:** Estamos eliminando dependências externas críticas (como `html5ever` e `kuchiki`) em favor de implementações proprietárias e otimizadas.
+- **Zero Bloat:** Sem telemetria, sem processos fantasmas e sem o lixo de rastreamento da web comercial.
+- **Estética Brutalista:** Interface neural feita em **Slint**, acelerada por hardware e leve o suficiente para sistemas embarcados.
 
-## 🛠️ Tech Stack (Albedo Core Engine - ACE)
-- **Linguagem:** Rust 🦀
-- **Parsing HTML:** Kuchiki (HTML5ever)
-- **Motor de Layout:** Taffy (Flexbox & Grid nativo)
-- **Scripting:** QuickJS via `rquickjs`
-- **Networking:** Async Resource Loader (Tokio + Reqwest)
-- **UI Toolkit:** Slint (Acelerado por GPU)
+## 🏗️ Arquitetura ACE (Albedo Core Engine)
+A engine ACE é composta por subsistemas modulares projetados para alta concorrência:
+- **ACE-HTML (Parser):** Motor de parsing HTML5 proprietário, 100% aderente ao spec WHATWG, com suporte nativo a AAA (Adoption Agency Algorithm).
+- **ACE-Net:** Camada de networking assíncrona ultra-rápida baseada em Tokio, otimizada para carregamento paralelo de recursos.
+- **AlbedoJIT (Em desenvolvimento):** Motor JavaScript/Jasm nativo para processamento de scripts de alta performance.
+- **DOM Bridge:** Integração direta e sem overhead entre o motor de script e a árvore DOM do Albedo.
 
-## 🏗️ Arquitetura
-O Albedo utiliza um modelo de **MPSC Channels** e **Shared State** para processar a web de forma assíncrona. Enquanto imagens e estilos são baixados em background, a UI permanece responsiva a 60 FPS.
+## 🛠️ Tech Stack Atual
+- **Core:** Rust 🦀 (The Only Choice)
+- **Networking:** Custom Async Resource Loader (Tokio-based)
+- **Scripting:** QuickJS Integration (preparando migração para AlbedoJIT)
+- **UI:** Slint GPU-Accelerated Framework
+- **Layout:** Taffy (preparando migração para ACE-Layout nativo)
 
-## 🚀 Como Rodar (Desenvolvimento)
-1. Certifique-se de ter o Rust instalado (`rustup`).
-2. Clone o repositório.
-3. Execute o comando:
+## 🚀 Como Rodar
 ```bash
-cargo run
+# Clone o repositório
+git clone https://github.com/Alekkzsx/Albedo-Browser
+
+# Execute o motor
+cargo run --release
 ```
 
-## 🗺️ Roadmap
-- [x] Engine ACE básica (Layout + Render)
-- [x] Integração JS-DOM (QuickJS)
-- [x] Networking Assíncrono e Paralelo
-- [ ] Suporte completo a CSS Grid/Flexbox avançado
-- [ ] Sistema de Abas persistente
-- [ ] API de Extensões via Rust/JS
+## 🗺️ O Caminho para o 1.0 (Zero-Departure Roadmap)
+- [x] **ACE-HTML:** Parser HTML5 nativo e independente.
+- [x] **DOM Core:** Árvore de nós proprietária e manuseável.
+- [x] **JS Integration:** Suporte funcional a scripts via QuickJS.
+- [ ] **ACE-Layout:** Motor de layout (Flexbox/Grid) 100% Albedo.
+- [ ] **AlbedoJIT:** Motor JavaScript de produção próprio.
+- [ ] **ACE-UI:** Interface final sem dependências de frameworks externos.
+
+---
+*"O Albedo é a nossa resposta técnica à pergunta: por que a internet ficou tão pesada?"*

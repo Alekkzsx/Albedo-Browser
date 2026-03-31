@@ -2,7 +2,7 @@ use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
 #[cfg(feature = "ace_html_parser")]
 use crate::ace::html::build_document_with_errors;
 use kuchiki::NodeRef;
-#[cfg(any(not(feature = "ace_html_parser"), feature = "legacy_html_fallback"))]
+#[cfg(not(feature = "ace_html_parser"))]
 use kuchiki::traits::TendrilSink;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -143,6 +143,7 @@ pub enum AceNodeType {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AceElement {
     pub tag: String,
+    pub namespace: crate::ace::html::Namespace,
     pub attributes: HashMap<String, String>,
 }
 
@@ -202,20 +203,6 @@ impl AceDOM {
         #[cfg(feature = "ace_html_parser")]
         {
             let parsed = build_document_with_errors(html);
-            let should_fallback =
-                should_fallback_to_legacy(html, parsed.errors.len(), &parsed.document);
-
-            if should_fallback {
-                #[cfg(feature = "legacy_html_fallback")]
-                {
-                    eprintln!(
-                        "[AceDOM] Falling back to legacy parser due to parser diagnostics."
-                    );
-                    let document = kuchiki::parse_html().one(html);
-                    return Self::from_kuchiki(document);
-                }
-            }
-
             return Self::from_html_document(&parsed.document);
         }
 
@@ -264,7 +251,11 @@ impl AceDOM {
                 attributes.insert(curr_name.local.to_string(), curr_val.value.to_string());
             }
 
-            AceNodeType::Element(AceElement { tag, attributes })
+            AceNodeType::Element(AceElement { 
+                tag, 
+                namespace: crate::ace::html::Namespace::Html,
+                attributes 
+            })
         } else if let Some(text) = kuchiki_node.as_text() {
             AceNodeType::Text(std::sync::Arc::from(text.borrow().as_str()))
         } else if let Some(comment) = kuchiki_node.as_comment() {
@@ -326,6 +317,7 @@ impl AceDOM {
         let node_type = match html_node {
             HtmlNode::Element(element) => AceNodeType::Element(AceElement {
                 tag: element.tag.clone(),
+                namespace: element.namespace,
                 attributes: element.attributes.clone(),
             }),
             HtmlNode::Text(text) => AceNodeType::Text(std::sync::Arc::from(text.as_str())),
@@ -727,12 +719,27 @@ impl AceDOM {
     }
 
     pub fn set_inner_html_from_html(&mut self, parent_idx: usize, html: &str) {
-        let fragment = parse_fragment(html);
+        let context = if let Some(node) = self.get_node(parent_idx) {
+            if let AceNodeType::Element(el) = &node.node_type {
+                Some(el.tag.as_str())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let fragment = parse_fragment(html, context);
         self.set_inner_html_from_nodes(parent_idx, &fragment);
     }
 
     pub fn import_html_fragment(&mut self, html: &str, parent_idx: Option<usize>) -> Vec<usize> {
-        let fragment = parse_fragment(html);
+        let context = parent_idx
+            .and_then(|idx| self.get_node(idx))
+            .and_then(|node| match &node.node_type {
+                AceNodeType::Element(el) => Some(el.tag.clone()),
+                _ => None,
+            });
+        let fragment = parse_fragment(html, context.as_deref());
         let mut imported = Vec::new();
         for node in &fragment {
             if let Some(idx) = Self::convert_html_node_recursive(node, &mut self.nodes, parent_idx)
@@ -1062,14 +1069,21 @@ impl AceDOM {
     }
 
     pub fn insert_adjacent_html(&mut self, target_idx: usize, position: &str, html: &str) {
-        let imported_indices = self.import_html_fragment(html, None);
+        let insertion_position = position.to_lowercase();
+        let parse_context_parent = match insertion_position.as_str() {
+            "beforebegin" | "afterend" => self.get_node(target_idx).and_then(|n| n.parent),
+            "afterbegin" | "beforeend" => Some(target_idx),
+            _ => None,
+        };
+
+        let imported_indices = self.import_html_fragment(html, parse_context_parent);
 
         if imported_indices.is_empty() {
             return;
         }
 
         // Determinar onde inserir baseado na posição
-        match position.to_lowercase().as_str() {
+        match insertion_position.as_str() {
             "beforebegin" => {
                 let parent = self.get_node(target_idx).and_then(|n| n.parent);
                 if let Some(p_idx) = parent {
@@ -1105,19 +1119,3 @@ impl AceDOM {
     }
 }
 
-#[cfg(feature = "ace_html_parser")]
-fn should_fallback_to_legacy(html: &str, error_count: usize, document: &HtmlDocument) -> bool {
-    #[cfg(feature = "legacy_html_fallback")]
-    {
-        let html_len = html.chars().count().max(1);
-        let max_error_budget = (html_len / 16).max(24);
-        let has_document_root = !document.children.is_empty();
-        !has_document_root || error_count > max_error_budget
-    }
-
-    #[cfg(not(feature = "legacy_html_fallback"))]
-    {
-        let _ = (html, error_count, document);
-        false
-    }
-}

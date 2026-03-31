@@ -13,9 +13,8 @@ name = "albedo"
 path = "src/lib.rs"
 
 [features]
-default = ["ace_html_parser", "legacy_html_fallback"]
+default = ["ace_html_parser"]
 ace_html_parser = []
-legacy_html_fallback = []
 
 [dependencies]
 slint = { version = "1.9", features = ["raw-window-handle-06"] }

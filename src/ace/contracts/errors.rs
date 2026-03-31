@@ -16,7 +16,17 @@ pub enum AlbedoError {
     Url(String),
     Network(String),
     Jit(String),
+    Html(HtmlError),
     Internal(String),
+}
+
+/// Detalhes de erros de parsing HTML5 (Conformidade).
+#[derive(Debug, Clone, PartialEq)]
+pub struct HtmlError {
+    pub message: String,
+    pub line: usize,
+    pub col: usize,
+    pub code: &'static str,
 }
 
 /// Alias unificado para resultados na engine.
@@ -29,6 +39,11 @@ impl std::fmt::Display for AlbedoError {
             AlbedoError::Url(e) => write!(f, "URL Error: {}", e),
             AlbedoError::Network(e) => write!(f, "Network Error: {}", e),
             AlbedoError::Jit(e) => write!(f, "JIT Error: {}", e),
+            AlbedoError::Html(e) => write!(
+                f,
+                "HTML Parse Error [{}] at {}:{}: {}",
+                e.code, e.line, e.col, e.message
+            ),
             AlbedoError::Internal(e) => write!(f, "Internal Engine Error: {}", e),
         }
     }
