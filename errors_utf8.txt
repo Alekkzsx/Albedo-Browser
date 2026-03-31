@@ -1,0 +1,47 @@
+﻿cargo :    Compiling rquickjs-sys v0.6.2
+No linha:1 caractere:1
++ cargo check --lib --features ace_html_parser > errors.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling rquickjs-sys v0.6.2:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Checking glow v0.16.0
+    Checking codespan-reporting v0.11.1
+    Checking bit-set v0.8.0
+    Checking want v0.3.1
+    Checking event-listener v5.4.1
+    Checking h2 v0.4.13
+    Checking futf v0.1.5
+    Checking glutin v0.32.3
+   Compiling markup5ever v0.10.1
+    Checking icu_normalizer v2.1.1
+    Checking rand v0.9.2
+error: failed to run custom build command for `rquickjs-sys v0.6.2`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\24802449\Documents\Github\Albedo-Browser\target\debug\build\rquickjs-sys-
+ed052be756f0c872\build-script-build` (exit code: 101)
+  --- stdout
+  cargo:rerun-if-changed=build.rs
+  cargo:rerun-if-env-changed=CARGO_FEATURE_BINDGEN
+  cargo:rerun-if-env-changed=CARGO_FEATURE_UPDATE_BINDINGS
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_BYTECODE
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_GC
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_GC_FREE
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_FREE
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_LEAKS
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_MEM
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_OBJECTS
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_ATOMS
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_SHAPES
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_MODULE_RESOLVE
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_PROMISE
+  cargo:rerun-if-env-changed=CARGO_FEATURE_DUMP_READ_OBJECT
+
+  --- stderr
+
+  thread 'main' (4132) panicked at 
+C:\Users\24802449\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rquickjs-sys-0.6.2\build.rs:253:10:
+  Unable to execute patch, you may need to install it: {}: Error { kind: NotFound, message: "program not found" }
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+warning: build failed, waiting for other jobs to finish...

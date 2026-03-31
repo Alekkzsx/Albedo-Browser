@@ -215,6 +215,7 @@ impl TagTokenBuilder {
         self.current_attr_value.push(ch);
     }
 
+    #[allow(dead_code)]
     fn push_attribute_value_str(&mut self, value: &str) {
         self.current_attr_value.push_str(value);
     }
@@ -608,7 +609,8 @@ impl<'a> HtmlLexer<'a> {
                     "unexpected '?' after '<'",
                 );
                 self.current_comment.clear();
-                self.state = LexerState::BogusComment;
+                // Spec §13.2.5.6: reconsumir '?' em BogusComment para incluí-lo no dado do comentário
+                self.reconsume_in(LexerState::BogusComment);
             }
             Some(other) => {
                 self.parse_error(
@@ -2154,7 +2156,7 @@ impl<'a> HtmlLexer<'a> {
     fn state_raw_end_tag_name_common(
         &mut self,
         ch: Option<char>,
-        continue_state: LexerState,
+        _continue_state: LexerState,
         fallback_state: LexerState,
     ) {
         match ch {
@@ -2579,6 +2581,7 @@ impl<'a> HtmlLexer<'a> {
         Some(ch)
     }
 
+    #[allow(dead_code)]
     fn peek_char(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }

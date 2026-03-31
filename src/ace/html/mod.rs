@@ -1,9 +1,12 @@
+#![deny(warnings)]
+
 use std::collections::HashMap;
 
 pub mod lexer;
 pub mod entities;
 pub mod tokenizer;
 pub mod tree_builder;
+pub mod tests;
 
 pub use lexer::{
     DoctypeToken as RawDoctypeToken, HtmlLexer, HtmlToken as RawHtmlToken,
@@ -32,9 +35,23 @@ pub enum HtmlNode {
     Comment(String),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Namespace {
+    Html,
+    Svg,
+    MathMl,
+}
+
+impl Default for Namespace {
+    fn default() -> Self {
+        Self::Html
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlElement {
     pub tag: String,
+    pub namespace: Namespace,
     pub attributes: HashMap<String, String>,
     pub children: Vec<HtmlNode>,
 }
@@ -43,6 +60,16 @@ impl HtmlElement {
     pub fn new(tag: impl Into<String>) -> Self {
         Self {
             tag: tag.into(),
+            namespace: Namespace::Html,
+            attributes: HashMap::new(),
+            children: Vec::new(),
+        }
+    }
+
+    pub fn with_namespace(tag: impl Into<String>, ns: Namespace) -> Self {
+        Self {
+            tag: tag.into(),
+            namespace: ns,
             attributes: HashMap::new(),
             children: Vec::new(),
         }
@@ -53,47 +80,8 @@ pub fn parse_document(input: &str) -> HtmlDocument {
     build_document(input)
 }
 
-pub fn parse_fragment(input: &str) -> Vec<HtmlNode> {
-    build_fragment(input)
+pub fn parse_fragment(input: &str, context: Option<&str>) -> Vec<HtmlNode> {
+    build_fragment(input, context)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{parse_document, parse_fragment, HtmlNode};
-
-    #[test]
-    fn builds_document_shell() {
-        let document = parse_document("<title>Hi</title><div>Hello</div>");
-        let HtmlNode::Element(html) = &document.children[0] else {
-            panic!("expected html element");
-        };
-
-        assert_eq!(html.tag, "html");
-        assert_eq!(html.children.len(), 2);
-    }
-
-    #[test]
-    fn parses_nested_fragment() {
-        let fragment = parse_fragment("<div><span>Hello</span><br/></div>");
-        let HtmlNode::Element(div) = &fragment[0] else {
-            panic!("expected div");
-        };
-
-        assert_eq!(div.tag, "div");
-        assert_eq!(div.children.len(), 2);
-    }
-
-    #[test]
-    fn keeps_raw_text_content() {
-        let fragment = parse_fragment("<script>if (a < b) { ok(); }</script>");
-        let HtmlNode::Element(script) = &fragment[0] else {
-            panic!("expected script");
-        };
-
-        assert_eq!(script.tag, "script");
-        assert_eq!(
-            script.children,
-            vec![HtmlNode::Text("if (a < b) { ok(); }".to_string())]
-        );
-    }
-}
+// Testes migrados para o diretório tests/

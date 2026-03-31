@@ -123,6 +123,7 @@ impl Document {
             dom.nodes.push(AceNode {
                 node_type: AceNodeType::Element(crate::engine::dom::AceElement {
                     tag,
+                    namespace: crate::ace::html::Namespace::Html,
                     attributes: std::collections::HashMap::new(),
                 }),
                 parent: None,

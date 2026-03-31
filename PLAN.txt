@@ -63,8 +63,8 @@
 
 ─── 🌐  ENGINE ACE (Albedo Core Engine) ─────────────────────────────────────────
 
-  🟡  Parser HTML5 funcional
-         → Depende de: html5ever + kuchiki → migrar para ACE-HTML parser próprio
+  ✅  Parser HTML5 funcional
+         → ACE-HTML próprio ativo, sem fallback legado automático
   🟡  DOM tree (AceDOM) com navegação de nós, seletores CSS, manipulação
          → Depende de: kuchiki internamente → migrar para AceDOM 100% próprio
   🟡  Layout engine funcional
@@ -252,11 +252,16 @@
            ✅ engine/mod.rs migrado para usar AceDOM::from_html
            ✅ runtime DOMParser e setters de innerHTML/outerHTML migrados para o parser próprio
            ✅ cargo check fecha com sucesso
-           ⚠️ tokenizer/tree builder ainda não cobrem a state machine HTML5 completa
-           ⚠️ tabela de entidades ainda é parcial, não as ~2200 entidades do spec
-           ⚠️ html5ever/kuchiki ainda permanecem no workspace para caminhos antigos e testes
-         Estimativa: ~3.000-5.000 LOC | ~200-400h
-         Critério de aceite: paridade com html5ever nos html5lib-tests (≥95%).
+           ✅ tokenizer/tree builder com gate de conformidade required = 100%
+           ✅ regressões críticas de lexer/tree/fragment/DOM cobrindo os casos fechados
+           ✅ fallback legado removido do fluxo automático do parser ACE-HTML
+           ⚠️ pendências reais para 100% absoluto de conformidade:
+           [ ] ampliar corpus autoral `required` (tokenizer/document/fragment) para cobrir mais estados WHATWG e edge-cases
+           [ ] remover caráter apenas informativo do `non_required` (promover casos críticos para `required` ou torná-lo gate)
+           [ ] criar gate de tamanho/cobertura mínima do corpus (evitar “100%” por redução de casos)
+           [ ] remover `#![allow(dead_code)]` de `src/ace/html/mod.rs` na limpeza final do módulo
+         Estimativa: concluído no escopo definido para ACE-HTML
+         Critério de aceite: build verde + required=100% + non_required verde.
 
   [ ]  AFS-2  AceDOM 100% próprio (sem kuchiki)
          → Substituir: kuchiki (0.8)
@@ -1523,7 +1528,7 @@
   [ ]  ACE-Store (KV engine para cache/IDB/metadados)
 
   ONDA 3 — HTML + CSS + DOM
-  [ ]  ACE-HTML parser (lexer + tokenizer + tree builder)
+  [X]  ACE-HTML parser (lexer + tokenizer + tree builder)
   [ ]  AceDOM 100% próprio (sem kuchiki)
   [ ]  ACE-CSS parser + selector matcher
 

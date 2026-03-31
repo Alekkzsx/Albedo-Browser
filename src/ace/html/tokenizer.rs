@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use super::lexer::{
-    DoctypeToken as RawDoctypeToken, HtmlLexer, HtmlToken as RawHtmlToken,
+    HtmlLexer, HtmlToken as RawHtmlToken,
     LexerError as RawLexerError, LexerErrorKind as RawLexerErrorKind,
-    StartTagToken as RawStartTagToken,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
