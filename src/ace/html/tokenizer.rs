@@ -92,7 +92,7 @@ impl TokenizerError {
 }
 
 pub struct HtmlTokenizer<'a> {
-    lexer: HtmlLexer<'a>,
+    pub lexer: HtmlLexer<'a>,
     errors: Vec<TokenizerError>,
 }
 
