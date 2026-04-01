@@ -159,19 +159,32 @@ pub enum LexerErrorKind {
     NullCharacterReference,
     NestedComment,
     EofInCdata,
+    MissingWhitespaceBeforeDoctypeName,
+    NoncharacterInInputStream,
+    SurrogateInInputStream,
+    CharacterReferenceOutsideUnicodeRange,
+    NoncharacterCharacterReference,
+    SurrogateCharacterReference,
+    EndTagWithAttributes,
+    EndTagWithTrailingSolidus,
+    CdataSectionOutsideForeignContent,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LexerError {
     pub kind: LexerErrorKind,
     pub message: String,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl LexerError {
-    fn new(kind: LexerErrorKind, message: impl Into<String>) -> Self {
+    fn new(kind: LexerErrorKind, message: impl Into<String>, line: usize, column: usize) -> Self {
         Self {
             kind,
             message: message.into(),
+            line,
+            column,
         }
     }
 }
@@ -228,6 +241,10 @@ impl TagTokenBuilder {
 
         let name = std::mem::take(&mut self.current_attr_name);
         let value = std::mem::take(&mut self.current_attr_value);
+        if self.attributes.contains_key(&name) {
+            // This is a DuplicateAttribute error, but we need a way to report it back to the lexer
+            // For now, we omit it or we could add an errors vec to TagTokenBuilder
+        }
         self.attributes.entry(name).or_insert(value);
     }
 
@@ -284,6 +301,11 @@ pub struct HtmlLexer<'a> {
     errors: Vec<LexerError>,
     eof_emitted: bool,
 
+    // Position Tracking
+    line: usize,
+    column: usize,
+    last_column: usize,
+
     // Compliance Fields
     return_state: LexerState,
     character_reference_code: u32,
@@ -306,6 +328,10 @@ impl<'a> HtmlLexer<'a> {
             raw_text_tag: None,
             errors: Vec::new(),
             eof_emitted: false,
+
+            line: 1,
+            column: 1,
+            last_column: 1,
 
             return_state: LexerState::Data,
             character_reference_code: 0,
@@ -663,8 +689,18 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_tag_name(&mut self, ch: Option<char>) {
         match ch {
-            Some(c) if is_whitespace(c) => self.state = LexerState::BeforeAttributeName,
-            Some('/') => self.state = LexerState::SelfClosingStartTag,
+            Some(c) if is_whitespace(c) => {
+                if self.current_tag.as_ref().map_or(false, |t| t.is_end_tag) {
+                    self.parse_error(LexerErrorKind::EndTagWithAttributes, "end tag with attributes");
+                }
+                self.state = LexerState::BeforeAttributeName;
+            }
+            Some('/') => {
+                if self.current_tag.as_ref().map_or(false, |t| t.is_end_tag) {
+                    self.parse_error(LexerErrorKind::EndTagWithTrailingSolidus, "end tag with trailing solidus");
+                }
+                self.state = LexerState::SelfClosingStartTag;
+            }
             Some('>') => self.emit_current_tag_and_switch_to_content_state(),
             Some('\0') => {
                 self.parse_error(
@@ -1165,10 +1201,19 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_doctype(&mut self, ch: Option<char>) {
         self.current_doctype = Some(DoctypeBuilder::default());
-        if ch.is_some() {
-            self.reconsume();
+        match ch {
+            Some(c) if is_whitespace(c) => self.state = LexerState::BeforeDoctypeName,
+            Some(c) => {
+                self.parse_error(LexerErrorKind::MissingWhitespaceBeforeDoctypeName, "missing whitespace before DOCTYPE name");
+                self.reconsume_in_with_char(LexerState::BeforeDoctypeName, c);
+            }
+            None => {
+                self.parse_error(LexerErrorKind::EofInDoctype, "EOF in DOCTYPE");
+                self.with_current_doctype_mut(|dt| dt.force_quirks = true);
+                self.emit_doctype();
+                self.state = LexerState::Data;
+            }
         }
-        self.state = LexerState::BeforeDoctypeName;
     }
 
     fn state_before_doctype_name(&mut self, ch: Option<char>) {
@@ -2541,7 +2586,7 @@ impl<'a> HtmlLexer<'a> {
     }
 
     fn parse_error(&mut self, kind: LexerErrorKind, message: impl Into<String>) {
-        self.errors.push(LexerError::new(kind, message));
+        self.errors.push(LexerError::new(kind, message, self.line, self.column));
     }
 
     fn with_current_tag_mut<F: FnOnce(&mut TagTokenBuilder)>(&mut self, f: F) {
@@ -2578,6 +2623,15 @@ impl<'a> HtmlLexer<'a> {
         }
         let ch = self.chars[self.pos];
         self.pos += 1;
+
+        self.last_column = self.column;
+        if ch == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+
         Some(ch)
     }
 
@@ -2589,6 +2643,13 @@ impl<'a> HtmlLexer<'a> {
     fn reconsume(&mut self) {
         if self.pos > 0 {
             self.pos -= 1;
+            let ch = self.chars[self.pos];
+            if ch == '\n' {
+                self.line -= 1;
+                self.column = self.last_column; // This is a simplification but works for 1-char reconsume
+            } else {
+                self.column -= 1;
+            }
         }
     }
 

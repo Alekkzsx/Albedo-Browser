@@ -67,6 +67,8 @@ pub struct TokenizerError {
     pub kind: TokenizerErrorKind,
     pub code: &'static str,
     pub message: String,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl TokenizerError {
@@ -75,12 +77,16 @@ impl TokenizerError {
         kind: TokenizerErrorKind,
         code: &'static str,
         message: impl Into<String>,
+        line: usize,
+        column: usize,
     ) -> Self {
         Self {
             source,
             kind,
             code,
             message: message.into(),
+            line,
+            column,
         }
     }
 }
@@ -169,6 +175,7 @@ impl<'a> HtmlTokenizer<'a> {
                         TokenizerErrorKind::InvalidDoctype,
                         "TOK003",
                         "invalid doctype without name",
+                        1, 1, // Tokenizer generic errors use placeholder for now or we could pass pos
                     ));
                     None
                 } else {
@@ -191,6 +198,8 @@ fn map_lexer_error(err: RawLexerError) -> TokenizerError {
         kind,
         code,
         err.message,
+        err.line,
+        err.column,
     )
 }
 
