@@ -57,6 +57,8 @@ pub struct TreeBuilderError {
     pub insertion_mode: InsertionMode,
     pub message: String,
     pub source: TreeBuilderErrorSource,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl TreeBuilderError {
@@ -66,7 +68,15 @@ impl TreeBuilderError {
             insertion_mode: mode,
             message: message.into(),
             source: TreeBuilderErrorSource::TreeBuilder,
+            line: 1, // Default or placeholder
+            column: 1,
         }
+    }
+
+    pub fn with_pos(mut self, line: usize, col: usize) -> Self {
+        self.line = line;
+        self.column = col;
+        self
     }
 }
 
@@ -110,6 +120,7 @@ pub struct HtmlTreeBuilder<'a> {
     root_id: usize,
     open_elements: Vec<usize>,
     active_formatting_elements: Vec<ActiveFormattingEntry>,
+    template_insertion_modes: Vec<InsertionMode>,
 
     doctype: Option<DoctypeToken>,
     errors: Vec<TreeBuilderError>,
@@ -219,7 +230,8 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn collect_tokenizer_errors(&mut self) {
         let tok_errors = self.tokenizer.take_errors();
         for err in tok_errors {
-            let mut be = TreeBuilderError::new(TreeBuilderErrorKind::TokenizerError, self.insertion_mode, err.message);
+            let mut be = TreeBuilderError::new(TreeBuilderErrorKind::TokenizerError, self.insertion_mode, err.message)
+                .with_pos(err.line, err.column);
             be.source = match err.source {
                 TokenizerErrorSource::Lexer => TreeBuilderErrorSource::Lexer,
                 TokenizerErrorSource::Tokenizer => TreeBuilderErrorSource::Tokenizer,
@@ -230,11 +242,21 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn process_token(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         if let Some(id) = self.open_elements.last() {
-            if let InternalNodeData::Element { namespace, .. } = &self.arena[*id].data {
+            if let InternalNodeData::Element { namespace, tag, .. } = &self.arena[*id].data {
                 if *namespace != crate::ace::html::Namespace::Html {
-                    // Check for integration points (MSOP / HTML Integration Point)
-                    if !self.is_integration_point(*id) {
+                    if !self.is_mathml_text_integration_point(*id) && !self.is_html_integration_point(*id) {
                         return self.handle_foreign_content(token);
+                    }
+                    if let crate::ace::html::Namespace::MathML = namespace {
+                        if tag == "annotation-xml" {
+                            if let Some(attr) = self.arena[*id].attributes.get("encoding") {
+                                if attr == "text/html" || attr == "application/xhtml+xml" {
+                                    // Treat as HTML integration point
+                                } else {
+                                    return self.handle_foreign_content(token);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -290,42 +312,73 @@ impl<'a> HtmlTreeBuilder<'a> {
         self.arena[parent_id].children.push(child_id);
     }
 
-    fn insert_at_appropriate_place(&mut self, node_id: usize, override_target: Option<usize>) {
-        let target = override_target.unwrap_or_else(|| self.current_node());
-        let mut adjusted_insertion_location = None;
-
-        if self.foster_parenting && matches!(self.arena[target].data, InternalNodeData::Element { ref tag, .. } if matches!(tag.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr")) {
-            // WHATWG 13.2.6.4.1: Find the foster parent
-            let mut last_table = None;
-            for &id in self.open_elements.iter().rev() {
-                if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
-                    if tag == "table" {
-                        last_table = Some(id);
-                        break;
+    fn insert_at_appropriate_place(&mut self, nid: usize, override_target: Option<usize>) {
+        let target = if let Some(target_id) = override_target {
+            target_id
+        } else {
+            let mut t = self.current_node();
+            if self.foster_parenting && matches!(self.arena[t].data, InternalNodeData::Element { ref tag, .. } if matches!(tag.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr")) {
+                // WHATWG 13.2.6.4.1: Foster parenting
+                let mut last_table = None;
+                for &id in self.open_elements.iter().rev() {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                        if tag == "table" {
+                            last_table = Some(id);
+                            break;
+                        }
                     }
                 }
-            }
-
-            if let Some(table_id) = last_table {
-                if let Some(parent_id) = self.arena[table_id].parent {
-                    adjusted_insertion_location = Some((parent_id, table_id));
-                } else {
-                    let prev_idx = self.open_elements.iter().position(|&x| x == table_id).unwrap();
-                    if prev_idx > 0 {
-                        adjusted_insertion_location = Some((self.open_elements[prev_idx - 1], table_id));
+                if let Some(table_id) = last_table {
+                    if let Some(parent_id) = self.arena[table_id].parent {
+                        parent_id
                     } else {
-                        adjusted_insertion_location = Some((self.root_id, table_id));
+                        self.open_elements[self.open_elements.iter().position(|&x| x == table_id).unwrap() - 1]
                     }
+                } else {
+                    self.open_elements[0] // html element
+                }
+            } else {
+                t
+            }
+        };
+
+        self.append_node(target, nid);
+    }
+
+    fn reconstruct_active_formatting_elements(&mut self) {
+        // WHATWG 13.2.6.4.3
+        if self.active_formatting_elements.is_empty() { return; }
+        
+        let last_entry_pos = self.active_formatting_elements.len() - 1;
+        if matches!(self.active_formatting_elements[last_entry_pos], ActiveFormattingEntry::Marker) { return; }
+        if let ActiveFormattingEntry::Element(id) = self.active_formatting_elements[last_entry_pos] {
+            if self.open_elements.contains(&id) { return; }
+        }
+
+        let mut entry_pos = last_entry_pos;
+        loop {
+            if entry_pos == 0 { break; }
+            entry_pos -= 1;
+            let entry = &self.active_formatting_elements[entry_pos];
+            if matches!(entry, ActiveFormattingEntry::Marker) {
+                entry_pos += 1;
+                break;
+            }
+            if let ActiveFormattingEntry::Element(id) = entry {
+                if self.open_elements.contains(id) {
+                    entry_pos += 1;
+                    break;
                 }
             }
         }
 
-        if let Some((parent_id, before_id)) = adjusted_insertion_location {
-            let pos = self.arena[parent_id].children.iter().position(|&x| x == before_id).unwrap_or(self.arena[parent_id].children.len());
-            self.arena[node_id].parent = Some(parent_id);
-            self.arena[parent_id].children.insert(pos, node_id);
-        } else {
-            self.append_node(target, node_id);
+        while entry_pos < self.active_formatting_elements.len() {
+            let id = if let ActiveFormattingEntry::Element(id) = self.active_formatting_elements[entry_pos] { id } else { unreachable!() };
+            let new_nid = self.clone_element(id);
+            self.insert_at_appropriate_place(new_nid, None);
+            self.open_elements.push(new_nid);
+            self.active_formatting_elements[entry_pos] = ActiveFormattingEntry::Element(new_nid);
+            entry_pos += 1;
         }
     }
 
@@ -372,8 +425,13 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn adjust_mathml_attributes(&self, attributes: &mut HashMap<String, String>) {
-        if let Some(val) = attributes.remove("definitionurl") {
-            attributes.insert("definitionURL".to_string(), val);
+        let mappings = [
+            ("definitionurl", "definitionURL"),
+        ];
+        for (old, new) in mappings {
+            if let Some(val) = attributes.remove(old) {
+                attributes.insert(new.to_string(), val);
+            }
         }
     }
 
@@ -447,31 +505,24 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn adjust_foreign_attributes(&self, attributes: &mut HashMap<String, String>) {
         let mappings = [
-            ("xlink:actuate", "actuate"),
-            ("xlink:arcrole", "arcrole"),
-            ("xlink:href", "href"),
-            ("xlink:role", "role"),
-            ("xlink:show", "show"),
-            ("xlink:title", "title"),
-            ("xlink:type", "type"),
-            ("xml:base", "base"),
-            ("xml:lang", "lang"),
-            ("xml:space", "space"),
+            ("xlink:actuate", "xlink:actuate"),
+            ("xlink:arcrole", "xlink:arcrole"),
+            ("xlink:href", "xlink:href"),
+            ("xlink:role", "xlink:role"),
+            ("xlink:show", "xlink:show"),
+            ("xlink:title", "xlink:title"),
+            ("xlink:type", "xlink:type"),
+            ("xml:base", "xml:base"),
+            ("xml:lang", "xml:lang"),
+            ("xml:space", "xml:space"),
             ("xmlns", "xmlns"),
             ("xmlns:xlink", "xmlns:xlink"),
         ];
 
-        for (old, _new_key) in mappings {
-             // WHATWG 13.2.6.4.2: We don't just change the key name, 
-             // we actually need to store the namespace. 
-             // For now, in Albedo's DOM, we store them as is in the attributes map 
-             // but with the corrected prefix if necessary.
-             // Actually, the spec says to adjust the attribute's namespace, 
-             // but our AceElement only has a HashMap<String, String>.
-             // A common way browsers handle this is using the full prefix name.
-             if let Some(val) = attributes.remove(old) {
-                 attributes.insert(old.to_string(), val);
-             }
+        for (old, new_key) in mappings {
+            if let Some(val) = attributes.remove(old) {
+                attributes.insert(new_key.to_string(), val);
+            }
         }
     }
 
@@ -480,6 +531,9 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn insert_element(&mut self, mut tag: StartTagToken, ns: crate::ace::html::Namespace) -> usize {
+        let is_self_closing = tag.self_closing && ns != crate::ace::html::Namespace::Html;
+        
+        self.adjust_foreign_attributes(&mut tag.attributes);
         if ns == crate::ace::html::Namespace::MathMl {
              self.adjust_mathml_attributes(&mut tag.attributes);
         }
@@ -487,7 +541,6 @@ impl<'a> HtmlTreeBuilder<'a> {
              self.adjust_svg_tag_name(&mut tag.name);
              self.adjust_svg_attributes(&mut tag.attributes);
         }
-        self.adjust_foreign_attributes(&mut tag.attributes);
 
         let nid = self.create_node(InternalNodeData::Element {
             tag: tag.name,
@@ -495,7 +548,10 @@ impl<'a> HtmlTreeBuilder<'a> {
             attributes: tag.attributes,
         });
         self.insert_at_appropriate_place(nid, None);
-        self.open_elements.push(nid);
+        
+        if !is_self_closing {
+            self.open_elements.push(nid);
+        }
         nid
     }
 
@@ -661,6 +717,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             other => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token in initial mode");
                 self.quirks_mode = true;
                 self.insertion_mode = InsertionMode::BeforeHtml;
                 Some(other)
@@ -711,6 +768,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             other => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token before <html>");
                 let id = self.create_node(InternalNodeData::Element { tag: "html".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
                 self.append_node(self.root_id, id);
                 self.open_elements.push(id);
@@ -1470,6 +1528,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
 
             // Step 12: Reparent last node to common ancestor
+            self.arena[last_node_id].parent = None; // Detach
             self.insert_at_appropriate_place(last_node_id, Some(common_ancestor_id));
 
             // Step 13: New formatting element
@@ -1478,6 +1537,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             // Step 14: Move children of fb into new formatting element
             let fb_id = self.open_elements[fb_pos];
             let fb_children = self.arena[fb_id].children.clone();
+            self.arena[fb_id].children.clear();
             for child_id in fb_children {
                 self.append_node(new_formatting_id, child_id);
             }
@@ -1523,43 +1583,97 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_in_table(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
-            HtmlToken::StartTag(tag) if tag.name == "caption" => {
-                self.insert_html_element(tag);
-                self.insertion_mode = InsertionMode::InCaption;
+            HtmlToken::Comment(comment) => {
+                self.insert_comment(comment.data);
                 None
             }
-            HtmlToken::StartTag(tag) if tag.name == "colgroup" => {
-                self.insert_html_element(tag);
-                self.insertion_mode = InsertionMode::InColumnGroup;
+            HtmlToken::Doctype(_) => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedDoctype, "unexpected DOCTYPE in table");
                 None
             }
-            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "tbody" | "tfoot" | "thead") => {
-                self.insert_html_element(tag);
-                self.insertion_mode = InsertionMode::InTableBody;
-                None
-            }
-            HtmlToken::StartTag(tag) if tag.name == "tr" => {
-                self.insert_element_at_current("tbody".to_string(), HashMap::new());
-                self.insertion_mode = InsertionMode::InTableBody;
-                Some(HtmlToken::StartTag(tag))
-            }
-            HtmlToken::EndTag(tag) if tag.name == "table" => {
-                self.pop_until("table");
-                self.reset_insertion_mode_appropriately();
-                None
-            }
-            HtmlToken::Character(text) => {
+            HtmlToken::Character(text) if matches!(self.current_tag(), Some("table") | Some("tbody") | Some("tfoot") | Some("thead") | Some("tr")) => {
                 self.pending_table_characters.clear();
                 self.original_insertion_mode = self.insertion_mode;
                 self.insertion_mode = InsertionMode::InTableText;
                 Some(HtmlToken::Character(text))
             }
+            HtmlToken::StartTag(tag) if tag.name == "caption" => {
+                self.clear_pending_table_characters();
+                self.active_formatting_elements.push(ActiveFormattingEntry::Marker);
+                self.insert_html_element(tag);
+                self.insertion_mode = InsertionMode::InCaption;
+                None
+            }
+            HtmlToken::StartTag(tag) if tag.name == "colgroup" => {
+                self.clear_pending_table_characters();
+                self.insert_html_element(tag);
+                self.insertion_mode = InsertionMode::InColumnGroup;
+                None
+            }
+            HtmlToken::StartTag(tag) if tag.name == "col" => {
+                self.handle_in_table(HtmlToken::StartTag(StartTagToken { name: "colgroup".to_string(), attributes: HashMap::new(), self_closing: false }))?;
+                self.handle_in_table(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "tbody" | "tfoot" | "thead") => {
+                self.clear_pending_table_characters();
+                self.insert_html_element(tag);
+                self.insertion_mode = InsertionMode::InTableBody;
+                None
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "td" | "th" | "tr") => {
+                self.clear_pending_table_characters();
+                self.insert_element_at_current("tbody".to_string(), HashMap::new());
+                self.insertion_mode = InsertionMode::InTableBody;
+                Some(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if tag.name == "table" => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected <table> in table");
+                if self.handle_in_table(HtmlToken::EndTag(EndTagToken { name: "table".to_string() })).is_none() {
+                    return Some(HtmlToken::StartTag(tag));
+                }
+                None
+            }
+            HtmlToken::EndTag(tag) if tag.name == "table" => {
+                if !self.has_element_in_scope("table") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </table> not in scope");
+                    return None;
+                }
+                self.pop_until("table");
+                self.reset_insertion_mode_appropriately();
+                None
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "caption" | "col" | "colgroup" | "html" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in table", tag.name));
+                None
+            }
+            HtmlToken::Eof => {
+                if self.current_tag() != Some("html") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEof, "EOF in table");
+                }
+                None
+            }
             other => {
+                self.parse_error(TreeBuilderErrorKind::FosterParenting, "foster parenting in table");
                 self.foster_parenting = true;
                 let ret = self.handle_in_body(other);
                 self.foster_parenting = false;
                 ret
             }
+        }
+    }
+
+    fn clear_pending_table_characters(&mut self) {
+        if !self.pending_table_characters.is_empty() {
+             // Handle pending characters by foster parenting them if non-whitespace
+             let all_ws = self.pending_table_characters.iter().all(|&c| HtmlTreeBuilder::is_whitespace(c));
+             let text: String = self.pending_table_characters.drain(..).collect();
+             if !all_ws {
+                 self.foster_parenting = true;
+                 self.insert_text(text);
+                 self.foster_parenting = false;
+             } else {
+                 self.insert_text(text);
+             }
         }
     }
 
@@ -1628,48 +1742,156 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn handle_in_table_body(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
             HtmlToken::StartTag(tag) if tag.name == "tr" => {
+                self.clear_stack_back_to_table_body_context();
                 self.insert_html_element(tag);
                 self.insertion_mode = InsertionMode::InRow;
                 None
             }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "th" | "td") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedToken, format!("unexpected <{}> in table body", tag.name));
+                self.handle_in_table_body(HtmlToken::StartTag(StartTagToken { name: "tr".to_string(), attributes: HashMap::new(), self_closing: false }))?;
+                self.handle_in_table_body(HtmlToken::StartTag(tag))
+            }
             HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "tbody" | "tfoot" | "thead") => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
+                    return None;
+                }
+                self.clear_stack_back_to_table_body_context();
                 self.open_elements.pop();
                 self.insertion_mode = InsertionMode::InTable;
                 None
             }
-            other => {
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "tfoot" | "thead") => {
+                if !self.has_element_in_scope("tbody") && !self.has_element_in_scope("thead") && !self.has_element_in_scope("tfoot") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "no table body in scope");
+                    return None;
+                }
+                self.clear_stack_back_to_table_body_context();
                 self.open_elements.pop();
                 self.insertion_mode = InsertionMode::InTable;
-                Some(other)
+                Some(HtmlToken::StartTag(tag))
             }
+            HtmlToken::EndTag(tag) if tag.name == "table" => {
+                if !self.has_element_in_scope("tbody") && !self.has_element_in_scope("thead") && !self.has_element_in_scope("tfoot") {
+                     self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </table> without table body");
+                     return None;
+                }
+                self.clear_stack_back_to_table_body_context();
+                self.open_elements.pop();
+                self.insertion_mode = InsertionMode::InTable;
+                Some(HtmlToken::EndTag(tag))
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "caption" | "col" | "colgroup" | "html" | "td" | "th" | "tr") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in table body", tag.name));
+                None
+            }
+            other => self.handle_in_table(other),
+        }
+    }
+
+    fn clear_stack_back_to_table_body_context(&mut self) {
+        while let Some(&id) = self.open_elements.last() {
+             if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                 if matches!(tag.as_str(), "tbody" | "tfoot" | "thead" | "template" | "html") {
+                     break;
+                 }
+             }
+             self.open_elements.pop();
         }
     }
 
     fn handle_in_row(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
             HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "th" | "td") => {
+                self.clear_stack_back_to_table_row_context();
                 self.insert_html_element(tag);
                 self.insertion_mode = InsertionMode::InCell;
+                self.active_formatting_elements.push(ActiveFormattingEntry::Marker);
                 None
             }
             HtmlToken::EndTag(tag) if tag.name == "tr" => {
+                if !self.has_element_in_scope("tr") {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "end tag </tr> not in scope");
+                    return None;
+                }
+                self.clear_stack_back_to_table_row_context();
                 self.open_elements.pop();
                 self.insertion_mode = InsertionMode::InTableBody;
                 None
             }
-            other => {
-                self.open_elements.pop();
-                self.insertion_mode = InsertionMode::InTableBody;
-                Some(other)
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "tfoot" | "thead" | "tr") => {
+                if self.handle_in_row(HtmlToken::EndTag(EndTagToken { name: "tr".to_string() })).is_none() {
+                    return Some(HtmlToken::StartTag(tag));
+                }
+                None
             }
+            HtmlToken::EndTag(tag) if tag.name == "table" => {
+                if self.handle_in_row(HtmlToken::EndTag(EndTagToken { name: "tr".to_string() })).is_none() {
+                    return Some(HtmlToken::EndTag(tag));
+                }
+                None
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "tbody" | "tfoot" | "thead") => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in row", tag.name));
+                    return None;
+                }
+                if self.handle_in_row(HtmlToken::EndTag(EndTagToken { name: "tr".to_string() })).is_none() {
+                    return Some(HtmlToken::EndTag(tag));
+                }
+                None
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "caption" | "col" | "colgroup" | "html" | "td" | "th") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in row", tag.name));
+                None
+            }
+            other => self.handle_in_table(other),
+        }
+    }
+
+    fn clear_stack_back_to_table_row_context(&mut self) {
+        while let Some(&id) = self.open_elements.last() {
+             if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
+                 if matches!(tag.as_str(), "tr" | "template" | "html") {
+                     break;
+                 }
+             }
+             self.open_elements.pop();
         }
     }
 
     fn handle_in_cell(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
             HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "th" | "td") => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("end tag </{}> not in scope", tag.name));
+                    return None;
+                }
+                self.generate_implied_end_tags(None);
                 self.pop_until(tag.name.as_str());
+                self.clear_formatting_to_last_marker();
                 self.insertion_mode = InsertionMode::InRow;
+                None
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr") => {
+                if self.handle_in_cell(HtmlToken::EndTag(EndTagToken { name: self.current_tag().unwrap_or("").to_string() })).is_none() {
+                    return Some(HtmlToken::StartTag(tag));
+                }
+                None
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "caption" | "col" | "colgroup" | "html") => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in cell", tag.name));
+                None
+            }
+            HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr") => {
+                if !self.has_element_in_scope(tag.name.as_str()) {
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in cell", tag.name));
+                    return None;
+                }
+                if self.handle_in_cell(HtmlToken::EndTag(EndTagToken { name: self.current_tag().unwrap_or("").to_string() })).is_none() {
+                    return Some(HtmlToken::EndTag(tag));
+                }
                 None
             }
             other => self.handle_in_body(other),
@@ -1679,12 +1901,18 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn handle_in_select(&mut self, token: HtmlToken) -> Option<HtmlToken> {
         match token {
             HtmlToken::Character(text) => {
-                self.insert_text(text.data);
+                let data = text.data.replace('\0', "");
+                if !data.is_empty() {
+                    self.insert_text(data);
+                }
                 None
             }
             HtmlToken::Comment(comment) => {
-                let id = self.create_node(InternalNodeData::Comment(comment.data));
-                self.append_node(self.current_node(), id);
+                self.insert_comment(comment.data);
+                None
+            }
+            HtmlToken::Doctype(_) => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedDoctype, "unexpected DOCTYPE in select");
                 None
             }
             HtmlToken::StartTag(tag) if tag.name == "html" => {
@@ -1706,6 +1934,20 @@ impl<'a> HtmlTreeBuilder<'a> {
                 }
                 self.insert_html_element(tag);
                 None
+            }
+            HtmlToken::StartTag(tag) if tag.name == "hr" => {
+                if self.current_tag() == Some("option") {
+                    self.open_elements.pop();
+                }
+                if self.current_tag() == Some("optgroup") {
+                    self.open_elements.pop();
+                }
+                self.insert_html_element(tag);
+                self.open_elements.pop();
+                None
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "script" | "template") => {
+                self.handle_in_head(HtmlToken::StartTag(tag))
             }
             HtmlToken::EndTag(tag) if tag.name == "optgroup" => {
                 if self.current_tag() == Some("option") && self.open_elements.len() >= 2 && matches!(self.arena[self.open_elements[self.open_elements.len()-2]].data, InternalNodeData::Element { ref tag, .. } if tag == "optgroup") {
@@ -1744,13 +1986,16 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.reset_insertion_mode_appropriately();
                 None
             }
+            HtmlToken::EndTag(tag) if tag.name == "template" => {
+                self.handle_in_head(HtmlToken::EndTag(tag))
+            }
             HtmlToken::Eof => {
                 if self.current_tag() != Some("html") {
                     self.parse_error(TreeBuilderErrorKind::UnexpectedEof, "EOF in select");
                 }
                 None
             }
-            _ => {
+            other => {
                 self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token in InSelect");
                 None
             }
@@ -2014,18 +2259,21 @@ impl<'a> HtmlTreeBuilder<'a> {
             HtmlToken::Character(text) => {
                 let data = text.data.replace('\0', "\u{FFFD}");
                 self.insert_text(data);
+                if !data.trim().is_empty() {
+                    self.frameset_ok = false;
+                }
                 None
             }
             HtmlToken::Comment(comment) => {
                 self.insert_comment(comment.data);
                 None
             }
+            HtmlToken::Doctype(dt) => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedDoctype, "unexpected DOCTYPE in foreign content");
+                None
+            }
             HtmlToken::StartTag(tag) => {
-                let is_html_integration_point = if let Some(&id) = self.open_elements.last() {
-                    self.is_integration_point(id)
-                } else { false };
-
-                if !is_html_integration_point && matches!(tag.name.as_str(), "b" | "big" | "blockquote" | "body" | "br" | "center" | "code" | "dd" | "div" | "dl" | "dt" | "em" | "embed" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "hr" | "i" | "img" | "li" | "listing" | "menu" | "meta" | "nobr" | "ol" | "p" | "pre" | "ruby" | "s" | "small" | "span" | "strong" | "strike" | "sub" | "sup" | "table" | "tt" | "u" | "ul" | "var")
+                if matches!(tag.name.as_str(), "b" | "big" | "blockquote" | "body" | "br" | "center" | "code" | "dd" | "div" | "dl" | "dt" | "em" | "embed" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "hr" | "i" | "img" | "li" | "listing" | "menu" | "meta" | "nobr" | "ol" | "p" | "pre" | "ruby" | "s" | "small" | "span" | "strong" | "strike" | "sub" | "sup" | "table" | "tt" | "u" | "ul" | "var")
                    || (tag.name == "font" && (tag.attributes.contains_key("color") || tag.attributes.contains_key("face") || tag.attributes.contains_key("size"))) {
                     self.parse_error(TreeBuilderErrorKind::UnexpectedToken, format!("unexpected HTML tag {} in foreign content", tag.name));
                     while let Some(&id) = self.open_elements.last() {
@@ -2039,41 +2287,82 @@ impl<'a> HtmlTreeBuilder<'a> {
                     return Some(HtmlToken::StartTag(tag));
                 }
                 
-                let ns = if let Some(&id) = self.open_elements.last() {
-                    if let InternalNodeData::Element { namespace, .. } = &self.arena[id].data {
-                        *namespace
-                    } else { crate::ace::html::Namespace::Html }
-                } else { crate::ace::html::Namespace::Html };
-
+                let ns = self.current_node_namespace();
                 self.insert_element(tag, ns);
                 None
             }
             HtmlToken::EndTag(tag) => {
-                for i in (0..self.open_elements.len()).rev() {
-                    let id = self.open_elements[i];
+                let mut node_index = None;
+                for (i, &id) in self.open_elements.iter().enumerate().rev() {
                     if let InternalNodeData::Element { tag: ref node_tag, .. } = self.arena[id].data {
                         if node_tag.eq_ignore_ascii_case(&tag.name) {
-                            self.open_elements.truncate(i);
+                            node_index = Some(i);
                             break;
+                        }
+                        if let InternalNodeData::Element { namespace, .. } = &self.arena[id].data {
+                            if *namespace == crate::ace::html::Namespace::Html {
+                                return self.handle_in_body(HtmlToken::EndTag(tag));
+                            }
                         }
                     }
                 }
+
+                if let Some(i) = node_index {
+                    if let InternalNodeData::Element { tag: ref current_tag, .. } = self.arena[*self.open_elements.last().unwrap()].data {
+                        if !current_tag.eq_ignore_ascii_case(&tag.name) {
+                            self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, format!("unexpected end tag </{}> in foreign content", tag.name));
+                        }
+                    }
+                    self.open_elements.truncate(i);
+                }
                 None
             }
-            _ => self.handle_in_body(token),
+            HtmlToken::Eof => {
+                None
+            }
         }
     }
 
-    fn is_integration_point(&self, id: usize) -> bool {
-        if let InternalNodeData::Element { tag, namespace, .. } = &self.arena[id].data {
-            match namespace {
-                crate::ace::html::Namespace::MathMl => matches!(tag.as_str(), "mi" | "mo" | "mn" | "ms" | "mtext"),
-                crate::ace::html::Namespace::Svg => matches!(tag.as_str(), "foreignObject" | "desc" | "title"),
-                crate::ace::html::Namespace::Html => false,
+    fn current_node_namespace(&self) -> crate::ace::html::Namespace {
+        if let Some(&id) = self.open_elements.last() {
+            if let InternalNodeData::Element { namespace, .. } = &self.arena[id].data {
+                return *namespace;
             }
-        } else {
-            false
         }
+        crate::ace::html::Namespace::Html
+    }
+
+    fn is_mathml_text_integration_point(&self, id: usize) -> bool {
+        if let InternalNodeData::Element { tag, namespace, .. } = &self.arena[id].data {
+            if *namespace == crate::ace::html::Namespace::MathMl {
+                return matches!(tag.as_str(), "mi" | "mo" | "mn" | "ms" | "mtext");
+            }
+        }
+        false
+    }
+
+    fn is_html_integration_point(&self, id: usize) -> bool {
+        if let InternalNodeData::Element { tag, namespace, attributes } = &self.arena[id].data {
+            match namespace {
+                crate::ace::html::Namespace::MathMl => {
+                    if tag == "annotation-xml" {
+                        if let Some(encoding) = attributes.get("encoding") {
+                            let enc = encoding.to_lowercase();
+                            return enc == "text/html" || enc == "application/xhtml+xml";
+                        }
+                    }
+                }
+                crate::ace::html::Namespace::Svg => {
+                    return matches!(tag.as_str(), "foreignObject" | "desc" | "title");
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn is_integration_point(&self, id: usize) -> bool {
+        self.is_mathml_text_integration_point(id) || self.is_html_integration_point(id)
     }
 
     fn setup_fragment_mode(&mut self, context: &str) {
@@ -2204,5 +2493,33 @@ mod tests {
             panic!("expected table element");
         };
         assert_eq!(el_table.tag, "table");
+    }
+
+    #[test]
+    fn test_svg_foreign_content() {
+        // Teste: div (HTML) -> svg (SVG) -> circle (SVG/Self-Closing) -> foreignObject (SVG) -> span (HTML/Integration)
+        let html = "<div><svg><circle /><foreignObject><span>hi</span></foreignObject></svg></div>";
+        let doc = build_document(html);
+
+        let HtmlNode::Element(html_el) = &doc.children[0] else { panic!("expected html"); };
+        let HtmlNode::Element(body) = &html_el.children[1] else { panic!("expected body"); };
+        let HtmlNode::Element(div) = &body.children[0] else { panic!("expected div"); };
+        let HtmlNode::Element(svg) = &div.children[0] else { panic!("expected svg"); };
+        
+        assert_eq!(svg.tag, "svg");
+        assert_eq!(svg.namespace, crate::ace::html::Namespace::Svg);
+        
+        let HtmlNode::Element(circle) = &svg.children[0] else { panic!("expected circle"); };
+        assert_eq!(circle.tag, "circle");
+        assert_eq!(circle.namespace, crate::ace::html::Namespace::Svg);
+        assert_eq!(circle.children.len(), 0); // Deve estar vazio por ser self-closing em SVG
+
+        let HtmlNode::Element(fo) = &svg.children[1] else { panic!("expected foreignObject"); };
+        assert_eq!(fo.tag, "foreignObject");
+        assert_eq!(fo.namespace, crate::ace::html::Namespace::Svg);
+
+        let HtmlNode::Element(span) = &fo.children[0] else { panic!("expected span"); };
+        assert_eq!(span.tag, "span");
+        assert_eq!(span.namespace, crate::ace::html::Namespace::Html); // Volta para HTML através do integration point
     }
 }
