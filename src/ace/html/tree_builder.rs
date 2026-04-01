@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use crate::ace::html::{
     DoctypeToken, EndTagToken, HtmlDocument, HtmlElement, HtmlNode, HtmlToken,
     HtmlTokenizer, StartTagToken, TokenizerErrorSource,
+    PreloadScanner, PreloadRequest,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +84,7 @@ impl TreeBuilderError {
 pub struct TreeBuildOutput {
     pub document: HtmlDocument,
     pub errors: Vec<TreeBuilderError>,
+    pub preload_requests: Vec<PreloadRequest>,
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +123,8 @@ pub struct HtmlTreeBuilder<'a> {
     open_elements: Vec<usize>,
     active_formatting_elements: Vec<ActiveFormattingEntry>,
     template_insertion_modes: Vec<InsertionMode>,
+    preload_scanner: PreloadScanner,
+    preload_requests: Vec<PreloadRequest>,
 
     doctype: Option<DoctypeToken>,
     errors: Vec<TreeBuilderError>,
@@ -170,12 +174,30 @@ impl<'a> HtmlTreeBuilder<'a> {
             foster_parenting: false,
             quirks_mode: false,
             pending_table_characters: Vec::new(),
+            preload_scanner: PreloadScanner::new(),
+            preload_requests: Vec::new(),
+        }
+    }
+
+    pub fn speculate(&mut self) {
+        let remaining = self.tokenizer.lexer.remaining_input();
+        if !remaining.is_empty() {
+            let requests = self.preload_scanner.scan(remaining);
+            for req in requests {
+                // simple deduplication or just push? for now just push
+                if !self.preload_requests.iter().any(|r| r.url == req.url) {
+                    self.preload_requests.push(req);
+                }
+            }
         }
     }
 
     pub fn run(mut self) -> TreeBuildOutput {
         let mut reprocess: Option<HtmlToken> = None;
         loop {
+            // Trigger speculation periodically or when blocking
+            self.speculate();
+
             let token = reprocess
                 .take()
                 .unwrap_or_else(|| self.tokenizer.next_token());
@@ -203,6 +225,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 children,
             },
             errors: self.errors,
+            preload_requests: self.preload_requests,
         }
     }
 
@@ -566,6 +589,9 @@ impl<'a> HtmlTreeBuilder<'a> {
         nid
     }
 
+    // - [x] Fase 5: Templates e Verificação
+    // - [x] Implementar suporte básico a `<template>`.
+    // - [x] Executar bateria de testes de estresse (HTML5Lib compat).
     fn insert_text(&mut self, text: String) {
         let target = self.current_node();
         // Check if last child of target is text to merge
@@ -730,15 +756,65 @@ impl<'a> HtmlTreeBuilder<'a> {
         let p = public_id.to_lowercase();
         let s = system_id.to_lowercase();
         
-        if p.contains("transitional") || p.contains("frameset") {
-            return true;
-        }
-        
-        if p == "-//w3c//dtd html 3.2//en" || p == "-//w3c//dtd html 4.01 transitional//en" {
-            return true;
-        }
+        if p == "+//silmaril//dtd html pro v0r11 19970101//en"
+           || p == "-//as//dtd html 3.0//en//"
+           || p == "-//advasoft//dtd html 3.0 aswedit + extensions//en"
+           || p == "-//ietf//dtd html 2.0 level 1//en"
+           || p == "-//ietf//dtd html 2.0 level 2//en"
+           || p == "-//ietf//dtd html 2.0 strict level 1//en"
+           || p == "-//ietf//dtd html 2.0 strict level 2//en"
+           || p == "-//ietf//dtd html 2.0 strict//en"
+           || p == "-//ietf//dtd html 2.0//en"
+           || p == "-//ietf//dtd html 2.1e//en"
+           || p == "-//ietf//dtd html 3.0//en"
+           || p == "-//ietf//dtd html 3.0//en//"
+           || p == "-//ietf//dtd html 3.2 final//en"
+           || p == "-//ietf//dtd html 3.2//en"
+           || p == "-//ietf//dtd html level 0//en"
+           || p == "-//ietf//dtd html level 1//en"
+           || p == "-//ietf//dtd html level 2//en"
+           || p == "-//ietf//dtd html level 3//en"
+           || p == "-//ietf//dtd html strict level 0//en"
+           || p == "-//ietf//dtd html strict level 1//en"
+           || p == "-//ietf//dtd html strict level 2//en"
+           || p == "-//ietf//dtd html strict level 3//en"
+           || p == "-//ietf//dtd html strict//en"
+           || p == "-//ietf//dtd html//en"
+           || p == "-//metrius//dtd html 2.0//en"
+           || p == "-//microsoft//dtd internet explorer 2.0 html strict//en"
+           || p == "-//microsoft//dtd internet explorer 2.0 html//en"
+           || p == "-//microsoft//dtd internet explorer 2.0 tables//en"
+           || p == "-//microsoft//dtd internet explorer 3.0 html strict//en"
+           || p == "-//microsoft//dtd internet explorer 3.0 html//en"
+           || p == "-//microsoft//dtd internet explorer 3.0 tables//en"
+           || p == "-//netscape comm. corp.//dtd html//en"
+           || p == "-//netscape comm. corp.//dtd strict html//en"
+           || p == "-//o'reilly and associates//dtd html 2.0//en"
+           || p == "-//o'reilly and associates//dtd html extended 1.0//en"
+           || p == "-//spyglass//dtd html 2.0 extended//en"
+           || p == "-//sq//dtd html 2.0 hotmetal + extensions//en"
+           || p == "-//sun microsystems dtd html 2.0//en"
+           || p == "-//ucla style//dtd html 2.0//en"
+           || p == "-//w3c//dtd html 3 1995-03-24//en"
+           || p == "-//w3c//dtd html 3.2 draft//en"
+           || p == "-//w3c//dtd html 3.2 final//en"
+           || p == "-//w3c//dtd html 3.2//en"
+           || p == "-//w3c//dtd html 3.2s draft//en"
+           || p == "-//w3c//dtd html 4.0 frameset//en"
+           || p == "-//w3c//dtd html 4.0 transitional//en"
+           || p == "-//w3c//dtd html experimental 19960712//en"
+           || p == "-//w3c//dtd html experimental 970421//en"
+           || p == "-//w3c//dtd w3 html//en"
+           || p == "-//w3o//dtd w3 html 3.0//en"
+           || p == "-//w3o//dtd w3 html 3.0//en//"
+           || p == "-//webtechs//dtd mozilla html 2.0//en"
+           || p == "-//webtechs//dtd mozilla html//en"
+           || p == "html"
+        { return true; }
 
-        if s.is_empty() && p == "-//w3c//dtd html 4.01//en" {
+        if p.contains("transitional") || p.contains("frameset") { return true; }
+
+        if s.is_empty() && (p == "-//w3c//dtd html 4.01 transitional//en" || p == "-//w3c//dtd html 4.01 frameset//en") {
             return true;
         }
 
@@ -1558,7 +1634,7 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn is_special_element(&self, id: usize) -> bool {
         match &self.arena[id].data {
             InternalNodeData::Element { tag, .. } => {
-                matches!(tag.as_str(), "address" | "applet" | "area" | "article" | "aside" | "base" | "basefont" | "bgsound" | "blockquote" | "body" | "br" | "button" | "caption" | "center" | "col" | "colgroup" | "dd" | "details" | "dir" | "div" | "dl" | "dt" | "embed" | "fieldset" | "figcaption" | "figure" | "footer" | "form" | "frame" | "frameset" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "header" | "hgroup" | "hr" | "html" | "iframe" | "img" | "input" | "keygen" | "li" | "link" | "listing" | "main" | "marquee" | "menu" | "meta" | "nav" | "noembed" | "noframes" | "noscript" | "object" | "ol" | "p" | "param" | "plaintext" | "pre" | "script" | "section" | "select" | "source" | "style" | "summary" | "table" | "tbody" | "td" | "template" | "textarea" | "tfoot" | "th" | "thead" | "title" | "tr" | "track" | "ul" | "wbr" | "xmp")
+                matches!(tag.as_str(), "address" | "applet" | "area" | "article" | "aside" | "base" | "basefont" | "bgsound" | "blockquote" | "body" | "br" | "button" | "caption" | "center" | "col" | "colgroup" | "dd" | "details" | "dir" | "div" | "dl" | "dt" | "embed" | "fieldset" | "figcaption" | "figure" | "footer" | "form" | "frame" | "frameset" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "header" | "hgroup" | "hr" | "html" | "iframe" | "img" | "input" | "keygen" | "li" | "link" | "listing" | "main" | "marquee" | "menu" | "meta" | "nav" | "noembed" | "noframes" | "noscript" | "object" | "ol" | "p" | "param" | "plaintext" | "pre" | "script" | "section" | "select" | "source" | "style" | "summary" | "table" | "tbody" | "td" | "template" | "textarea" | "tfoot" | "th" | "thead" | "title" | "tr" | "track" | "ul" | "wbr" | "xmp" | "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml" | "foreignObject" | "desc" | "title")
             }
             _ => false,
         }
@@ -2007,7 +2083,57 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn handle_in_template(&mut self, token: HtmlToken) -> Option<HtmlToken> {
-        self.handle_in_body(token)
+        match token {
+            HtmlToken::Character(_) | HtmlToken::Comment(_) | HtmlToken::Doctype(_) => {
+                self.handle_in_body(token)
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "base" | "basefont" | "bgsound" | "link" | "meta" | "noframes" | "script" | "style" | "template" | "title") => {
+                self.handle_in_head(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "caption" | "colgroup" | "tbody" | "tfoot" | "thead") => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InTable);
+                self.handle_in_table(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if tag.name == "col" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InColumnGroup);
+                self.handle_in_column_group(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if tag.name == "tr" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InTableBody);
+                self.handle_in_table_body(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) if matches!(tag.name.as_str(), "td" | "th") => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InRow);
+                self.handle_in_row(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::StartTag(tag) => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InBody);
+                self.handle_in_body(HtmlToken::StartTag(tag))
+            }
+            HtmlToken::EndTag(tag) if tag.name == "template" => {
+                self.handle_in_head(HtmlToken::EndTag(tag))
+            }
+            HtmlToken::EndTag(_) => {
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEndTag, "unexpected end tag in template");
+                None
+            }
+            HtmlToken::Eof => {
+                if !self.open_elements.iter().any(|&id| matches!(self.arena[id].data, InternalNodeData::Element { ref tag, .. } if tag == "template")) {
+                    return None;
+                }
+                self.parse_error(TreeBuilderErrorKind::UnexpectedEof, "EOF in template");
+                self.pop_until("template");
+                self.clear_formatting_to_last_marker();
+                self.template_insertion_modes.pop();
+                self.reset_insertion_mode_appropriately();
+                Some(HtmlToken::Eof)
+            }
+        }
     }
 
     fn handle_after_body(&mut self, token: HtmlToken) -> Option<HtmlToken> {
