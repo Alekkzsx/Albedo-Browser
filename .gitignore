@@ -1,124 +1,44 @@
-```
-# Build artifacts
-target/
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Dependencies
-Cargo.lock
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
 # Dependencies
 node_modules/
 venv/
 .venv/
-__pycache__/
+.env
+.env.local
+.env.*
 
-# Build artifacts
+# Build directories
 dist/
 build/
 target/
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Editor/IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.py~
-.Python
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Rust
-**/*.rs.bk
-
-# Coverage reports
-coverage/
-*.lcov
-*.profdata
-*.gcda
-*.gcno
-
-# Testing
-*.pytest_cache/
 .mypy_cache/
-.hypothesis/
-```
-*.tmp
-
-# Logs
-*.log
-
-# Python specific
-*.pyc
-*.pyo
-*.pyd
-*.pyc
-__pycache__/
-*.py~*
-
-# Test coverage
+.pytest_cache/
 .coverage
 coverage/
 htmlcov/
 
-# OS generated files
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# System files
 .DS_Store
 Thumbs.db
-ehthumbs.db
-Icon?
-apidoc/
-doc/api/
-
-# Compiled Binary Files
-*.exe
-*.dll
-*.so
-*.dylib
-*.o
-*.obj
-*.a
-*.lib
-*.out
-*.app
-
-# Archives
-*.zip
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.rar
-*.7z
-*.gz
-*.bz2
-*.xz
-
-# MyPy cache
-.mypy_cache/
-# Pytest cache
-.pytest_cache/
+*.log
 
 # Compressed files
 *.zip
@@ -139,37 +59,6 @@ doc/api/
 *.Z
 *.lz
 *.lzo
-
-# Distribution / packaging
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# Local configuration files
-config/local.yml
-*.local.yml
-```
 *.tar.gz
 *.tar.bz2
 *.tar.xz
