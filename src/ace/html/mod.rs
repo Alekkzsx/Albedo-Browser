@@ -8,6 +8,8 @@ pub mod tokenizer;
 pub mod tree_builder;
 pub mod preload_scanner;
 pub mod encoding;
+pub mod arena;
+pub mod interner;
 pub mod tests;
 
 pub use lexer::{
@@ -29,6 +31,8 @@ pub use encoding::{
     EncodingDetectionResult, EncodingPrescanner, EncodingSource,
     extract_charset_from_meta, parse_content_type_header,
 };
+pub use arena::{NodeArena, NodeId};
+pub use interner::{StringInterner, StringId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
