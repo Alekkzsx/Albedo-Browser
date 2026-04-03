@@ -10,10 +10,16 @@ pub mod arena;
 pub mod live_nodelist;
 pub mod range;
 pub mod selection;
+pub mod shadow;
+pub mod custom_elements;
+pub mod a11y;
 pub use arena::{DomArena, ArenaNode};
 pub use live_nodelist::{LiveNodeList, HTMLCollection, NodeList, ChildrenCollection, NodeQuery, TagNameQuery, ClassNameQuery, IdQuery};
 pub use range::Range;
 pub use selection::{Selection, SelectionDirection, SelectionType};
+pub use shadow::{ShadowRoot, ShadowRootInit, ShadowRootMode, SlotAssignment, EventPath};
+pub use custom_elements::{CustomElementsRegistry, CustomElementDefinition, LifecycleCallbacks, CustomElementError};
+pub use a11y::{AccessibilityTree, AccessibilityNode, AriaRole, AriaStates, AriaProperties, ImplicitRoleMap, AccessibleNameComputer};
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
