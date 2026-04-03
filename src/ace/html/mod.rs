@@ -7,6 +7,7 @@ pub mod entities;
 pub mod tokenizer;
 pub mod tree_builder;
 pub mod preload_scanner;
+pub mod encoding;
 pub mod tests;
 
 pub use lexer::{
@@ -23,6 +24,11 @@ pub use tree_builder::{
     TreeBuilderErrorSource,
 };
 pub use preload_scanner::{PreloadRequest, PreloadResourceType, PreloadScanner};
+pub use encoding::{
+    decode_bytes, detect_encoding_from_bom, Encoding, EncodingDetector,
+    EncodingDetectionResult, EncodingPrescanner, EncodingSource,
+    extract_charset_from_meta, parse_content_type_header,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
