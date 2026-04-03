@@ -40,7 +40,7 @@
 - [ ] Guard-rails de produção (CI bloqueia regressões)
 - [ ] Performance de engine madura (documentos gigantes, streaming, inputs hostis)
 
-Veja **[PLANO_REALISTA.md](./PLANO_REALISTA.md)** para roadmap detalhado e métricas.
+Veja **[PLANO_REALISTA.md](./PLANO_REALISTA.md)** para roadmap de longo prazo (5-10 anos) e **[PLANO_DE_IMPLEMENTACAO.md](./PLANO_DE_IMPLEMENTACAO.md)** para plano técnico detalhado de implementação (52 semanas).
 
 ---
 

@@ -1,1 +1,2 @@
-Nothing should be ignored based on the provided file changes. The only modified file is `PLANO_REALISTA.md`, which is a markdown document and should not be added to `.gitignore`.
+# Examples 1:
+(empty — output nothing)
