@@ -70,7 +70,7 @@ fn serialize_value(value: &JsonValue, out: &mut String, pretty: bool, indent_lev
                 if pretty {
                     out.push('\n');
                 }
-                let mut entries: Vec<_> = obj.iter().collect();
+                let entries: Vec<_> = obj.iter().collect();
                 // Ordenar chaves para deterministicos testes se necessário, mas HashMap é aleatório.
                 // Aqui mantemos a ordem do iterador.
                 for (i, (key, val)) in entries.iter().enumerate() {

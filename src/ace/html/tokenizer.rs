@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use super::lexer::{
     HtmlLexer, HtmlToken as RawHtmlToken,
     LexerError as RawLexerError, LexerErrorKind as RawLexerErrorKind,
+    LexerState,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -106,6 +107,10 @@ impl<'a> HtmlTokenizer<'a> {
 
     pub fn set_raw_text_tag(&mut self, tag: Option<String>) {
         self.lexer.set_raw_text_tag(tag);
+    }
+
+    pub fn set_state(&mut self, state: LexerState) {
+        self.lexer.set_state(state);
     }
 
     pub fn errors(&self) -> &[TokenizerError] {

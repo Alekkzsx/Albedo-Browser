@@ -55,6 +55,10 @@ pub enum LexerState {
     CommentEnd,
     CommentEndBang,
     BogusComment,
+    CommentLessThanSign,
+    CommentLessThanSignBang,
+    CommentLessThanSignBangDash,
+    CommentLessThanSignBangDashDash,
 
     Doctype,
     BeforeDoctypeName,
@@ -102,17 +106,12 @@ pub enum LexerState {
     // Missing 16 states for character references, comments and CDATA
     CharacterReference,
     NamedCharacterReference,
-    AmbiguousAmpersand,
     NumericCharacterReference,
     HexadecimalCharacterReferenceStart,
     DecimalCharacterReferenceStart,
     HexadecimalCharacterReference,
     DecimalCharacterReference,
     NumericCharacterReferenceEnd,
-    CommentLessThanSign,
-    CommentLessThanSignBang,
-    CommentLessThanSignBangDash,
-    CommentLessThanSignBangDashDash,
     CdataSection,
     CdataSectionBracket,
     CdataSectionEnd,
@@ -496,7 +495,6 @@ impl<'a> HtmlLexer<'a> {
 
             LexerState::CharacterReference => self.state_character_reference(ch),
             LexerState::NamedCharacterReference => self.state_named_character_reference(ch),
-            LexerState::AmbiguousAmpersand => self.state_ambiguous_ampersand(ch),
             LexerState::NumericCharacterReference => self.state_numeric_character_reference(ch),
             LexerState::HexadecimalCharacterReferenceStart => {
                 self.state_hexadecimal_character_reference_start(ch)
@@ -1060,7 +1058,10 @@ impl<'a> HtmlLexer<'a> {
             Some('<') => {
                 self.current_comment.push('<');
             }
-            _ => {
+            Some(c) => {
+                self.reconsume_in_with_char(LexerState::Comment, c);
+            }
+            None => {
                 self.reconsume_in(LexerState::Comment);
             }
         }
@@ -1068,8 +1069,13 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_comment_less_than_sign_bang(&mut self, ch: Option<char>) {
         match ch {
-            Some('-') => self.state = LexerState::CommentLessThanSignBangDash,
-            _ => {
+            Some('-') => {
+                self.state = LexerState::CommentLessThanSignBangDash;
+            }
+            Some(c) => {
+                self.reconsume_in_with_char(LexerState::Comment, c);
+            }
+            None => {
                 self.reconsume_in(LexerState::Comment);
             }
         }
@@ -1077,8 +1083,13 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_comment_less_than_sign_bang_dash(&mut self, ch: Option<char>) {
         match ch {
-            Some('-') => self.state = LexerState::CommentLessThanSignBangDashDash,
-            _ => {
+            Some('-') => {
+                self.state = LexerState::CommentLessThanSignBangDashDash;
+            }
+            Some(c) => {
+                self.reconsume_in_with_char(LexerState::CommentStartDash, c);
+            }
+            None => {
                 self.reconsume_in(LexerState::CommentStartDash);
             }
         }
@@ -1086,18 +1097,28 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_comment_less_than_sign_bang_dash_dash(&mut self, ch: Option<char>) {
         match ch {
-            Some('>') | None => self.reconsume_in(LexerState::CommentEnd),
-            _ => {
-                self.parse_error(LexerErrorKind::NestedComment, "nested comment");
+            Some('>') | None => {
                 self.reconsume_in(LexerState::CommentEnd);
+            }
+            Some(c) => {
+                self.parse_error(LexerErrorKind::NestedComment, "nested comment start pattern");
+                self.reconsume_in_with_char(LexerState::CommentEnd, c);
             }
         }
     }
 
     fn state_cdata_section(&mut self, ch: Option<char>) {
         match ch {
-            Some(']') => self.state = LexerState::CdataSectionBracket,
-            Some(c) => self.push_text_char(c),
+            Some(']') => {
+                self.state = LexerState::CdataSectionBracket;
+            }
+            Some('\0') => {
+                self.parse_error(LexerErrorKind::UnexpectedNullCharacter, "null in CDATA section");
+                self.push_text_char('\u{FFFD}');
+            }
+            Some(c) => {
+                self.push_text_char(c);
+            }
             None => {
                 self.parse_error(LexerErrorKind::EofInCdata, "EOF in CDATA section");
                 self.state = LexerState::Data;
@@ -1107,21 +1128,35 @@ impl<'a> HtmlLexer<'a> {
 
     fn state_cdata_section_bracket(&mut self, ch: Option<char>) {
         match ch {
-            Some(']') => self.state = LexerState::CdataSectionEnd,
-            _ => {
+            Some(']') => {
+                self.state = LexerState::CdataSectionEnd;
+            }
+            Some(c) => {
                 self.push_text_char(']');
-                self.reconsume_in(LexerState::CdataSection);
+                self.reconsume_in_with_char(LexerState::CdataSection, c);
+            }
+            None => {
+                self.push_text_char(']');
+                self.state = LexerState::CdataSection;
             }
         }
     }
 
     fn state_cdata_section_end(&mut self, ch: Option<char>) {
         match ch {
-            Some('>') => self.state = LexerState::Data,
-            Some(']') => self.push_text_char(']'),
-            _ => {
+            Some('>') => {
+                self.state = LexerState::Data;
+            }
+            Some(']') => {
+                self.push_text_char(']');
+            }
+            Some(c) => {
                 self.push_text_str("]]");
-                self.reconsume_in(LexerState::CdataSection);
+                self.reconsume_in_with_char(LexerState::CdataSection, c);
+            }
+            None => {
+                self.push_text_str("]]");
+                self.state = LexerState::CdataSection;
             }
         }
     }
@@ -2252,95 +2287,110 @@ impl<'a> HtmlLexer<'a> {
                 self.state = LexerState::NumericCharacterReference;
             }
             Some(c) => {
+                self.emit_character('&');
                 self.reconsume_in_with_char(self.return_state, c);
             }
             None => {
+                self.emit_character('&');
                 self.reconsume_in(self.return_state);
             }
         }
     }
 
     fn state_named_character_reference(&mut self, ch: Option<char>) {
-        // Spec 13.2.5.73: Consume the maximum number of characters possible...
-        let mut longest_match: Option<(&'static str, bool)> = None;
-        let mut match_len = 0;
-
-        // `state_named_character_reference` is entered after already consuming one
-        // input character in the main loop. Include that character in the match window.
-        let start_pos = if ch.is_some() && self.pos > 0 {
-            self.pos - 1
-        } else {
-            self.pos
-        };
-        let mut i = 0;
-        
-        while start_pos + i <= self.chars.len() {
-            let buffer = &self.chars[start_pos..start_pos + i];
-            let buffer_str: String = buffer.iter().collect();
-            let full_buffer = format!("&{}", buffer_str);
+        if ch.is_some() {
+            self.reconsume();
             
-            // Optimization: check if full_buffer is a prefix of ANY entity
-            if !self.has_entity_starting_with(&full_buffer) {
-                break;
-            }
+            self.temporary_buffer.clear();
+            self.temporary_buffer.push('&');
             
-            // Check if it's an exact match
-            if let Some(decoded) = self.lookup_exact_entity(&full_buffer) {
-                longest_match = Some((decoded, full_buffer.ends_with(';')));
-                match_len = i;
-            }
+            let mut max_match_len = 0;
+            let mut max_match_str: Option<&'static str> = None;
             
-            i += 1;
-        }
-
-        if let Some((decoded, matches_semicolon)) = longest_match {
-            // Skip matched characters
-            self.pos = start_pos + match_len;
+            let pos_backup = self.pos;
+            let col_backup = self.column;
             
-            if self.is_attribute_return_state() && !matches_semicolon {
-                let next = self.chars.get(self.pos);
-                if let Some(&c) = next {
-                    if c == '=' || c.is_ascii_alphanumeric() {
-                        // Historical reasons: fail the match
-                        self.pos = start_pos; // Backtrack to after the '&'
-                        self.flush_temporary_buffer();
-                        self.state = self.return_state;
-                        return;
-                    }
+            let mut consumed_chars = 0;
+            
+            while let Some(next_c) = self.consume_next_input_character() {
+                self.temporary_buffer.push(next_c);
+                consumed_chars += 1;
+                
+                if let Some(decoded) = self.lookup_exact_entity(&self.temporary_buffer) {
+                    max_match_len = consumed_chars;
+                    max_match_str = Some(decoded);
+                }
+                
+                if !self.has_entity_starting_with(&self.temporary_buffer) {
+                    break;
                 }
             }
             
-            if !matches_semicolon {
-                self.parse_error(LexerErrorKind::MissingSemicolonAfterCharacterReference, "missing semicolon in named entity");
+            if max_match_len > 0 {
+                let over_consumed = consumed_chars - max_match_len;
+                self.pos -= over_consumed;
+                self.column -= over_consumed;
+                
+                let is_attribute = matches!(
+                    self.return_state,
+                    LexerState::AttributeValueDoubleQuoted
+                        | LexerState::AttributeValueSingleQuoted
+                        | LexerState::AttributeValueUnquoted
+                );
+                
+                let last_char = self.temporary_buffer.chars().nth(max_match_len).unwrap();
+                let next_char = self.peek_char().unwrap_or('\0');
+                
+                if is_attribute && last_char != ';' && (next_char == '=' || is_ascii_alnum(next_char)) {
+                    self.pos = pos_backup;
+                    self.column = col_backup;
+                    self.emit_character('&');
+                    
+                    if let Some(next) = self.peek_char() {
+                        if is_ascii_alnum(next) {
+                            let c1 = self.consume_next_input_character().unwrap();
+                            if self.peek_char() == Some(';') {
+                                self.parse_error(LexerErrorKind::UnknownNamedCharacterReference, "ambiguous ampersand before semicolon");
+                            }
+                            self.reconsume_in_with_char(self.return_state, c1);
+                            return;
+                        }
+                    }
+                    self.state = self.return_state;
+                    return;
+                }
+                
+                if last_char != ';' {
+                    self.parse_error(LexerErrorKind::MissingSemicolonAfterCharacterReference, "missing semicolon");
+                }
+                
+                let decoded = max_match_str.unwrap();
+                for dec_char in decoded.chars() {
+                    self.emit_character(dec_char);
+                }
+                self.state = self.return_state;
+                
+            } else {
+                self.pos = pos_backup;
+                self.column = col_backup;
+                
+                self.emit_character('&');
+                
+                if let Some(next) = self.peek_char() {
+                    if is_ascii_alnum(next) {
+                        let c1 = self.consume_next_input_character().unwrap();
+                        if self.peek_char() == Some(';') {
+                            self.parse_error(LexerErrorKind::UnknownNamedCharacterReference, "ambiguous ampersand before semicolon");
+                        }
+                        self.reconsume_in_with_char(self.return_state, c1);
+                        return;
+                    }
+                }
+                self.state = self.return_state;
             }
-            
-            for c in decoded.chars() {
-                self.emit_character(c);
-            }
-            self.state = self.return_state;
         } else {
-            // No match found
-            self.pos = start_pos;
-            self.flush_temporary_buffer();
+            self.emit_character('&');
             self.state = self.return_state;
-        }
-    }
-
-    fn state_ambiguous_ampersand(&mut self, ch: Option<char>) {
-        match ch {
-            Some(c) if is_ascii_alnum(c) => {
-                self.temporary_buffer.push(c);
-            }
-            Some(';') => {
-                self.parse_error(LexerErrorKind::UnknownNamedCharacterReference, "ambiguous ampersand before semicolon");
-                self.reconsume_in_with_char(self.return_state, ';');
-            }
-            Some(c) => {
-                self.reconsume_in_with_char(self.return_state, c);
-            }
-            None => {
-                self.reconsume_in(self.return_state);
-            }
         }
     }
 
@@ -2348,7 +2398,7 @@ impl<'a> HtmlLexer<'a> {
         self.character_reference_code = 0;
         match ch {
             Some('x' | 'X') => {
-                self.temporary_buffer.push(ch.unwrap());
+                self.temporary_buffer.push(ch.expect("temporary buffer must not be empty after peek"));
                 self.state = LexerState::HexadecimalCharacterReferenceStart;
             }
             Some(c) => {
@@ -2396,7 +2446,7 @@ impl<'a> HtmlLexer<'a> {
         match ch {
             Some(c) if c.is_ascii_hexdigit() => {
                 self.character_reference_code *= 16;
-                self.character_reference_code += c.to_digit(16).unwrap();
+                self.character_reference_code += c.to_digit(16).expect("already validated as hex digit");
             }
             Some(';') => {
                 self.state = LexerState::NumericCharacterReferenceEnd;
@@ -2415,7 +2465,7 @@ impl<'a> HtmlLexer<'a> {
         match ch {
             Some(c) if c.is_ascii_digit() => {
                 self.character_reference_code *= 10;
-                self.character_reference_code += c.to_digit(10).unwrap() as u32;
+                self.character_reference_code += c.to_digit(10).expect("already validated as decimal digit") as u32;
             }
             Some(';') => {
                 self.state = LexerState::NumericCharacterReferenceEnd;
@@ -2469,6 +2519,7 @@ impl<'a> HtmlLexer<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn is_attribute_return_state(&self) -> bool {
         matches!(
             self.return_state,
@@ -2478,6 +2529,7 @@ impl<'a> HtmlLexer<'a> {
         )
     }
 
+    #[allow(dead_code)]
     fn has_entity_starting_with(&self, prefix: &str) -> bool {
         use crate::ace::html::entities::HTML_ENTITIES;
         match HTML_ENTITIES.binary_search_by(|(name, _)| {
@@ -2651,6 +2703,14 @@ impl<'a> HtmlLexer<'a> {
                 self.column -= 1;
             }
         }
+    }
+
+    pub fn set_state(&mut self, state: LexerState) {
+        self.state = state;
+    }
+
+    pub fn remaining_input(&self) -> String {
+        self.chars[self.pos..].iter().collect()
     }
 
     fn reconsume_in(&mut self, new_state: LexerState) {

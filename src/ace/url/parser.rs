@@ -425,7 +425,6 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
             State::Fragment => {
                 buffer.push(c);
             }
-            _ => {}
         }
         if advance {
             i += 1;

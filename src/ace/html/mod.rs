@@ -22,7 +22,7 @@ pub use tree_builder::{
     InsertionMode, TreeBuildOutput, TreeBuilderError, TreeBuilderErrorKind,
     TreeBuilderErrorSource,
 };
-pub use preload_scanner::{PreloadRequest, PreloadResourceType};
+pub use preload_scanner::{PreloadRequest, PreloadResourceType, PreloadScanner};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {

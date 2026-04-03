@@ -347,7 +347,7 @@ impl ResourceManager {
             let resource_type = resource_type.clone();
 
             tokio::spawn(async move {
-                let path_buf = if let Ok(parsed_url) = crate::ace::url::parse(&url_clone, None) {
+                let path_buf = if let Ok(_parsed_url) = crate::ace::url::parse(&url_clone, None) {
                     // Nota: WHATWG URL Standard trata caminhos de forma diferente.
                     // Para o MVP de migração, simulamos a extração de caminho de arquivo.
                     let path_str = url_clone.trim_start_matches("file://");
