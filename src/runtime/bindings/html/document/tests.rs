@@ -2,12 +2,11 @@ use super::*;
 use crate::engine::dom::AceDOM;
 use crate::engine::style;
 use crate::runtime::core::runtime::JsRuntime;
-use kuchiki::traits::TendrilSink;
 use std::sync::{Arc, Mutex};
 
 fn create_test_env(html: &str) -> (JsRuntime, Arc<Mutex<AceDOM>>) {
-    let document = kuchiki::parse_html().one(html);
-    let dom = Arc::new(Mutex::new(AceDOM::from_kuchiki(document)));
+    // Usando ACE-HTML parser proprietário ao invés de kuchiki
+    let dom = Arc::new(Mutex::new(AceDOM::from_html(html)));
     let rt = JsRuntime::new().unwrap();
 
     let stylesheet = Arc::new(Mutex::new(style::parse(""))); // Empty stylesheet
