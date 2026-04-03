@@ -15,6 +15,23 @@ Cargo.lock
 *.env.*
 
 # Editors
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
 .vscode/
 .idea/
 *.swp
@@ -48,6 +65,24 @@ coverage/
 *.pytest_cache/
 .mypy_cache/
 .hypothesis/
+```
+*.tmp
+
+# Logs
+*.log
+
+# Python specific
+*.pyc
+*.pyo
+*.pyd
+*.pyc
+__pycache__/
+*.py~*
+
+# Test coverage
+.coverage
+coverage/
+htmlcov/
 
 # OS generated files
 .DS_Store
@@ -79,6 +114,21 @@ doc/api/
 *.gz
 *.bz2
 *.xz
+
+# MyPy cache
+.mypy_cache/
+# Pytest cache
+.pytest_cache/
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
 *.zst
 *.lz4
 *.lzh
@@ -120,3 +170,7 @@ Thumbs.db
 config/local.yml
 *.local.yml
 ```
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
