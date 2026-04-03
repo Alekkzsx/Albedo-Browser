@@ -1,3 +1,33 @@
+```
+# Build artifacts
+*.rs.bk
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+
+# Dependencies
+target/
+Cargo.lock
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
 # Dependencies
 node_modules/
 venv/
@@ -19,6 +49,25 @@ target/
 .idea/
 *.swp
 *.swo
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# Cache directories
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+```
 *.tmp
 
 # Logs
