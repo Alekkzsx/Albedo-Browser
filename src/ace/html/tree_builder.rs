@@ -3,6 +3,7 @@ use crate::ace::html::{
     DoctypeToken, EndTagToken, HtmlDocument, HtmlElement, HtmlNode, HtmlToken,
     HtmlTokenizer, StartTagToken, TokenizerErrorSource,
     PreloadScanner, PreloadRequest,
+    lexer::LexerState,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -176,13 +177,14 @@ impl<'a> HtmlTreeBuilder<'a> {
             pending_table_characters: Vec::new(),
             preload_scanner: PreloadScanner::new(),
             preload_requests: Vec::new(),
+            template_insertion_modes: Vec::new(),
         }
     }
 
     pub fn speculate(&mut self) {
         let remaining = self.tokenizer.lexer.remaining_input();
         if !remaining.is_empty() {
-            let requests = self.preload_scanner.scan(remaining);
+            let requests = self.preload_scanner.scan(&remaining);
             for req in requests {
                 // simple deduplication or just push? for now just push
                 if !self.preload_requests.iter().any(|r| r.url == req.url) {
@@ -270,11 +272,15 @@ impl<'a> HtmlTreeBuilder<'a> {
                     if !self.is_mathml_text_integration_point(*id) && !self.is_html_integration_point(*id) {
                         return self.handle_foreign_content(token);
                     }
-                    if let crate::ace::html::Namespace::MathML = namespace {
+                    if let crate::ace::html::Namespace::MathMl = namespace {
                         if tag == "annotation-xml" {
-                            if let Some(attr) = self.arena[*id].attributes.get("encoding") {
-                                if attr == "text/html" || attr == "application/xhtml+xml" {
-                                    // Treat as HTML integration point
+                            if let InternalNodeData::Element { ref attributes, .. } = self.arena[*id].data {
+                                if let Some(attr) = attributes.get("encoding") {
+                                    if attr == "text/html" || attr == "application/xhtml+xml" {
+                                        // Treat as HTML integration point
+                                    } else {
+                                        return self.handle_foreign_content(token);
+                                    }
                                 } else {
                                     return self.handle_foreign_content(token);
                                 }
@@ -336,36 +342,67 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn insert_at_appropriate_place(&mut self, nid: usize, override_target: Option<usize>) {
-        let target = if let Some(target_id) = override_target {
-            target_id
+        let (target, before) = if let Some(target_id) = override_target {
+            (target_id, None)
         } else {
-            let mut t = self.current_node();
+            let t = self.current_node();
             if self.foster_parenting && matches!(self.arena[t].data, InternalNodeData::Element { ref tag, .. } if matches!(tag.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr")) {
                 // WHATWG 13.2.6.4.1: Foster parenting
+                let mut last_template = None;
                 let mut last_table = None;
-                for &id in self.open_elements.iter().rev() {
+                for (i, &id) in self.open_elements.iter().enumerate().rev() {
                     if let InternalNodeData::Element { ref tag, .. } = self.arena[id].data {
-                        if tag == "table" {
-                            last_table = Some(id);
-                            break;
+                        if tag == "template" && last_template.is_none() {
+                            last_template = Some(i);
+                        }
+                        if tag == "table" && last_table.is_none() {
+                            last_table = Some(i);
                         }
                     }
                 }
-                if let Some(table_id) = last_table {
-                    if let Some(parent_id) = self.arena[table_id].parent {
-                        parent_id
+
+                if let (Some(temp_pos), Some(table_pos)) = (last_template, last_table) {
+                    if temp_pos > table_pos {
+                        (self.open_elements[temp_pos], None)
                     } else {
-                        self.open_elements[self.open_elements.iter().position(|&x| x == table_id).unwrap() - 1]
+                        self.get_foster_parent(table_pos)
                     }
+                } else if let Some(temp_pos) = last_template {
+                    (self.open_elements[temp_pos], None)
+                } else if let Some(table_pos) = last_table {
+                    self.get_foster_parent(table_pos)
                 } else {
-                    self.open_elements[0] // html element
+                    (self.open_elements[0], None) // html element
                 }
             } else {
-                t
+                (t, None)
             }
         };
 
-        self.append_node(target, nid);
+        if let Some(before_id) = before {
+            self.insert_before(target, nid, before_id);
+        } else {
+            self.append_node(target, nid);
+        }
+    }
+
+    fn get_foster_parent(&self, table_pos: usize) -> (usize, Option<usize>) {
+        let table_id = self.open_elements[table_pos];
+        if let Some(parent_id) = self.arena[table_id].parent {
+            (parent_id, Some(table_id))
+        } else {
+            (self.open_elements[table_pos - 1], None)
+        }
+    }
+
+    fn insert_before(&mut self, parent_id: usize, child_id: usize, before_id: usize) {
+        if let Some(old_parent) = self.arena[child_id].parent {
+            self.arena[old_parent].children.retain(|&id| id != child_id);
+        }
+        
+        self.arena[child_id].parent = Some(parent_id);
+        let pos = self.arena[parent_id].children.iter().position(|&id| id == before_id).unwrap_or(self.arena[parent_id].children.len());
+        self.arena[parent_id].children.insert(pos, child_id);
     }
 
     fn reconstruct_active_formatting_elements(&mut self) {
@@ -422,6 +459,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             "fediffuselighting" => *tag = "feDiffuseLighting".to_string(),
             "fedisplacementmap" => *tag = "feDisplacementMap".to_string(),
             "fedistantlight" => *tag = "feDistantLight".to_string(),
+            "fedrop_shadow" => *tag = "feDropShadow".to_string(),
             "feflood" => *tag = "feFlood".to_string(),
             "fefunca" => *tag = "feFuncA".to_string(),
             "fefuncb" => *tag = "feFuncB".to_string(),
@@ -1495,22 +1533,25 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn adoption_agency_algorithm(&mut self, subject: &str) {
         // WHATWG 13.2.6.4.7
-        // Step 1: Let the subject be the tag name
         
         // Step 2: Outer loop
         for _outer in 0..8 {
             // Step 3: Find formatting element
-            let formatting_element_pos = self.active_formatting_elements.iter().rposition(|e| {
-                match e {
-                    ActiveFormattingEntry::Element(id) => {
-                        match &self.arena[*id].data {
-                            InternalNodeData::Element { tag, .. } => tag == subject,
-                            _ => false,
+            let mut formatting_element_pos = None;
+            for i in (0..self.active_formatting_elements.len()).rev() {
+                let entry = &self.active_formatting_elements[i];
+                if matches!(entry, ActiveFormattingEntry::Marker) {
+                    break;
+                }
+                if let ActiveFormattingEntry::Element(id) = entry {
+                    if let InternalNodeData::Element { ref tag, .. } = self.arena[*id].data {
+                        if tag == subject {
+                            formatting_element_pos = Some(i);
+                            break;
                         }
                     }
-                    _ => false,
                 }
-            });
+            }
 
             let Some(f_pos) = formatting_element_pos else {
                 self.handle_in_body_end_tag_standard(subject);
@@ -1529,7 +1570,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.active_formatting_elements.remove(f_pos);
                 return;
             }
-            let open_pos = open_pos.unwrap();
+            let open_pos = open_pos.expect("formatting element must be in open stack by step 4");
 
             // Step 5: Check if in scope
             if !self.has_element_in_scope_with_id(formatting_element_id) {
@@ -1538,7 +1579,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
 
             // Step 6: Check if node is formatting element
-            if self.open_elements[open_pos] != formatting_element_id {
+            if self.open_elements.last() != Some(&formatting_element_id) {
                 self.parse_error(TreeBuilderErrorKind::AdoptionAgency, "node is not formatting element");
             }
 
@@ -1580,7 +1621,6 @@ impl<'a> HtmlTreeBuilder<'a> {
                 
                 if f_entry_pos.is_none() {
                     self.open_elements.remove(node_pos);
-                    // Adjust node_pos/fb_pos as stack shifted? Actually we just continue.
                     continue;
                 }
 
@@ -1591,7 +1631,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 // If node is furthest block, update bookmark
                 let cloned_id = self.clone_element(node_id);
                 // Replace in stacks
-                let f_e_pos = f_entry_pos.unwrap();
+                let f_e_pos = f_entry_pos.expect("node_id must be in active formatting elements per step 11.1");
                 self.active_formatting_elements[f_e_pos] = ActiveFormattingEntry::Element(cloned_id);
                 self.open_elements[node_pos] = cloned_id;
                 
@@ -1599,12 +1639,18 @@ impl<'a> HtmlTreeBuilder<'a> {
                     bookmark_pos = f_e_pos + 1;
                 }
                 
+                // Detach last_node from its parent and append to node
+                if let Some(parent) = self.arena[last_node_id].parent {
+                    self.arena[parent].children.retain(|&id| id != last_node_id);
+                }
                 self.append_node(cloned_id, last_node_id);
                 last_node_id = cloned_id;
             }
 
-            // Step 12: Reparent last node to common ancestor
-            self.arena[last_node_id].parent = None; // Detach
+            // Step 12: Reparent last node to common ancestor (handle foster parenting)
+            if let Some(parent) = self.arena[last_node_id].parent {
+                self.arena[parent].children.retain(|&id| id != last_node_id);
+            }
             self.insert_at_appropriate_place(last_node_id, Some(common_ancestor_id));
 
             // Step 13: New formatting element
@@ -1615,7 +1661,8 @@ impl<'a> HtmlTreeBuilder<'a> {
             let fb_children = self.arena[fb_id].children.clone();
             self.arena[fb_id].children.clear();
             for child_id in fb_children {
-                self.append_node(new_formatting_id, child_id);
+                self.arena[child_id].parent = Some(new_formatting_id);
+                self.arena[new_formatting_id].children.push(child_id);
             }
 
             // Step 15: Append new formatting element to furthest block
@@ -1634,7 +1681,7 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn is_special_element(&self, id: usize) -> bool {
         match &self.arena[id].data {
             InternalNodeData::Element { tag, .. } => {
-                matches!(tag.as_str(), "address" | "applet" | "area" | "article" | "aside" | "base" | "basefont" | "bgsound" | "blockquote" | "body" | "br" | "button" | "caption" | "center" | "col" | "colgroup" | "dd" | "details" | "dir" | "div" | "dl" | "dt" | "embed" | "fieldset" | "figcaption" | "figure" | "footer" | "form" | "frame" | "frameset" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "header" | "hgroup" | "hr" | "html" | "iframe" | "img" | "input" | "keygen" | "li" | "link" | "listing" | "main" | "marquee" | "menu" | "meta" | "nav" | "noembed" | "noframes" | "noscript" | "object" | "ol" | "p" | "param" | "plaintext" | "pre" | "script" | "section" | "select" | "source" | "style" | "summary" | "table" | "tbody" | "td" | "template" | "textarea" | "tfoot" | "th" | "thead" | "title" | "tr" | "track" | "ul" | "wbr" | "xmp" | "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml" | "foreignObject" | "desc" | "title")
+                matches!(tag.as_str(), "address" | "applet" | "area" | "article" | "aside" | "base" | "basefont" | "bgsound" | "blockquote" | "body" | "br" | "button" | "caption" | "center" | "col" | "colgroup" | "dd" | "details" | "dir" | "div" | "dl" | "dt" | "embed" | "fieldset" | "figcaption" | "figure" | "footer" | "form" | "frame" | "frameset" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "header" | "hgroup" | "hr" | "html" | "iframe" | "img" | "input" | "keygen" | "li" | "link" | "listing" | "main" | "marquee" | "menu" | "meta" | "nav" | "noembed" | "noframes" | "noscript" | "object" | "ol" | "p" | "param" | "plaintext" | "pre" | "script" | "section" | "select" | "source" | "style" | "summary" | "table" | "tbody" | "td" | "template" | "textarea" | "tfoot" | "th" | "thead" | "title" | "tr" | "track" | "ul" | "wbr" | "xmp" | "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml" | "foreignObject" | "desc")
             }
             _ => false,
         }
@@ -1651,6 +1698,10 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn set_state(&mut self, state: LexerState) {
+        self.tokenizer.lexer.set_state(state);
     }
 
     fn handle_in_body_end_tag_standard(&mut self, tag: &str) {
@@ -2071,7 +2122,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                 }
                 None
             }
-            other => {
+            _other => {
                 self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token in InSelect");
                 None
             }
@@ -2328,45 +2379,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         self.insertion_mode = InsertionMode::InBody;
     }
 
-    fn reconstruct_active_formatting_elements(&mut self) {
-        if self.active_formatting_elements.is_empty() { return; }
-        
-        // Find last element or marker
-        let mut last_marker = self.active_formatting_elements.len();
-        for i in (0..self.active_formatting_elements.len()).rev() {
-            if matches!(self.active_formatting_elements[i], ActiveFormattingEntry::Marker) {
-                last_marker = i;
-                break;
-            }
-            if let ActiveFormattingEntry::Element(id) = self.active_formatting_elements[i] {
-                // Check if in open elements
-                if self.open_elements.iter().any(|&oid| oid == id) {
-                    last_marker = i;
-                    break;
-                }
-            }
-        }
-        
-        if last_marker == self.active_formatting_elements.len() {
-            last_marker = 0; // Reconstruct all from start if no marker and none in open stack
-        } else {
-            last_marker += 1; // Reconstruct from NEXT
-        }
 
-        for i in last_marker..self.active_formatting_elements.len() {
-            if let ActiveFormattingEntry::Element(id) = self.active_formatting_elements[i] {
-                let InternalNodeData::Element { ref tag, namespace, ref attributes } = self.arena[id].data else { continue; };
-                let nid = self.create_node(InternalNodeData::Element { 
-                    tag: tag.clone(), 
-                    namespace,
-                    attributes: attributes.clone() 
-                });
-                self.append_node(self.current_node(), nid);
-                self.open_elements.push(nid);
-                self.active_formatting_elements[i] = ActiveFormattingEntry::Element(nid);
-            }
-        }
-    }
 
     fn clear_formatting_to_last_marker(&mut self) {
         while let Some(entry) = self.active_formatting_elements.pop() {
@@ -2384,7 +2397,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         match token {
             HtmlToken::Character(text) => {
                 let data = text.data.replace('\0', "\u{FFFD}");
-                self.insert_text(data);
+                self.insert_text(data.clone());
                 if !data.trim().is_empty() {
                     self.frameset_ok = false;
                 }
@@ -2394,14 +2407,14 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.insert_comment(comment.data);
                 None
             }
-            HtmlToken::Doctype(dt) => {
+            HtmlToken::Doctype(_) => {
                 self.parse_error(TreeBuilderErrorKind::UnexpectedDoctype, "unexpected DOCTYPE in foreign content");
                 None
             }
             HtmlToken::StartTag(tag) => {
                 if matches!(tag.name.as_str(), "b" | "big" | "blockquote" | "body" | "br" | "center" | "code" | "dd" | "div" | "dl" | "dt" | "em" | "embed" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "head" | "hr" | "i" | "img" | "li" | "listing" | "menu" | "meta" | "nobr" | "ol" | "p" | "pre" | "ruby" | "s" | "small" | "span" | "strong" | "strike" | "sub" | "sup" | "table" | "tt" | "u" | "ul" | "var")
                    || (tag.name == "font" && (tag.attributes.contains_key("color") || tag.attributes.contains_key("face") || tag.attributes.contains_key("size"))) {
-                    self.parse_error(TreeBuilderErrorKind::UnexpectedToken, format!("unexpected HTML tag {} in foreign content", tag.name));
+                    self.parse_error(TreeBuilderErrorKind::UnexpectedToken, format!("unexpected HTML tag {} in foreign content", &tag.name));
                     while let Some(&id) = self.open_elements.last() {
                          if let InternalNodeData::Element { namespace, .. } = &self.arena[id].data {
                              if *namespace == crate::ace::html::Namespace::Html || self.is_integration_point(id) {
@@ -2410,7 +2423,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                          }
                          self.open_elements.pop();
                     }
-                    return Some(HtmlToken::StartTag(tag));
+                    return Some(HtmlToken::StartTag(tag.clone()));
                 }
                 
                 let ns = self.current_node_namespace();
@@ -2493,6 +2506,8 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn setup_fragment_mode(&mut self, context: &str) {
         // WHATWG 13.2.11: Parsing HTML fragments
+        use crate::ace::html::lexer::LexerState;
+
         let tag = context.to_string();
         let nid = self.create_node(InternalNodeData::Element { 
             tag: tag.clone(), 
@@ -2503,8 +2518,20 @@ impl<'a> HtmlTreeBuilder<'a> {
         self.open_elements.push(nid);
         
         match tag.as_str() {
-            "title" | "textarea" | "style" | "xmp" | "iframe" | "noembed" | "noframes" | "script" | "plaintext" => {
-                self.tokenizer.set_raw_text_tag(Some(tag));
+            "title" | "textarea" => {
+                self.tokenizer.set_state(LexerState::RcData);
+            }
+            "style" | "xmp" | "iframe" | "noembed" | "noframes" => {
+                self.tokenizer.set_state(LexerState::RawText);
+            }
+            "script" => {
+                self.tokenizer.set_state(LexerState::ScriptData);
+            }
+            "noscript" if self.scripting_enabled => {
+                self.tokenizer.set_state(LexerState::RawText);
+            }
+            "plaintext" => {
+                self.tokenizer.set_state(LexerState::PlainText);
             }
             _ => {}
         }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreloadResourceType {
@@ -29,6 +29,8 @@ enum PreloadScannerState {
     AttributeValueSingleQuoted,
     AttributeValueUnquoted,
     AfterAttributeValueQuoted,
+    Comment,
+    BogusComment,
 }
 
 pub struct PreloadScanner {
@@ -62,13 +64,32 @@ impl PreloadScanner {
                     }
                 }
                 PreloadScannerState::TagOpen => {
-                    if ch.is_alphabetic() {
+                    if ch == '!' {
+                        self.state = PreloadScannerState::Comment;
+                    } else if ch == '?' {
+                        self.state = PreloadScannerState::BogusComment;
+                    } else if ch.is_alphabetic() {
                         self.current_tag.clear();
                         self.current_tag.push(ch.to_ascii_lowercase());
                         self.state = PreloadScannerState::TagName;
-                    } else if ch == '!' || ch == '?' || ch == '/' {
-                         self.state = PreloadScannerState::Data; // Ignore
                     } else {
+                        self.state = PreloadScannerState::Data;
+                    }
+                }
+                PreloadScannerState::Comment => {
+                    // Simplified: just look for -->
+                    if ch == '-' {
+                        if chars.peek() == Some(&'-') {
+                            chars.next();
+                            if chars.peek() == Some(&'>') {
+                                chars.next();
+                                self.state = PreloadScannerState::Data;
+                            }
+                        }
+                    }
+                }
+                PreloadScannerState::BogusComment => {
+                    if ch == '>' {
                         self.state = PreloadScannerState::Data;
                     }
                 }
