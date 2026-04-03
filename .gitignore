@@ -1,1 +1,1 @@
-Nothing needs to be added to .gitignore since only markdown files (.md) were added, deleted, or modified, which are source/config files that should not be ignored.
+Nothing should be ignored based on the provided file changes. The only modified file is `PLANO_REALISTA.md`, which is a markdown document and should not be added to `.gitignore`.
