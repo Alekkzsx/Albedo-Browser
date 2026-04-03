@@ -11,6 +11,8 @@ pub mod encoding;
 pub mod arena;
 pub mod interner;
 pub mod small_attr_map;
+pub mod metrics;
+pub mod streaming;
 pub mod tests;
 
 pub use lexer::{
@@ -35,6 +37,8 @@ pub use encoding::{
 pub use arena::{NodeArena, NodeId};
 pub use interner::{StringInterner, StringId};
 pub use small_attr_map::SmallAttributeMap;
+pub use metrics::{ParserMetrics, ParserStats};
+pub use streaming::{StreamingHtmlParser, StreamingState};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
