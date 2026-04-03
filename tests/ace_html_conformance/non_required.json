@@ -1,5 +1,169 @@
 {
   "suite": "non_required",
   "version": 1,
-  "cases": []
+  "cases": [
+    {
+      "case_id": "tok_mathml_basic",
+      "spec_ref": "WHATWG 13.2.6 MathML namespace",
+      "mode": "document",
+      "input": "<math><mi>x</mi></math>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <math math>\n|       <math mi>\n|         \"x\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_svg_foreign_object",
+      "spec_ref": "WHATWG 13.2.6 SVG foreignObject",
+      "mode": "document",
+      "input": "<svg><foreignObject><div>test</div></foreignObject></svg>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <svg svg>\n|       <svg foreignObject>\n|         <div>\n|           \"test\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_template_nested",
+      "spec_ref": "WHATWG 13.2.6 Nested template elements",
+      "mode": "document",
+      "input": "<template><template>nested</template></template>",
+      "expected_tree": "| <html>\n|   <head>\n|     <template>\n|       <template-content>\n|         <template>\n|           <template-content>\n|             \"nested\"\n|   <body>\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_shadow_dom_slot",
+      "spec_ref": "WHATWG 13.2.6 Shadow DOM slot parsing",
+      "mode": "fragment",
+      "context": "template",
+      "input": "<slot name=\"default\">fallback</slot>",
+      "expected_tree": "| <slot>\n|   name=\"default\"\n|   \"fallback\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_svg_integration_point",
+      "spec_ref": "WHATWG 13.2.6 SVG HTML integration point",
+      "mode": "document",
+      "input": "<svg><title>SVG Title</title><desc>Description</desc></svg>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <svg svg>\n|       <svg title>\n|         \"SVG Title\"\n|       <svg desc>\n|         \"Description\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_cdata_in_svg",
+      "spec_ref": "WHATWG 13.2.6 CDATA in SVG foreign content",
+      "mode": "document",
+      "input": "<svg><![CDATA[test data]]></svg>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <svg svg>\n|       \"test data\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_script_with_src",
+      "spec_ref": "WHATWG 13.2.6 Script element with src attribute",
+      "mode": "document",
+      "input": "<script src=\"app.js\"></script>",
+      "expected_tree": "| <html>\n|   <head>\n|     <script>\n|       src=\"app.js\"\n|   <body>\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_noscript_with_js_enabled",
+      "spec_ref": "WHATWG 13.2.6 Noscript with scripting enabled",
+      "mode": "document",
+      "input": "<noscript>JS disabled</noscript>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_picture_element",
+      "spec_ref": "WHATWG 13.2.6 Picture element parsing",
+      "mode": "document",
+      "input": "<picture><source media=\"(min-width: 800px)\" srcset=\"large.jpg\"><img src=\"small.jpg\"></picture>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <picture>\n|       <source>\n|         media=\"(min-width: 800px)\"\n|         srcset=\"large.jpg\"\n|       <img>\n|         src=\"small.jpg\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_video_with_tracks",
+      "spec_ref": "WHATWG 13.2.6 Video with track elements",
+      "mode": "document",
+      "input": "<video src=\"vid.mp4\"><track kind=\"subtitles\" src=\"subs.vtt\"></video>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <video>\n|       src=\"vid.mp4\"\n|       <track>\n|         kind=\"subtitles\"\n|         src=\"subs.vtt\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_custom_elements",
+      "spec_ref": "WHATWG 13.2.6 Custom element parsing",
+      "mode": "document",
+      "input": "<my-element attr=\"value\">content</my-element>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <my-element>\n|       attr=\"value\"\n|       \"content\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_dialog_element",
+      "spec_ref": "WHATWG 13.2.6 Dialog element parsing",
+      "mode": "document",
+      "input": "<dialog open><p>Modal content</p></dialog>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <dialog>\n|       open\n|       <p>\n|         \"Modal content\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_details_summary",
+      "spec_ref": "WHATWG 13.2.6 Details and summary elements",
+      "mode": "document",
+      "input": "<details><summary>Click me</summary>Hidden content</details>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <details>\n|       <summary>\n|         \"Click me\"\n|       \"Hidden content\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_progress_meter",
+      "spec_ref": "WHATWG 13.2.6 Progress and meter elements",
+      "mode": "document",
+      "input": "<progress value=\"0.7\"></progress><meter min=\"0\" max=\"100\" value=\"50\"></meter>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <progress>\n|       value=\"0.7\"\n|     <meter>\n|       min=\"0\"\n|       max=\"100\"\n|       value=\"50\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_output_element",
+      "spec_ref": "WHATWG 13.2.6 Output element parsing",
+      "mode": "document",
+      "input": "<output for=\"input1\" name=\"result\">42</output>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <output>\n|       for=\"input1\"\n|       name=\"result\"\n|       \"42\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_datalist_options",
+      "spec_ref": "WHATWG 13.2.6 Datalist with options",
+      "mode": "document",
+      "input": "<input list=\"colors\"><datalist id=\"colors\"><option value=\"red\"><option value=\"blue\"></datalist>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <input>\n|       list=\"colors\"\n|     <datalist>\n|       id=\"colors\"\n|       <option>\n|         value=\"red\"\n|       <option>\n|         value=\"blue\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_iframe_sandbox",
+      "spec_ref": "WHATWG 13.2.6 Iframe with sandbox attribute",
+      "mode": "document",
+      "input": "<iframe src=\"page.html\" sandbox=\"allow-scripts allow-same-origin\"></iframe>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <iframe>\n|       src=\"page.html\"\n|       sandbox=\"allow-scripts allow-same-origin\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_portal_element",
+      "spec_ref": "WHATWG 13.2.6 Portal element (experimental)",
+      "mode": "document",
+      "input": "<portal src=\"https://example.com\"></portal>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <portal>\n|       src=\"https://example.com\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_search_element",
+      "spec_ref": "WHATWG 13.2.6 Search element parsing",
+      "mode": "document",
+      "input": "<search><form><input name=\"q\"></form></search>",
+      "expected_tree": "| <html>\n|   <head>\n|   <body>\n|     <search>\n|       <form>\n|         <input>\n|           name=\"q\"\n",
+      "expected_errors": []
+    },
+    {
+      "case_id": "tok_entity_no_semicolon",
+      "spec_ref": "WHATWG 13.2.5 Entity without semicolon",
+      "mode": "tokenizer",
+      "input": "Tom & Jerry",
+      "expected_tokens": [
+        { "type": "Character", "data": "Tom & Jerry" }
+      ],
+      "expected_errors": ["LEX001:MissingSemicolonAfterCharacterReference"]
+    }
+  ]
 }
