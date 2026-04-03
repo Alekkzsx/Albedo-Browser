@@ -13,6 +13,7 @@ pub mod interner;
 pub mod small_attr_map;
 pub mod metrics;
 pub mod streaming;
+pub mod simd;
 pub mod tests;
 
 pub use lexer::{
@@ -39,6 +40,10 @@ pub use interner::{StringInterner, StringId};
 pub use small_attr_map::SmallAttributeMap;
 pub use metrics::{ParserMetrics, ParserStats};
 pub use streaming::{StreamingHtmlParser, StreamingState};
+pub use simd::{
+    fast_entity_lookup, decode_numeric_entity, simd_find_byte,
+    normalize_whitespace_simd, has_simd_support, get_optimization_level,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
