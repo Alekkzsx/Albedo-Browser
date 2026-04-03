@@ -238,7 +238,7 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn convert_to_html_node(&self, id: usize) -> HtmlNode {
         let node = &self.arena[id];
         match &node.data {
-            InternalNodeData::Element { tag, namespace, attributes } => {
+            InternalNodeData::Element { tag, namespace, attributes, slot_name, is_value, shadow_root_mode, shadow_root } => {
                 let mut children = Vec::new();
                 for &child_id in &node.children {
                     children.push(self.convert_to_html_node(child_id));
@@ -248,6 +248,10 @@ impl<'a> HtmlTreeBuilder<'a> {
                     namespace: *namespace,
                     attributes: attributes.clone(),
                     children,
+                    slot_name: slot_name.clone(),
+                    is_value: is_value.clone(),
+                    shadow_root_mode: *shadow_root_mode,
+                    shadow_root: shadow_root.clone(),
                 })
             }
             InternalNodeData::Text(s) => HtmlNode::Text(s.clone()),
@@ -644,6 +648,141 @@ impl<'a> HtmlTreeBuilder<'a> {
         self.insert_at_appropriate_place(nid, None);
         self.open_elements.push(nid);
         nid
+    }
+
+    // Fase 2: Recursos Avançados - Shadow DOM e Custom Elements
+    
+    fn set_element_special_properties(
+        &mut self, 
+        node_id: usize, 
+        slot_name: Option<String>, 
+        is_value: Option<String>, 
+        shadow_root_mode: Option<crate::ace::html::ShadowRootMode>
+    ) {
+        if let InternalNodeData::Element { 
+            slot_name: ref mut stored_slot,
+            is_value: ref mut stored_is,
+            shadow_root_mode: ref mut stored_shadow,
+            .. 
+        } = self.arena[node_id].data {
+            *stored_slot = slot_name;
+            *stored_is = is_value;
+            *stored_shadow = shadow_root_mode;
+        }
+    }
+
+    fn validate_custom_element_name(name: &str) -> bool {
+        // Regras da especificação Web Components para custom element names
+        // Deve conter pelo menos um hífen
+        if !name.contains('-') { 
+            return false; 
+        }
+        // Não pode começar com hífen
+        if name.starts_with('-') { 
+            return false; 
+        }
+        // Não pode terminar com hífen
+        if name.ends_with('-') { 
+            return false; 
+        }
+        // Primeiro caractere deve ser lowercase ASCII, underscore ou colon
+        let first_char = name.chars().next().unwrap_or('\0');
+        if !first_char.is_ascii_lowercase() && first_char != '_' && first_char != ':' {
+            return false;
+        }
+        // Todos os caracteres devem ser válidos (ASCII alphanumeric, hífen, underscore, ponto, colon)
+        for ch in name.chars() {
+            if !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_' && ch != '.' && ch != ':' {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn process_declarative_shadow_root(&mut self, host_id: usize, mode: crate::ace::html::ShadowRootMode) {
+        // Coleta os filhos atuais do elemento host
+        let children_to_move: Vec<usize> = {
+            let node = &self.arena[host_id];
+            if let InternalNodeData::Element { ref children, .. } = node.data {
+                children.clone()
+            } else {
+                Vec::new()
+            }
+        };
+
+        if children_to_move.is_empty() {
+            return;
+        }
+
+        // Cria um novo documento para o shadow root
+        let mut shadow_doc = crate::ace::html::HtmlDocument {
+            doctype: None,
+            children: Vec::new(),
+        };
+
+        // Move cada filho para o shadow document
+        for child_id in children_to_move {
+            // Remove o filho do nó host
+            if let Some(parent_id) = self.arena[child_id].parent {
+                self.arena[parent_id].children.retain(|&id| id != child_id);
+            }
+            self.arena[child_id].parent = None;
+
+            // Converte para HtmlNode e adiciona ao shadow doc
+            let html_node = self.convert_to_html_node(child_id);
+            shadow_doc.children.push(html_node);
+        }
+
+        // Armazena o shadow root no nó host
+        if let InternalNodeData::Element { ref mut shadow_root, .. } = self.arena[host_id].data {
+            *shadow_root = Some(Box::new(shadow_doc));
+        }
+    }
+
+    fn handle_slot_element(&mut self, tag_name: &str, mut attributes: HashMap<String, String>) -> usize {
+        // Elementos <slot> são elementos especiais no Shadow DOM
+        let slot_name = attributes.remove("name");
+        
+        let nid = self.create_node(InternalNodeData::Element {
+            tag: tag_name.to_string(),
+            namespace: crate::ace::html::Namespace::Html,
+            attributes: attributes.clone(),
+        });
+        
+        // Define o nome do slot nas propriedades especiais
+        self.set_element_special_properties(nid, slot_name, None, None);
+        
+        self.insert_at_appropriate_place(nid, None);
+        self.open_elements.push(nid);
+        nid
+    }
+
+    // Constantes com elementos SVG e MathML completos
+    const SVG_ELEMENTS: &'static [&'static str] = &[
+        "svg", "animate", "animateMotion", "animateTransform", "circle", "clipPath",
+        "defs", "desc", "ellipse", "feBlend", "feColorMatrix", "feComponentTransfer",
+        "feComposite", "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap",
+        "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG",
+        "feFuncR", "feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology",
+        "feOffset", "fePointLight", "feSpecularLighting", "feSpotLight", "feTile",
+        "feTurbulence", "filter", "foreignObject", "g", "image", "line", "linearGradient",
+        "marker", "mask", "metadata", "mpath", "path", "pattern", "polygon", "polyline",
+        "radialGradient", "rect", "stop", "switch", "symbol", "text", "textPath", "tspan",
+        "use", "view"
+    ];
+
+    const MATHML_ELEMENTS: &'static [&'static str] = &[
+        "math", "mi", "mn", "mo", "mrow", "msup", "msub", "msubsup", "mfrac", "msqrt",
+        "mroot", "mtable", "mtr", "mtd", "mth", "mfenced", "menclose", "merror", "mpadded",
+        "mphantom", "maction", "semantics", "annotation", "annotation-xml"
+    ];
+
+    fn is_svg_element(tag_name: &str) -> bool {
+        Self::SVG_ELEMENTS.contains(&tag_name)
+    }
+
+    fn is_mathml_element(tag_name: &str) -> bool {
+        Self::MATHML_ELEMENTS.contains(&tag_name)
     }
 
     // - [x] Fase 5: Templates e Verificação
