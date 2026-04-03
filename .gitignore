@@ -1,24 +1,37 @@
 ```
-# Build artifacts
+# Rust/Cargo specific
 target/
+Cargo.lock
+*.rs.bk
 
 # Dependencies
-Cargo.lock
+vendor/
+
+# Build artifacts
+build/
+dist/
 
 # Logs and temp files
 *.log
 *.tmp
 
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# Editors
-.vscode/
-.idea/
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
-# OS generated files
+# OS
 .DS_Store
 Thumbs.db
 ```
