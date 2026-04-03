@@ -1,12 +1,13 @@
 use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
 #[cfg(feature = "ace_html_parser")]
 use crate::ace::html::build_document_with_errors;
-use kuchiki::NodeRef;
-#[cfg(not(feature = "ace_html_parser"))]
-use kuchiki::traits::TendrilSink;
+// kuchiki removido - usando ACE-HTML parser proprietário
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+pub mod arena;
+pub use arena::{DomArena, ArenaNode};
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
@@ -178,39 +179,16 @@ impl AceDOM {
     }
 
     /// Construtor a partir de kuchiki NodeRef
-    pub fn from_kuchiki(kuchiki_root: NodeRef) -> Self {
-        let mut nodes = Vec::new();
-
-        let root_idx = Self::convert_recursive(&kuchiki_root, &mut nodes, None);
-
-        let mut dom = Self {
-            nodes,
-            root: root_idx,
-            head: None,
-            body: None,
-            observers: HashMap::new(),
-            pending_mutations: RefCell::new(HashMap::new()),
-            active_element: None,
-            subframes: None,
-            iframe_node_idx: None,
-        };
-
-        dom.find_head_body();
-        dom
+    /// DEPRECATED: Será removido na versão 2.0 - use from_html() ou from_html_document()
+    #[deprecated(since = "1.1.0", note = "Use from_html() ou from_html_document()")]
+    pub fn from_kuchiki(_kuchiki_root: ()) -> Self {
+        panic!("from_kuchiki() foi removido. Use from_html() para parsing com ACE-HTML parser proprietário.");
     }
 
     pub fn from_html(html: &str) -> Self {
-        #[cfg(feature = "ace_html_parser")]
-        {
-            let parsed = build_document_with_errors(html);
-            return Self::from_html_document(&parsed.document);
-        }
-
-        #[cfg(not(feature = "ace_html_parser"))]
-        {
-            let document = kuchiki::parse_html().one(html);
-            Self::from_kuchiki(document)
-        }
+        // Sempre usa ACE-HTML parser proprietário (feature flag removida)
+        let parsed = build_document_with_errors(html);
+        Self::from_html_document(&parsed.document)
     }
 
     pub fn from_html_document(document: &HtmlDocument) -> Self {
@@ -239,74 +217,14 @@ impl AceDOM {
         self.nodes.get(id)
     }
 
+    /// DEPRECATED: Função removida junto com kuchiki
+    #[deprecated(since = "1.1.0", note = "Use convert_html_node_recursive()")]
     pub fn convert_recursive(
-        kuchiki_node: &NodeRef,
-        nodes: &mut Vec<AceNode>,
-        parent_idx: Option<usize>,
+        _kuchiki_node: &(),
+        _nodes: &mut Vec<AceNode>,
+        _parent_idx: Option<usize>,
     ) -> usize {
-        let node_type = if let Some(el) = kuchiki_node.as_element() {
-            let tag = el.name.local.to_string();
-            let mut attributes = HashMap::new();
-            for (curr_name, curr_val) in el.attributes.borrow().map.iter() {
-                attributes.insert(curr_name.local.to_string(), curr_val.value.to_string());
-            }
-
-            AceNodeType::Element(AceElement { 
-                tag, 
-                namespace: crate::ace::html::Namespace::Html,
-                attributes 
-            })
-        } else if let Some(text) = kuchiki_node.as_text() {
-            AceNodeType::Text(std::sync::Arc::from(text.borrow().as_str()))
-        } else if let Some(comment) = kuchiki_node.as_comment() {
-            AceNodeType::Comment(std::sync::Arc::from(comment.borrow().as_str()))
-        } else {
-            AceNodeType::Document
-        };
-
-        let current_idx = nodes.len();
-        nodes.push(AceNode {
-            node_type,
-            parent: parent_idx,
-            children: Vec::new(),
-            prev_sibling: None,
-            next_sibling: None,
-            shadow_root: None,
-            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
-        });
-
-        let mut children_indices = Vec::new();
-        for child in kuchiki_node.children() {
-            let child_idx = Self::convert_recursive(&child, nodes, Some(current_idx));
-            children_indices.push(child_idx);
-        }
-
-        if !children_indices.is_empty() {
-            for i in 0..children_indices.len() {
-                let curr = children_indices[i];
-                let prev = if i > 0 {
-                    Some(children_indices[i - 1])
-                } else {
-                    None
-                };
-                let next = if i < children_indices.len() - 1 {
-                    Some(children_indices[i + 1])
-                } else {
-                    None
-                };
-
-                if let Some(node) = nodes.get_mut(curr) {
-                    node.prev_sibling = prev;
-                    node.next_sibling = next;
-                }
-            }
-        }
-
-        if let Some(node) = nodes.get_mut(current_idx) {
-            node.children = children_indices;
-        }
-
-        current_idx
+        panic!("convert_recursive() foi removido. Use convert_html_node_recursive() com HtmlNode do ACE-HTML parser.");
     }
 
     fn convert_html_node_recursive(
@@ -614,66 +532,14 @@ impl AceDOM {
         );
     }
 
+    /// DEPRECATED: Removido junto com kuchiki - use set_inner_html_from_nodes()
+    #[deprecated(since = "1.1.0", note = "Use set_inner_html_from_nodes()")]
     pub fn set_inner_html_from_kuchiki(
         &mut self,
-        parent_idx: usize,
-        kuchiki_nodes: kuchiki::iter::Siblings,
+        _parent_idx: usize,
+        _kuchiki_nodes: (),
     ) {
-        let old_children = self
-            .get_node(parent_idx)
-            .map(|n| n.children.clone())
-            .unwrap_or_default();
-        if let Some(node) = self.nodes.get_mut(parent_idx) {
-            node.children.clear();
-        }
-
-        let mut new_children = Vec::new();
-        for child in kuchiki_nodes {
-            let child_idx = Self::convert_recursive(&child, &mut self.nodes, Some(parent_idx));
-            new_children.push(child_idx);
-        }
-
-        if !new_children.is_empty() {
-            for i in 0..new_children.len() {
-                let curr = new_children[i];
-                let prev = if i > 0 {
-                    Some(new_children[i - 1])
-                } else {
-                    None
-                };
-                let next = if i < new_children.len() - 1 {
-                    Some(new_children[i + 1])
-                } else {
-                    None
-                };
-
-                if let Some(node) = self.nodes.get_mut(curr) {
-                    node.prev_sibling = prev;
-                    node.next_sibling = next;
-                }
-            }
-        }
-
-        if let Some(node) = self.nodes.get_mut(parent_idx) {
-            node.children = new_children;
-        }
-
-        self.notify_mutation(
-            parent_idx,
-            MutationRecord {
-                type_: MutationType::ChildList,
-                target: parent_idx,
-                added_nodes: self
-                    .get_node(parent_idx)
-                    .map(|n| n.children.clone())
-                    .unwrap_or_default(),
-                removed_nodes: old_children,
-                previous_sibling: None,
-                next_sibling: None,
-                attribute_name: None,
-                old_value: None,
-            },
-        );
+        panic!("set_inner_html_from_kuchiki() foi removido. Use set_inner_html_from_nodes() com HtmlNode do ACE-HTML parser.");
     }
 
     pub fn set_inner_html_from_nodes(&mut self, parent_idx: usize, html_nodes: &[HtmlNode]) {

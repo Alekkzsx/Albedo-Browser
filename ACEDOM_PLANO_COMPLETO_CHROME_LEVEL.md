@@ -1,874 +1,571 @@
-# 🚀 PLANO ESTRATÉGICO: AceDOM Nível Chrome/Firefox
+# 🚀 AceDOM 2.0 - Plano de Implementação para Nível Chrome/Firefox
 
-## 📊 ANÁLISE ATUAL DO ACEDOM
+## 📊 Análise do Estado Atual (Dezembro 2025)
 
-### Estado Atual (Dezembro 2024)
-- **LOC:** ~1.121 linhas no módulo principal
-- **Dependência Crítica:** `kuchiki 0.8` (parser HTML externo)
-- **Funcionalidades Implementadas:**
-  - ✅ Estrutura de árvore DOM com índices numéricos
-  - ✅ Navegação bidirecional (parent, children, siblings)
-  - ✅ MutationObserver completo
-  - ✅ Shadow DOM básico (FASE 5 iniciada)
-  - ✅ Dirty flags para style/layout reflow
+### Código Existente
+- **1.121 linhas** em `/workspace/src/engine/dom/mod.rs`
+- **Dependência crítica:** `kuchiki 0.8` (parser HTML externo)
+- **Estrutura:** `Vec<AceNode>` com índices numéricos
+- **Features implementadas:**
+  - ✅ Árvore DOM completa (parent, children, siblings)
+  - ✅ MutationObserver API
+  - ✅ Shadow DOM básico iniciado
+  - ✅ Dirty flags system
   - ✅ Serialização HTML/texto
-  - ✅ Manipulação de atributos com notificação
-  - ✅ Clone de subárvore (deep/shallow)
-  - ✅ insertAdjacentHTML (todas posições)
-  - ✅ Fragmentos HTML com contexto
-  - ✅ Suporte a iframes (subframes)
+  - ✅ Manipulação de atributos
+  - ✅ insertAdjacentHTML
+  - ✅ Fragmentos HTML
+  - ✅ Subframes/iframes
 
-### Gaps Críticos vs Chrome/Firefox
-
-| Categoria | AceDOM Atual | Chrome/Firefox | Gap |
-|-----------|--------------|----------------|-----|
-| **Performance** | Vec<usize> + indices | Arena otimizada + pointers | 🔴 Alto |
-| **Memory** | Arc<str> para texto | String interning + pools | 🔴 Alto |
-| **Query API** | Básica | querySelectorAll, XPath | 🔴 Médio |
-| **Range/Selection** | ❌ Não implementado | ✅ Completo | 🔴 Crítico |
-| **Event System** | ❌ Separado (bindings) | ✅ Integrado no DOM | 🟡 Médio |
-| **Custom Elements** | ❌ Não implementado | ✅ Web Components | 🔴 Alto |
-| **Document Fragments** | Básico | Otimizado | 🟡 Baixo |
-| **Node Lists** | Vec<usize> | Live NodeLists | 🔴 Médio |
-| **Garbage Collection** | Rust ownership | JS GC integrado | 🟡 Arquitetural |
-| **Accessibility Tree** | ❌ Não implementado | ✅ ARIA completo | 🔴 Crítico |
+### Problemas Críticos
+🔴 **kuchiki dependency** - Viola princípio "100% próprio"  
+🔴 **Sem Range/Selection API** - Essencial para editores  
+🔴 **Sem Accessibility Tree** - Leitura de tela impossível  
+🔴 **Sem Custom Elements** - Web Components não funcionam  
+🔴 **Performance não otimizada** - Vec<usize> não é cache-friendly  
+🔴 **Memória ineficiente** - Sem string interning ou pooling  
 
 ---
 
-## 🎯 VISÃO: AceDOM 2.0 - Superior ao Chrome/Firefox
+## 🎯 Metas Quantificáveis (24 Meses)
 
-### Objetivos Quantificáveis
-1. **Performance:** 2x mais rápido que Blink em benchmarks DOM
-2. **Memória:** 50% menos RAM que Gecko para DOMs grandes
-3. **Compliance:** 100% W3C DOM Level 4 + WHATWG DOM Standard
-4. **Features:** Web Components v1 completo + Range/Selection nativo
-5. **Zero Dependencies:** 0 crates externas para operações DOM
-
----
-
-## 📋 ROADMAP DETALHADO (18-24 MESES)
-
-### FASE 1: FUNDAÇÃO DE PERFORMANCE (Meses 1-4)
-
-#### 1.1 Substituir kuchiki → AceDOM Nativo 100%
-**Prioridade:** 🔴 CRÍTICA
-**Impacto:** Elimina dependência externa, permite otimizações customizadas
-
-```rust
-// ESTADO ATUAL (com kuchiki)
-use kuchiki::NodeRef;
-pub fn from_kuchiki(kuchiki_root: NodeRef) -> Self { ... }
-
-// ESTADO DESEJADO (100% próprio)
-pub fn parse_html(html: &str) -> Self {
-    // Usar ACE-HTML parser proprietário
-    let document = crate::ace::html::parse_complete(html);
-    Self::from_ace_document(&document)
-}
-```
-
-**Tarefas:**
-- [ ] Remover todos os métodos `from_kuchiki` e `convert_recursive`
-- [ ] Criar conversor direto de `HtmlDocument` (ACE-HTML) → `AceDOM`
-- [ ] Implementar streaming parser para documentos grandes (>10MB)
-- [ ] Adicionar suporte a incremental parsing (chunked HTML)
-
-**Critério de Conclusão:** 
-- Zero menções a `kuchiki` no código
-- Testes passing com parser 100% ACE-HTML
-- Performance: parse <50ms para 100KB HTML
+| Métrica | Atual | Meta 24M | Melhoria |
+|---------|-------|----------|----------|
+| Parse 100KB HTML | ~150ms | **30ms** | 5x |
+| getElementById | 2.3μs | **0.4μs** | 5.7x |
+| querySelector | 15.7μs | **2.0μs** | 7.8x |
+| DOM memory (10K nodes) | ~2.5MB | **0.6MB** | 4x menos |
+| WPT Pass Rate | N/A | **95%+** | Production-ready |
+| Custom Elements | ❌ | ✅ Full v1 | Nova feature |
+| ARIA Tree | ❌ | ✅ 1.2 Complete | Nova feature |
 
 ---
 
-#### 1.2 Otimizar Estrutura de Dados
-**Prioridade:** 🔴 ALTA
-**Impacto:** 2-5x ganho em traversal/manipulação
+## 📋 Roadmap em 5 Fases (18-24 Meses)
 
-**Problema Atual:**
-```rust
-pub struct AceDOM {
-    pub nodes: Vec<AceNode>,  // Vec cresce, realoca, cache miss
-    pub root: usize,
-    // ...
-}
-```
+### FASE 1: Fundação de Performance (Meses 1-4)
+**Objetivo:** Remover kuchiki + Otimizações básicas de memória/performance
 
-**Solução Proposta:**
-```rust
-use slotmap::{SlotMap, Key};  // OU implementar arena própria
+#### Tarefas:
+1. **[CRÍTICO] Remover kuchiki completamente**
+   - Migrar `from_kuchiki()` → `from_html_document()` (ACE-HTML parser)
+   - Remover `use kuchiki::NodeRef` e `use kuchiki::traits::TendrilSink`
+   - Eliminar `set_inner_html_from_kuchiki()` → usar apenas `set_inner_html_from_nodes()`
+   - Feature flag `ace_html_parser` torna-se default permanente
 
-pub struct AceDOM {
-    pub nodes: SlotMap<NodeKey, AceNode>,  // O(1) insert/remove, stable refs
-    pub root: NodeKey,
-    pub free_list: Vec<NodeKey>,  // Reutilização de nós removidos
-    // ...
-}
+2. **Implementar DomArena própria**
+   - Alocação em blocos de 4KB (não realloc por node)
+   - Memory pooling para nodes frequentes (div, span, text)
+   - Cache-line alignment (64 bytes)
 
-// OU arena customizada ainda mais rápida:
-pub struct DomArena {
-    data: Box<[u8]>,  // Memory pool pré-alocado
-    offsets: Vec<usize>,  // Índices rápidos
-}
-```
+3. **Small String Optimization (SSO)**
+   - Strings ≤23 chars inline (sem alocação heap)
+   - Interning para tag names (div, span, p, a, etc.)
+   - Arc<str> mantido apenas para texto longo
 
-**Otimizações Específicas:**
-- [ ] Implementar **DomArena** própria (sem deps externas)
-  - Alocação em blocos de 4KB (página de memória)
-  - Cache-line alignment (64 bytes)
-  - SIMD para traversal em lote
-- [ ] **Node Key Compression:** Usar u32 em vez de usize (economiza 50% RAM em 64-bit)
-- [ ] **Small String Optimization:** Strings curtas (<23 chars) inline no struct
-- [ ] **Attribute Map Optimization:** 
-  - HashMap → IndexMap para ordem de inserção + cache locality
-  - Ou array fixo para elementos com poucos atributos
+4. **Live NodeLists**
+   - `HTMLCollection` (live, auto-update)
+   - `NodeList` (snapshot ou live)
+   - `getElementsByClassName()` live
+   - `getElementsByTagName()` live
 
-**Benchmark Alvo:**
-```
-Operação              | Atual      | Meta       | Melhoria
-----------------------|------------|------------|----------
-getElementById        | 2.3μs      | 0.5μs      | 4.6x
-querySelector         | 15.7μs     | 3.0μs      | 5.2x
-appendChild           | 0.8μs      | 0.2μs      | 4.0x
-removeChild           | 1.1μs      | 0.3μs      | 3.7x
-innerHTML setter      | 45.2μs     | 8.0μs      | 5.6x
-```
+5. **Índices especializados**
+   - HashMap<ID, usize> para `getElementById`
+   - BTreeMap para queries por nome/classe
+   - Atualização incremental (não rebuild completo)
+
+#### Entregáveis:
+- [ ] Zero dependência kuchiki no código
+- [ ] DomArena com arena.rs próprio
+- [ ] SSO implementado em AceNodeType
+- [ ] LiveNodeList<T> genérico
+- [ ] Benchmarks: 2-5x ganho vs atual
+
+#### Riscos:
+- ⚠️ Regressões de funcionalidade durante migração
+- ⚠️ Bugs em live collections (infinit loops)
+- ⚠️ Memory leaks se pooling mal implementado
 
 ---
 
-#### 1.3 Implementar Live NodeLists
-**Prioridade:** 🟡 MÉDIA
-**Impacto:** Compatibilidade com web apps modernos
+### FASE 2: APIs Web Completas (Meses 5-9)
+**Objetivo:** Suporte completo a Web Components v1
 
-**Estado Atual:**
-```javascript
-// Retorna snapshot estático
-const nodes = dom.querySelectorAll('.item'); // Vec<usize>
-```
+#### Tarefas:
+1. **Range API Completa** (WHATWG DOM Spec)
+   ```rust
+   pub struct Range {
+       start_container: usize,
+       start_offset: u32,
+       end_container: usize,
+       end_offset: u32,
+       collapsed: bool,
+   }
+   
+   // Métodos essenciais:
+   - setStart(node, offset)
+   - setEnd(node, offset)
+   - deleteContents()
+   - extractContents() → DocumentFragment
+   - cloneContents() → DocumentFragment
+   - insertNode(node)
+   - surroundContents(newParent)
+   - compareBoundaryPoints()
+   - getBoundingClientRect()
+   ```
 
-**Estado Desejado:**
-```javascript
-// Live NodeList (atualiza automaticamente)
-const items = document.getElementsByClassName('item');
-// Se adicionar elemento com class='item', items.length aumenta automaticamente
+2. **Selection API Multi-Range**
+   ```rust
+   pub struct Selection {
+       ranges: Vec<Range>,
+       anchor_node: usize,
+       anchor_offset: u32,
+       focus_node: usize,
+       focus_offset: u32,
+       direction: SelectionDirection,
+   }
+   
+   // Métodos:
+   - addRange(range)
+   - removeRange(range)
+   - getRangeAt(index)
+   - removeAllRanges()
+   - collapse(node, offset)
+   - extend(node, offset)
+   - selectAllChildren(node)
+   - deleteFromDocument()
+   - toString()
+   ```
 
-// Static NodeList (snapshot)
-const static = document.querySelectorAll('.item');
-```
+3. **Custom Elements v1**
+   ```rust
+   pub struct CustomElementRegistry {
+       definitions: HashMap<String, CustomElementDefinition>,
+       upgrading: HashSet<usize>,
+   }
+   
+   pub struct CustomElementDefinition {
+       name: String,
+       local_name: String,
+       namespace: Namespace,
+       constructor: JsFunction,
+       observed_attributes: Vec<String>,
+       lifecycle_callbacks: LifecycleCallbacks,
+   }
+   
+   // Callbacks:
+   - connectedCallback()
+   - disconnectedCallback()
+   - adoptedCallback()
+   - attributeChangedCallback(name, oldVal, newVal)
+   ```
 
-**Implementação:**
-```rust
-pub enum NodeListType {
-    Live(LiveQuery),    // Mantém referência à query
-    Static(Vec<usize>), // Snapshot
-}
+4. **Shadow DOM Completo**
+   - Slot assignment algorithm (Flattened DOM tree)
+   - `attachShadow({mode, delegatesFocus})`
+   - `shadowRoot` property (null se closed)
+   - `<slot>` element com named slots
+   - CSS scoping (:host, ::slotted, :host-context)
+   - Event retargeting através de shadow boundaries
+   - Declarative Shadow DOM (`<template shadowrootmode="open">`)
 
-pub struct LiveQuery {
-    selector: Selector,      // CSS selector compilado
-    root: usize,             // Nó raiz da busca
-    cache: RefCell<Vec<usize>>, // Cache invalidável
-    version: u64,            // DOM version para invalidar cache
-}
+5. **Lifecycle Integration**
+   - Queue microtasks para callbacks
+   - Upgrade steps durante parsing
+   - Pre-upgrade registry (define antes de parse)
 
-impl AceDOM {
-    pub fn get_elements_by_class_name(&self, class: &str) -> NodeList {
-        NodeList {
-            kind: NodeListType::Live(LiveQuery {
-                selector: Selector::Class(class.to_string()),
-                root: self.body.unwrap_or(self.root),
-                cache: RefCell::new(Vec::new()),
-                version: 0,
-            }),
-            dom: self,
-        }
-    }
-}
-```
+#### Entregáveis:
+- [ ] Range API 100% spec-compliant
+- [ ] Selection API multi-range
+- [ ] Custom Elements v1 completo
+- [ ] Shadow DOM com slot assignment
+- [ ] Lit.dev funcional
+- [ ] Stencil funcional
 
-**Tarefas:**
-- [ ] Criar trait `NodeListLike` com iterator
-- [ ] Implementar `HTMLCollection` (live, elements only)
-- [ ] Implementar `NodeList` (static ou live)
-- [ ] Sistema de versionamento do DOM para cache invalidation
-- [ ] Bindings JS para collections
-
----
-
-### FASE 2: APIs WEB COMPLETAS (Meses 5-9)
-
-#### 2.1 Range & Selection API
-**Prioridade:** 🔴 CRÍTICA
-**Impacto:** Editores de texto, copy/paste, rich text
-
-**O Que É:**
-```javascript
-// Range: Seleção arbitrária no DOM
-const range = document.createRange();
-range.setStart(textNode, 5);
-range.setEnd(textNode, 15);
-range.deleteContents();
-
-// Selection: Seleção visível do usuário
-const sel = window.getSelection();
-sel.addRange(range);
-console.log(sel.toString()); // Texto selecionado
-```
-
-**Implementação:**
-```rust
-#[derive(Clone)]
-pub struct DomRange {
-    start_container: usize,  // Node index
-    start_offset: u32,       // Offset no node
-    end_container: usize,
-    end_offset: u32,
-    collapsed: bool,
-}
-
-impl DomRange {
-    pub fn set_start(&mut self, node: usize, offset: u32) { ... }
-    pub fn set_end(&mut self, node: usize, offset: u32) { ... }
-    pub fn delete_contents(&mut self, dom: &mut AceDOM) { ... }
-    pub fn extract_contents(&mut self, dom: &mut AceDOM) -> DocumentFragment { ... }
-    pub fn clone_contents(&self, dom: &AceDOM) -> DocumentFragment { ... }
-    pub fn surround_contents(&mut self, dom: &mut AceDOM, new_parent: usize) { ... }
-    
-    // Métodos avançados
-    pub fn compare_boundary_points(&self, other: &DomRange) -> Ordering { ... }
-    pub fn getBoundingClientRect(&self, dom: &AceDOM) -> Rect { ... }
-    pub fn createContextualFragment(&self, html: &str) -> Vec<usize> { ... }
-}
-
-pub struct Selection {
-    ranges: Vec<DomRange>,
-    direction: SelectionDirection,
-    anchor_node: Option<usize>,
-    focus_node: Option<usize>,
-}
-
-impl Selection {
-    pub fn add_range(&mut self, range: DomRange) { ... }
-    pub fn remove_range(&mut self, range: &DomRange) { ... }
-    pub fn collapse(&mut self, node: Option<usize>, offset: u32) { ... }
-    pub fn collapse_to_start(&mut self) { ... }
-    pub fn collapse_to_end(&mut self) { ... }
-    pub fn delete_from_document(&mut self, dom: &mut AceDOM) { ... }
-    pub fn extend(&mut self, node: usize, offset: u32) { ... }
-    pub fn get_range_at(&self, index: usize) -> Option<&DomRange> { ... }
-    pub fn select_all_children(&mut self, node: usize, dom: &AceDOM) { ... }
-}
-```
-
-**Tarefas:**
-- [ ] Implementar `DomRange` com todos os métodos W3C
-- [ ] Implementar `Selection` multi-range
-- [ ] Integração com layout engine para bounding rects
-- [ ] Suporte a seleção跨 elementos (cross-boundary)
-- [ ] Bindings JS completos
-- [ ] Testes de conformidade W3C Range/Selection
-
-**Critério de Conclusão:** 
-- Passar em tests/range-tests.html do Web Platform Tests
-- Google Docs-like editor funcional
+#### Testes:
+- Web Platform Tests: custom-elements, shadow-dom, range
+- Meta: 90%+ pass rate
 
 ---
 
-#### 2.2 Custom Elements & Shadow DOM v1
-**Prioridade:** 🔴 ALTA
-**Impacto:** Web Components, frameworks modernos (Lit, Stencil)
+### FASE 3: Acessibilidade & Events (Meses 10-14)
+**Objetivo:** A11y completa + Event system integrado
 
-**Estado Atual:** Shadow DOM básico existe, mas incompleto
+#### Tarefas:
+1. **Accessibility Tree (ARIA 1.2)**
+   ```rust
+   pub struct AccessibilityNode {
+       dom_node: usize,
+       role: AriaRole,
+       name: Option<String>,      // accessible name
+       description: Option<String>,
+       value: Option<String>,
+       states: AriaStates,        // bitmask
+       properties: AriaProperties,
+       children: Vec<usize>,      // AX children (differs from DOM!)
+       parent: Option<usize>,
+   }
+   
+   pub enum AriaRole {
+       // Landmarks
+       Banner, Navigation, Main, Complement, ContentInfo,
+       // Widgets
+       Button, Checkbox, Combobox, Listbox, Menu, Menubar,
+       MenuItem, Radio, Radiogroup, Slider, Spinbutton, Tab,
+       Tablist, Tabpanel, Textbox, Tooltip, Tree, Treeitem,
+       // Structures
+       Article, Cell, Columnheader, Definition, Directory,
+       Document, Feed, Figure, Group, Heading, Img, List,
+       Listitem, Math, None, Note, Presentation, Row,
+       Rowgroup, Rowheader, Separator, Table, Term, Toolbar,
+       // Live Regions
+       Alert, Log, Marquee, Status, Timer,
+       // Windows
+       Alertdialog, Dialog,
+   }
+   ```
 
-**Implementação Completa:**
-```rust
-// Custom Elements Registry
-pub struct CustomElementRegistry {
-    definitions: HashMap<String, CustomElementDefinition>,
-    upgrading: Vec<usize>,  // Elements being upgraded
-}
+2. **Accessible Name Computation (AccName Spec)**
+   - Priority order:
+     1. `aria-labelledby` (referenced elements)
+     2. `aria-label` (direct string)
+     3. Native HTML (alt, title, label for, etc.)
+     4. Fallback (textContent)
+   - Recursion detection (cycles)
+   - Hidden element handling
 
-pub struct CustomElementDefinition {
-    name: String,
-    local_name: String,
-    namespace: Namespace,
-    is_type: Option<String>,
-    constructor: JsFunction,  // JS constructor
-    observed_attributes: Vec<String>,
-    lifecycle_callbacks: LifecycleCallbacks,
-}
+3. **Implicit Role Mapping**
+   ```rust
+   fn get_implicit_role(tag: &str, attrs: &Attrs) -> AriaRole {
+       match tag {
+           "a" => if attrs.has("href") { Link } else { Generic },
+           "button" => Button,
+           "input" => match attrs.get("type") {
+               Some("checkbox") => Checkbox,
+               Some("radio") => Radio,
+               Some("text") => Textbox,
+               _ => Generic,
+           },
+           "h1".."h6" => Heading,
+           "img" => if attrs.has("alt") { Img } else { Presentation },
+           // ... 100+ mappings
+       }
+   }
+   ```
 
-pub struct LifecycleCallbacks {
-    connected_callback: Option<JsFunction>,
-    disconnected_callback: Option<JsFunction>,
-    adopted_callback: Option<JsFunction>,
-    attribute_changed_callback: Option<JsFunction>,
-    form_associated_callback: Option<JsFunction>,  // Form-associated CE
-}
+4. **Event System Integrado**
+   ```rust
+   pub struct EventTarget {
+       listeners: HashMap<String, Vec<EventListener>>,
+   }
+   
+   pub struct EventListener {
+       callback: JsFunction,
+       capture: bool,
+       once: bool,
+       passive: bool,
+       signal: Option<AbortSignal>,
+   }
+   
+   // Phases:
+   1. Capture phase (top-down)
+   2. At-target phase
+   3. Bubble phase (bottom-up)
+   
+   // Special events:
+   - DOMContentLoaded
+   - load, unload
+   - focus, blur (non-bubbling)
+   - focusin, focusout (bubbling)
+   - click, dblclick
+   - keydown, keyup, keypress
+   - mouseenter, mouseleave (non-bubbling)
+   - input, change
+   ```
 
-// Shadow DOM completo
-pub struct ShadowRoot {
-    host: usize,
-    mode: ShadowRootMode,  // Open or closed
-    delegates_focus: bool,
-    slot_assignment: SlotAssignmentMode,
-    style_sheets: Vec<CssStyleSheet>,
-    adopted_style_sheets: Vec<CssStyleSheet>,
-}
+5. **Event Delegation Otimizada**
+   - Single listener no parent
+   - Filter por selector durante dispatch
+   - Stop propagation support
 
-impl AceDOM {
-    pub fn attach_shadow(&mut self, host: usize, options: ShadowInit) -> usize { ... }
-    pub fn get_shadow_root(&self, host: usize) -> Option<usize> { ... }
-    
-    // Slot assignment
-    pub fn assign_slots(&mut self, shadow_root: usize) { ... }
-    pub fn get_assigned_nodes(&self, slot: usize) -> Vec<usize> { ... }
-    
-    // Custom Elements
-    pub fn define(&mut self, name: String, constructor: JsFunction) -> Result<(), DomError> { ... }
-    pub fn get(&self, name: &str) -> Option<CustomElementDefinition> { ... }
-    pub fn upgrade(&mut self, element: usize) { ... }
-}
-```
+#### Entregáveis:
+- [ ] Accessibility Tree completa
+- [ ] AccName computation 100% spec
+- [ ] 100+ implicit role mappings
+- [ ] Event system com 3 phases
+- [ ] axe-core 100% pass
+- [ ] NVDA/VoiceOver tested
 
-**Tarefas:**
-- [ ] Completar Shadow DOM com modo closed/delegatesFocus
-- [ ] Implementar `<slot>` e slot assignment algorithm
-- [ ] Criar CustomElementRegistry
-- [ ] Lifecycle callbacks integration com JS runtime
-- [ ] Form-associated custom elements
-- [ ] Constructible stylesheets
-- [ ] Shadow DOM styling (::host, ::part, ::slotted)
-- [ ] HTML Templates com `<template>` + content cloning
-
-**Critério de Conclusão:**
-- Lit.dev components renderizam corretamente
-- Polymer-like frameworks funcionais
-
----
-
-#### 2.3 Document Fragment Otimizado
-**Prioridade:** 🟡 MÉDIA
-**Impacto:** Batch operations eficientes
-
-```rust
-pub struct DocumentFragment {
-    owner_document: usize,
-    children: Vec<usize>,
-    // Otimização: track se foi inserido
-    inserted: bool,
-}
-
-impl AceDOM {
-    pub fn create_document_fragment(&mut self) -> usize {
-        let idx = self.nodes.len();
-        self.nodes.push(AceNode {
-            node_type: AceNodeType::DocumentFragment,
-            parent: None,  // Fragmentos não têm pai até inserção
-            children: Vec::new(),
-            prev_sibling: None,
-            next_sibling: None,
-            shadow_root: None,
-            dirty: NodeDirtyFlags::NONE,
-        });
-        idx
-    }
-    
-    // Batch insert otimizado
-    pub fn append_fragment(&mut self, parent: usize, fragment: usize) {
-        if let Some(fragment_node) = self.nodes.get(fragment) {
-            if let AceNodeType::DocumentFragment = fragment_node.node_type {
-                // Mover todos os filhos do fragmento para o parente
-                // sem criar nó intermediário
-                for child_idx in &fragment_node.children.clone() {
-                    self.append_child(parent, *child_idx);
-                }
-                // Limpar fragmento (opcional, pode reutilizar)
-                if let Some(frag) = self.nodes.get_mut(fragment) {
-                    frag.children.clear();
-                }
-            }
-        }
-    }
-}
-```
+#### Testes:
+- WPT: accessibility, aria, events
+- axe-core automated tests
+- Manual testing com screen readers
 
 ---
 
-### FASE 3: ACCESSIBILIDADE & INTEGRATION (Meses 10-14)
+### FASE 4: Otimizações Avançadas (Meses 15-18)
+**Objetivo:** Performance de produção para frameworks
 
-#### 3.1 Accessibility Tree (ARIA)
-**Prioridade:** 🔴 CRÍTICA
-**Impacto:** Leitores de tela, compliance legal (ADA, WCAG)
+#### Tarefas:
+1. **Incremental DOM Updates**
+   ```rust
+   pub fn diff(old_tree: &Dom, new_tree: &Dom) -> Vec<Patch> {
+       // Algoritmo tipo React/Solid
+       - Keyed reconciliation
+       - LIS (Longest Increasing Subsequence) para reordering
+       - Minimal moves
+   }
+   
+   pub enum Patch {
+       Insert { parent: usize, node: AceNode, before: Option<usize> },
+       Remove { node: usize },
+       Replace { old: usize, new: AceNode },
+       UpdateText { node: usize, text: String },
+       UpdateAttributes { node: usize, changes: AttrChanges },
+   }
+   ```
 
-**Implementação:**
-```rust
-pub struct AccessibilityNode {
-    pub role: AriaRole,
-    pub name: Option<String>,      // accessible name
-    pub description: Option<String>,
-    pub value: Option<String>,
-    pub states: AriaStates,
-    pub properties: AriaProperties,
-    pub children: Vec<usize>,      // indices na accessibility tree
-    pub dom_node: usize,           // link back to DOM
-    pub parent: Option<usize>,
-}
+2. **Memory Pooling Avançado**
+   - Pool por tipo de node (element, text, comment)
+   - Pool por tag name (div pool, span pool, etc.)
+   - Generational GC integration
+   - Dealloc em batch (não individual)
 
-pub enum AriaRole {
-    // Widget roles
-    Button, Checkbox, Combobox, Grid, Listbox, Menu, Menubar,
-    Radiogroup, Slider, Spinbutton, Tab, Tablist, Textbox, Tree,
-    // Document structure roles
-    Article, Cell, Columnheader, Definition, Directory, Document,
-    Feed, Figure, Group, Heading, Img, Landmark, List, Listitem,
-    Math, None, Note, Presentation, Row, Rowgroup, Rowheader,
-    Separator, Table, Term, Toolbar, Tooltip,
-    // Abstract roles (não usadas diretamente)
-    // ... complete ARIA 1.2 spec
-}
+3. **Parallel DOM Operations**
+   ```rust
+   use rayon::prelude::*;
+   
+   // Parallel querySelectorAll
+   pub fn query_selector_all_parallel(&self, selector: &str) -> Vec<usize> {
+       self.nodes.par_iter()
+           .filter(|node| matches_selector(node, selector))
+           .map(|node| node.id)
+           .collect()
+   }
+   
+   // Parallel style recalc
+   pub fn recalc_styles_parallel(&mut self) {
+       let dirty_nodes = self.collect_dirty();
+       dirty_nodes.par_iter().for_each(|idx| {
+           self.compute_style(*idx);
+       });
+   }
+   ```
 
-bitflags! {
-    pub struct AriaStates: u64 {
-        const CHECKED = 1 << 0;
-        const MIXED = 1 << 1;
-        const READONLY = 1 << 2;
-        const REQUIRED = 1 << 3;
-        const SELECTED = 1 << 4;
-        const EXPANDED = 1 << 5;
-        const DISABLED = 1 << 6;
-        const INVALID = 1 << 7;
-        const MODAL = 1 << 8;
-        const MULTILINE = 1 << 9;
-        const MULTISELECTABLE = 1 << 10;
-        const ORIENTATION_VERTICAL = 1 << 11;
-        const PRESSED = 1 << 12;
-        const BUSY = 1 << 13;
-        const LIVE_POLITE = 1 << 14;
-        const LIVE_ASSERTIVE = 1 << 15;
-        // ... all ARIA states
-    }
-}
+4. **Cache Systems**
+   - Selector cache (querySelector results)
+   - Style cache (computed styles)
+   - Layout cache (bounding rects)
+   - Invalidation strategies (LRU, time-based)
 
-pub struct AriaProperties {
-    pub activedescendant: Option<usize>,
-    pub atomic: bool,
-    pub autocomplete: AutocompleteMode,
-    pub colcount: Option<i32>,
-    pub controls: Vec<usize>,
-    pub describedby: Vec<usize>,
-    pub details: Option<usize>,
-    pub disabled: bool,
-    pub dropeffect: DropEffect,
-    pub errormessage: Option<usize>,
-    pub expanded: bool,
-    pub flowto: Vec<usize>,
-    pub grabbed: GrabbedState,
-    pub haspopup: HasPopup,
-    pub hidden: bool,
-    pub invalid: InvalidState,
-    pub keyshortcuts: String,
-    pub label: Option<String>,
-    pub labelledby: Vec<usize>,
-    pub level: Option<i32>,
-    pub live: Politeness,
-    pub modal: bool,
-    pub multiline: bool,
-    pub multiselectable: bool,
-    pub orientation: Orientation,
-    pub owns: Vec<usize>,
-    pub placeholder: Option<String>,
-    pub posinset: Option<i32>,
-    pub pressed: PressedState,
-    pub readonly: bool,
-    pub relevant: Vec<RelevantType>,
-    pub required: bool,
-    pub roledescription: Option<String>,
-    pub rowcount: Option<i32>,
-    pub rowindex: Option<i32>,
-    pub selected: bool,
-    pub setsize: Option<i32>,
-    pub sort: SortDirection,
-    pub valuemax: Option<f64>,
-    pub valuemin: Option<f64>,
-    pub valuenow: Option<f64>,
-    pub valuetext: Option<String>,
-}
+5. **Zero-Copy Text Nodes**
+   - Mmap de grandes textos
+   - Rope data structure para edições
+   - Copy-on-write para clones
 
-impl AceDOM {
-    pub fn build_accessibility_tree(&self) -> AccessibilityTree {
-        // Algoritmo de mapeamento DOM → A11y Tree
-        // Segue W3C Core-AAM spec
-    }
-    
-    pub fn update_accessible_name(&mut self, node: usize) {
-        // Compute accessible name per AccName spec
-        // 1. aria-labelledby
-        // 2. aria-label
-        // 3. native HTML labeling (label[for])
-        // 4. title attribute
-        // 5. placeholder (para inputs)
-    }
-}
-```
+#### Entregáveis:
+- [ ] Incremental DOM diff/patch
+- [ ] Memory pools com 80% hit rate
+- [ ] Parallel operations (Rayon)
+- [ ] Selector cache com LRU
+- [ ] Solid.js benchmark: dentro de 20% do Chrome
 
-**Tarefas:**
-- [ ] Implementar todos os roles ARIA 1.2
-- [ ] Mapping HTML elements → implicit ARIA roles
-- [ ] Accessible name computation (AccName spec)
-- [ ] Live regions support
-- [ ] Keyboard navigation integration
-- [ ] Screen reader testing (NVDA, VoiceOver)
-- [ ] axe-core compatibility tests
+#### Benchmarks:
+- JS Framework Benchmark (keyed)
+- TodoMVC (React, Vue, Svelte, Solid)
+- Memory footprint comparison
 
 ---
 
-#### 3.2 Event System Integration
-**Prioridade:** 🟡 ALTA
-**Impacto:** Performance de eventos, event delegation
+### FASE 5: Testing & Compliance (Meses 19-24)
+**Objetivo:** Validação production-ready
 
-**Implementação:**
-```rust
-pub struct EventTarget {
-    node_idx: usize,
-    listeners: HashMap<String, Vec<EventListener>>,
-}
+#### Tarefas:
+1. **Web Platform Tests Integration**
+   ```bash
+   # Rodar suites específicas
+   ./wpt run --dom
+   ./wpt run --custom-elements
+   ./wpt run --shadow-dom
+   ./wpt run --range
+   ./wpt run --selection
+   ./wpt run --aria
+   ./wpt run --events
+   ```
 
-pub struct EventListener {
-    callback: JsFunction,
-    capture: bool,
-    passive: bool,
-    once: bool,
-    signal: Option<AbortSignal>,
-}
+2. **CI/CD Pipeline**
+   - GitHub Actions rodando WPT daily
+   - Performance regression detection
+   - Memory leak detection (valgrind, ASan)
+   - Fuzzing contínuo (libFuzzer)
 
-pub struct DomEvent {
-    type_: String,
-    target: usize,
-    current_target: Option<usize>,
-    phase: EventPhase,
-    bubbles: bool,
-    cancelable: bool,
-    default_prevented: bool,
-    composed: bool,
-    timestamp: u64,
-    stop_propagation: bool,
-    stop_immediate: bool,
-}
+3. **Cross-Browser Testing**
+   - Test suites do Chromium/Gecko/WebKit
+   - Bug compatibility (quirks mode)
+   - Edge cases documentados
 
-pub enum EventPhase {
-    Capturing = 1,
-    AtTarget = 2,
-    Bubbling = 3,
-}
+4. **Documentation**
+   - API docs (rustdoc)
+   - Architecture docs
+   - Performance tuning guide
+   - Migration guide (kuchiki → ACE)
 
-impl AceDOM {
-    pub fn dispatch_event(&mut self, event: &mut DomEvent) -> bool {
-        // 1. Capture phase (root → target)
-        // 2. At target
-        // 3. Bubble phase (target → root)
-        
-        // Path building
-        let path = self.build_event_path(event.target);
-        
-        // Capture phase
-        for node_idx in path.iter().rev() {
-            if *node_idx == event.target { break; }
-            self.invoke_listeners(*node_idx, event, EventPhase::Capturing);
-            if event.stop_immediate { return !event.default_prevented; }
-        }
-        
-        // At target
-        self.invoke_listeners(event.target, event, EventPhase::AtTarget);
-        if event.stop_immediate { return !event.default_prevented; }
-        
-        // Bubble phase
-        if event.bubbles {
-            for node_idx in path.iter() {
-                if *node_idx == event.target { continue; }
-                self.invoke_listeners(*node_idx, event, EventPhase::Bubbling);
-                if event.stop_immediate { return !event.default_prevented; }
-            }
-        }
-        
-        !event.default_prevented
-    }
-    
-    // Event delegation optimization
-    pub fn add_delegated_listener(&mut self, selector: Selector, event_type: String, callback: JsFunction) {
-        // Single listener no root, filtra por selector
-    }
-}
-```
+5. **Developer Tools**
+   - DOM inspector integration
+   - Accessibility tree viewer
+   - Event listener debugger
+   - Memory profiler hooks
+
+#### Entregáveis:
+- [ ] 95%+ WPT pass rate (DOM, Selectors, Range, Shadow DOM)
+- [ ] CI pipeline com WPT automated
+- [ ] Documentation completa
+- [ ] DevTools integration
+- [ ] Release 1.0 stable
 
 ---
 
-### FASE 4: OTIMIZAÇÕES AVANÇADAS (Meses 15-18)
+## 🔧 Cronograma Detalhado - Primeiros 90 Dias
 
-#### 4.1 Incremental DOM Updates
-**Prioridade:** 🟡 MÉDIA
-**Impacto:** Frameworks como Solid.js, Svelte
+### Semana 1-2: Auditoria & Planejamento
+- [ ] Audit todo uso de kuchiki no código
+- [ ] Identificar todos os call sites
+- [ ] Criar testes de regressão
+- [ ] Setup de benchmarks baseline
 
-```rust
-pub struct DomDiff {
-    operations: Vec<DiffOperation>,
-}
+### Semana 3-6: Remoção do kuchiki
+- [ ] Remover `from_kuchiki()` (manter como deprecated)
+- [ ] Migrar `from_html()` para ACE-HTML parser
+- [ ] Eliminar `set_inner_html_from_kuchiki()`
+- [ ] Remover imports do kuchiki
+- [ ] Remover kuchiki do Cargo.toml
+- [ ] Testes: todos passing
 
-pub enum DiffOperation {
-    Insert { parent: usize, index: usize, node: usize },
-    Remove { node: usize },
-    Replace { old: usize, new: usize },
-    UpdateText { node: usize, text: String },
-    UpdateAttributes { node: usize, changes: HashMap<String, Option<String>> },
-    Move { node: usize, new_parent: usize, new_index: usize },
-}
-
-impl AceDOM {
-    pub fn diff(&self, old_tree: &AceDOM, new_tree: &AceDOM) -> DomDiff {
-        // Algoritmo de diff otimizado
-        // Similar ao Virtual DOM mas entre duas árvores reais
-    }
-    
-    pub fn patch(&mut self, diff: DomDiff) {
-        // Aplicar operações em batch
-        // Minimizar reflows
-    }
-}
-```
-
----
-
-#### 4.2 Memory Pooling & GC Integration
-**Prioridade:** 🟡 ALTA
-**Impacto:** Menos allocs, melhor performance
-
-```rust
-pub struct DomMemoryPool {
-    node_pool: Vec<AceNode>,
-    string_pool: StringPool,
-    attribute_pool: Vec<HashMap<String, String>>,
-}
-
-pub struct StringPool {
-    interned: HashMap<Arc<str>, usize>,
-    storage: Vec<String>,
-}
-
-impl StringPool {
-    pub fn intern(&mut self, s: &str) -> Arc<str> {
-        if let Some(&idx) = self.interned.get(s) {
-            // Já existe, retornar arc existente
-        } else {
-            // Nova string, internar
-        }
-    }
-}
-
-// Integração com JS GC
-impl AceDOM {
-    pub fn mark_roots_for_gc(&self, gc: &mut GarbageCollector) {
-        // Marcar todos os nós referenciados pelo JS
-        // Nodes sem referência podem ser coletados
-    }
-}
-```
-
----
-
-#### 4.3 Parallel DOM Operations
-**Prioridade:** 🟢 BAIXA (futuro)
-**Impacto:** Multi-threading seguro
-
-```rust
-use rayon::prelude::*;
-
-impl AceDOM {
-    pub fn query_selector_all_parallel(&self, selector: &Selector) -> Vec<usize> {
-        // Dividir árvore em chunks
-        // Processar em paralelo
-        // Merge results
-        self.nodes
-            .par_iter()
-            .enumerate()
-            .filter(|(_, node)| selector.matches(node))
-            .map(|(idx, _)| idx)
-            .collect()
-    }
-}
-```
-
----
-
-### FASE 5: TESTING & COMPLIANCE (Meses 19-24)
-
-#### 5.1 Web Platform Tests Integration
-**Prioridade:** 🔴 CRÍTICA
-
-**Tarefas:**
-- [ ] Setup WPT runner para AceDOM
-- [ ] Rodar testes de:
-  - DOM Core (Level 4)
-  - Selectors API
-  - Range
-  - Selection
-  - Shadow DOM
-  - Custom Elements
-  - Mutation Events/Observers
-  - ARIA
-- [ ] Meta: 95%+ pass rate
-
-#### 5.2 Performance Benchmarks
-**Prioridade:** 🔴 ALTA
-
-**Suite de Benchmarks:**
-```rust
-#[bench]
-fn bench_get_element_by_id(b: &mut Bencher) {
-    let dom = setup_large_dom();
-    b.iter(|| dom.get_element_by_id("target"));
-}
-
-#[bench]
-fn bench_query_selector_complex(b: &mut Bencher) {
-    let dom = setup_large_dom();
-    b.iter(|| dom.query_selector(".container > div.item:nth-child(2n)"));
-}
-
-#[bench]
-fn bench_append_child_many(b: &mut Bencher) {
-    let mut dom = AceDOM::new();
-    let parent = dom.create_element("div");
-    b.iter(|| {
-        let child = dom.create_element("span");
-        dom.append_child(parent, child);
-    });
-}
-
-// Comparativo com Chrome/Firefox
-// Usar Speedometer 3.0, JetStream DOM tests
-```
-
----
-
-## 📊 METRICS & KPIs
-
-### Performance Targets
-| Metric | Current | Target (6mo) | Target (12mo) | Target (24mo) |
-|--------|---------|--------------|---------------|---------------|
-| Parse 100KB HTML | ~150ms* | 80ms | 50ms | **30ms** |
-| getElementById | 2.3μs | 1.0μs | 0.6μs | **0.4μs** |
-| querySelector | 15.7μs | 8.0μs | 4.0μs | **2.0μs** |
-| appendChild | 0.8μs | 0.4μs | 0.3μs | **0.2μs** |
-| innerHTML setter | 45.2μs | 20.0μs | 10.0μs | **5.0μs** |
-| DOM memory (10K nodes) | ~2.5MB | 1.5MB | 1.0MB | **0.6MB** |
-
-\* Estimado com kuchiki; parser próprio deve ser mais rápido
-
-### Compliance Targets
-| Standard | Current | Target |
-|----------|---------|--------|
-| DOM Level 4 | ~70% | **100%** |
-| Selectors API | ~80% | **100%** |
-| Shadow DOM v1 | ~40% | **100%** |
-| Custom Elements v1 | ~10% | **100%** |
-| Range API | 0% | **100%** |
-| Selection API | 0% | **100%** |
-| ARIA 1.2 | 0% | **95%** |
-| WPT Pass Rate | N/A | **95%+** |
-
----
-
-## 🔥 PRIORIDADES IMEDIATAS (PRÓXIMOS 90 DIAS)
-
-### Semana 1-2: Análise & Planejamento
-- [ ] Auditar todo código AceDOM atual
-- [ ] Identificar todos usos de kuchiki
-- [ ] Criar baseline de performance (benchmarks atuais)
-- [ ] Setup WPT runner
-
-### Semana 3-6: Remover kuchiki
-- [ ] Implementar conversor ACE-HTML → AceDOM
-- [ ] Migrar todos testes existentes
-- [ ] Remover dependência kuchiki do Cargo.toml
-- [ ] Validar zero regressões
-
-### Semana 7-10: Otimizações de Performance
-- [ ] Implementar DomArena própria
-- [ ] Small string optimization
-- [ ] Attribute map optimization
-- [ ] Benchmark e validar ganhos
+### Semana 7-10: DomArena + Otimizações
+- [ ] Implementar DomArena com blocos 4KB
+- [ ] Adicionar SSO para strings curtas
+- [ ] Criar string interning para tags
+- [ ] Implementar LiveNodeList
+- [ ] Índices especializados (ID, class, tag)
+- [ ] Benchmarks: validar 2-5x ganho
 
 ### Semana 11-14: Range API
-- [ ] Implementar DomRange completo
-- [ ] Implementar Selection API
-- [ ] Bindings JS
-- [ ] Testes WPT
+- [ ] Estrutura Range
+- [ ] setStart/setEnd
+- [ ] deleteContents
+- [ ] extractContents/cloneContents
+- [ ] insertNode
+- [ ] WPT range tests: 90%+ pass
 
 ### Semana 15-18: Shadow DOM + Custom Elements
-- [ ] Completar Shadow DOM
-- [ ] Implementar slot assignment
-- [ ] Custom Elements registry
+- [ ] Slot assignment algorithm
+- [ ] attachShadow() completo
+- [ ] Custom Element registry
 - [ ] Lifecycle callbacks
+- [ ] attributeChangedCallback
+- [ ] Lit.dev test: funcional
 
 ---
 
-## 🛠️ RECURSOS NECESSÁRIOS
+## 📦 Estrutura de Arquivos Proposta
 
-### Humanos
-- 1-2 engenheiros Rust senior (DOM/HTML specs)
-- 1 engenheiro performance (benchmarks, profiling)
-- 1 QA engineer (WPT, accessibility testing)
-
-### Infraestrutura
-- CI/CD rodando WPT suite
-- Benchmarking contínuo (perf.albedo-browser.org)
-- Accessibilidade: testers com screen readers
-
-### Tempo Estimado
-- **MVP (kuchiki-free + perf):** 6 meses
-- **Feature-complete (Range, Selection, CE):** 12 meses
-- **Production-ready (95% WPT, a11y):** 18-24 meses
-
----
-
-## ✅ CHECKLIST FINAL: "SUPERIOR AO CHROME"
-
-Para considerar AceDOM superior ao Chrome/Firefox:
-
-- [ ] **Performance:** 2x mais rápido em Speedometer DOM tests
-- [ ] **Memória:** 50% menos RAM que Firefox para mesma página
-- [ ] **Compliance:** 95%+ WPT pass rate (Chrome tem ~98%)
-- [ ] **Features:** Web Components v1 completo + Range/Selection
-- [ ] **Accessibility:** axe-core 100% pass, tested com NVDA/VoiceOver
-- [ ] **Zero Dependencies:** Nenhuma crate externa para DOM ops
-- [ ] **Documentation:** MDN-level docs para todas APIs
-- [ ] **DevTools:** DOM inspector funcional
-- [ ] **Ecosystem:** Lit, Stencil, Alpine.js funcionam sem mods
+```
+src/engine/dom/
+├── mod.rs              # AceDOM principal (refatorado, ~800 LOC)
+├── arena.rs            # DomArena própria (novo, ~400 LOC)
+├── node.rs             # AceNode + tipos (novo, ~300 LOC)
+├── collection.rs       # LiveNodeList, HTMLCollection (novo, ~250 LOC)
+├── range.rs            # Range API (novo, ~500 LOC)
+├── selection.rs        # Selection API (novo, ~300 LOC)
+├── custom_elements.rs  # Custom Elements v1 (novo, ~400 LOC)
+├── shadow_dom.rs       # Shadow DOM completo (novo, ~600 LOC)
+├── accessibility.rs    # ARIA tree (novo, ~700 LOC)
+├── events.rs           # Event system (novo, ~500 LOC)
+├── indices.rs          # HashMaps especializados (novo, ~200 LOC)
+└── tests/
+    ├── dom_tests.rs
+    ├── range_tests.rs
+    ├── shadow_dom_tests.rs
+    └── wpt_runner.rs
+```
 
 ---
 
-## 📚 REFERÊNCIAS
+## 🎯 Critérios de Sucesso
 
-### Specs
-- [DOM Living Standard](https://dom.spec.whatwg.org/)
-- [HTML Living Standard](https://html.spec.whatwg.org/)
+### Técnicos:
+- ✅ Zero dependências externas para parsing HTML
+- ✅ 95%+ WPT pass rate nas suites relevantes
+- ✅ Performance 2-5x superior ao estado atual
+- ✅ Memória 4x mais eficiente
+- ✅ Custom Elements + Shadow DOM funcionais
+
+### Funcionais:
+- ✅ Lit.dev carrega e funciona
+- ✅ Stencil apps funcionais
+- ✅ Screen readers (NVDA, VoiceOver) operacionais
+- ✅ Editores de texto ricos (Range/Selection)
+- ✅ Web Components de bibliotecas modernas
+
+### Processo:
+- ✅ CI/CD com WPT automated
+- ✅ Benchmarks contínuos
+- ✅ Documentação completa
+- ✅ Exemplos e tutorials
+
+---
+
+## 🚨 Riscos e Mitigações
+
+| Risco | Probabilidade | Impacto | Mitigação |
+|-------|--------------|---------|-----------|
+| Regressões durante migração kuchiki→ACE | Alta | Alto | Testes extensivos, feature flags, rollback plan |
+| Performance pior que o esperado | Média | Alto | Benchmarks contínuos, profiling semanal |
+| Complexidade de Shadow DOM subestimada | Alta | Médio | Dividir em subtarefas menores,参考 Blink code |
+| WPT fail rate alto | Média | Alto | Priorizar bugs críticos, iterative fixes |
+| Burnout (projeto longo) | Alta | Crítico | Milestones curtos, celebrate wins, community |
+
+---
+
+## 📚 Referências
+
+### Specs:
+- [DOM Standard](https://dom.spec.whatwg.org/)
 - [Shadow DOM](https://w3c.github.io/webcomponents/spec/shadow/)
-- [Custom Elements](https://w3c.github.io/webcomponents/spec/custom/)
-- [Range](https://www.w3.org/TR/dom/#range)
+- [Custom Elements](https://html.spec.whatwg.org/multipage/custom-elements.html)
+- [Range](https://w3c.github.io/range-api/)
 - [Selection](https://w3c.github.io/selection-api/)
 - [ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/)
-- [Core-AAM](https://www.w3.org/TR/core-aam-1.2/)
-- [AccName](https://www.w3.org/TR/accname-1.2/)
+- [AccName 1.2](https://www.w3.org/TR/accname-1.2/)
 
-### Test Suites
-- [Web Platform Tests](https://web-platform-tests.org/)
-- [html5lib-tests](https://github.com/html5lib/html5lib-tests)
-- [WPT DOM Tests](https://github.com/web-platform-tests/wpt/tree/master/dom)
+### Code References:
+- [Blink DOM](https://chromium.googlesource.com/chromium/blink/+/refs/heads/main/Source/core/dom/)
+- [Gecko DOM](https://github.com/mozilla/gecko-dev/tree/master/dom/base)
+- [WebKit DOM](https://github.com/WebKit/WebKit/tree/main/Source/WebCore/dom)
+- [Servo DOM](https://github.com/servo/servo/tree/master/components/script/dom)
+
+### Testing:
+- [Web Platform Tests](https://github.com/web-platform-tests/wpt)
 - [axe-core](https://github.com/dequelabs/axe-core)
-
-### Competitors Analysis
-- Blink DOM: https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/dom/
-- Gecko DOM: https://searchfox.org/mozilla-central/source/dom
-- WebKit DOM: https://github.com/WebKit/WebKit/tree/main/Source/WebCore/dom
+- [JS Framework Benchmark](https://github.com/krausest/js-framework-benchmark)
 
 ---
 
-*"Não basta ser compatível. Precisamos ser melhores."*
+## 💡 Notas Finais
+
+Este plano é **ambicioso mas alcançável** com:
+- **Foco incremental:** Uma feature por vez
+- **Testes primeiro:** WPT como guia
+- **Performance contínua:** Benchmarks em cada PR
+- **Comunidade:** Engajar contributors early
+
+**Visão:** AceDOM 2.0 será **mais rápido**, **mais leve**, e **mais compatível** que as implementações atuais, mantendo soberania tecnológica total (zero deps externas).
+
+**Tempo estimado:** 18-24 meses (1 dev full-time)  
+**LOC estimadas:** ~5.000 (vs 1.121 atuais)  
+**Complexidade:** Alta, mas gerenciável com milestones claros
+
+---
+
+*Documento criado: Dezembro 2025*  
+*Próxima revisão: Após FASE 1 completa (Meses 1-4)*
