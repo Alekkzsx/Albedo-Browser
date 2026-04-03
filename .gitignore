@@ -1,31 +1,18 @@
 ```
 # Build artifacts
-*.rs.bk
-*.o
-*.obj
-*.a
-*.lib
-*.dll
-*.so
-*.dylib
-*.exe
-*.out
+target/
 
 # Dependencies
-target/
 Cargo.lock
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
-*.temp
-*.bak
-*.swp
 
-# OS generated files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Environment
+.env
+.env.local
+*.env.*
 
 # Editors
 # Dependencies
@@ -50,23 +37,34 @@ target/
 *.swp
 *.swo
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Environment
-.env
-.env.local
-.env.*
-!.env.example
-
-# Cache directories
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py~
 .Python
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust
+**/*.rs.bk
+
+# Coverage reports
+coverage/
+*.lcov
+*.profdata
+*.gcda
+*.gcno
+
+# Testing
+*.pytest_cache/
+.mypy_cache/
+.hypothesis/
 ```
 *.tmp
 
@@ -89,6 +87,33 @@ htmlcov/
 # OS generated files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Icon?
+apidoc/
+doc/api/
+
+# Compiled Binary Files
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.obj
+*.a
+*.lib
+*.out
+*.app
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
 
 # MyPy cache
 .mypy_cache/
@@ -114,6 +139,37 @@ Thumbs.db
 *.Z
 *.lz
 *.lzo
+
+# Distribution / packaging
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local configuration files
+config/local.yml
+*.local.yml
+```
 *.tar.gz
 *.tar.bz2
 *.tar.xz
