@@ -8,8 +8,12 @@ use std::sync::{Arc, Mutex};
 
 pub mod arena;
 pub mod live_nodelist;
+pub mod range;
+pub mod selection;
 pub use arena::{DomArena, ArenaNode};
 pub use live_nodelist::{LiveNodeList, HTMLCollection, NodeList, ChildrenCollection, NodeQuery, TagNameQuery, ClassNameQuery, IdQuery};
+pub use range::Range;
+pub use selection::{Selection, SelectionDirection, SelectionType};
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
