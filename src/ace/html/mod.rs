@@ -10,6 +10,7 @@ pub mod preload_scanner;
 pub mod encoding;
 pub mod arena;
 pub mod interner;
+pub mod small_attr_map;
 pub mod tests;
 
 pub use lexer::{
@@ -33,6 +34,7 @@ pub use encoding::{
 };
 pub use arena::{NodeArena, NodeId};
 pub use interner::{StringInterner, StringId};
+pub use small_attr_map::SmallAttributeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
@@ -62,14 +64,14 @@ impl Default for Namespace {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlElement {
-    pub tag: String,
+    pub tag: StringId,
     pub namespace: Namespace,
-    pub attributes: HashMap<String, String>,
-    pub children: Vec<HtmlNode>,
+    pub attributes: SmallAttributeMap,
+    pub children: Vec<NodeId>,
     /// Slot assignment for Shadow DOM (slot="..." attribute)
-    pub slot_name: Option<String>,
+    pub slot_name: Option<StringId>,
     /// Is attribute for custom elements (is="x-button")
-    pub is_value: Option<String>,
+    pub is_value: Option<StringId>,
     /// Indicates if this element is a shadow root host
     pub shadow_root_mode: Option<ShadowRootMode>,
     /// Shadow root content (for declarative shadow DOM)
@@ -89,11 +91,11 @@ impl Default for ShadowRootMode {
 }
 
 impl HtmlElement {
-    pub fn new(tag: impl Into<String>) -> Self {
+    pub fn new(tag: StringId) -> Self {
         Self {
-            tag: tag.into(),
+            tag,
             namespace: Namespace::Html,
-            attributes: HashMap::new(),
+            attributes: SmallAttributeMap::new(),
             children: Vec::new(),
             slot_name: None,
             is_value: None,
@@ -102,11 +104,11 @@ impl HtmlElement {
         }
     }
 
-    pub fn with_namespace(tag: impl Into<String>, ns: Namespace) -> Self {
+    pub fn with_namespace(tag: StringId, ns: Namespace) -> Self {
         Self {
-            tag: tag.into(),
+            tag,
             namespace: ns,
-            attributes: HashMap::new(),
+            attributes: SmallAttributeMap::new(),
             children: Vec::new(),
             slot_name: None,
             is_value: None,

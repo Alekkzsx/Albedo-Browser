@@ -1,10 +1,13 @@
-use std::collections::HashMap;
 use crate::ace::html::{
     DoctypeToken, EndTagToken, HtmlDocument, HtmlElement, HtmlNode, HtmlToken,
     HtmlTokenizer, StartTagToken, TokenizerErrorSource,
     PreloadScanner, PreloadRequest,
     lexer::LexerState,
+    arena::{NodeArena, NodeId},
+    interner::{StringInterner, StringId},
+    small_attr_map::SmallAttributeMap,
 };
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InsertionMode {
@@ -100,11 +103,11 @@ pub struct InternalNode {
 pub enum InternalNodeData {
     Document,
     Element {
-        tag: String,
+        tag: StringId,
         namespace: crate::ace::html::Namespace,
-        attributes: HashMap<String, String>,
-        slot_name: Option<String>,
-        is_value: Option<String>,
+        attributes: SmallAttributeMap,
+        slot_name: Option<StringId>,
+        is_value: Option<StringId>,
         shadow_root_mode: Option<crate::ace::html::ShadowRootMode>,
         shadow_root: Option<Box<crate::ace::html::HtmlDocument>>,
     },
@@ -612,8 +615,8 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
 
         // Extract special attributes for Shadow DOM and Custom Elements
-        let slot_name = tag.attributes.remove("slot");
-        let is_value = tag.attributes.remove("is");
+        let slot_name = tag.attributes.remove("slot").map(|s| StringId::intern(&s));
+        let is_value = tag.attributes.remove("is").map(|s| StringId::intern(&s));
         let shadow_root_mode = tag.attributes.remove("shadowrootmode").and_then(|mode| {
             match mode.as_str() {
                 "open" => Some(crate::ace::html::ShadowRootMode::Open),
@@ -622,10 +625,20 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
         });
 
+        // Convert attributes to SmallAttributeMap with StringId
+        let mut attributes = SmallAttributeMap::with_capacity(tag.attributes.len());
+        for (key, value) in tag.attributes {
+            let key_id = StringId::intern(&key);
+            let value_id = StringId::intern(&value);
+            attributes.insert(key_id, value_id);
+        }
+
+        let tag_id = StringId::intern(&tag.name);
+
         let nid = self.create_node(InternalNodeData::Element {
-            tag: tag.name.clone(),
+            tag: tag_id,
             namespace: ns,
-            attributes: tag.attributes,
+            attributes,
         });
         
         // Store special properties in the node's extended data
@@ -639,9 +652,10 @@ impl<'a> HtmlTreeBuilder<'a> {
         nid
     }
 
-    fn insert_element_at_current(&mut self, tag: String, attributes: HashMap<String, String>) -> usize {
+    fn insert_element_at_current(&mut self, tag: &str, attributes: SmallAttributeMap) -> usize {
+        let tag_id = StringId::intern(tag);
         let nid = self.create_node(InternalNodeData::Element {
-            tag,
+            tag: tag_id,
             namespace: crate::ace::html::Namespace::Html,
             attributes,
         });
@@ -655,8 +669,8 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn set_element_special_properties(
         &mut self, 
         node_id: usize, 
-        slot_name: Option<String>, 
-        is_value: Option<String>, 
+        slot_name: Option<StringId>, 
+        is_value: Option<StringId>, 
         shadow_root_mode: Option<crate::ace::html::ShadowRootMode>
     ) {
         if let InternalNodeData::Element { 
@@ -741,12 +755,22 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_slot_element(&mut self, tag_name: &str, mut attributes: HashMap<String, String>) -> usize {
         // Elementos <slot> são elementos especiais no Shadow DOM
-        let slot_name = attributes.remove("name");
+        let slot_name = attributes.remove("name").map(|s| StringId::intern(&s));
+        
+        // Convert attributes to SmallAttributeMap with StringId
+        let mut attr_map = SmallAttributeMap::with_capacity(attributes.len());
+        for (key, value) in attributes {
+            let key_id = StringId::intern(&key);
+            let value_id = StringId::intern(&value);
+            attr_map.insert(key_id, value_id);
+        }
+        
+        let tag_id = StringId::intern(tag_name);
         
         let nid = self.create_node(InternalNodeData::Element {
-            tag: tag_name.to_string(),
+            tag: tag_id,
             namespace: crate::ace::html::Namespace::Html,
-            attributes: attributes.clone(),
+            attributes: attr_map,
         });
         
         // Define o nome do slot nas propriedades especiais
@@ -1041,7 +1065,11 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
             other => {
                 self.parse_error(TreeBuilderErrorKind::UnexpectedToken, "unexpected token before <html>");
-                let id = self.create_node(InternalNodeData::Element { tag: "html".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
+                let id = self.create_node(InternalNodeData::Element { 
+                    tag: StringId::intern("html"), 
+                    namespace: crate::ace::html::Namespace::Html, 
+                    attributes: SmallAttributeMap::new() 
+                });
                 self.append_node(self.root_id, id);
                 self.open_elements.push(id);
                 self.insertion_mode = InsertionMode::BeforeHead;
@@ -1072,7 +1100,11 @@ impl<'a> HtmlTreeBuilder<'a> {
                 None
             }
             HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "html" | "body" | "br" | "head") => {
-                let id = self.create_node(InternalNodeData::Element { tag: "head".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
+                let id = self.create_node(InternalNodeData::Element { 
+                    tag: StringId::intern("head"), 
+                    namespace: crate::ace::html::Namespace::Html, 
+                    attributes: SmallAttributeMap::new() 
+                });
                 let current = self.current_node();
                 self.append_node(current, id);
                 self.open_elements.push(id);
@@ -1081,7 +1113,11 @@ impl<'a> HtmlTreeBuilder<'a> {
                 Some(HtmlToken::EndTag(tag))
             }
             other => {
-                let id = self.create_node(InternalNodeData::Element { tag: "head".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
+                let id = self.create_node(InternalNodeData::Element { 
+                    tag: StringId::intern("head"), 
+                    namespace: crate::ace::html::Namespace::Html, 
+                    attributes: SmallAttributeMap::new() 
+                });
                 let current = self.current_node();
                 self.append_node(current, id);
                 self.open_elements.push(id);
@@ -1203,14 +1239,22 @@ impl<'a> HtmlTreeBuilder<'a> {
                 self.handle_in_head(HtmlToken::EndTag(tag))
             }
             HtmlToken::EndTag(tag) if matches!(tag.name.as_str(), "body" | "html" | "br") => {
-                let id = self.create_node(InternalNodeData::Element { tag: "body".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
+                let id = self.create_node(InternalNodeData::Element { 
+                    tag: StringId::intern("body"), 
+                    namespace: crate::ace::html::Namespace::Html, 
+                    attributes: SmallAttributeMap::new() 
+                });
                 self.insert_at_appropriate_place(id, None);
                 self.open_elements.push(id);
                 self.insertion_mode = InsertionMode::InBody;
                 Some(HtmlToken::EndTag(tag))
             }
             other => {
-                let id = self.create_node(InternalNodeData::Element { tag: "body".to_string(), namespace: crate::ace::html::Namespace::Html, attributes: HashMap::new() });
+                let id = self.create_node(InternalNodeData::Element { 
+                    tag: StringId::intern("body"), 
+                    namespace: crate::ace::html::Namespace::Html, 
+                    attributes: SmallAttributeMap::new() 
+                });
                 self.insert_at_appropriate_place(id, None);
                 self.open_elements.push(id);
                 self.insertion_mode = InsertionMode::InBody;
