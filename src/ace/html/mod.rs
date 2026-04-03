@@ -35,7 +35,7 @@ pub use encoding::{
     EncodingDetectionResult, EncodingPrescanner, EncodingSource,
     extract_charset_from_meta, parse_content_type_header,
 };
-pub use arena::{NodeArena, NodeId};
+pub use arena::{NodeArena, NodeId, ArenaNodeWithNodeData};
 pub use interner::{StringInterner, StringId};
 pub use small_attr_map::SmallAttributeMap;
 pub use metrics::{ParserMetrics, ParserStats};

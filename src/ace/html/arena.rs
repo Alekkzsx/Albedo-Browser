@@ -10,6 +10,15 @@
 use std::cell::Cell;
 use std::ptr::NonNull;
 
+/// Wrapper genérico para dados de node DOM com estrutura de árvore
+/// Usa dados opacos (u8) para evitar dependência circular
+#[derive(Clone, Debug)]
+pub struct ArenaNode {
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
+    // Os dados reais são armazenados inline na arena após este header
+}
+
 /// Tamanho padrão de cada chunk na arena (64KB)
 const DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
@@ -117,6 +126,14 @@ pub struct NodeArena {
     allocation_count: Cell<usize>,
 }
 
+/// Wrapper para dados de node DOM com estrutura de árvore
+#[derive(Clone, Debug)]
+pub struct ArenaNodeWithNodeData {
+    pub data: crate::ace::html::tree_builder::InternalNodeData,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
+}
+
 impl NodeArena {
     /// Cria uma nova arena com capacidade inicial padrão
     pub fn new() -> Self {
@@ -181,6 +198,61 @@ impl NodeArena {
     pub unsafe fn get_mut<T>(&self, id: NodeId) -> &mut T {
         debug_assert!(!id.is_null(), "Cannot get_mut null NodeId");
         &mut *(id.0 as *mut T)
+    }
+    
+    /// Define o parent de um node
+    /// 
+    /// # Safety
+    /// - Os NodeIds devem ser válidos
+    pub unsafe fn set_parent(&self, node_id: NodeId, parent: Option<NodeId>) {
+        let node = self.get_mut::<ArenaNodeWithNodeData>(node_id);
+        node.parent = parent;
+    }
+    
+    /// Adiciona um child a um node
+    /// 
+    /// # Safety
+    /// - Os NodeIds devem ser válidos
+    pub unsafe fn add_child(&self, parent_id: NodeId, child_id: NodeId) {
+        let parent = self.get_mut::<ArenaNodeWithNodeData>(parent_id);
+        parent.children.push(child_id);
+    }
+    
+    /// Aloca um ArenaNodeWithNodeData na arena
+    pub fn alloc_node(&self, data: crate::ace::html::tree_builder::InternalNodeData) -> NodeId {
+        let node = ArenaNodeWithNodeData {
+            data,
+            parent: None,
+            children: Vec::new(),
+        };
+        self.alloc(node)
+    }
+    
+    /// Obtém o parent de um node
+    /// 
+    /// # Safety
+    /// - O NodeId deve ser válido
+    pub unsafe fn get_parent(&self, node_id: NodeId) -> Option<NodeId> {
+        let node = self.get::<ArenaNodeWithNodeData>(node_id);
+        node.parent
+    }
+    
+    /// Obtém os children de um node
+    /// 
+    /// # Safety
+    /// - O NodeId deve ser válido
+    pub unsafe fn get_children(&self, node_id: NodeId) -> &[NodeId] {
+        let node = self.get::<ArenaNodeWithNodeData>(node_id);
+        &node.children
+    }
+    
+    /// Obtém os dados de um node
+    /// 
+    /// # Safety
+    /// - O NodeId deve ser válido
+    pub unsafe fn get_node_data(&self, node_id: NodeId) -> &crate::ace::html::tree_builder::InternalNodeData {
+        let node = self.get::<ArenaNodeWithNodeData>(node_id);
+        &node.data
     }
 
     /// Limpa toda a arena, permitindo reuso da memória

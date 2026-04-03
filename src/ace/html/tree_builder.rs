@@ -3,7 +3,7 @@ use crate::ace::html::{
     HtmlTokenizer, StartTagToken, TokenizerErrorSource,
     PreloadScanner, PreloadRequest,
     lexer::LexerState,
-    arena::{NodeArena, NodeId},
+    arena::{NodeArena, NodeId, ArenaNodeWithNodeData},
     interner::{StringInterner, StringId},
     small_attr_map::SmallAttributeMap,
 };
@@ -126,9 +126,15 @@ pub struct HtmlTreeBuilder<'a> {
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
 
-    arena: Vec<InternalNode>,
-    root_id: usize,
-    open_elements: Vec<usize>,
+    /// Arena allocator para nodes DOM - substitui Vec<InternalNode>
+    arena: NodeArena,
+    /// Mapa de IDs internos para NodeIds da arena
+    id_map: std::collections::HashMap<usize, NodeId>,
+    /// Counter para IDs internos
+    next_internal_id: usize,
+    
+    root_id: NodeId,
+    open_elements: Vec<NodeId>,
     active_formatting_elements: Vec<ActiveFormattingEntry>,
     template_insertion_modes: Vec<InsertionMode>,
     preload_scanner: PreloadScanner,
@@ -136,8 +142,14 @@ pub struct HtmlTreeBuilder<'a> {
 
     doctype: Option<DoctypeToken>,
     errors: Vec<TreeBuilderError>,
-    head_element_id: Option<usize>,
-    form_element_id: Option<usize>,
+    head_element_id: Option<NodeId>,
+    form_element_id: Option<NodeId>,
+    
+    /// String interner para tag names e attribute names
+    interner: std::rc::Rc<StringInterner>,
+    
+    /// Metrics collection
+    metrics: crate::ace::html::metrics::ParserMetrics,
     
     #[allow(dead_code)]
     scripting_enabled: bool,
@@ -153,14 +165,18 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     pub fn new(input: &'a str) -> Self {
-        let mut arena = Vec::new();
-        let root_id = 0;
-        arena.push(InternalNode {
-            id: root_id,
-            data: InternalNodeData::Document,
-            parent: None,
-            children: Vec::new(),
-        });
+        // Criar arena allocator com chunks de 64KB
+        let arena = NodeArena::new(64 * 1024);
+        
+        // Criar string interner pré-populado com tags HTML comuns
+        let interner = std::rc::Rc::new(StringInterner::new());
+        
+        // Alocar node raiz (document)
+        let root_data = InternalNodeData::Document;
+        let root_id = arena.alloc(root_data);
+        
+        // Inicializar metrics
+        let metrics = crate::ace::html::metrics::ParserMetrics::new();
 
         Self {
             tokenizer: HtmlTokenizer::new(input),
@@ -168,6 +184,8 @@ impl<'a> HtmlTreeBuilder<'a> {
             original_insertion_mode: InsertionMode::Initial,
 
             arena,
+            id_map: std::collections::HashMap::new(),
+            next_internal_id: 0,
             root_id,
             open_elements: Vec::new(),
             active_formatting_elements: Vec::new(),
@@ -176,6 +194,9 @@ impl<'a> HtmlTreeBuilder<'a> {
             errors: Vec::new(),
             head_element_id: None,
             form_element_id: None,
+            
+            interner,
+            metrics,
             
             scripting_enabled: true,
             frameset_ok: true,
@@ -186,6 +207,51 @@ impl<'a> HtmlTreeBuilder<'a> {
             preload_requests: Vec::new(),
             template_insertion_modes: Vec::new(),
         }
+    }
+    
+    /// NOVO: Cria elemento usando arena + string interning + SmallAttributeMap
+    pub fn create_element_optimized(
+        &mut self,
+        tag_name: &str,
+        attributes: std::collections::HashMap<String, String>,
+        namespace: crate::ace::html::Namespace,
+    ) -> NodeId {
+        let start = std::time::Instant::now();
+        
+        // Intern tag name
+        let tag_id = self.interner.intern(tag_name);
+        
+        // Converter attributes para SmallAttributeMap com interning
+        let mut attr_map = SmallAttributeMap::new();
+        for (key, value) in attributes {
+            let key_id = self.interner.intern(&key);
+            let value_id = self.interner.intern(&value);
+            attr_map.insert(key_id, value_id);
+        }
+        
+        // Extrair slot name e is value se presentes
+        let slot_name = attr_map.get(&self.interner.intern("slot")).copied();
+        let is_value = attr_map.get(&self.interner.intern("is")).copied();
+        
+        // Criar elemento
+        let element = InternalNodeData::Element {
+            tag: tag_id,
+            namespace,
+            attributes: attr_map,
+            slot_name,
+            is_value,
+            shadow_root_mode: None,
+            shadow_root: None,
+        };
+        
+        // Alocar na arena
+        let node_id = self.arena.alloc(element);
+        
+        // Atualizar metrics
+        self.metrics.tree_building_time += start.elapsed();
+        self.metrics.nodes_created += 1;
+        
+        node_id
     }
 
     pub fn speculate(&mut self) {
@@ -221,12 +287,11 @@ impl<'a> HtmlTreeBuilder<'a> {
             }
         }
 
-        // Finalize the tree
-        let doc_node_children = self.arena[self.root_id].children.clone();
-        let mut children = Vec::new();
-        for &id in &doc_node_children {
-            children.push(self.convert_to_html_node(id));
-        }
+        // Finalize the tree - converter nodes da arena para HtmlNode
+        let children = unsafe {
+            let doc_children = self.arena.get_children(self.root_id);
+            doc_children.iter().map(|&child_id| self.convert_to_html_node(child_id)).collect()
+        };
 
         TreeBuildOutput {
             document: HtmlDocument {
@@ -238,28 +303,29 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn convert_to_html_node(&self, id: usize) -> HtmlNode {
-        let node = &self.arena[id];
-        match &node.data {
-            InternalNodeData::Element { tag, namespace, attributes, slot_name, is_value, shadow_root_mode, shadow_root } => {
-                let mut children = Vec::new();
-                for &child_id in &node.children {
-                    children.push(self.convert_to_html_node(child_id));
+    fn convert_to_html_node(&self, node_id: NodeId) -> HtmlNode {
+        unsafe {
+            let node = self.arena.get::<ArenaNodeWithNodeData>(node_id);
+            match &node.data {
+                InternalNodeData::Element { tag, namespace, attributes, slot_name, is_value, shadow_root_mode, shadow_root } => {
+                    let children: Vec<HtmlNode> = node.children.iter()
+                        .map(|&child_id| self.convert_to_html_node(child_id))
+                        .collect();
+                    HtmlNode::Element(HtmlElement {
+                        tag: tag.clone(),
+                        namespace: *namespace,
+                        attributes: attributes.clone(),
+                        children,
+                        slot_name: slot_name.clone(),
+                        is_value: is_value.clone(),
+                        shadow_root_mode: *shadow_root_mode,
+                        shadow_root: shadow_root.clone(),
+                    })
                 }
-                HtmlNode::Element(HtmlElement {
-                    tag: tag.clone(),
-                    namespace: *namespace,
-                    attributes: attributes.clone(),
-                    children,
-                    slot_name: slot_name.clone(),
-                    is_value: is_value.clone(),
-                    shadow_root_mode: *shadow_root_mode,
-                    shadow_root: shadow_root.clone(),
-                })
+                InternalNodeData::Text(s) => HtmlNode::Text(s.clone()),
+                InternalNodeData::Comment(s) => HtmlNode::Comment(s.clone()),
+                InternalNodeData::Document => unreachable!("nested document node"),
             }
-            InternalNodeData::Text(s) => HtmlNode::Text(s.clone()),
-            InternalNodeData::Comment(s) => HtmlNode::Comment(s.clone()),
-            InternalNodeData::Document => unreachable!("nested document node"),
         }
     }
 
@@ -329,27 +395,53 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    // --- Node Helpers ---
+    // --- Node Helpers (Arena-optimized) ---
 
-    fn create_node(&mut self, data: InternalNodeData) -> usize {
-        let id = self.arena.len();
-        self.arena.push(InternalNode {
-            id,
-            data,
-            parent: None,
-            children: Vec::new(),
-        });
-        id
+    /// Cria um node na arena e retorna o NodeId
+    fn create_node(&mut self, data: InternalNodeData) -> NodeId {
+        let start = std::time::Instant::now();
+        
+        // Usar alloc_node que já cria o wrapper ArenaNode
+        let node_id = self.arena.alloc_node(data);
+        
+        // Atualizar id_map para rastreamento interno se necessário
+        let internal_id = self.next_internal_id;
+        self.next_internal_id += 1;
+        self.id_map.insert(internal_id, node_id);
+        
+        // Atualizar metrics
+        self.metrics.nodes_created += 1;
+        self.metrics.tree_building_time += start.elapsed();
+        
+        node_id
     }
 
-    fn append_node(&mut self, parent_id: usize, child_id: usize) {
-        // Disconnect from old parent
-        if let Some(old_parent) = self.arena[child_id].parent {
-            self.arena[old_parent].children.retain(|&id| id != child_id);
+    /// Anexa um node filho a um node pai na arena
+    fn append_node(&mut self, parent_id: NodeId, child_id: NodeId) {
+        let start = std::time::Instant::now();
+        
+        // Usar métodos da arena para manipular parent/children (unsafe mas seguro no contexto)
+        unsafe {
+            self.arena.set_parent(child_id, Some(parent_id));
+            self.arena.add_child(parent_id, child_id);
         }
         
-        self.arena[child_id].parent = Some(parent_id);
-        self.arena[parent_id].children.push(child_id);
+        self.metrics.tree_building_time += start.elapsed();
+    }
+    
+    /// Obtém o node atual (topo da pilha de elementos abertos)
+    fn current_node(&self) -> NodeId {
+        *self.open_elements.last().expect("Open elements stack is empty")
+    }
+    
+    /// Empilha um elemento na pilha de elementos abertos
+    fn push_open_element(&mut self, node_id: NodeId) {
+        self.open_elements.push(node_id);
+    }
+    
+    /// Remove um elemento da pilha de elementos abertos
+    fn pop_open_element(&mut self) -> Option<NodeId> {
+        self.open_elements.pop()
     }
 
     fn insert_at_appropriate_place(&mut self, nid: usize, override_target: Option<usize>) {
