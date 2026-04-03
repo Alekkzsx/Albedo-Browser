@@ -210,6 +210,7 @@ pub struct PreloadScanner {
     current_attr_value: String,
     current_rel: String,
     current_as: String,
+    fetchpriority: Option<String>,
     requests: Vec<PreloadRequest>,
     seen_urls: HashSet<String>,
     base_url: String,
@@ -224,6 +225,7 @@ impl PreloadScanner {
             current_attr_value: String::new(),
             current_rel: String::new(),
             current_as: String::new(),
+            fetchpriority: None,
             requests: Vec::new(),
             seen_urls: HashSet::new(),
             base_url: String::new(),
@@ -569,23 +571,70 @@ impl PreloadScanner {
     }
 
     fn process_attribute(&mut self) {
-        if self.current_attr_value.is_empty() { return; }
+        if self.current_attr_value.is_empty() { 
+            return; 
+        }
 
-        let resource_type = match self.current_tag.as_str() {
-            "script" if self.current_attr_name == "src" => Some(PreloadResourceType::Script),
-            "link" if self.current_attr_name == "href" => Some(PreloadResourceType::Stylesheet), // Simpler: assumed CSS for now
-            "img" if self.current_attr_name == "src" => Some(PreloadResourceType::Image),
-            "video" if self.current_attr_name == "poster" => Some(PreloadResourceType::Video),
-            "audio" if self.current_attr_name == "src" => Some(PreloadResourceType::Audio),
-            "source" if self.current_attr_name == "src" => Some(PreloadResourceType::Source),
+        // Processa atributos especiais primeiro
+        match (self.current_tag.as_str(), self.current_attr_name.as_str()) {
+            ("link", "rel") => {
+                self.current_rel = self.current_attr_value.to_ascii_lowercase();
+                return;
+            },
+            ("link", "as") => {
+                self.current_as = self.current_attr_value.to_ascii_lowercase();
+                return;
+            },
+            (_, "fetchpriority") => {
+                self.fetchpriority = Some(self.current_attr_value.to_ascii_lowercase());
+                return;
+            },
+            _ => {}
+        }
+
+        let resource_type = match (self.current_tag.as_str(), self.current_attr_name.as_str()) {
+            ("script", "src") => {
+                let mut rt = PreloadResourceType::Script;
+                // Verifica se é module script
+                // Nota: em produção, precisaria verificar o atributo type="module"
+                Some(rt)
+            },
+            ("link", "href") => {
+                // Determina tipo baseado em rel attribute
+                match self.current_rel.as_str() {
+                    "stylesheet" => Some(PreloadResourceType::Stylesheet),
+                    "preload" => PreloadResourceType::from_as_attr(&self.current_as),
+                    "prefetch" => Some(PreloadResourceType::Prefetch),
+                    "preconnect" => Some(PreloadResourceType::Preconnect),
+                    "dns-prefetch" => Some(PreloadResourceType::DnsPrefetch),
+                    "icon" | "apple-touch-icon" => Some(PreloadResourceType::Icon),
+                    "manifest" => Some(PreloadResourceType::Manifest),
+                    _ => None,
+                }
+            },
+            ("img", "src" | "srcset") => Some(PreloadResourceType::Image),
+            ("video", "poster" | "src") => Some(PreloadResourceType::Video),
+            ("audio", "src") => Some(PreloadResourceType::Audio),
+            ("source", "src") => Some(PreloadResourceType::Source),
             _ => None,
         };
 
         if let Some(rt) = resource_type {
-            self.requests.push(PreloadRequest {
-                url: self.current_attr_value.clone(),
-                resource_type: rt,
-            });
+            let url = self.current_attr_value.clone();
+            
+            // Evita duplicatas
+            if !self.seen_urls.contains(&url) {
+                self.seen_urls.insert(url.clone());
+                
+                let mut request = PreloadRequest::new(url, rt);
+                
+                // Aplica fetchpriority se presente
+                if let Some(ref priority) = self.fetchpriority {
+                    request.priority = ResourcePriority::from_fetchpriority(priority);
+                }
+                
+                self.requests.push(request);
+            }
         }
     }
 
@@ -593,5 +642,91 @@ impl PreloadScanner {
         self.current_tag.clear();
         self.current_attr_name.clear();
         self.current_attr_value.clear();
+        self.current_rel.clear();
+        self.current_as.clear();
+        self.fetchpriority = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_script_preload() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"<script src="app.js"></script>"#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url, "app.js");
+        assert_eq!(requests[0].resource_type, PreloadResourceType::Script);
+    }
+
+    #[test]
+    fn test_stylesheet_preload() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"<link rel="stylesheet" href="style.css">"#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url, "style.css");
+        assert_eq!(requests[0].resource_type, PreloadResourceType::Stylesheet);
+    }
+
+    #[test]
+    fn test_image_preload() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"<img src="image.png">"#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url, "image.png");
+        assert_eq!(requests[0].resource_type, PreloadResourceType::Image);
+    }
+
+    #[test]
+    fn test_multiple_resources() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"
+            <link rel="stylesheet" href="style.css">
+            <script src="app.js"></script>
+            <img src="logo.png">
+        "#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 3);
+    }
+
+    #[test]
+    fn test_avoids_duplicates() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"
+            <script src="app.js"></script>
+            <script src="app.js"></script>
+        "#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+    }
+
+    #[test]
+    fn test_preload_link() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"<link rel="preload" href="font.woff2" as="font">"#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].resource_type, PreloadResourceType::Font);
+    }
+
+    #[test]
+    fn test_prefetch() {
+        let mut scanner = PreloadScanner::new();
+        let html = r#"<link rel="prefetch" href="next-page.html">"#;
+        let requests = scanner.scan(html);
+        
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].resource_type, PreloadResourceType::Prefetch);
     }
 }
