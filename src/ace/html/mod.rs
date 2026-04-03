@@ -56,6 +56,26 @@ pub struct HtmlElement {
     pub namespace: Namespace,
     pub attributes: HashMap<String, String>,
     pub children: Vec<HtmlNode>,
+    /// Slot assignment for Shadow DOM (slot="..." attribute)
+    pub slot_name: Option<String>,
+    /// Is attribute for custom elements (is="x-button")
+    pub is_value: Option<String>,
+    /// Indicates if this element is a shadow root host
+    pub shadow_root_mode: Option<ShadowRootMode>,
+    /// Shadow root content (for declarative shadow DOM)
+    pub shadow_root: Option<Box<HtmlDocument>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShadowRootMode {
+    Open,
+    Closed,
+}
+
+impl Default for ShadowRootMode {
+    fn default() -> Self {
+        Self::Open
+    }
 }
 
 impl HtmlElement {
@@ -65,6 +85,10 @@ impl HtmlElement {
             namespace: Namespace::Html,
             attributes: HashMap::new(),
             children: Vec::new(),
+            slot_name: None,
+            is_value: None,
+            shadow_root_mode: None,
+            shadow_root: None,
         }
     }
 
@@ -74,6 +98,10 @@ impl HtmlElement {
             namespace: ns,
             attributes: HashMap::new(),
             children: Vec::new(),
+            slot_name: None,
+            is_value: None,
+            shadow_root_mode: None,
+            shadow_root: None,
         }
     }
 }
