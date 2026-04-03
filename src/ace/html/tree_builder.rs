@@ -103,6 +103,10 @@ pub enum InternalNodeData {
         tag: String,
         namespace: crate::ace::html::Namespace,
         attributes: HashMap<String, String>,
+        slot_name: Option<String>,
+        is_value: Option<String>,
+        shadow_root_mode: Option<crate::ace::html::ShadowRootMode>,
+        shadow_root: Option<Box<crate::ace::html::HtmlDocument>>,
     },
     Text(String),
     Comment(String),
@@ -603,11 +607,26 @@ impl<'a> HtmlTreeBuilder<'a> {
              self.adjust_svg_attributes(&mut tag.attributes);
         }
 
+        // Extract special attributes for Shadow DOM and Custom Elements
+        let slot_name = tag.attributes.remove("slot");
+        let is_value = tag.attributes.remove("is");
+        let shadow_root_mode = tag.attributes.remove("shadowrootmode").and_then(|mode| {
+            match mode.as_str() {
+                "open" => Some(crate::ace::html::ShadowRootMode::Open),
+                "closed" => Some(crate::ace::html::ShadowRootMode::Closed),
+                _ => None,
+            }
+        });
+
         let nid = self.create_node(InternalNodeData::Element {
-            tag: tag.name,
+            tag: tag.name.clone(),
             namespace: ns,
             attributes: tag.attributes,
         });
+        
+        // Store special properties in the node's extended data
+        self.set_element_special_properties(nid, slot_name, is_value, shadow_root_mode);
+        
         self.insert_at_appropriate_place(nid, None);
         
         if !is_self_closing {

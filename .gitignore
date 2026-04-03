@@ -1,26 +1,51 @@
-# Rust Build Artifacts
-/target
-**/*.rs.bk
-
-# Debug symbols
-*.pdb
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.class
 *.exe
-*.dSYM/
+*.dll
+*.so
+*.a
+*.out
 
-# IDE & Editor
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Build directories
+dist/
+build/
+target/
+.coverage
+coverage/
+htmlcov/
+
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# Environment
-.env
-.env.local
+*.tmp
 
 # Logs
 *.log
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Cache directories
+.mypy_cache/
+.pytest_cache/
+.gradle/
+
+# Rust specific
+Cargo.lock
+```
