@@ -22,7 +22,7 @@ rfd = "0.14"
 tokio = { version = "1", features = ["full"] }
 raw-window-handle = "0.6.2"
 html5ever = "0.25"
-kuchiki = "0.8"
+# kuchiki REMOVIDO - usando ACE-HTML parser proprietário (FASE 1 AceDOM)
 reqwest = { version = "0.13.2", features = ["blocking", "json", "http2"] }
 image = "0.25.9"
 rquickjs = { version = "0.6", features = ["full-async", "loader"] }
