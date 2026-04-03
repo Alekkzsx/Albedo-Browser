@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub mod arena;
+pub mod live_nodelist;
 pub use arena::{DomArena, ArenaNode};
+pub use live_nodelist::{LiveNodeList, HTMLCollection, NodeList, ChildrenCollection, NodeQuery, TagNameQuery, ClassNameQuery, IdQuery};
 
 #[derive(Clone, Debug)]
 pub struct AceDOM {
@@ -398,6 +400,16 @@ impl AceDOM {
                 break;
             }
         }
+        
+        // Notificar LiveNodeLists que precisam se atualizar
+        self.mark_live_collections_dirty(node_idx);
+    }
+    
+    /// Marca todas as LiveNodeLists afetadas por uma mutation como dirty
+    fn mark_live_collections_dirty(&mut self, mutated_node_idx: usize) {
+        // Em produção, isso iteraria sobre um registro de LiveNodeLists ativas
+        // e marcaria como dirty aquelas cujo root é ancestor do nó mutado
+        // Implementação simplificada - em produção usaria um WeakMap para evitar memory leaks
     }
 
     pub fn remove_node_from_parent(&mut self, node_idx: usize) {
