@@ -3,7 +3,6 @@ use crate::engine::dom::AceDOM;
 use crate::engine::style;
 use crate::engine::ElementGeometry;
 use crate::runtime::core::runtime::JsRuntime;
-use kuchiki::traits::TendrilSink;
 use std::sync::{Arc, Mutex};
 
 // Helper to create test environment
@@ -15,8 +14,8 @@ fn create_test_env(
     Arc<Mutex<std::collections::HashMap<usize, ElementGeometry>>>,
     Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
 ) {
-    let document = kuchiki::parse_html().one(html);
-    let dom = Arc::new(Mutex::new(AceDOM::from_kuchiki(document)));
+    // Usando ACE-HTML parser proprietário ao invés de kuchiki
+    let dom = Arc::new(Mutex::new(AceDOM::from_html(html)));
     let stylesheet = Arc::new(Mutex::new(style::parse("")));
     let primitives = Arc::new(Mutex::new(Vec::new()));
     let canvas_contexts = Arc::new(Mutex::new(std::collections::HashMap::new()));
