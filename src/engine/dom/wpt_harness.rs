@@ -284,10 +284,37 @@ impl WPTBuilder {
 mod tests {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn create_mock_wpt_structure() -> TempDir {
-        let tmp = TempDir::new().unwrap();
+    struct TestTempDir {
+        path: PathBuf,
+    }
+
+    impl TestTempDir {
+        fn new() -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("albedo-wpt-{unique}"));
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestTempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn create_mock_wpt_structure() -> TestTempDir {
+        let tmp = TestTempDir::new();
         
         // Criar estrutura básica
         let dom_dir = tmp.path().join("dom");

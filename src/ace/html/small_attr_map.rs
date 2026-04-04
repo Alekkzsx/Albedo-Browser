@@ -18,7 +18,7 @@ const SMALL_CAPACITY: usize = 4;
 
 /// Par chave-valor para atributos
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct AttributePair {
+pub struct AttributePair {
     key: StringId,
     value: StringId,
 }

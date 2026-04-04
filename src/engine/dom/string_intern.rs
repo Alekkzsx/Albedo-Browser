@@ -241,10 +241,10 @@ mod tests {
     #[test]
     fn test_html_tags_helper() {
         // Verificar se as tags pré-internadas funcionam
-        assert_eq!(*html_tags::DIV, "div");
-        assert_eq!(*html_tags::BUTTON, "button");
-        assert_eq!(*html_attrs::CLASS, "class");
-        assert_eq!(*html_attrs::ID, "id");
+        assert_eq!(html_tags::DIV.as_ref(), "div");
+        assert_eq!(html_tags::BUTTON.as_ref(), "button");
+        assert_eq!(html_attrs::CLASS.as_ref(), "class");
+        assert_eq!(html_attrs::ID.as_ref(), "id");
     }
 
     #[test]

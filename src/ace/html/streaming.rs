@@ -2,9 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+use super::integrated_parser::ParseResult;
 use super::metrics::{MetricsCollector, ParserMetrics};
-use super::tree_builder::build_document_with_errors;
-use super::HtmlDocument;
+use super::tree_builder::build_document_with_errors_and_options;
+use super::{HtmlDocument, ParserOptions, TreeBuildOutput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamingState {
@@ -32,26 +33,40 @@ pub struct ParserSnapshot {
     pub column: usize,
     pub pending_tokens: usize,
     pub open_elements_depth: usize,
+    pub buffer: String,
+    pub chunks_processed: usize,
+    pub avg_chunk_latency: Duration,
+    pub options: ParserOptions,
 }
 
 pub struct StreamingHtmlParser {
     state: StreamingState,
     buffer: String,
+    options: ParserOptions,
     metrics: MetricsCollector,
     last_feed_time: Option<Instant>,
     avg_chunk_latency: Duration,
     chunks_processed: usize,
+    line: usize,
+    column: usize,
 }
 
 impl StreamingHtmlParser {
     pub fn new() -> Self {
+        Self::with_options(ParserOptions::default())
+    }
+
+    pub fn with_options(options: ParserOptions) -> Self {
         Self {
             state: StreamingState::Ready,
             buffer: String::new(),
+            options,
             metrics: MetricsCollector::new(),
             last_feed_time: None,
             avg_chunk_latency: Duration::ZERO,
             chunks_processed: 0,
+            line: 1,
+            column: 1,
         }
     }
 
@@ -75,6 +90,7 @@ impl StreamingHtmlParser {
         self.last_feed_time = Some(Instant::now());
         self.state = StreamingState::Parsing;
         self.buffer.push_str(chunk);
+        self.advance_position(chunk);
 
         let result = if chunk.is_empty() {
             ChunkResult::NeedsMoreData
@@ -97,14 +113,22 @@ impl StreamingHtmlParser {
     }
 
     pub fn end(&mut self) -> HtmlDocument {
+        self.end_with_output().document
+    }
+
+    pub fn end_with_parse_result(&mut self) -> ParseResult {
+        ParseResult::from_tree_build_output(self.end_with_output())
+    }
+
+    pub fn end_with_output(&mut self) -> TreeBuildOutput {
         self.state = StreamingState::Ended;
 
         self.metrics.start_tree_building();
-        let output = build_document_with_errors(&self.buffer);
+        let output = build_document_with_errors_and_options(&self.buffer, &self.options);
         let node_count = count_nodes(&output.document);
         self.metrics.end_tree_building(node_count);
 
-        output.document
+        output
     }
 
     pub fn pause(&mut self) {
@@ -121,15 +145,26 @@ impl StreamingHtmlParser {
         ParserSnapshot {
             state: self.state,
             position: self.buffer.len(),
-            line: 1,
-            column: self.buffer.len() + 1,
+            line: self.line,
+            column: self.column,
             pending_tokens: 0,
             open_elements_depth: 0,
+            buffer: self.buffer.clone(),
+            chunks_processed: self.chunks_processed,
+            avg_chunk_latency: self.avg_chunk_latency,
+            options: self.options.clone(),
         }
     }
 
     pub fn restore(&mut self, snapshot: ParserSnapshot) {
         self.state = snapshot.state;
+        self.buffer = snapshot.buffer;
+        self.line = snapshot.line;
+        self.column = snapshot.column;
+        self.chunks_processed = snapshot.chunks_processed;
+        self.avg_chunk_latency = snapshot.avg_chunk_latency;
+        self.options = snapshot.options;
+        self.last_feed_time = None;
     }
 
     pub fn avg_chunk_latency(&self) -> Duration {
@@ -142,6 +177,17 @@ impl StreamingHtmlParser {
 
     pub fn finish_with_metrics(self, input_bytes: usize) -> ParserMetrics {
         self.metrics.finish(input_bytes)
+    }
+
+    fn advance_position(&mut self, chunk: &str) {
+        for ch in chunk.chars() {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+        }
     }
 }
 
@@ -206,6 +252,7 @@ mod tests {
         let snapshot = parser.snapshot();
         assert_eq!(snapshot.state, StreamingState::Ready);
         assert_eq!(snapshot.line, 1);
+        assert_eq!(snapshot.column, 1);
     }
 
     #[test]
@@ -216,5 +263,33 @@ mod tests {
 
         assert_eq!(parser.state(), StreamingState::Ended);
         assert!(!doc.children.is_empty());
+    }
+
+    #[test]
+    fn test_streaming_parser_restore_rewinds_buffer() {
+        let mut parser = StreamingHtmlParser::new();
+        parser.feed("<div>a");
+        let snapshot = parser.snapshot();
+        parser.feed("</div>");
+
+        parser.restore(snapshot);
+        parser.feed("b</div>");
+
+        let document = parser.end();
+        let tree = format!("{:?}", document.children);
+        assert!(tree.contains("b"));
+        assert!(!tree.contains("a"));
+    }
+
+    #[test]
+    fn test_streaming_end_with_parse_result_matches_batch_shape() {
+        let mut parser = StreamingHtmlParser::new();
+        parser.feed("<link rel=\"stylesheet\" href=\"app.css\"><div>ok</div>");
+
+        let result = parser.end_with_parse_result();
+
+        assert!(result.errors.is_empty());
+        assert_eq!(result.stats.total_preloads, 1);
+        assert!(!result.document.children.is_empty());
     }
 }

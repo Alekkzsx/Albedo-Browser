@@ -348,6 +348,10 @@ impl<'a> HtmlLexer<'a> {
         };
     }
 
+    pub fn set_cdata_allowed(&mut self, allowed: bool) {
+        self.cdata_section_allowed = allowed;
+    }
+
     pub fn errors(&self) -> &[LexerError] {
         &self.errors
     }
@@ -967,7 +971,13 @@ impl<'a> HtmlLexer<'a> {
             return;
         }
 
-        if self.cdata_section_allowed && self.starts_with("[CDATA[") {
+        if self.starts_with("[CDATA[") {
+            if !self.cdata_section_allowed {
+                self.parse_error(
+                    LexerErrorKind::CdataSectionOutsideForeignContent,
+                    "CDATA section outside foreign content",
+                );
+            }
             self.pos += "[CDATA[".chars().count();
             self.state = LexerState::CdataSection;
             return;
@@ -2287,6 +2297,12 @@ impl<'a> HtmlLexer<'a> {
                 self.state = LexerState::NumericCharacterReference;
             }
             Some(c) => {
+                if is_whitespace(c) && self.peek_char().is_some_and(is_ascii_alpha) {
+                    self.parse_error(
+                        LexerErrorKind::MissingSemicolonAfterCharacterReference,
+                        "missing semicolon after character reference-like ampersand",
+                    );
+                }
                 self.emit_character('&');
                 self.reconsume_in_with_char(self.return_state, c);
             }
@@ -2757,7 +2773,9 @@ fn tag_to_content_state(tag_name: &str, self_closing: bool) -> Option<(String, L
     let state = match name.as_str() {
         "title" | "textarea" => LexerState::RcData,
         "script" => LexerState::ScriptData,
-        "style" | "xmp" | "iframe" | "noembed" | "noframes" => LexerState::RawText,
+        "style" | "xmp" | "iframe" | "noembed" | "noframes" | "noscript" => {
+            LexerState::RawText
+        }
         "plaintext" => LexerState::PlainText,
         _ => return None,
     };

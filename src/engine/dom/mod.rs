@@ -292,6 +292,56 @@ impl AceDOM {
         dom
     }
 
+    pub fn query_selector(&self, selector: &str) -> Option<usize> {
+        self.query_selector_all(selector).into_iter().next()
+    }
+
+    pub fn query_selector_all(&self, selector: &str) -> Vec<usize> {
+        let selector = selector.trim();
+        if selector.is_empty() {
+            return Vec::new();
+        }
+
+        let mut matches = Vec::new();
+        self.collect_selector_matches(self.root, selector, &mut matches);
+        matches
+    }
+
+    pub fn to_html(&self) -> String {
+        self.serialize_subtree_html(self.root)
+    }
+
+    fn collect_selector_matches(&self, node_idx: usize, selector: &str, matches: &mut Vec<usize>) {
+        if let Some(node) = self.get_node(node_idx) {
+            if self.node_matches_selector(node, selector) {
+                matches.push(node_idx);
+            }
+
+            for &child_idx in &node.children {
+                self.collect_selector_matches(child_idx, selector, matches);
+            }
+        }
+    }
+
+    fn node_matches_selector(&self, node: &AceNode, selector: &str) -> bool {
+        let AceNodeType::Element(element) = &node.node_type else {
+            return false;
+        };
+
+        if let Some(id) = selector.strip_prefix('#') {
+            return element.attributes.get("id").is_some_and(|value| value == id);
+        }
+
+        if let Some(class_name) = selector.strip_prefix('.') {
+            return element
+                .attributes
+                .get("class")
+                .is_some_and(|value| value.split_ascii_whitespace().any(|class| class == class_name));
+        }
+
+        element.tag.eq_ignore_ascii_case(selector)
+    }
+
     pub fn get_node(&self, id: usize) -> Option<&AceNode> {
         self.nodes.get(id)
     }

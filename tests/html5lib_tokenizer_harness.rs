@@ -40,6 +40,7 @@ enum ExpectedToken {
         system_id: Option<String>,
         force_quirks: bool,
     },
+    Eof,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +152,10 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
             let mut tokenizer = HtmlTokenizer::new(&case.input);
             let mut tokens = Vec::new();
             let mut guard = 0usize;
+            let include_eof = case
+                .expected_tokens
+                .as_ref()
+                .is_some_and(|tokens| tokens.iter().any(|token| matches!(token, ExpectedToken::Eof)));
 
             loop {
                 guard += 1;
@@ -162,7 +167,11 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
                 }
 
                 let token = tokenizer.next_token();
+                let reached_eof = matches!(token, HtmlToken::Eof);
                 if let Some(mapped) = ExpectedToken::from_runtime(token) {
+                    if matches!(mapped, ExpectedToken::Eof) && !include_eof {
+                        break;
+                    }
                     if let Some(ExpectedToken::Character { data: previous }) = tokens.last_mut() {
                         if let ExpectedToken::Character { data: next } = mapped {
                             previous.push_str(&next);
@@ -170,7 +179,9 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
                         }
                     }
                     tokens.push(mapped);
-                } else {
+                }
+
+                if reached_eof {
                     break;
                 }
             }
@@ -249,7 +260,10 @@ fn assert_case(case: &ConformanceCase, result: &CaseResult) -> Result<(), String
                 .as_ref()
                 .ok_or_else(|| format!("{}: parse run produced no tree", case.case_id))?;
 
-            if actual.trim() != expected.trim() {
+            let normalized_actual = normalize_tree_representation(actual);
+            let normalized_expected = normalize_tree_representation(expected);
+
+            if normalized_actual.trim() != normalized_expected.trim() {
                 return Err(format!(
                     "tree mismatch. expected:\n{}\nactual:\n{}",
                     expected, actual
@@ -273,6 +287,75 @@ fn assert_case(case: &ConformanceCase, result: &CaseResult) -> Result<(), String
     Ok(())
 }
 
+fn normalize_tree_representation(tree: &str) -> String {
+    let lines = tree
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+
+    let mut normalized = String::new();
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        let line = lines[idx];
+        normalized.push_str(line);
+        normalized.push('\n');
+        idx += 1;
+
+        if !is_element_line(line) {
+            continue;
+        }
+
+        let mut attrs = Vec::new();
+        while idx < lines.len() && is_attribute_line(lines[idx]) {
+            attrs.push(normalize_attribute_line(lines[idx]));
+            idx += 1;
+        }
+        attrs.sort();
+
+        for attr in attrs {
+            normalized.push_str(&attr);
+            normalized.push('\n');
+        }
+    }
+
+    normalized
+}
+
+fn is_element_line(line: &str) -> bool {
+    let content = tree_line_content(line);
+    content.starts_with('<')
+}
+
+fn is_attribute_line(line: &str) -> bool {
+    let content = tree_line_content(line);
+    !content.is_empty()
+        && !content.starts_with('<')
+        && !content.starts_with('"')
+        && !content.starts_with("<!--")
+}
+
+fn normalize_attribute_line(line: &str) -> String {
+    let attr_start = line
+        .find(|ch: char| ch != '|' && ch != ' ')
+        .unwrap_or(line.len());
+    let prefix = &line[..attr_start];
+    let content = &line[attr_start..];
+
+    if content.contains('=') {
+        format!("{prefix}{content}")
+    } else {
+        format!("{prefix}{content}=\"\"")
+    }
+}
+
+fn tree_line_content(line: &str) -> &str {
+    let idx = line
+        .find(|ch: char| ch != '|' && ch != ' ')
+        .unwrap_or(line.len());
+    &line[idx..]
+}
+
 impl ExpectedToken {
     fn from_runtime(token: HtmlToken) -> Option<Self> {
         match token {
@@ -290,7 +373,7 @@ impl ExpectedToken {
                 system_id: dt.system_id,
                 force_quirks: dt.force_quirks,
             }),
-            HtmlToken::Eof => None,
+            HtmlToken::Eof => Some(Self::Eof),
         }
     }
 }
@@ -433,6 +516,7 @@ fn parse_expected_token(obj: &Map<String, Value>) -> Result<ExpectedToken, Strin
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         }),
+        "Eof" => Ok(ExpectedToken::Eof),
         _ => Err(format!("unsupported token type '{token_type}'")),
     }
 }

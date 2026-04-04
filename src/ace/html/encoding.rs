@@ -219,10 +219,19 @@ pub struct EncodingDetectionResult {
     pub bom_detected: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecodedInput {
+    pub content: String,
+    pub encoding: Encoding,
+    pub source: EncodingSource,
+    pub bom_detected: bool,
+}
+
 /// Source of the detected encoding
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EncodingSource {
     Bom,
+    Hint,
     HttpHeader,
     MetaTag,
     Prescan,
@@ -293,7 +302,6 @@ pub fn extract_charset_from_meta(content: &str) -> Option<Encoding> {
 /// Implements the WHATWG prescan algorithm
 pub struct EncodingPrescanner {
     bytes: Vec<u8>,
-    position: usize,
     max_bytes: usize,
 }
 
@@ -301,7 +309,6 @@ impl EncodingPrescanner {
     pub fn new(max_bytes: usize) -> Self {
         Self {
             bytes: Vec::new(),
-            position: 0,
             max_bytes,
         }
     }
@@ -483,6 +490,31 @@ impl Default for EncodingDetector {
     }
 }
 
+pub fn decode_html_bytes(
+    bytes: &[u8],
+    http_header: Option<&str>,
+    encoding_hint: Option<Encoding>,
+) -> Result<DecodedInput, String> {
+    let (encoding, source, bom_detected, bom_len) =
+        if let Some((bom_encoding, bom_len)) = detect_encoding_from_bom(bytes) {
+            (bom_encoding, EncodingSource::Bom, true, bom_len)
+        } else if let Some(hint) = encoding_hint {
+            (hint, EncodingSource::Hint, false, 0)
+        } else {
+            let mut detector = EncodingDetector::new();
+            let result = detector.detect(bytes, http_header);
+            (result.encoding, result.source, result.bom_detected, 0)
+        };
+
+    let decoded = decode_bytes(&bytes[bom_len..], encoding)?;
+    Ok(DecodedInput {
+        content: decoded,
+        encoding,
+        source,
+        bom_detected,
+    })
+}
+
 /// Convert bytes to string using detected encoding
 pub fn decode_bytes(bytes: &[u8], encoding: Encoding) -> Result<String, String> {
     match encoding {
@@ -500,12 +532,52 @@ pub fn decode_bytes(bytes: &[u8], encoding: Encoding) -> Result<String, String> 
                 .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
                 .collect::<Vec<u16>>()
         ).map_err(|e| format!("Invalid UTF-16BE: {}", e)),
-        // For other encodings, we'll use a simple ASCII fallback for now
-        // In a full implementation, we'd use proper decoding tables
-        _ => {
-            // Simple ASCII/ISO-8859-1 compatible decoding
-            Ok(bytes.iter().map(|&b| b as char).collect())
+        Encoding::Iso8859_1 | Encoding::Windows1252 => {
+            Ok(bytes.iter().map(|&byte| decode_windows_1252_byte(byte)).collect())
         }
+        Encoding::Replacement => Ok(bytes.iter().map(|_| '\u{FFFD}').collect()),
+        _ => Err(format!(
+            "Decoding for {} is not implemented yet",
+            encoding.name()
+        )),
+    }
+}
+
+fn decode_windows_1252_byte(byte: u8) -> char {
+    match byte {
+        0x80 => '\u{20AC}',
+        0x81 => '\u{0081}',
+        0x82 => '\u{201A}',
+        0x83 => '\u{0192}',
+        0x84 => '\u{201E}',
+        0x85 => '\u{2026}',
+        0x86 => '\u{2020}',
+        0x87 => '\u{2021}',
+        0x88 => '\u{02C6}',
+        0x89 => '\u{2030}',
+        0x8A => '\u{0160}',
+        0x8B => '\u{2039}',
+        0x8C => '\u{0152}',
+        0x8D => '\u{008D}',
+        0x8E => '\u{017D}',
+        0x8F => '\u{008F}',
+        0x90 => '\u{0090}',
+        0x91 => '\u{2018}',
+        0x92 => '\u{2019}',
+        0x93 => '\u{201C}',
+        0x94 => '\u{201D}',
+        0x95 => '\u{2022}',
+        0x96 => '\u{2013}',
+        0x97 => '\u{2014}',
+        0x98 => '\u{02DC}',
+        0x99 => '\u{2122}',
+        0x9A => '\u{0161}',
+        0x9B => '\u{203A}',
+        0x9C => '\u{0153}',
+        0x9D => '\u{009D}',
+        0x9E => '\u{017E}',
+        0x9F => '\u{0178}',
+        _ => char::from_u32(byte as u32).unwrap_or('\u{FFFD}'),
     }
 }
 
@@ -583,5 +655,33 @@ mod tests {
         let result = detector.detect(bytes, None);
         assert_eq!(result.encoding, Encoding::Utf8);
         assert_eq!(result.source, EncodingSource::Default);
+    }
+
+    #[test]
+    fn test_decode_windows_1252_bytes() {
+        let decoded = decode_bytes(&[0x48, 0x80, 0x21], Encoding::Windows1252).unwrap();
+        assert_eq!(decoded, "H€!");
+    }
+
+    #[test]
+    fn test_decode_html_bytes_prefers_bom_over_hint() {
+        let bytes = [0xEF, 0xBB, 0xBF, b'H', b'i'];
+        let decoded = decode_html_bytes(&bytes, None, Some(Encoding::Windows1252)).unwrap();
+        assert_eq!(decoded.content, "Hi");
+        assert_eq!(decoded.encoding, Encoding::Utf8);
+        assert_eq!(decoded.source, EncodingSource::Bom);
+    }
+
+    #[test]
+    fn test_decode_html_bytes_uses_hint_when_present() {
+        let decoded = decode_html_bytes(&[0x48, 0x80], None, Some(Encoding::Windows1252)).unwrap();
+        assert_eq!(decoded.content, "H€");
+        assert_eq!(decoded.source, EncodingSource::Hint);
+    }
+
+    #[test]
+    fn test_decode_unsupported_encoding_returns_error() {
+        let error = decode_bytes(b"abc", Encoding::ShiftJis).unwrap_err();
+        assert!(error.contains("not implemented"));
     }
 }
