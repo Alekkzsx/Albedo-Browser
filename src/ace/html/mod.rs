@@ -26,14 +26,15 @@ pub use tokenizer::{
     StartTagToken, TokenizerError, TokenizerErrorKind, TokenizerErrorSource,
 };
 pub use tree_builder::{
-    build_document, build_document_with_errors, build_fragment, build_fragment_with_errors,
-    InsertionMode, TreeBuildOutput, TreeBuilderError, TreeBuilderErrorKind,
-    TreeBuilderErrorSource,
+    build_document, build_document_with_errors, build_document_with_errors_and_options,
+    build_fragment, build_fragment_with_context_and_options, build_fragment_with_errors,
+    build_fragment_with_errors_and_options, InsertionMode, TreeBuildOutput, TreeBuilderError,
+    TreeBuilderErrorKind, TreeBuilderErrorSource,
 };
 pub use preload_scanner::{PreloadRequest, PreloadResourceType, PreloadScanner};
 pub use encoding::{
-    decode_bytes, detect_encoding_from_bom, Encoding, EncodingDetector,
-    EncodingDetectionResult, EncodingPrescanner, EncodingSource,
+    decode_bytes, decode_html_bytes, detect_encoding_from_bom, DecodedInput, Encoding,
+    EncodingDetectionResult, EncodingDetector, EncodingPrescanner, EncodingSource,
     extract_charset_from_meta, parse_content_type_header,
 };
 pub use arena::{NodeArena, NodeId};
@@ -46,7 +47,9 @@ pub use simd::{
     normalize_whitespace_simd, has_simd_support, get_optimization_level,
 };
 pub use integrated_parser::{
-    parse_html_integrated, IntegratedTreeBuilder, ParseResult, ParserStats as IntegratedParserStats,
+    parse_html_integrated, parse_html_integrated_from_bytes,
+    parse_html_integrated_from_bytes_with_options, parse_html_integrated_with_options,
+    IntegratedTreeBuilder, ParseResult, ParserStats as IntegratedParserStats,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -131,16 +134,115 @@ impl HtmlElement {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParserOptions {
+    pub scripting_enabled: bool,
+    pub base_url: Option<String>,
+    pub source_url: Option<String>,
+    pub encoding_hint: Option<Encoding>,
+    pub track_positions: bool,
+    pub collect_preloads: bool,
+}
+
+impl Default for ParserOptions {
+    fn default() -> Self {
+        Self {
+            scripting_enabled: true,
+            base_url: None,
+            source_url: None,
+            encoding_hint: None,
+            track_positions: true,
+            collect_preloads: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FragmentContext {
+    pub tag_name: String,
+    pub namespace: Namespace,
+    pub scripting_enabled: bool,
+}
+
+impl FragmentContext {
+    pub fn new(tag_name: impl Into<String>) -> Self {
+        Self {
+            tag_name: tag_name.into().to_ascii_lowercase(),
+            namespace: Namespace::Html,
+            scripting_enabled: true,
+        }
+    }
+
+    pub fn with_namespace(mut self, namespace: Namespace) -> Self {
+        self.namespace = namespace;
+        self
+    }
+
+    pub fn with_scripting(mut self, scripting_enabled: bool) -> Self {
+        self.scripting_enabled = scripting_enabled;
+        self
+    }
+}
+
 pub fn parse_document(input: &str) -> HtmlDocument {
-    build_document(input)
+    parse_document_with_options(input, &ParserOptions::default())
+}
+
+pub fn parse_document_with_options(input: &str, options: &ParserOptions) -> HtmlDocument {
+    build_document_with_errors_and_options(input, options).document
+}
+
+pub fn parse_document_from_bytes(bytes: &[u8]) -> Result<HtmlDocument, String> {
+    parse_document_from_bytes_with_options(bytes, None, &ParserOptions::default())
+}
+
+pub fn parse_document_from_bytes_with_options(
+    bytes: &[u8],
+    http_header: Option<&str>,
+    options: &ParserOptions,
+) -> Result<HtmlDocument, String> {
+    Ok(parse_document_from_bytes_with_errors_and_options(bytes, http_header, options)?.document)
 }
 
 pub fn parse_document_with_errors(input: &str) -> TreeBuildOutput {
-    build_document_with_errors(input)
+    parse_document_with_errors_and_options(input, &ParserOptions::default())
+}
+
+pub fn parse_document_with_errors_and_options(input: &str, options: &ParserOptions) -> TreeBuildOutput {
+    build_document_with_errors_and_options(input, options)
+}
+
+pub fn parse_document_from_bytes_with_errors_and_options(
+    bytes: &[u8],
+    http_header: Option<&str>,
+    options: &ParserOptions,
+) -> Result<TreeBuildOutput, String> {
+    let decoded = decode_html_bytes(bytes, http_header, options.encoding_hint)?;
+    Ok(build_document_with_errors_and_options(&decoded.content, options))
 }
 
 pub fn parse_fragment(input: &str, context: Option<&str>) -> Vec<HtmlNode> {
-    build_fragment(input, context)
+    parse_fragment_with_context(
+        input,
+        context.map(FragmentContext::new).as_ref(),
+        &ParserOptions::default(),
+    )
+}
+
+pub fn parse_fragment_with_context(
+    input: &str,
+    context: Option<&FragmentContext>,
+    options: &ParserOptions,
+) -> Vec<HtmlNode> {
+    build_fragment_with_context_and_options(input, context, options).document.children
+}
+
+pub fn parse_fragment_with_errors_and_context(
+    input: &str,
+    context: Option<&FragmentContext>,
+    options: &ParserOptions,
+) -> TreeBuildOutput {
+    build_fragment_with_context_and_options(input, context, options)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,8 +296,12 @@ pub enum AceHtmlErrorCode {
     UnexpectedDoctype,
     UnexpectedToken,
     UnexpectedEndTag,
+    UnexpectedCharacter,
+    UnexpectedEof,
+    NestedHead,
     FosterParenting,
     AdoptionAgency,
+    TokenizerError,
 }
 
 impl AceHtmlErrorCode {
@@ -247,8 +353,12 @@ impl AceHtmlErrorCode {
             Self::UnexpectedDoctype => "unexpected-doctype",
             Self::UnexpectedToken => "unexpected-token",
             Self::UnexpectedEndTag => "unexpected-end-tag",
+            Self::UnexpectedCharacter => "unexpected-character",
+            Self::UnexpectedEof => "unexpected-eof",
+            Self::NestedHead => "nested-head",
             Self::FosterParenting => "foster-parenting",
             Self::AdoptionAgency => "adoption-agency",
+            Self::TokenizerError => "tokenizer-error",
         }
     }
 }
@@ -256,7 +366,44 @@ impl AceHtmlErrorCode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseError {
     pub code: AceHtmlErrorCode,
+    pub source: ParseErrorSource,
     pub message: String,
     pub line: usize,
     pub column: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParseErrorSource {
+    Lexer,
+    Tokenizer,
+    TreeBuilder,
+}
+
+impl TreeBuildOutput {
+    pub fn parse_errors(&self) -> Vec<ParseError> {
+        self.errors
+            .iter()
+            .map(|error| ParseError {
+                code: match error.kind {
+                    TreeBuilderErrorKind::UnexpectedToken => AceHtmlErrorCode::UnexpectedToken,
+                    TreeBuilderErrorKind::UnexpectedEndTag => AceHtmlErrorCode::UnexpectedEndTag,
+                    TreeBuilderErrorKind::UnexpectedDoctype => AceHtmlErrorCode::UnexpectedDoctype,
+                    TreeBuilderErrorKind::UnexpectedCharacter => AceHtmlErrorCode::UnexpectedCharacter,
+                    TreeBuilderErrorKind::NestedHead => AceHtmlErrorCode::NestedHead,
+                    TreeBuilderErrorKind::FosterParenting => AceHtmlErrorCode::FosterParenting,
+                    TreeBuilderErrorKind::AdoptionAgency => AceHtmlErrorCode::AdoptionAgency,
+                    TreeBuilderErrorKind::TokenizerError => AceHtmlErrorCode::TokenizerError,
+                    TreeBuilderErrorKind::UnexpectedEof => AceHtmlErrorCode::UnexpectedEof,
+                },
+                source: match error.source {
+                    TreeBuilderErrorSource::Lexer => ParseErrorSource::Lexer,
+                    TreeBuilderErrorSource::Tokenizer => ParseErrorSource::Tokenizer,
+                    TreeBuilderErrorSource::TreeBuilder => ParseErrorSource::TreeBuilder,
+                },
+                message: error.message.clone(),
+                line: error.line,
+                column: error.column,
+            })
+            .collect()
+    }
 }

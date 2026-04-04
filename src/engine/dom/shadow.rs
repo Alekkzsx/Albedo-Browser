@@ -478,11 +478,11 @@ mod tests {
         };
         let host2_idx = dom.nodes.len();
         dom.nodes.push(AceNode {
-            node_type: AceNodeType::Element(AceElement {
-                tag: "div".to_string(),
-                namespace: crate::ace::html::Namespace::HTML,
-                attributes: [("id".to_string(), "host2".to_string())].iter().cloned().collect(),
-            }),
+                node_type: AceNodeType::Element(AceElement {
+                    tag: "div".to_string(),
+                    namespace: crate::ace::html::Namespace::Html,
+                    attributes: [("id".to_string(), "host2".to_string())].iter().cloned().collect(),
+                }),
             parent: dom.body,
             children: Vec::new(),
             prev_sibling: None,

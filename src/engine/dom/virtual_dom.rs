@@ -291,12 +291,6 @@ mod tests {
 
     #[test]
     fn test_diff_attr_change() {
-        let mut attrs_old = HashMap::new();
-        attrs_old.insert(Rc::from("class"), Rc::from("old"));
-        
-        let mut attrs_new = HashMap::new();
-        attrs_new.insert(Rc::from("class"), Rc::from("new"));
-
         let old = VNode::element("div", [("class", "old")].into_iter().collect(), vec![]);
         let new = VNode::element("div", [("class", "new")].into_iter().collect(), vec![]);
         

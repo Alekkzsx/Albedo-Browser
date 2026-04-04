@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 /// ID único para strings internadas
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringId(pub usize);
 
 impl StringId {
@@ -175,20 +175,6 @@ impl StringInterner {
         }
         
         interner
-    }
-
-    /// Interna uma string estática (sem alocação)
-    fn intern_static(&self, s: &'static str) -> StringId {
-        let mut strings = self.strings.write().unwrap();
-        
-        if let Some(&id) = strings.get(s) {
-            return StringId(id);
-        }
-        
-        let id = self.arena.read().unwrap().len();
-        // Safety: &'static str vive para sempre
-        strings.insert(unsafe { Box::from(std::str::from_utf8_unchecked(s.as_bytes())) }, id);
-        StringId(id)
     }
 
     /// Interna uma string dinâmica

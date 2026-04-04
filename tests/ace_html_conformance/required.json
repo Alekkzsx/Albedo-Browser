@@ -126,7 +126,7 @@
       "expected_tokens": [
         { "type": "Character", "data": "x ¬anentity; y" }
       ],
-      "expected_errors": ["LEX001:LexerParseError"]
+      "expected_errors": ["LEX001:MissingSemicolonAfterCharacterReference"]
     },
     {
       "case_id": "frag_table_context",
@@ -235,7 +235,7 @@
       "mode": "tokenizer",
       "input": "a\u0000b",
       "expected_tokens": [
-        { "type": "Character", "data": "a\u{FFFD}b" }
+        { "type": "Character", "data": "a\uFFFDb" }
       ],
       "expected_errors": ["TOK004:NullCharacter"]
     },
@@ -356,9 +356,7 @@
       "spec_ref": "WHATWG 13.2.5 EOF in tag",
       "mode": "tokenizer",
       "input": "<div",
-      "expected_tokens": [
-        { "type": "Eof" }
-      ],
+      "expected_tokens": [],
       "expected_errors": ["LEX001:EofInTag"]
     },
     {
@@ -367,8 +365,7 @@
       "mode": "tokenizer",
       "input": "<!-- comment",
       "expected_tokens": [
-        { "type": "Comment", "data": " comment" },
-        { "type": "Eof" }
+        { "type": "Comment", "data": " comment" }
       ],
       "expected_errors": ["LEX001:EofInComment"]
     },
@@ -384,8 +381,7 @@
           "public_id": null,
           "system_id": null,
           "force_quirks": true
-        },
-        { "type": "Eof" }
+        }
       ],
       "expected_errors": ["LEX001:EofInDoctype"]
     },

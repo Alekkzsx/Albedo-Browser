@@ -59,6 +59,12 @@ pub enum TokenizerErrorKind {
     InvalidDoctype,
     NullCharacter,
     EmptyAttributeName,
+    EofInTag,
+    EofInComment,
+    EofInDoctype,
+    NestedComment,
+    CdataSectionOutsideForeignContent,
+    MissingSemicolonAfterCharacterReference,
     LexerParseError,
 }
 
@@ -111,6 +117,10 @@ impl<'a> HtmlTokenizer<'a> {
 
     pub fn set_state(&mut self, state: LexerState) {
         self.lexer.set_state(state);
+    }
+
+    pub fn set_cdata_allowed(&mut self, allowed: bool) {
+        self.lexer.set_cdata_allowed(allowed);
     }
 
     pub fn errors(&self) -> &[TokenizerError] {
@@ -195,6 +205,16 @@ impl<'a> HtmlTokenizer<'a> {
 fn map_lexer_error(err: RawLexerError) -> TokenizerError {
     let (kind, code) = match err.kind {
         RawLexerErrorKind::UnexpectedNullCharacter => (TokenizerErrorKind::NullCharacter, "TOK004"),
+        RawLexerErrorKind::EofInTag => (TokenizerErrorKind::EofInTag, "LEX001"),
+        RawLexerErrorKind::EofInComment => (TokenizerErrorKind::EofInComment, "LEX001"),
+        RawLexerErrorKind::EofInDoctype => (TokenizerErrorKind::EofInDoctype, "LEX001"),
+        RawLexerErrorKind::NestedComment => (TokenizerErrorKind::NestedComment, "LEX001"),
+        RawLexerErrorKind::CdataSectionOutsideForeignContent => {
+            (TokenizerErrorKind::CdataSectionOutsideForeignContent, "LEX001")
+        }
+        RawLexerErrorKind::MissingSemicolonAfterCharacterReference => {
+            (TokenizerErrorKind::MissingSemicolonAfterCharacterReference, "LEX001")
+        }
         _ => (TokenizerErrorKind::LexerParseError, "LEX001"),
     };
 
@@ -277,5 +297,25 @@ mod tests {
             err.source == TokenizerErrorSource::Lexer
                 && err.kind == TokenizerErrorKind::LexerParseError
         }));
+    }
+
+    #[test]
+    fn treats_noscript_contents_as_raw_text() {
+        let mut tokenizer = HtmlTokenizer::new("<noscript><style>.x{}</style></noscript>");
+
+        let HtmlToken::StartTag(start) = tokenizer.next_token() else {
+            panic!("expected noscript start tag");
+        };
+        assert_eq!(start.name, "noscript");
+
+        let HtmlToken::Character(text) = tokenizer.next_token() else {
+            panic!("expected noscript raw text");
+        };
+        assert_eq!(text.data, "<style>.x{}</style>");
+
+        let HtmlToken::EndTag(end) = tokenizer.next_token() else {
+            panic!("expected noscript end tag");
+        };
+        assert_eq!(end.name, "noscript");
     }
 }

@@ -280,7 +280,7 @@ mod tests {
     fn test_define_valid_name() {
         let mut registry = CustomElementsRegistry::new();
         
-        let constructor = Arc::new(|| 0) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(|| 0usize) as Arc<dyn Fn() -> usize + Send + Sync>;
         let result = registry.define("my-element".to_string(), constructor, None);
         
         assert!(result.is_ok());
@@ -290,7 +290,7 @@ mod tests {
     fn test_define_invalid_name_no_dash() {
         let mut registry = CustomElementsRegistry::new();
         
-        let constructor = Arc::new(|| 0) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(|| 0usize) as Arc<dyn Fn() -> usize + Send + Sync>;
         let result = registry.define("myelement".to_string(), constructor, None);
         
         assert_eq!(result, Err(CustomElementError::InvalidName));
@@ -300,7 +300,7 @@ mod tests {
     fn test_define_already_defined() {
         let mut registry = CustomElementsRegistry::new();
         
-        let constructor = Arc::new(|| 0) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(|| 0usize) as Arc<dyn Fn() -> usize + Send + Sync>;
         let first = registry.define("my-element".to_string(), constructor.clone(), None);
         let second = registry.define("my-element".to_string(), constructor, None);
         
@@ -312,7 +312,7 @@ mod tests {
     fn test_get_definition() {
         let mut registry = CustomElementsRegistry::new();
         
-        let constructor = Arc::new(|| 0) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(|| 0usize) as Arc<dyn Fn() -> usize + Send + Sync>;
         registry.define("my-element".to_string(), constructor, None).unwrap();
         
         let definition = registry.get("my-element");
@@ -326,7 +326,7 @@ mod tests {
     fn test_when_defined() {
         let mut registry = CustomElementsRegistry::new();
         
-        let constructor = Arc::new(|| 0) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(|| 0usize) as Arc<dyn Fn() -> usize + Send + Sync>;
         
         assert!(!registry.when_defined("my-element"));
         
@@ -348,7 +348,7 @@ mod tests {
             }
         }).unwrap_or(1);
         
-        let constructor = Arc::new(|| element_idx) as Arc<dyn Fn() -> usize + Send + Sync>;
+        let constructor = Arc::new(move || element_idx) as Arc<dyn Fn() -> usize + Send + Sync>;
         registry.define("my-element".to_string(), constructor, None).unwrap();
         
         registry.upgrade_element(&mut dom, element_idx);
@@ -376,7 +376,7 @@ mod tests {
         dom.nodes.push(AceNode {
             node_type: AceNodeType::Element(AceElement {
                 tag: "div".to_string(),
-                namespace: crate::ace::html::Namespace::HTML,
+                namespace: crate::ace::html::Namespace::Html,
                 attributes: HashMap::new(),
             }),
             parent: None,

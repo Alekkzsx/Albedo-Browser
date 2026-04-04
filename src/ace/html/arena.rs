@@ -60,11 +60,6 @@ impl Chunk {
     }
 
     #[inline]
-    fn remaining(&self) -> usize {
-        self.capacity - self.allocated.get()
-    }
-
-    #[inline]
     fn alloc(&self, size: usize, align: usize) -> Option<NonNull<u8>> {
         let current = unsafe { self.data.as_ptr().add(self.allocated.get()) };
         
