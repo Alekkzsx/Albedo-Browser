@@ -77,14 +77,14 @@ impl Default for Namespace {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlElement {
-    pub tag: StringId,
+    pub tag: String,
     pub namespace: Namespace,
-    pub attributes: SmallAttributeMap,
-    pub children: Vec<NodeId>,
+    pub attributes: HashMap<String, String>,
+    pub children: Vec<HtmlNode>,
     /// Slot assignment for Shadow DOM (slot="..." attribute)
-    pub slot_name: Option<StringId>,
+    pub slot_name: Option<String>,
     /// Is attribute for custom elements (is="x-button")
-    pub is_value: Option<StringId>,
+    pub is_value: Option<String>,
     /// Indicates if this element is a shadow root host
     pub shadow_root_mode: Option<ShadowRootMode>,
     /// Shadow root content (for declarative shadow DOM)
@@ -104,11 +104,11 @@ impl Default for ShadowRootMode {
 }
 
 impl HtmlElement {
-    pub fn new(tag: StringId) -> Self {
+    pub fn new(tag: impl Into<String>) -> Self {
         Self {
-            tag,
+            tag: tag.into(),
             namespace: Namespace::Html,
-            attributes: SmallAttributeMap::new(),
+            attributes: HashMap::new(),
             children: Vec::new(),
             slot_name: None,
             is_value: None,
@@ -117,11 +117,11 @@ impl HtmlElement {
         }
     }
 
-    pub fn with_namespace(tag: StringId, ns: Namespace) -> Self {
+    pub fn with_namespace(tag: impl Into<String>, ns: Namespace) -> Self {
         Self {
-            tag,
+            tag: tag.into(),
             namespace: ns,
-            attributes: SmallAttributeMap::new(),
+            attributes: HashMap::new(),
             children: Vec::new(),
             slot_name: None,
             is_value: None,
@@ -136,7 +136,7 @@ pub fn parse_document(input: &str) -> HtmlDocument {
 }
 
 pub fn parse_document_with_errors(input: &str) -> TreeBuildOutput {
-    build_fragment_with_errors(input, None)
+    build_document_with_errors(input)
 }
 
 pub fn parse_fragment(input: &str, context: Option<&str>) -> Vec<HtmlNode> {

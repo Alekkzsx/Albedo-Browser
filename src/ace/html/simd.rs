@@ -24,7 +24,6 @@ use std::arch::x86_64::*;
 /// 
 /// # Safety
 /// Requires SSE2 support (available on all x86_64 since 2005)
-#[inline(always)]
 #[target_feature(enable = "sse2")]
 pub unsafe fn simd_is_whitespace_sse2(data: &[u8]) -> u16 {
     debug_assert!(data.len() >= 16);
@@ -65,7 +64,6 @@ pub unsafe fn simd_is_whitespace_sse2(data: &[u8]) -> u16 {
 /// 
 /// # Returns
 /// Position of first non-tag-name character (> or whitespace)
-#[inline(always)]
 #[target_feature(enable = "avx2")]
 pub unsafe fn fast_ascii_tag_scan_avx2(data: &[u8], start: usize) -> usize {
     if data.len() - start < 32 {
@@ -125,7 +123,6 @@ pub fn simd_find_byte(data: &[u8], byte: u8) -> Option<usize> {
     }
 }
 
-#[inline(always)]
 #[target_feature(enable = "sse2")]
 unsafe fn simd_find_byte_sse2(data: &[u8], byte: u8) -> Option<usize> {
     let needle = _mm_set1_epi8(byte as i8);

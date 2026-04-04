@@ -38,7 +38,7 @@ pub enum AriaRole {
     
     // Composite Roles
     Grid,
-    Listbox as ListBoxComposite,
+    ListBoxComposite,
     Menu,
     Menubar,
     Radiogroup,

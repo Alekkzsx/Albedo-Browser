@@ -1,6 +1,7 @@
 use crate::ace::html::{
     DoctypeToken, EndTagToken, HtmlDocument, HtmlElement, HtmlNode, HtmlToken,
     StartTagToken, TokenizerErrorSource,
+    HtmlTokenizer,
     PreloadScanner, PreloadRequest,
     lexer::LexerState,
     arena::{NodeArena, NodeId},
@@ -258,12 +259,12 @@ impl<'a> HtmlTreeBuilder<'a> {
                     children.push(self.convert_to_html_node(child_id));
                 }
                 HtmlNode::Element(HtmlElement {
-                    tag: tag.clone(),
+                    tag: self.interner.resolve(*tag).unwrap_or("").to_string(),
                     namespace: *namespace,
-                    attributes: attributes.clone(),
+                    attributes: self.resolve_attributes(attributes),
                     children,
-                    slot_name: slot_name.clone(),
-                    is_value: is_value.clone(),
+                    slot_name: slot_name.and_then(|id| self.interner.resolve(id).map(str::to_string)),
+                    is_value: is_value.and_then(|id| self.interner.resolve(id).map(str::to_string)),
                     shadow_root_mode: *shadow_root_mode,
                     shadow_root: shadow_root.clone(),
                 })
@@ -272,6 +273,18 @@ impl<'a> HtmlTreeBuilder<'a> {
             InternalNodeData::Comment(s) => HtmlNode::Comment(s.clone()),
             InternalNodeData::Document => unreachable!("nested document node"),
         }
+    }
+
+    fn resolve_attributes(&self, attributes: &SmallAttributeMap) -> HashMap<String, String> {
+        attributes
+            .iter()
+            .filter_map(|(key, value)| {
+                Some((
+                    self.interner.resolve(key)?.to_string(),
+                    self.interner.resolve(value)?.to_string(),
+                ))
+            })
+            .collect()
     }
 
     fn collect_tokenizer_errors(&mut self) {

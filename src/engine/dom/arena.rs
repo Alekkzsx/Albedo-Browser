@@ -20,17 +20,17 @@ const INITIAL_CAPACITY: usize = 256;
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct ArenaNode {
-    pub node_type: crate::dom::AceNodeType,
+    pub node_type: crate::engine::dom::AceNodeType,
     pub parent: Option<usize>,
     pub children: Vec<usize>,
     pub prev_sibling: Option<usize>,
     pub next_sibling: Option<usize>,
     pub shadow_root: Option<usize>,
-    pub dirty: crate::dom::NodeDirtyFlags,
+    pub dirty: crate::engine::dom::NodeDirtyFlags,
 }
 
 impl ArenaNode {
-    pub fn new(node_type: crate::dom::AceNodeType) -> Self {
+    pub fn new(node_type: crate::engine::dom::AceNodeType) -> Self {
         Self {
             node_type,
             parent: None,
@@ -38,7 +38,8 @@ impl ArenaNode {
             prev_sibling: None,
             next_sibling: None,
             shadow_root: None,
-            dirty: crate::dom::NodeDirtyFlags::LAYOUT | crate::dom::NodeDirtyFlags::STYLE,
+            dirty: crate::engine::dom::NodeDirtyFlags::LAYOUT
+                | crate::engine::dom::NodeDirtyFlags::STYLE,
         }
     }
     
@@ -49,10 +50,11 @@ impl ArenaNode {
         
         // Tamanho aproximado do node_type
         let node_type_size = match &self.node_type {
-            crate::dom::AceNodeType::Element(el) => {
+            crate::engine::dom::AceNodeType::Element(el) => {
                 el.tag.len() + std::mem::size_of_val(&el.attributes)
             }
-            crate::dom::AceNodeType::Text(s) | crate::dom::AceNodeType::Comment(s) => s.len(),
+            crate::engine::dom::AceNodeType::Text(s)
+            | crate::engine::dom::AceNodeType::Comment(s) => s.len(),
             _ => 0,
         };
         
@@ -79,7 +81,7 @@ impl ArenaBlock {
             // Inicializar memória
             for i in 0..capacity {
                 std::ptr::write(ptr.add(i) as *mut ArenaNode, ArenaNode::new(
-                    crate::dom::AceNodeType::Document
+                    crate::engine::dom::AceNodeType::Document
                 ));
             }
             
@@ -192,7 +194,7 @@ impl DomArena {
     pub fn alloc_pooled(&mut self, node: ArenaNode) -> usize {
         // Verifica se é um tipo comum que pode ser poolado
         match &node.node_type {
-            crate::dom::AceNodeType::Element(el) => {
+            crate::engine::dom::AceNodeType::Element(el) => {
                 if el.tag == "div" && !self.div_pool.is_empty() {
                     let pooled_idx = self.div_pool.pop().unwrap();
                     // Reutiliza slot existente
@@ -208,7 +210,7 @@ impl DomArena {
                     return pooled_idx;
                 }
             }
-            crate::dom::AceNodeType::Text(_) => {
+            crate::engine::dom::AceNodeType::Text(_) => {
                 if !self.text_pool.is_empty() {
                     let pooled_idx = self.text_pool.pop().unwrap();
                     if let Some(existing) = self.get_mut(pooled_idx) {
@@ -235,7 +237,7 @@ impl DomArena {
         // Adiciona ao pool apropriado para reutilização
         if let Some(node) = self.blocks[block_idx].get(local_idx) {
             match &node.node_type {
-                crate::dom::AceNodeType::Element(el) => {
+                crate::engine::dom::AceNodeType::Element(el) => {
                     if el.tag == "div" {
                         self.div_pool.push(global_idx);
                         return;
@@ -244,7 +246,7 @@ impl DomArena {
                         return;
                     }
                 }
-                crate::dom::AceNodeType::Text(_) => {
+                crate::engine::dom::AceNodeType::Text(_) => {
                     self.text_pool.push(global_idx);
                     return;
                 }
@@ -374,7 +376,7 @@ impl ArenaMemoryStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dom::{AceNodeType, AceElement, NodeDirtyFlags};
+    use crate::engine::dom::{AceElement, AceNodeType, NodeDirtyFlags};
     
     #[test]
     fn test_basic_allocation() {

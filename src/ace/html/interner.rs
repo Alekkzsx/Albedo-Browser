@@ -23,6 +23,39 @@ impl StringId {
     pub fn is_null(self) -> bool {
         self == Self::NULL
     }
+
+    #[inline]
+    pub fn intern(s: &str) -> Self {
+        global_interner().intern(s)
+    }
+
+    #[inline]
+    pub fn as_str(self) -> &'static str {
+        let owned = global_interner()
+            .resolve(self)
+            .unwrap_or("")
+            .to_string()
+            .into_boxed_str();
+        Box::leak(owned)
+    }
+}
+
+impl std::fmt::Display for StringId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq<&str> for StringId {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<String> for StringId {
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other.as_str()
+    }
 }
 
 /// Estatísticas do interner para profiling
