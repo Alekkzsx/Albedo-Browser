@@ -59,6 +59,7 @@ impl PartialEq<String> for StringId {
 }
 
 /// Estatísticas do interner para profiling
+#[derive(Clone)]
 pub struct InternerStats {
     pub hit_count: usize,
     pub miss_count: usize,
@@ -218,7 +219,7 @@ impl StringInterner {
         
         // Nova string - adicionar à arena
         let id = arena.len();
-        let boxed = Box::from(s);
+        let boxed: Box<str> = Box::from(s);
         strings.insert(boxed.clone(), id);
         arena.push(boxed);
         
@@ -227,18 +228,19 @@ impl StringInterner {
 
     /// Recupera a string original a partir de um StringId
     #[inline]
-    pub fn resolve(&self, id: StringId) -> Option<&str> {
+    pub fn resolve(&self, id: StringId) -> Option<&'static str> {
         if id.is_null() {
             return None;
         }
-        
+
         let arena = self.arena.read().unwrap();
-        arena.get(id.0).map(|s| s.as_ref())
+        let value = arena.get(id.0)?.to_string().into_boxed_str();
+        Some(Box::leak(value))
     }
 
     /// Recupera a string ou retorna um default
     #[inline]
-    pub fn resolve_or(&self, id: StringId, default: &str) -> &str {
+    pub fn resolve_or<'a>(&self, id: StringId, default: &'a str) -> &'a str {
         self.resolve(id).unwrap_or(default)
     }
 

@@ -201,7 +201,7 @@ impl Selection {
         let first_range = &self.ranges[0];
         let mut range = first_range.borrow_mut();
         range.collapse(true); // true = para start
-        
+        drop(range);
         self.update_from_first_range();
     }
     
@@ -214,7 +214,7 @@ impl Selection {
         let first_range = &self.ranges[0];
         let mut range = first_range.borrow_mut();
         range.collapse(false); // false = para end
-        
+        drop(range);
         self.update_from_first_range();
     }
     

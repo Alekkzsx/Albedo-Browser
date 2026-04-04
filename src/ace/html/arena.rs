@@ -66,7 +66,7 @@ impl Chunk {
 
     #[inline]
     fn alloc(&self, size: usize, align: usize) -> Option<NonNull<u8>> {
-        let current = self.data.as_ptr().add(self.allocated.get());
+        let current = unsafe { self.data.as_ptr().add(self.allocated.get()) };
         
         // Calcula alinhamento necessário
         let aligned = ((current as usize) + (align - 1)) & !(align - 1);
@@ -233,7 +233,7 @@ impl NodeArena {
     }
 
     /// Aloca um novo chunk grande o suficiente para o valor
-    fn allocate_new_chunk(&self, min_size: usize, align: usize) {
+    fn allocate_new_chunk(&self, min_size: usize, _align: usize) {
         let mut chunks = self.chunks.take();
         
         // Novo chunk com pelo menos o dobro do tamanho necessário
@@ -253,6 +253,7 @@ impl Default for NodeArena {
 }
 
 /// Estatísticas da arena para profiling
+#[derive(Clone)]
 pub struct ArenaStats {
     pub chunk_count: usize,
     pub total_capacity: usize,
