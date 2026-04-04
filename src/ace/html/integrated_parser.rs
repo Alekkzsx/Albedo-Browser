@@ -12,6 +12,7 @@ use crate::ace::html::{
     StartTagToken, CharacterToken, CommentToken, EndTagToken,
     PreloadScanner, PreloadRequest,
     lexer::HtmlLexer,
+    tokenizer::HtmlTokenizer,
     arena::{NodeArena, NodeId},
     interner::{StringInterner, StringId},
     small_attr_map::SmallAttributeMap,
@@ -70,7 +71,7 @@ pub struct IntegratedTreeBuilder<'a> {
     template_modes: Vec<InsertionMode>,
     preload_scanner: PreloadScanner,
     preload_requests: Vec<PreloadRequest>,
-    lexer: HtmlLexer<'a>,
+    tokenizer: HtmlTokenizer<'a>,
     errors: Vec<String>,
     doctype: Option<DoctypeToken>,
     head_element: Option<NodeId>,
@@ -85,7 +86,7 @@ impl<'a> IntegratedTreeBuilder<'a> {
     pub fn new(input: &'a str) -> Self {
         let arena = NodeArena::new();
         let interner = StringInterner::new();
-        let lexer = HtmlLexer::new(input);
+        let tokenizer = HtmlTokenizer::new(input);
         let root_data = InternalNodeData::Document { children: Vec::new() };
         let root_id = arena.alloc(root_data);
         
@@ -97,7 +98,7 @@ impl<'a> IntegratedTreeBuilder<'a> {
             template_modes: Vec::new(),
             preload_scanner: PreloadScanner::new(),
             preload_requests: Vec::new(),
-            lexer, errors: Vec::new(),
+            tokenizer, errors: Vec::new(),
             doctype: None, head_element: None, form_element: None,
             quirks_mode: false, foster_parenting: false,
             frameset_ok: true, scripting_enabled: true,
@@ -108,7 +109,7 @@ impl<'a> IntegratedTreeBuilder<'a> {
     pub fn parse(mut self) -> ParseResult {
         loop {
             self.speculate_preload();
-            let token = self.next_token();
+            let token = self.tokenizer.next_token();
             if matches!(token, HtmlToken::Eof) { break; }
             self.process_token(token);
         }
@@ -120,8 +121,6 @@ impl<'a> IntegratedTreeBuilder<'a> {
             stats: self.get_stats(),
         }
     }
-    
-    fn next_token(&mut self) -> HtmlToken { HtmlToken::Eof } // Simplificado
     
     fn process_token(&mut self, token: HtmlToken) {
         match self.insertion_mode {
@@ -242,9 +241,9 @@ impl<'a> IntegratedTreeBuilder<'a> {
     }
     
     fn speculate_preload(&mut self) {
-        let rem = self.lexer.remaining_input();
+        let rem = self.tokenizer.lexer.remaining_input();
         if !rem.is_empty() {
-            for req in self.preload_scanner.scan(rem) {
+            for req in self.preload_scanner.scan(&rem) {
                 if !self.preload_requests.iter().any(|r| r.url == req.url) {
                     self.preload_requests.push(req);
                 }
