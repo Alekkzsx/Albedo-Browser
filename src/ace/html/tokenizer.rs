@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::lexer::{
-    HtmlLexer, HtmlToken as RawHtmlToken,
+    HtmlLexer, HtmlToken as RawHtmlToken, HtmlTokenKind as RawHtmlTokenKind,
     LexerError as RawLexerError, LexerErrorKind as RawLexerErrorKind,
     LexerState,
 };
@@ -37,7 +37,14 @@ pub struct DoctypeToken {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HtmlToken {
+pub struct HtmlToken {
+    pub kind: HtmlTokenKind,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlTokenKind {
     StartTag(StartTagToken),
     EndTag(EndTagToken),
     Character(CharacterToken),
@@ -132,7 +139,20 @@ impl<'a> HtmlTokenizer<'a> {
     }
 
     pub fn next_token(&mut self) -> HtmlToken {
+        // Guard against degenerate inputs where the lexer produces an unbounded
+        // stream of skipped tokens (e.g., repeated empty characters on a stuck state).
+        // After 65535 iterations without a real token, emit EOF to terminate parsing.
+        let mut guard = 0u32;
         loop {
+            guard += 1;
+            if guard > 65535 {
+                // SAFETY: defensive escape hatch — should never trigger on valid paths.
+                return HtmlToken {
+                    kind: HtmlTokenKind::Eof,
+                    line: 0,
+                    column: 0,
+                };
+            }
             let raw = self.lexer.next_token();
             self.collect_lexer_errors();
 
@@ -149,36 +169,57 @@ impl<'a> HtmlTokenizer<'a> {
     }
 
     pub fn convert_raw_token(&mut self, raw: RawHtmlToken) -> Option<HtmlToken> {
-        match raw {
-            RawHtmlToken::StartTag(tag) => {
+        let (line, column) = (raw.line, raw.column);
+        match raw.kind {
+            RawHtmlTokenKind::StartTag(tag) => {
                 let mut attributes = HashMap::new();
                 for (name, value) in tag.attributes {
                     attributes.insert(name.to_ascii_lowercase(), value);
                 }
-                Some(HtmlToken::StartTag(StartTagToken {
-                    name: tag.name.to_ascii_lowercase(),
-                    attributes,
-                    self_closing: tag.self_closing,
-                }))
+                Some(HtmlToken {
+                    kind: HtmlTokenKind::StartTag(StartTagToken {
+                        name: tag.name.to_ascii_lowercase(),
+                        attributes,
+                        self_closing: tag.self_closing,
+                    }),
+                    line,
+                    column,
+                })
             }
-            RawHtmlToken::EndTag(name) => Some(HtmlToken::EndTag(EndTagToken {
-                name: name.to_ascii_lowercase(),
-            })),
-            RawHtmlToken::Character(data) => {
+            RawHtmlTokenKind::EndTag(name) => Some(HtmlToken {
+                kind: HtmlTokenKind::EndTag(EndTagToken {
+                    name: name.to_ascii_lowercase(),
+                }),
+                line,
+                column,
+            }),
+            RawHtmlTokenKind::Character(data) => {
                 if data.is_empty() {
                     return None;
                 }
-                Some(HtmlToken::Character(CharacterToken { data }))
+                Some(HtmlToken {
+                    kind: HtmlTokenKind::Character(CharacterToken { data }),
+                    line,
+                    column,
+                })
             }
-            RawHtmlToken::Comment(data) => Some(HtmlToken::Comment(CommentToken { data })),
-            RawHtmlToken::Doctype(dt) => Some(HtmlToken::Doctype(DoctypeToken {
-                name: dt.name.map(|name| name.to_ascii_lowercase()),
-                public_id: dt.public_id,
-                system_id: dt.system_id,
-                force_quirks: dt.force_quirks,
-            }))
+            RawHtmlTokenKind::Comment(data) => Some(HtmlToken {
+                kind: HtmlTokenKind::Comment(CommentToken { data }),
+                line,
+                column,
+            }),
+            RawHtmlTokenKind::Doctype(dt) => Some(HtmlToken {
+                kind: HtmlTokenKind::Doctype(DoctypeToken {
+                    name: dt.name.map(|name| name.to_ascii_lowercase()),
+                    public_id: dt.public_id,
+                    system_id: dt.system_id,
+                    force_quirks: dt.force_quirks,
+                }),
+                line,
+                column,
+            })
             .and_then(|token| {
-                let HtmlToken::Doctype(ref doc) = token else {
+                let HtmlTokenKind::Doctype(ref doc) = token.kind else {
                     return Some(token);
                 };
 
@@ -190,14 +231,18 @@ impl<'a> HtmlTokenizer<'a> {
                         TokenizerErrorKind::InvalidDoctype,
                         "TOK003",
                         "invalid doctype without name",
-                        1, 1, // Tokenizer generic errors use placeholder for now or we could pass pos
+                        line, column, // Correct position!
                     ));
                     None
                 } else {
                     Some(token)
                 }
             }),
-            RawHtmlToken::Eof => Some(HtmlToken::Eof),
+            RawHtmlTokenKind::Eof => Some(HtmlToken {
+                kind: HtmlTokenKind::Eof,
+                line,
+                column,
+            }),
         }
     }
 }
@@ -238,20 +283,20 @@ mod tests {
         let mut tokenizer = HtmlTokenizer::new(r#"<div class="hero">Hello</div>"#);
 
         let token = tokenizer.next_token();
-        let HtmlToken::StartTag(tag) = token else {
+        let HtmlTokenKind::StartTag(tag) = token.kind else {
             panic!("expected start tag");
         };
         assert_eq!(tag.name, "div");
         assert_eq!(tag.attributes.get("class"), Some(&"hero".to_string()));
 
         let token = tokenizer.next_token();
-        let HtmlToken::Character(text) = token else {
+        let HtmlTokenKind::Character(text) = token.kind else {
             panic!("expected character token");
         };
         assert_eq!(text.data, "Hello");
 
         let token = tokenizer.next_token();
-        let HtmlToken::EndTag(tag) = token else {
+        let HtmlTokenKind::EndTag(tag) = token.kind else {
             panic!("expected end tag");
         };
         assert_eq!(tag.name, "div");
@@ -262,7 +307,7 @@ mod tests {
         let mut tokenizer = HtmlTokenizer::new("<!DOCTYPE><p>ok</p>");
 
         let token = tokenizer.next_token();
-        let HtmlToken::StartTag(tag) = token else {
+        let HtmlTokenKind::StartTag(tag) = token.kind else {
             panic!("expected start tag after invalid doctype");
         };
         assert_eq!(tag.name, "p");
@@ -278,7 +323,7 @@ mod tests {
         let mut tokenizer = HtmlTokenizer::new("a\0b");
         let token = tokenizer.next_token();
 
-        let HtmlToken::Character(text) = token else {
+        let HtmlTokenKind::Character(text) = token.kind else {
             panic!("expected character token");
         };
         assert_eq!(text.data, "a\u{FFFD}b");
@@ -303,17 +348,17 @@ mod tests {
     fn treats_noscript_contents_as_raw_text() {
         let mut tokenizer = HtmlTokenizer::new("<noscript><style>.x{}</style></noscript>");
 
-        let HtmlToken::StartTag(start) = tokenizer.next_token() else {
+        let HtmlTokenKind::StartTag(start) = tokenizer.next_token().kind else {
             panic!("expected noscript start tag");
         };
         assert_eq!(start.name, "noscript");
 
-        let HtmlToken::Character(text) = tokenizer.next_token() else {
+        let HtmlTokenKind::Character(text) = tokenizer.next_token().kind else {
             panic!("expected noscript raw text");
         };
         assert_eq!(text.data, "<style>.x{}</style>");
 
-        let HtmlToken::EndTag(end) = tokenizer.next_token() else {
+        let HtmlTokenKind::EndTag(end) = tokenizer.next_token().kind else {
             panic!("expected noscript end tag");
         };
         assert_eq!(end.name, "noscript");

@@ -16,7 +16,21 @@ pub struct DoctypeToken {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HtmlToken {
+pub struct HtmlToken {
+    pub kind: HtmlTokenKind,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl HtmlToken {
+    /// Convenience constructor for the EOF sentinel token.
+    pub fn eof() -> Self {
+        Self { kind: HtmlTokenKind::Eof, line: 0, column: 0 }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlTokenKind {
     StartTag(StartTagToken),
     EndTag(String),
     Comment(String),
@@ -164,9 +178,11 @@ pub enum LexerErrorKind {
     CharacterReferenceOutsideUnicodeRange,
     NoncharacterCharacterReference,
     SurrogateCharacterReference,
-    EndTagWithAttributes,
     EndTagWithTrailingSolidus,
+    /// §13.2.5.8: whitespace after tag name when current token is an end tag
+    EndTagWithAttributes,
     CdataSectionOutsideForeignContent,
+    DuplicateAttribute,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,7 +227,7 @@ impl TagTokenBuilder {
     }
 
     fn begin_attribute(&mut self, first_char: Option<char>) {
-        self.finish_attribute_if_needed();
+        let _ = self.finish_attribute_if_needed();
         self.current_attr_name.clear();
         self.current_attr_value.clear();
         if let Some(ch) = first_char {
@@ -232,32 +248,36 @@ impl TagTokenBuilder {
         self.current_attr_value.push_str(value);
     }
 
-    fn finish_attribute_if_needed(&mut self) {
+    fn finish_attribute_if_needed(&mut self) -> bool {
         if self.current_attr_name.is_empty() {
             self.current_attr_value.clear();
-            return;
+            return false;
         }
 
         let name = std::mem::take(&mut self.current_attr_name);
         let value = std::mem::take(&mut self.current_attr_value);
-        if self.attributes.contains_key(&name) {
-            // This is a DuplicateAttribute error, but we need a way to report it back to the lexer
-            // For now, we omit it or we could add an errors vec to TagTokenBuilder
-        }
+        let is_duplicate = self.attributes.contains_key(&name);
         self.attributes.entry(name).or_insert(value);
+        is_duplicate
     }
 
-    fn finish(mut self) -> HtmlToken {
-        self.finish_attribute_if_needed();
+    fn finish(mut self, line: usize, column: usize) -> HtmlToken {
+        let _ = self.finish_attribute_if_needed();
 
-        if self.is_end_tag {
-            HtmlToken::EndTag(self.name)
+        let kind = if self.is_end_tag {
+            HtmlTokenKind::EndTag(self.name)
         } else {
-            HtmlToken::StartTag(StartTagToken {
+            HtmlTokenKind::StartTag(StartTagToken {
                 name: self.name,
                 attributes: self.attributes,
                 self_closing: self.self_closing,
             })
+        };
+
+        HtmlToken {
+            kind,
+            line,
+            column,
         }
     }
 }
@@ -271,12 +291,16 @@ struct DoctypeBuilder {
 }
 
 impl DoctypeBuilder {
-    fn finish(self) -> DoctypeToken {
-        DoctypeToken {
-            name: self.name,
-            public_id: self.public_id,
-            system_id: self.system_id,
-            force_quirks: self.force_quirks,
+    fn finish(self, line: usize, column: usize) -> HtmlToken {
+        HtmlToken {
+            kind: HtmlTokenKind::Doctype(DoctypeToken {
+                name: self.name,
+                public_id: self.public_id,
+                system_id: self.system_id,
+                force_quirks: self.force_quirks,
+            }),
+            line,
+            column,
         }
     }
 }
@@ -289,6 +313,8 @@ pub struct HtmlLexer<'a> {
 
     pending: VecDeque<HtmlToken>,
     text_buffer: String,
+    text_buffer_line: usize,
+    text_buffer_column: usize,
 
     current_tag: Option<TagTokenBuilder>,
     current_comment: String,
@@ -320,6 +346,8 @@ impl<'a> HtmlLexer<'a> {
             state: LexerState::Data,
             pending: VecDeque::new(),
             text_buffer: String::new(),
+            text_buffer_line: 1,
+            text_buffer_column: 1,
             current_tag: None,
             current_comment: String::new(),
             current_doctype: None,
@@ -367,7 +395,7 @@ impl<'a> HtmlLexer<'a> {
             }
 
             if self.eof_emitted {
-                return HtmlToken::Eof;
+                return HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column };
             }
 
             let was_at_end = self.pos >= self.chars.len();
@@ -384,7 +412,7 @@ impl<'a> HtmlLexer<'a> {
                 }
 
                 self.eof_emitted = true;
-                return HtmlToken::Eof;
+                return HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column };
             }
         }
     }
@@ -747,7 +775,7 @@ impl<'a> HtmlLexer<'a> {
         match ch {
             Some(c) if is_whitespace(c) => self.state = LexerState::AfterAttributeName,
             Some('/') => {
-                self.with_current_tag_mut(|tag| tag.finish_attribute_if_needed());
+                self.finish_attribute();
                 self.state = LexerState::SelfClosingStartTag;
             }
             Some('=') => self.state = LexerState::BeforeAttributeValue,
@@ -781,8 +809,8 @@ impl<'a> HtmlLexer<'a> {
             Some('=') => self.state = LexerState::BeforeAttributeValue,
             Some('>') => self.emit_current_tag_and_switch_to_content_state(),
             Some(c) => {
+                self.finish_attribute();
                 self.with_current_tag_mut(|tag| {
-                    tag.finish_attribute_if_needed();
                     tag.begin_attribute(Some(c));
                 });
                 self.state = LexerState::AttributeName;
@@ -819,7 +847,7 @@ impl<'a> HtmlLexer<'a> {
     fn state_attribute_value_double_quoted(&mut self, ch: Option<char>) {
         match ch {
             Some('"') => {
-                self.with_current_tag_mut(|tag| tag.finish_attribute_if_needed());
+                self.finish_attribute();
                 self.state = LexerState::AfterAttributeValueQuoted;
             }
             Some('&') => {
@@ -847,7 +875,7 @@ impl<'a> HtmlLexer<'a> {
     fn state_attribute_value_single_quoted(&mut self, ch: Option<char>) {
         match ch {
             Some('\'') => {
-                self.with_current_tag_mut(|tag| tag.finish_attribute_if_needed());
+                self.finish_attribute();
                 self.state = LexerState::AfterAttributeValueQuoted;
             }
             Some('&') => {
@@ -875,7 +903,7 @@ impl<'a> HtmlLexer<'a> {
     fn state_attribute_value_unquoted(&mut self, ch: Option<char>) {
         match ch {
             Some(c) if is_whitespace(c) => {
-                self.with_current_tag_mut(|tag| tag.finish_attribute_if_needed());
+                self.finish_attribute();
                 self.state = LexerState::BeforeAttributeName;
             }
             Some('&') => {
@@ -933,9 +961,9 @@ impl<'a> HtmlLexer<'a> {
     fn state_self_closing_start_tag(&mut self, ch: Option<char>) {
         match ch {
             Some('>') => {
+                self.finish_attribute();
                 self.with_current_tag_mut(|tag| {
                     tag.self_closing = true;
-                    tag.finish_attribute_if_needed();
                 });
                 self.emit_current_tag_and_switch_to_content_state();
             }
@@ -2461,8 +2489,11 @@ impl<'a> HtmlLexer<'a> {
     fn state_hexadecimal_character_reference(&mut self, ch: Option<char>) {
         match ch {
             Some(c) if c.is_ascii_hexdigit() => {
-                self.character_reference_code *= 16;
-                self.character_reference_code += c.to_digit(16).expect("already validated as hex digit");
+                // Use saturating arithmetic: values > 0x10FFFF are handled in
+                // NumericCharacterReferenceEnd (they become U+FFFD per spec §13.2.5.79).
+                self.character_reference_code = self.character_reference_code
+                    .saturating_mul(16)
+                    .saturating_add(c.to_digit(16).expect("already validated as hex digit"));
             }
             Some(';') => {
                 self.state = LexerState::NumericCharacterReferenceEnd;
@@ -2480,8 +2511,11 @@ impl<'a> HtmlLexer<'a> {
     fn state_decimal_character_reference(&mut self, ch: Option<char>) {
         match ch {
             Some(c) if c.is_ascii_digit() => {
-                self.character_reference_code *= 10;
-                self.character_reference_code += c.to_digit(10).expect("already validated as decimal digit") as u32;
+                // Use saturating arithmetic: values > 0x10FFFF are handled in
+                // NumericCharacterReferenceEnd (they become U+FFFD per spec §13.2.5.78).
+                self.character_reference_code = self.character_reference_code
+                    .saturating_mul(10)
+                    .saturating_add(c.to_digit(10).expect("already validated as decimal digit") as u32);
             }
             Some(';') => {
                 self.state = LexerState::NumericCharacterReferenceEnd;
@@ -2591,16 +2625,26 @@ impl<'a> HtmlLexer<'a> {
         self.current_tag = Some(TagTokenBuilder::new(is_end_tag));
     }
 
+    fn finish_attribute(&mut self) {
+        if let Some(tag) = self.current_tag.as_mut() {
+            if tag.finish_attribute_if_needed() {
+                self.parse_error(LexerErrorKind::DuplicateAttribute, "duplicate attribute name");
+            }
+        }
+    }
+
     fn emit_current_tag_and_switch_to_content_state(&mut self) {
+        let line = self.line;
+        let column = self.column;
         let Some(builder) = self.current_tag.take() else {
             self.state = LexerState::Data;
             return;
         };
 
-        let token = builder.finish();
+        let token = builder.finish(line, column);
 
-        match &token {
-            HtmlToken::StartTag(tag) => {
+        match &token.kind {
+            HtmlTokenKind::StartTag(tag) => {
                 self.flush_text();
                 let raw_state = tag_to_content_state(&tag.name, tag.self_closing);
                 if let Some((raw_tag, state)) = raw_state {
@@ -2610,7 +2654,7 @@ impl<'a> HtmlLexer<'a> {
                     self.state = LexerState::Data;
                 }
             }
-            HtmlToken::EndTag(name) => {
+            HtmlTokenKind::EndTag(name) => {
                 self.flush_text();
                 if self
                     .raw_text_tag
@@ -2628,19 +2672,27 @@ impl<'a> HtmlLexer<'a> {
     }
 
     fn emit_comment(&mut self) {
+        let line = self.line;
+        let column = self.column;
         self.flush_text();
         let comment = std::mem::take(&mut self.current_comment);
-        self.pending.push_back(HtmlToken::Comment(comment));
+        self.pending.push_back(HtmlToken {
+            kind: HtmlTokenKind::Comment(comment),
+            line,
+            column,
+        });
     }
 
     fn emit_doctype(&mut self) {
+        let line = self.line;
+        let column = self.column;
         self.flush_text();
         let dt = self
             .current_doctype
             .take()
             .unwrap_or_default()
-            .finish();
-        self.pending.push_back(HtmlToken::Doctype(dt));
+            .finish(line, column);
+        self.pending.push_back(dt);
     }
 
     fn is_appropriate_end_tag_token(&self) -> bool {
@@ -2670,10 +2722,18 @@ impl<'a> HtmlLexer<'a> {
     }
 
     fn push_text_char(&mut self, ch: char) {
+        if self.text_buffer.is_empty() {
+            self.text_buffer_line = self.line;
+            self.text_buffer_column = self.column;
+        }
         self.text_buffer.push(ch);
     }
 
     fn push_text_str(&mut self, text: &str) {
+        if self.text_buffer.is_empty() {
+            self.text_buffer_line = self.line;
+            self.text_buffer_column = self.column;
+        }
         self.text_buffer.push_str(text);
     }
 
@@ -2682,7 +2742,11 @@ impl<'a> HtmlLexer<'a> {
             return;
         }
         let text = std::mem::take(&mut self.text_buffer);
-        self.pending.push_back(HtmlToken::Character(text));
+        self.pending.push_back(HtmlToken {
+            kind: HtmlTokenKind::Character(text),
+            line: self.text_buffer_line,
+            column: self.text_buffer_column,
+        });
     }
 
     fn consume_next_input_character(&mut self) -> Option<char> {
@@ -3000,8 +3064,8 @@ mod tests {
         let mut lexer = HtmlLexer::new("A &amp; B</style>");
         lexer.set_raw_text_tag(Some("style".to_string()));
         let tokens = next_non_eof(&mut lexer);
-        assert_eq!(tokens[0], HtmlToken::Character("A &amp; B".to_string()));
-        assert_eq!(tokens[1], HtmlToken::EndTag("style".to_string()));
+        assert_eq!(tokens[0].kind, HtmlTokenKind::Character("A &amp; B".to_string()));
+        assert_eq!(tokens[1].kind, HtmlTokenKind::EndTag("style".to_string()));
     }
 
     #[test]
@@ -3009,7 +3073,7 @@ mod tests {
         let mut lexer = HtmlLexer::new("<!--x");
         let tokens = next_non_eof(&mut lexer);
 
-        assert_eq!(tokens, vec![HtmlToken::Comment("x".to_string())]);
+        assert_eq!(tokens.iter().map(|t| t.kind.clone()).collect::<Vec<_>>(), vec![HtmlTokenKind::Comment("x".to_string())]);
         assert!(lexer
             .errors()
             .iter()
@@ -3023,17 +3087,17 @@ mod tests {
 
         let script_start = tokens
             .iter()
-            .position(|token| matches!(token, HtmlToken::StartTag(tag) if tag.name == "script"))
+            .position(|token| matches!(token.kind, HtmlTokenKind::StartTag(ref tag) if tag.name == "script"))
             .expect("expected script start tag");
         let script_end = tokens
             .iter()
-            .position(|token| matches!(token, HtmlToken::EndTag(name) if name == "script"))
+            .position(|token| matches!(token.kind, HtmlTokenKind::EndTag(ref name) if name == "script"))
             .expect("expected script end tag");
         assert!(script_end > script_start);
 
         let mut script_text = String::new();
         for token in &tokens[script_start + 1..script_end] {
-            if let HtmlToken::Character(data) = token {
+            if let HtmlTokenKind::Character(data) = &token.kind {
                 script_text.push_str(data);
             }
         }
@@ -3041,10 +3105,10 @@ mod tests {
 
         assert!(tokens
             .iter()
-            .any(|token| matches!(token, HtmlToken::StartTag(tag) if tag.name == "p")));
+            .any(|token| matches!(token.kind, HtmlTokenKind::StartTag(ref tag) if tag.name == "p")));
         assert!(tokens
             .iter()
-            .any(|token| matches!(token, HtmlToken::EndTag(name) if name == "p")));
+            .any(|token| matches!(token.kind, HtmlTokenKind::EndTag(ref name) if name == "p")));
     }
 
     #[test]
@@ -3054,8 +3118,8 @@ mod tests {
 
         let script_text: String = tokens
             .iter()
-            .filter_map(|token| match token {
-                HtmlToken::Character(data) => Some(data.as_str()),
+            .filter_map(|token| match &token.kind {
+                HtmlTokenKind::Character(data) => Some(data.as_str()),
                 _ => None,
             })
             .collect();
@@ -3063,7 +3127,7 @@ mod tests {
         assert!(script_text.contains("<!-- alert(1) //-->"));
         assert!(tokens
             .iter()
-            .any(|token| matches!(token, HtmlToken::EndTag(name) if name == "script")));
+            .any(|token| matches!(token.kind, HtmlTokenKind::EndTag(ref name) if name == "script")));
     }
 
     #[test]
@@ -3073,8 +3137,8 @@ mod tests {
 
         let script_text: String = tokens
             .iter()
-            .filter_map(|token| match token {
-                HtmlToken::Character(data) => Some(data.as_str()),
+            .filter_map(|token| match &token.kind {
+                HtmlTokenKind::Character(data) => Some(data.as_str()),
                 _ => None,
             })
             .collect();
@@ -3082,7 +3146,7 @@ mod tests {
         assert!(script_text.contains("<script>var a = 1;"));
         assert!(tokens
             .iter()
-            .any(|token| matches!(token, HtmlToken::EndTag(name) if name == "script")));
+            .any(|token| matches!(token.kind, HtmlTokenKind::EndTag(ref name) if name == "script")));
     }
 
     #[test]
@@ -3115,7 +3179,7 @@ mod tests {
             loop {
                 guard += 1;
                 assert!(guard < 4096, "lexer did not terminate for input {:?}", input);
-                if matches!(lexer.next_token(), HtmlToken::Eof) {
+                if matches!(lexer.next_token().kind, HtmlTokenKind::Eof) {
                     break;
                 }
             }

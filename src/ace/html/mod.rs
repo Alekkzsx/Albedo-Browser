@@ -22,7 +22,7 @@ pub use lexer::{
     LexerError, LexerErrorKind, StartTagToken as RawStartTagToken,
 };
 pub use tokenizer::{
-    CharacterToken, CommentToken, DoctypeToken, EndTagToken, HtmlToken, HtmlTokenizer,
+    CharacterToken, CommentToken, DoctypeToken, EndTagToken, HtmlToken, HtmlTokenKind, HtmlTokenizer,
     StartTagToken, TokenizerError, TokenizerErrorKind, TokenizerErrorSource,
 };
 pub use tree_builder::{
