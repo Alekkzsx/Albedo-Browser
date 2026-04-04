@@ -1,6 +1,6 @@
 use crate::ace::html::{
     DoctypeToken, EndTagToken, HtmlDocument, HtmlElement, HtmlNode, HtmlToken,
-    HtmlTokenizer, StartTagToken, TokenizerErrorSource,
+    StartTagToken, TokenizerErrorSource,
     PreloadScanner, PreloadRequest,
     lexer::LexerState,
     arena::{NodeArena, NodeId},
@@ -126,9 +126,15 @@ pub struct HtmlTreeBuilder<'a> {
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
 
-    arena: Vec<InternalNode>,
-    root_id: usize,
-    open_elements: Vec<usize>,
+    // Arena allocator para nodes - substitui Vec<InternalNode>
+    arena: NodeArena,
+    // Mapeamento de NodeId (arena) para índice interno (para open_elements, etc.)
+    node_id_to_index: HashMap<NodeId, usize>,
+    index_to_node_id: HashMap<usize, NodeId>,
+    next_internal_index: usize,
+    
+    root_id: NodeId,
+    open_elements: Vec<NodeId>,
     active_formatting_elements: Vec<ActiveFormattingEntry>,
     template_insertion_modes: Vec<InsertionMode>,
     preload_scanner: PreloadScanner,
@@ -136,8 +142,8 @@ pub struct HtmlTreeBuilder<'a> {
 
     doctype: Option<DoctypeToken>,
     errors: Vec<TreeBuilderError>,
-    head_element_id: Option<usize>,
-    form_element_id: Option<usize>,
+    head_element_id: Option<NodeId>,
+    form_element_id: Option<NodeId>,
     
     #[allow(dead_code)]
     scripting_enabled: bool,
@@ -145,6 +151,9 @@ pub struct HtmlTreeBuilder<'a> {
     foster_parenting: bool,
     quirks_mode: bool,
     pending_table_characters: Vec<char>,
+    
+    // String interner para tag names e attribute names
+    interner: StringInterner,
 }
 
 impl<'a> HtmlTreeBuilder<'a> {
@@ -153,21 +162,22 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     pub fn new(input: &'a str) -> Self {
-        let mut arena = Vec::new();
-        let root_id = 0;
-        arena.push(InternalNode {
-            id: root_id,
-            data: InternalNodeData::Document,
-            parent: None,
-            children: Vec::new(),
-        });
-
+        let arena = NodeArena::new();
+        let interner = StringInterner::new();
+        
+        // Cria node documento na arena
+        let root_data = InternalNodeData::Document;
+        let root_id = arena.alloc(root_data);
+        
         Self {
             tokenizer: HtmlTokenizer::new(input),
             insertion_mode: InsertionMode::Initial,
             original_insertion_mode: InsertionMode::Initial,
 
             arena,
+            node_id_to_index: HashMap::new(),
+            index_to_node_id: HashMap::new(),
+            next_internal_index: 0,
             root_id,
             open_elements: Vec::new(),
             active_formatting_elements: Vec::new(),
@@ -185,6 +195,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             preload_scanner: PreloadScanner::new(),
             preload_requests: Vec::new(),
             template_insertion_modes: Vec::new(),
+            interner,
         }
     }
 

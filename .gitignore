@@ -1,48 +1,60 @@
-```rust
-# Compiled and build artifacts
+```
+# Rust/Cargo build artifacts
+target/
+Cargo.lock
+
+# Compiled files
 *.o
 *.obj
-*.a
-*.lib
-*.so
+*.exe
 *.dll
-*.dylib
-target/
+*.so
+*.a
+*.out
 
 # Dependencies
-Cargo.lock
-vendor/
+**/node_modules/
+**/venv/
+**/env/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
 
-# Logs and temp files
+# Logs and temporary files
 *.log
 *.tmp
 *.swp
+*.swo
 
-# Editors
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Editors and IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Coverage
+# Coverage reports
 coverage/
 htmlcov/
 .coverage
 
-# Rust-specific
-**/*.rs.bk
+# OS specific
+.DS_Store
+Thumbs.db
+
+# MyPy cache
+.mypy_cache/
+.pytest_cache/
+
+# Julia packages
+julia-*/
+
+# Zig build artifacts
+zig*/
 ```
-
-Wait, I need to reconsider this. Looking at the file changes, they are all Rust source files (.rs) which are source code, not build artifacts. Let me check again:
-
-Added: `src/engine/dom/benchmarks.rs`, `src/engine/dom/string_intern.rs`, `src/engine/dom/virtual_dom.rs`, `src/engine/dom/wpt_harness.rs`
-Modified: `src/engine/dom/mod.rs`
-
-These are all Rust source files. No build artifacts, dependencies, or temporary files in the changes. According to rule 6, if the changes contain only source files and no build artifacts, dependencies, or temp files, output an empty .gitignore.
-
-(empty — output nothing)
