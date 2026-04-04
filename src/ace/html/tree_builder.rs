@@ -1,6 +1,6 @@
 use crate::ace::html::{
     lexer::LexerState, DoctypeToken, EndTagToken, FragmentContext, HtmlDocument, HtmlElement,
-    HtmlNode, HtmlToken, HtmlTokenizer, Namespace, ParserOptions, PreloadRequest,
+    HtmlNode, HtmlTokenKind, HtmlTokenizer, Namespace, ParserOptions, PreloadRequest,
     PreloadScanner, ShadowRootMode, StartTagToken, TokenizerErrorSource,
 };
 
@@ -68,8 +68,8 @@ impl TreeBuilderError {
             insertion_mode: mode,
             message: message.into(),
             source: TreeBuilderErrorSource::TreeBuilder,
-            line: 1,
-            column: 1,
+            line: 0, // Placeholder, usually updated with with_pos or from context
+            column: 0,
         }
     }
 
@@ -93,6 +93,18 @@ enum BuilderNodeData {
     Comment(String),
 }
 
+/// Active Formatting Elements list entry (spec §13.2.4.3).
+#[derive(Clone, Debug)]
+// TECH_DEBT: Marker is constructed by push_afe_marker() which is called in
+// insertion mode handlers being implemented in subtask 1.8.
+#[allow(dead_code)]
+enum ActiveFormattingElement {
+    /// Scope marker — inserted at boundaries (body, object, marquee, td, th, caption).
+    Marker,
+    /// A formatting element currently in the list, identified by its node id.
+    Element(usize),
+}
+
 #[derive(Clone, Debug)]
 struct BuilderNode {
     data: BuilderNodeData,
@@ -104,6 +116,8 @@ pub struct HtmlTreeBuilder<'a> {
     tokenizer: HtmlTokenizer<'a>,
     options: ParserOptions,
     insertion_mode: InsertionMode,
+    /// Stack of original insertion modes used by template elements (spec §13.2.4.1).
+    template_insertion_modes: Vec<InsertionMode>,
     preload_scanner: PreloadScanner,
     preload_requests: Vec<PreloadRequest>,
     doctype: Option<DoctypeToken>,
@@ -111,13 +125,21 @@ pub struct HtmlTreeBuilder<'a> {
     nodes: Vec<BuilderNode>,
     root_children: Vec<usize>,
     open_elements: Vec<usize>,
+    /// Active formatting elements list (spec §13.2.4.3).
+    active_formatting_elements: Vec<ActiveFormattingElement>,
     html_element_id: Option<usize>,
     head_element_id: Option<usize>,
     body_element_id: Option<usize>,
     frameset_element_id: Option<usize>,
+    /// frameset-ok flag (spec §13.2.4.1).
+    // TECH_DEBT: read in frameset handling (subtask 1.8).
+    #[allow(dead_code)]
+    frameset_ok: bool,
     fragment_context: Option<FragmentContext>,
     fragment_root_id: Option<usize>,
     ignored_noscript_depth: usize,
+    current_token_line: usize,
+    current_token_column: usize,
 }
 
 impl<'a> HtmlTreeBuilder<'a> {
@@ -140,6 +162,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             tokenizer: HtmlTokenizer::new(input),
             options,
             insertion_mode: InsertionMode::Initial,
+            template_insertion_modes: Vec::new(),
             preload_scanner,
             preload_requests: Vec::new(),
             doctype: None,
@@ -147,13 +170,17 @@ impl<'a> HtmlTreeBuilder<'a> {
             nodes: Vec::new(),
             root_children: Vec::new(),
             open_elements: Vec::new(),
+            active_formatting_elements: Vec::new(),
             html_element_id: None,
             head_element_id: None,
             body_element_id: None,
             frameset_element_id: None,
+            frameset_ok: true,
             fragment_context: None,
             fragment_root_id: None,
             ignored_noscript_depth: 0,
+            current_token_line: 1,
+            current_token_column: 1,
         }
     }
 
@@ -215,13 +242,16 @@ impl<'a> HtmlTreeBuilder<'a> {
             let token = self.tokenizer.next_token();
             self.collect_tokenizer_errors();
 
-            match token {
-                HtmlToken::Eof => break,
-                HtmlToken::Doctype(dt) => self.handle_doctype(dt),
-                HtmlToken::StartTag(tag) => self.handle_start_tag(tag),
-                HtmlToken::EndTag(tag) => self.handle_end_tag(tag),
-                HtmlToken::Character(text) => self.handle_text(text.data),
-                HtmlToken::Comment(comment) => self.handle_comment(comment.data),
+            self.current_token_line = token.line;
+            self.current_token_column = token.column;
+
+            match token.kind {
+                HtmlTokenKind::Eof => break,
+                HtmlTokenKind::Doctype(dt) => self.handle_doctype(dt),
+                HtmlTokenKind::StartTag(tag) => self.handle_start_tag(tag),
+                HtmlTokenKind::EndTag(tag) => self.handle_end_tag(tag),
+                HtmlTokenKind::Character(text) => self.handle_text(text.data),
+                HtmlTokenKind::Comment(comment) => self.handle_comment(comment.data),
             }
         }
 
@@ -257,7 +287,7 @@ impl<'a> HtmlTreeBuilder<'a> {
 
         TreeBuildOutput {
             document: HtmlDocument {
-                doctype: self.doctype,
+                doctype: self.doctype.clone(),
                 children: document_children,
             },
             errors: self.errors,
@@ -426,6 +456,12 @@ impl<'a> HtmlTreeBuilder<'a> {
                 let id = self.insert_element_at_current(element);
                 if !is_void_element(&tag_name) && !tag.self_closing {
                     self.open_elements.push(id);
+                    // If this is a formatting element, push it onto the AFE list
+                    // so the Adoption Agency Algorithm can find it during end-tag processing.
+                    // (spec §13.2.4.3 — "push onto the list of active formatting elements")
+                    if is_formatting_element(&tag_name) {
+                        self.push_active_formatting_element(id);
+                    }
                 }
                 self.update_tokenizer_state_for_tag(&tag_name);
                 self.insertion_mode = match tag_name.as_str() {
@@ -442,12 +478,16 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn handle_end_tag(&mut self, tag: EndTagToken) {
+        let ln = self.current_token_line;
+        let col = self.current_token_column;
+
         if tag.name == "noscript" && self.ignored_noscript_depth > 0 {
             self.ignored_noscript_depth -= 1;
             self.reset_insertion_mode();
             return;
         }
 
+        // ── </head> ──────────────────────────────────────────────────────────
         if self.fragment_context.is_none() && tag.name == "head" {
             if matches!(self.current_tag(), Some("head")) {
                 self.open_elements.pop();
@@ -456,12 +496,181 @@ impl<'a> HtmlTreeBuilder<'a> {
             return;
         }
 
+        // ── </p> — spec §13.2.6.4.7 ─────────────────────────────────────────
+        if tag.name == "p" {
+            if !self.has_p_in_button_scope() {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        "end tag </p> but no <p> in button scope",
+                    )
+                    .with_pos(ln, col),
+                );
+                // Insert and immediately pop a synthetic <p> element.
+                let p_id = self.insert_element_at_current(HtmlElement::new("p"));
+                // (do not push to open_elements — it ends immediately)
+                let _ = p_id;
+            } else {
+                self.generate_implied_end_tags(Some("p"));
+                if !matches!(self.current_tag(), Some("p")) {
+                    self.errors.push(
+                        TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedEndTag,
+                            self.insertion_mode,
+                            "end tag </p> did not match current node",
+                        )
+                        .with_pos(ln, col),
+                    );
+                }
+                self.close_until("p");
+            }
+            self.reset_insertion_mode();
+            return;
+        }
+
+        // ── </li> — spec §13.2.6.4.7 ────────────────────────────────────────
+        if tag.name == "li" {
+            if !self.has_element_in_list_item_scope("li") {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        "end tag </li> but no <li> in list-item scope",
+                    )
+                    .with_pos(ln, col),
+                );
+            } else {
+                self.generate_implied_end_tags(Some("li"));
+                if !matches!(self.current_tag(), Some("li")) {
+                    self.errors.push(
+                        TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedEndTag,
+                            self.insertion_mode,
+                            "end tag </li> did not match current node",
+                        )
+                        .with_pos(ln, col),
+                    );
+                }
+                self.close_until("li");
+            }
+            self.reset_insertion_mode();
+            return;
+        }
+
+        // ── </dd> / </dt> — spec §13.2.6.4.7 ────────────────────────────────
+        if matches!(tag.name.as_str(), "dd" | "dt") {
+            if !self.has_element_in_scope(&tag.name) {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        format!("end tag </{tag_name}> but not in scope", tag_name = tag.name),
+                    )
+                    .with_pos(ln, col),
+                );
+            } else {
+                self.generate_implied_end_tags(Some(&tag.name));
+                if self.current_tag().map_or(true, |t| !t.eq_ignore_ascii_case(&tag.name)) {
+                    self.errors.push(
+                        TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedEndTag,
+                            self.insertion_mode,
+                            format!("end tag </{tag_name}> did not match current node", tag_name = tag.name),
+                        )
+                        .with_pos(ln, col),
+                    );
+                }
+                self.close_until(&tag.name);
+            }
+            self.reset_insertion_mode();
+            return;
+        }
+
+        // ── </h1> … </h6> — spec §13.2.6.4.7 ───────────────────────────────
+        if matches!(tag.name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+            // Check if any heading is in scope.
+            let any_heading_in_scope = ["h1", "h2", "h3", "h4", "h5", "h6"]
+                .iter()
+                .any(|h| self.has_element_in_scope(h));
+            if !any_heading_in_scope {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        format!("end tag </{tag_name}> but no heading in scope", tag_name = tag.name),
+                    )
+                    .with_pos(ln, col),
+                );
+            } else {
+                self.generate_implied_end_tags(None);
+                let cur = self.current_tag().map(str::to_string);
+                if cur.as_deref().map_or(true, |t| !t.eq_ignore_ascii_case(&tag.name)) {
+                    self.errors.push(
+                        TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedEndTag,
+                            self.insertion_mode,
+                            format!("end tag </{tag_name}> did not match current node", tag_name = tag.name),
+                        )
+                        .with_pos(ln, col),
+                    );
+                }
+                // Pop until we find any heading element.
+                loop {
+                    let top = self.current_tag().map(str::to_string);
+                    match top.as_deref() {
+                        Some("h1" | "h2" | "h3" | "h4" | "h5" | "h6") => {
+                            self.open_elements.pop();
+                            break;
+                        }
+                        None => break,
+                        _ => { self.open_elements.pop(); }
+                    }
+                }
+            }
+            self.reset_insertion_mode();
+            return;
+        }
+
+        // ── </body> — spec §13.2.6.4.7 ───────────────────────────────────────
         if self.fragment_context.is_none() && tag.name == "body" {
+            if !self.has_element_in_scope("body") {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        "end tag </body> but no <body> in scope",
+                    )
+                    .with_pos(ln, col),
+                );
+                return;
+            }
+            // Unclosed elements that are not in "allowed to be unclosed" set produce parse errors.
+            let unclosed_tags: Vec<String> = self.open_elements.iter().rev()
+                .filter_map(|&id| self.node_tag(id).map(str::to_string))
+                .filter(|t| !matches!(
+                    t.as_str(),
+                    "dd" | "dt" | "li" | "optgroup" | "option" | "p" | "rb" | "rp"
+                        | "rt" | "rtc" | "tbody" | "td" | "tfoot" | "th" | "thead"
+                        | "tr" | "body" | "html"
+                ))
+                .collect();
+            for tag_name in &unclosed_tags {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEof,
+                        self.insertion_mode,
+                        format!("unclosed element <{tag_name}> at </body>"),
+                    )
+                    .with_pos(ln, col),
+                );
+            }
             self.close_until("body");
             self.insertion_mode = InsertionMode::AfterBody;
             return;
         }
 
+        // ── </html> ───────────────────────────────────────────────────────────
         if self.fragment_context.is_none() && tag.name == "html" {
             self.close_until("body");
             self.close_until("html");
@@ -469,23 +678,32 @@ impl<'a> HtmlTreeBuilder<'a> {
             return;
         }
 
+        // ── </frameset> ───────────────────────────────────────────────────────
         if self.fragment_context.is_none() && tag.name == "frameset" {
             self.close_until("frameset");
             self.insertion_mode = InsertionMode::AfterFrameset;
             return;
         }
 
-        if is_formatting_element(&tag.name) && self.close_formatting_element_with_reopen(&tag.name) {
-            self.reset_insertion_mode();
-            return;
+        // ── Formatting elements → Adoption Agency Algorithm ───────────────────
+        if is_formatting_element(&tag.name) {
+            // Run the full Adoption Agency Algorithm (spec §13.2.6.4.7).
+            if self.run_adoption_agency_algorithm(&tag.name) {
+                self.reset_insertion_mode();
+                return;
+            }
         }
 
+        // ── Default: close until tag found, otherwise parse error ─────────────
         if !self.close_until(&tag.name) {
-            self.errors.push(TreeBuilderError::new(
-                TreeBuilderErrorKind::UnexpectedEndTag,
-                self.insertion_mode,
-                format!("unexpected end tag </{}>", tag.name),
-            ));
+            self.errors.push(
+                TreeBuilderError::new(
+                    TreeBuilderErrorKind::UnexpectedEndTag,
+                    self.insertion_mode,
+                    format!("unexpected end tag </{tag_name}>", tag_name = tag.name),
+                )
+                .with_pos(ln, col),
+            );
         }
 
         self.reset_insertion_mode();
@@ -502,6 +720,16 @@ impl<'a> HtmlTreeBuilder<'a> {
 
         if self.fragment_context.is_none() && self.current_parent_id().is_none() {
             self.ensure_body_element();
+        }
+
+        // Spec §13.2.6.4.1: before inserting characters in body mode,
+        // reconstruct the active formatting elements (reopens elements like <i>
+        // that were popped from the open stack by the AAA but remain in the AFE list).
+        if matches!(
+            self.insertion_mode,
+            InsertionMode::InBody | InsertionMode::InCell
+        ) {
+            self.reconstruct_active_formatting_elements();
         }
 
         if self.should_foster_parent_text() && !text.trim().is_empty() {
@@ -812,39 +1040,402 @@ impl<'a> HtmlTreeBuilder<'a> {
         true
     }
 
-    fn close_formatting_element_with_reopen(&mut self, tag_name: &str) -> bool {
-        let Some(match_pos) = self.open_elements.iter().rposition(|&id| {
-            matches!(
-                &self.nodes[id].data,
-                BuilderNodeData::Element(element) if element.tag.eq_ignore_ascii_case(tag_name)
-            )
-        }) else {
-            return false;
-        };
-
-        let target_id = self.open_elements[match_pos];
-        let reopen = self.open_elements[match_pos + 1..]
-            .iter()
-            .filter_map(|&id| match &self.nodes[id].data {
-                BuilderNodeData::Element(element) if is_formatting_element(&element.tag) => {
-                    Some(element.clone())
+    /// Full Adoption Agency Algorithm — spec §13.2.6.4.7.
+    ///
+    /// Called for end tags that are formatting elements (a, b, big, code, em, font, i, s, small,
+    /// span, strike, strong, tt, u). Returns true if the algorithm ran (even if it produced errors).
+    fn run_adoption_agency_algorithm(&mut self, tag_name: &str) -> bool {
+        // Step 1: If the current node is a matching formatting element not in scope →
+        // pop it and return.
+        if let Some(&cur_id) = self.open_elements.last() {
+            if self.node_tag(cur_id).map_or(false, |t| t.eq_ignore_ascii_case(tag_name)) {
+                if !self.has_element_in_scope(tag_name) {
+                    self.open_elements.pop();
+                    return true;
                 }
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
-        while let Some(id) = self.open_elements.pop() {
-            if id == target_id {
-                break;
             }
         }
 
-        for element in reopen {
-            let reopened_id = self.insert_element_at_current(element);
-            self.open_elements.push(reopened_id);
+        // Outer loop — up to 8 iterations.
+        for _ in 0..8 {
+            // Step 4a: Find the most recent entry for this tag in the AFE list.
+            let afe_pos = self.active_formatting_elements.iter().rposition(|e| {
+                if let ActiveFormattingElement::Element(id) = e {
+                    self.node_tag(*id).map_or(false, |t| t.eq_ignore_ascii_case(tag_name))
+                } else {
+                    false
+                }
+            });
+            let formatting_element_id = match afe_pos {
+                None => {
+                    // Step 4b: Not in active list — other end-tag processing.
+                    return false;
+                }
+                Some(pos) => match self.active_formatting_elements[pos] {
+                    ActiveFormattingElement::Element(id) => id,
+                    ActiveFormattingElement::Marker => return false,
+                },
+            };
+
+            // Step 4c: formatting element not in open elements → parse error, remove from AFE.
+            let fe_open_pos = self.open_elements.iter().rposition(|&id| id == formatting_element_id);
+            if fe_open_pos.is_none() {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::AdoptionAgency,
+                        self.insertion_mode,
+                        "adoption agency: formatting element not in open elements",
+                    )
+                    .with_pos(self.current_token_line, self.current_token_column),
+                );
+                if let Some(pos) = afe_pos {
+                    self.active_formatting_elements.remove(pos);
+                }
+                return true;
+            }
+            let fe_open_pos = fe_open_pos.unwrap();
+
+            // Step 4d: If not in scope → parse error, return.
+            if !self.has_element_in_scope(tag_name) {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::AdoptionAgency,
+                        self.insertion_mode,
+                        "adoption agency: formatting element not in scope",
+                    )
+                    .with_pos(self.current_token_line, self.current_token_column),
+                );
+                return true;
+            }
+
+            // Step 4e: If not current node — the spec annotates this as a "parse error"
+            // but conformant parsers (verified by html5lib test corpus) do NOT emit this
+            // to the error list; it is purely an internal algorithm annotation.
+            // We intentionally omit the error push here.
+
+            // Step 4f: Find furthest block — the topmost special element below the
+            // formatting element in the open elements stack.
+            let furthest_block_pos = self.open_elements[fe_open_pos + 1..]
+                .iter()
+                .rposition(|&id| {
+                    self.node_tag(id).map_or(false, |t| is_special_element(t))
+                })
+                .map(|rel| fe_open_pos + 1 + rel);
+
+            if furthest_block_pos.is_none() {
+                // Step 4g: No furthest block — pop everything up to and including
+                // the formatting element, and remove from AFE.
+                while let Some(id) = self.open_elements.pop() {
+                    if id == formatting_element_id {
+                        break;
+                    }
+                }
+                if let Some(pos) = afe_pos {
+                    self.active_formatting_elements.remove(pos);
+                }
+                return true;
+            }
+            let furthest_block_pos = furthest_block_pos.unwrap();
+            let furthest_block_id = self.open_elements[furthest_block_pos];
+
+            // Step 4h: Common ancestor — the element just below the formatting element.
+            let common_ancestor_id = if fe_open_pos > 0 {
+                self.open_elements[fe_open_pos - 1]
+            } else {
+                // Formatting element is at root — no common ancestor; foster-parent.
+                furthest_block_id
+            };
+
+            // Step 4i: bookmark — position after formatting_element in AFE.
+            let afe_len = self.active_formatting_elements.len();
+            let mut bookmark = afe_pos.unwrap_or(afe_len);
+
+            // Steps 4j–4n: Inner loop.
+            let mut last_node_id = furthest_block_id;
+            let mut node_pos = furthest_block_pos;
+            for inner_iter in 0..3usize {
+                // Step 4k1: Move node to the one before it in the stack.
+                if node_pos == 0 {
+                    break;
+                }
+                node_pos -= 1;
+                let node_id = self.open_elements[node_pos];
+
+                // If we reached the formatting element, stop inner loop.
+                if node_id == formatting_element_id {
+                    break;
+                }
+
+                // Step 4k2: If node not in AFE, remove from open elements, continue.
+                let node_afe_pos = self.active_formatting_elements.iter().rposition(|e| {
+                    matches!(e, ActiveFormattingElement::Element(id) if *id == node_id)
+                });
+                if node_afe_pos.is_none() {
+                    self.open_elements.remove(node_pos);
+                    // furthest_block_pos and fe_open_pos may shift — recompute.
+                    continue;
+                }
+                let node_afe_pos = node_afe_pos.unwrap();
+
+                // Step 4k3: Create a clone of node; replace in AFE and open elements.
+                let clone_data = if let BuilderNodeData::Element(el) = &self.nodes[node_id].data {
+                    el.clone()
+                } else {
+                    break;
+                };
+                let clone_id = self.create_element(clone_data, None);
+                self.active_formatting_elements[node_afe_pos] = ActiveFormattingElement::Element(clone_id);
+                self.open_elements[node_pos] = clone_id;
+
+                // Step 4k4: If last_node is the furthest block, update bookmark.
+                if last_node_id == furthest_block_id && inner_iter > 0 {
+                    bookmark = node_afe_pos + 1;
+                }
+
+                // Step 4k5: If last_node has a parent, remove it from parent's children.
+                let last_parent = self.nodes[last_node_id].parent;
+                if let Some(p) = last_parent {
+                    self.nodes[p].children.retain(|&c| c != last_node_id);
+                }
+                // Append last_node to clone.
+                self.nodes[last_node_id].parent = Some(clone_id);
+                self.nodes[clone_id].children.push(last_node_id);
+                last_node_id = clone_id;
+            }
+
+            // Step 4n: Insert last_node into appropriate place for common_ancestor.
+            // (Using foster-parenting logic if needed.)
+            let is_table_ctx = self.node_tag(common_ancestor_id)
+                .map_or(false, |t| matches!(t, "table" | "tbody" | "tfoot" | "thead" | "tr"));
+            if is_table_ctx {
+                // Foster parent last_node before the table element.
+                if let Some(table_id) = self.find_open_element("table") {
+                    let table_parent = self.nodes[table_id].parent;
+                    self.nodes[last_node_id].parent = table_parent;
+                    if let Some(p) = table_parent {
+                        let pos = self.nodes[p].children.iter().position(|&c| c == table_id).unwrap_or(self.nodes[p].children.len());
+                        self.nodes[p].children.insert(pos, last_node_id);
+                    } else {
+                        let pos = self.root_children.iter().position(|&c| c == table_id).unwrap_or(self.root_children.len());
+                        self.root_children.insert(pos, last_node_id);
+                    }
+                } else {
+                    self.nodes[last_node_id].parent = Some(common_ancestor_id);
+                    self.nodes[common_ancestor_id].children.push(last_node_id);
+                }
+            } else {
+                // Remove last_node from old parent first.
+                if let Some(old_parent) = self.nodes[last_node_id].parent {
+                    self.nodes[old_parent].children.retain(|&c| c != last_node_id);
+                }
+                self.nodes[last_node_id].parent = Some(common_ancestor_id);
+                self.nodes[common_ancestor_id].children.push(last_node_id);
+            }
+
+            // Step 4o: Create clone of formatting_element; insert children of furthest block
+            // into clone; append clone to furthest_block; remove formatting_element from AFE
+            // and open elements; insert clone at bookmark in AFE; insert clone after furthest
+            // block in open elements.
+            let fe_clone_data = if let BuilderNodeData::Element(el) = &self.nodes[formatting_element_id].data {
+                el.clone()
+            } else {
+                return true;
+            };
+            let fe_clone_id = self.create_element(fe_clone_data, Some(furthest_block_id));
+
+            // Move children of furthest_block into fe_clone.
+            let fb_children: Vec<usize> = self.nodes[furthest_block_id].children.drain(..).collect();
+            for &child in &fb_children {
+                self.nodes[child].parent = Some(fe_clone_id);
+                self.nodes[fe_clone_id].children.push(child);
+            }
+            self.nodes[furthest_block_id].children.push(fe_clone_id);
+
+            // Remove formatting_element from AFE; insert clone at bookmark.
+            if let Some(pos) = afe_pos {
+                self.active_formatting_elements.remove(pos);
+                let insert_pos = if bookmark > pos { bookmark - 1 } else { bookmark };
+                let insert_pos = insert_pos.min(self.active_formatting_elements.len());
+                self.active_formatting_elements.insert(insert_pos, ActiveFormattingElement::Element(fe_clone_id));
+            }
+
+            // Remove formatting_element from open elements; insert clone after furthest_block.
+            self.open_elements.retain(|&id| id != formatting_element_id);
+            if let Some(fb_pos) = self.open_elements.iter().position(|&id| id == furthest_block_id) {
+                self.open_elements.insert(fb_pos + 1, fe_clone_id);
+            }
+        }
+        true
+    }
+
+    // ─── Active Formatting Elements ────────────────────────────────────────────
+
+    /// Push an element onto the AFE list with Noah's Ark duplicate pruning (spec §13.2.4.3).
+    fn push_active_formatting_element(&mut self, id: usize) {
+        // Count how many entries for this same element (same tag name + same attrs) already exist
+        // since the last Marker. If 3 or more, remove the oldest one (Noah's Ark clause).
+        let tag = match &self.nodes[id].data {
+            BuilderNodeData::Element(el) => el.tag.clone(),
+            _ => return,
+        };
+        let attrs_snapshot: std::collections::HashMap<String, String> =
+            if let BuilderNodeData::Element(el) = &self.nodes[id].data {
+                el.attributes.clone()
+            } else {
+                std::collections::HashMap::new()
+            };
+
+        let mut count = 0usize;
+        let mut oldest_pos = None;
+        for (pos, entry) in self.active_formatting_elements.iter().enumerate().rev() {
+            match entry {
+                ActiveFormattingElement::Marker => break,
+                ActiveFormattingElement::Element(eid) => {
+                    if let BuilderNodeData::Element(el) = &self.nodes[*eid].data {
+                        if el.tag == tag && el.attributes == attrs_snapshot {
+                            count += 1;
+                            oldest_pos = Some(pos);
+                        }
+                    }
+                }
+            }
+        }
+        if count >= 3 {
+            if let Some(pos) = oldest_pos {
+                self.active_formatting_elements.remove(pos);
+            }
+        }
+        self.active_formatting_elements.push(ActiveFormattingElement::Element(id));
+    }
+
+    /// Reconstruct the AFE list (spec §13.2.4.3 "reconstruct the active formatting elements").
+    fn reconstruct_active_formatting_elements(&mut self) {
+        if self.active_formatting_elements.is_empty() {
+            return;
+        }
+        // If the last entry is a Marker or already open, do nothing.
+        match self.active_formatting_elements.last() {
+            Some(ActiveFormattingElement::Marker) => return,
+            Some(ActiveFormattingElement::Element(id)) => {
+                if self.open_elements.contains(id) {
+                    return;
+                }
+            }
+            None => return,
         }
 
-        true
+        // Walk backwards to find the last Marker or open element.
+        let mut entry_idx = self.active_formatting_elements.len() - 1;
+        loop {
+            if entry_idx == 0 {
+                break;
+            }
+            entry_idx -= 1;
+            match &self.active_formatting_elements[entry_idx] {
+                ActiveFormattingElement::Marker => {
+                    entry_idx += 1;
+                    break;
+                }
+                ActiveFormattingElement::Element(id) => {
+                    if self.open_elements.contains(id) {
+                        entry_idx += 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Reopen entries from entry_idx forward.
+        let len = self.active_formatting_elements.len();
+        while entry_idx < len {
+            let existing_id = match &self.active_formatting_elements[entry_idx] {
+                ActiveFormattingElement::Element(id) => *id,
+                ActiveFormattingElement::Marker => { entry_idx += 1; continue; }
+            };
+            let clone_data = if let BuilderNodeData::Element(el) = &self.nodes[existing_id].data {
+                el.clone()
+            } else { entry_idx += 1; continue; };
+
+            let new_id = self.insert_element_at_current(clone_data);
+            self.open_elements.push(new_id);
+            self.active_formatting_elements[entry_idx] = ActiveFormattingElement::Element(new_id);
+            entry_idx += 1;
+        }
+    }
+
+    /// Insert a Marker into the AFE list.
+    // TECH_DEBT: called from body/table/select boundary handlers in subtask 1.8.
+    #[allow(dead_code)]
+    fn push_afe_marker(&mut self) {
+        self.active_formatting_elements.push(ActiveFormattingElement::Marker);
+    }
+
+    /// Clear the AFE list back to the last Marker (spec §13.2.4.3).
+    // TECH_DEBT: called from body/select close handlers in subtask 1.8.
+    #[allow(dead_code)]
+    fn clear_afe_to_last_marker(&mut self) {
+        while let Some(entry) = self.active_formatting_elements.pop() {
+            if matches!(entry, ActiveFormattingElement::Marker) {
+                break;
+            }
+        }
+    }
+
+    // ─── Scope Checks (spec §13.2.4.2) ────────────────────────────────────────
+
+    /// Check if the given tag has an element in scope (general scope delimiters).
+    fn has_element_in_scope(&self, tag_name: &str) -> bool {
+        self.has_element_in_scope_with_delimiters(tag_name, &SCOPE_DELIMITERS)
+    }
+
+    /// Check if `p` is in button scope.
+    fn has_p_in_button_scope(&self) -> bool {
+        self.has_element_in_scope_with_delimiters("p", &BUTTON_SCOPE_DELIMITERS)
+    }
+
+    /// Check for element in list-item scope.
+    fn has_element_in_list_item_scope(&self, tag_name: &str) -> bool {
+        self.has_element_in_scope_with_delimiters(tag_name, &LIST_ITEM_SCOPE_DELIMITERS)
+    }
+
+    /// Check for element in table scope.
+    // TECH_DEBT: called from table cell (</td>, </th>) end-tag handlers — pending integration.
+    #[allow(dead_code)]
+    fn has_element_in_table_scope(&self, tag_name: &str) -> bool {
+        self.has_element_in_scope_with_delimiters(tag_name, &TABLE_SCOPE_DELIMITERS)
+    }
+
+    /// Walk the open elements stack downward; return true if tag_name is found before any delimiter.
+    fn has_element_in_scope_with_delimiters(&self, tag_name: &str, delimiters: &[&str]) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            if let BuilderNodeData::Element(el) = &self.nodes[id].data {
+                if el.tag.eq_ignore_ascii_case(tag_name) {
+                    return true;
+                }
+                if delimiters.iter().any(|&d| el.tag.eq_ignore_ascii_case(d)) {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
+    // ─── Implied End Tags (spec §13.2.6.3) ────────────────────────────────────
+
+    /// Generate implied end tags, optionally excluding `exception`.
+    fn generate_implied_end_tags(&mut self, exception: Option<&str>) {
+        loop {
+            let cur = self.current_tag().map(str::to_string);
+            match cur.as_deref() {
+                Some(t @ ("dd" | "dt" | "li" | "optgroup" | "option" | "p" | "rb" | "rp" | "rt" | "rtc")) => {
+                    if exception.map_or(false, |e| e.eq_ignore_ascii_case(t)) {
+                        break;
+                    }
+                    self.open_elements.pop();
+                }
+                _ => break,
+            }
+        }
     }
 
     fn insert_foster_parented_text(&mut self, text: String) -> bool {
@@ -885,21 +1476,81 @@ impl<'a> HtmlTreeBuilder<'a> {
         })
     }
 
+    fn node_tag(&self, id: usize) -> Option<&str> {
+        match &self.nodes[id].data {
+            BuilderNodeData::Element(el) => Some(el.tag.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Spec §13.2.3.1 — reset the insertion mode appropriately.
     fn reset_insertion_mode(&mut self) {
-        self.insertion_mode = match self.current_tag() {
-            Some("head") => InsertionMode::InHead,
-            Some("frameset") => InsertionMode::InFrameset,
-            Some("select") => InsertionMode::InSelect,
-            Some("td" | "th") => InsertionMode::InCell,
-            Some("tr") => InsertionMode::InRow,
-            Some("tbody" | "thead" | "tfoot") => InsertionMode::InTableBody,
-            Some("table") => InsertionMode::InTable,
-            Some("body") => InsertionMode::InBody,
-            Some("html") if self.frameset_element_id.is_some() => InsertionMode::AfterFrameset,
-            Some("html") if self.body_element_id.is_some() => InsertionMode::AfterBody,
-            Some("html") => InsertionMode::AfterHead,
-            _ => InsertionMode::InBody,
-        };
+        // Walk the open elements from last to first.
+        let len = self.open_elements.len();
+        for i in (0..len).rev() {
+            let id = self.open_elements[i];
+            let is_last = i == len - 1;
+            let tag = match &self.nodes[id].data {
+                BuilderNodeData::Element(el) => el.tag.clone(),
+                _ => continue,
+            };
+            let tag = tag.as_str();
+
+            // In fragment mode: if we reach the context element, use its context.
+            let tag = if is_last {
+                if let Some(ref ctx) = self.fragment_context {
+                    ctx.tag_name.as_str()
+                } else {
+                    tag
+                }
+            } else {
+                tag
+            };
+
+            self.insertion_mode = match tag {
+                "select" => {
+                    // Check if there's a table ancestor.
+                    let mut mode = InsertionMode::InSelect;
+                    for j in (0..i).rev() {
+                        if let BuilderNodeData::Element(el) = &self.nodes[self.open_elements[j]].data {
+                            if el.tag.eq_ignore_ascii_case("template") {
+                                break;
+                            }
+                            if el.tag.eq_ignore_ascii_case("table") {
+                                mode = InsertionMode::InSelectInTable;
+                                break;
+                            }
+                        }
+                    }
+                    self.insertion_mode = mode;
+                    return;
+                }
+                "td" | "th" if !is_last => InsertionMode::InCell,
+                "tr" => InsertionMode::InRow,
+                "tbody" | "thead" | "tfoot" => InsertionMode::InTableBody,
+                "caption" => InsertionMode::InCaption,
+                "colgroup" => InsertionMode::InColumnGroup,
+                "table" => InsertionMode::InTable,
+                "template" => {
+                    self.insertion_mode = self.template_insertion_modes.last().copied().unwrap_or(InsertionMode::InBody);
+                    return;
+                }
+                "head" if !is_last => InsertionMode::InHead,
+                "body" => InsertionMode::InBody,
+                "frameset" => InsertionMode::InFrameset,
+                "html" => {
+                    if self.head_element_id.is_none() {
+                        InsertionMode::BeforeHead
+                    } else {
+                        InsertionMode::AfterHead
+                    }
+                }
+                _ if is_last => InsertionMode::InBody,
+                _ => continue,
+            };
+            return;
+        }
+        self.insertion_mode = InsertionMode::InBody;
     }
 
     fn should_foster_parent_text(&self) -> bool {
@@ -991,6 +1642,65 @@ fn is_formatting_element(tag: &str) -> bool {
         tag,
         "a" | "b" | "big" | "code" | "em" | "font" | "i" | "s" | "small" | "span"
             | "strike" | "strong" | "tt" | "u"
+    )
+}
+
+// ─── Scope delimiter sets (spec §13.2.4.2) ─────────────────────────────────
+
+/// General scope delimiters (default scope).
+const SCOPE_DELIMITERS: &[&str] = &[
+    "applet", "caption", "html", "table", "td", "th", "marquee", "object",
+    "template",
+    // MathML integration points
+    "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
+    // SVG integration points
+    "foreignObject", "desc", "title",
+];
+
+/// Button scope adds `button` to the general scope delimiters.
+const BUTTON_SCOPE_DELIMITERS: &[&str] = &[
+    "applet", "caption", "html", "table", "td", "th", "marquee", "object",
+    "template", "button",
+    "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
+    "foreignObject", "desc", "title",
+];
+
+/// List-item scope adds `ol` and `ul`.
+const LIST_ITEM_SCOPE_DELIMITERS: &[&str] = &[
+    "applet", "caption", "html", "table", "td", "th", "marquee", "object",
+    "template", "ol", "ul",
+    "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
+    "foreignObject", "desc", "title",
+];
+
+/// Table scope: only `html`, `table`, `template`.
+// TECH_DEBT: used by has_element_in_table_scope() — pending integration.
+#[allow(dead_code)]
+const TABLE_SCOPE_DELIMITERS: &[&str] = &["html", "table", "template"];
+
+/// "Special" elements for the Adoption Agency Algorithm (spec §13.2.6.4.7).
+///
+/// An element is special if it's in the list of elements treated as block-level
+/// elements by the parsing algorithm, preventing formatting elements from crossing them.
+fn is_special_element(tag: &str) -> bool {
+    matches!(
+        tag,
+        "address" | "applet" | "area" | "article" | "aside" | "base" | "basefont"
+            | "bgsound" | "blockquote" | "body" | "br" | "button" | "caption" | "center"
+            | "col" | "colgroup" | "dd" | "details" | "dir" | "div" | "dl" | "dt"
+            | "embed" | "fieldset" | "figcaption" | "figure" | "footer" | "form"
+            | "frame" | "frameset" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+            | "head" | "header" | "hgroup" | "hr" | "html" | "iframe" | "img"
+            | "input" | "keygen" | "li" | "link" | "listing" | "main" | "marquee"
+            | "menu" | "meta" | "nav" | "noembed" | "noframes" | "noscript"
+            | "object" | "ol" | "p" | "param" | "plaintext" | "pre" | "script"
+            | "search" | "section" | "select" | "source" | "style" | "summary"
+            | "table" | "tbody" | "td" | "template" | "textarea" | "tfoot" | "th"
+            | "thead" | "title" | "tr" | "track" | "ul" | "wbr" | "xmp"
+            // MathML
+            | "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml"
+            // SVG
+            | "foreignObject" | "desc"
     )
 }
 

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use albedo::ace::html::{
-    build_document_with_errors, build_fragment_with_errors, HtmlNode, HtmlToken, HtmlTokenizer,
+    build_document_with_errors, build_fragment_with_errors, HtmlNode, HtmlTokenKind, HtmlTokenizer,
     Namespace,
 };
 use serde_json::{Map, Value};
@@ -167,7 +167,7 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
                 }
 
                 let token = tokenizer.next_token();
-                let reached_eof = matches!(token, HtmlToken::Eof);
+                let reached_eof = matches!(token.kind, HtmlTokenKind::Eof);
                 if let Some(mapped) = ExpectedToken::from_runtime(token) {
                     if matches!(mapped, ExpectedToken::Eof) && !include_eof {
                         break;
@@ -357,23 +357,23 @@ fn tree_line_content(line: &str) -> &str {
 }
 
 impl ExpectedToken {
-    fn from_runtime(token: HtmlToken) -> Option<Self> {
-        match token {
-            HtmlToken::StartTag(tag) => Some(Self::StartTag {
+    fn from_runtime(token: albedo::ace::html::HtmlToken) -> Option<Self> {
+        match token.kind {
+            HtmlTokenKind::StartTag(tag) => Some(Self::StartTag {
                 name: tag.name,
                 attrs: tag.attributes.into_iter().collect(),
                 self_closing: tag.self_closing,
             }),
-            HtmlToken::EndTag(tag) => Some(Self::EndTag { name: tag.name }),
-            HtmlToken::Character(text) => Some(Self::Character { data: text.data }),
-            HtmlToken::Comment(comment) => Some(Self::Comment { data: comment.data }),
-            HtmlToken::Doctype(dt) => Some(Self::Doctype {
+            HtmlTokenKind::EndTag(tag) => Some(Self::EndTag { name: tag.name }),
+            HtmlTokenKind::Character(text) => Some(Self::Character { data: text.data }),
+            HtmlTokenKind::Comment(comment) => Some(Self::Comment { data: comment.data }),
+            HtmlTokenKind::Doctype(dt) => Some(Self::Doctype {
                 name: dt.name,
                 public_id: dt.public_id,
                 system_id: dt.system_id,
                 force_quirks: dt.force_quirks,
             }),
-            HtmlToken::Eof => Some(Self::Eof),
+            HtmlTokenKind::Eof => Some(Self::Eof),
         }
     }
 }
