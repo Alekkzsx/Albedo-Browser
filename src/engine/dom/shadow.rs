@@ -218,7 +218,7 @@ impl EventPath {
 /// Extensões para AceDOM suportar Shadow DOM
 impl AceDOM {
     /// attachShadow() - cria um shadow root para um elemento host
-    pub fn attach_shadow(&mut self, host_idx: usize, init: ShadowRootInit) -> Option<usize> {
+    pub fn attach_shadow_with_init(&mut self, host_idx: usize, init: ShadowRootInit) -> Option<usize> {
         // Verifica se já tem shadow root
         if let Some(host_node) = self.get_node(host_idx) {
             if host_node.shadow_root.is_some() {
@@ -318,7 +318,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init);
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init);
         assert!(shadow_idx.is_some());
     }
     
@@ -332,7 +332,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init);
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init);
         assert!(shadow_idx.is_some());
         
         // Mode closed não deve ser acessível
@@ -350,8 +350,8 @@ mod tests {
             delegates_focus: false,
         };
         
-        let first = dom.attach_shadow(host_idx, init.clone());
-        let second = dom.attach_shadow(host_idx, init);
+        let first = dom.attach_shadow_with_init(host_idx, init.clone());
+        let second = dom.attach_shadow_with_init(host_idx, init);
         
         assert!(first.is_some());
         assert!(second.is_none()); // Deve falhar
@@ -374,7 +374,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init).unwrap();
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init).unwrap();
         
         // Adiciona conteúdo ao shadow DOM
         // Em produção, isso seria feito via innerHTML do shadow root
@@ -401,7 +401,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init).unwrap();
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init).unwrap();
         SlotAssignment::assign_slots(&mut dom, shadow_idx);
         
         // Nós sem slot attribute devem ir para o default slot
@@ -437,7 +437,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init).unwrap();
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init).unwrap();
         
         assert!(!dom.is_in_shadow_dom(host_idx));
         assert!(dom.is_in_shadow_dom(shadow_idx));
@@ -453,7 +453,7 @@ mod tests {
             delegates_focus: false,
         };
         
-        let shadow_idx = dom.attach_shadow(host_idx, init).unwrap();
+        let shadow_idx = dom.attach_shadow_with_init(host_idx, init).unwrap();
         
         let retrieved_host = dom.get_shadow_host(shadow_idx);
         assert_eq!(retrieved_host, Some(host_idx));
@@ -469,7 +469,7 @@ mod tests {
             mode: ShadowRootMode::Open,
             delegates_focus: false,
         };
-        let open_shadow = dom.attach_shadow(host_idx, open_init).unwrap();
+        let open_shadow = dom.attach_shadow_with_init(host_idx, open_init).unwrap();
         
         // Closed mode
         let closed_init = ShadowRootInit {
@@ -490,7 +490,7 @@ mod tests {
             shadow_root: None,
             dirty: NodeDirtyFlags::NONE,
         });
-        let closed_shadow = dom.attach_shadow(host2_idx, closed_init).unwrap();
+        let closed_shadow = dom.attach_shadow_with_init(host2_idx, closed_init).unwrap();
         
         // Apenas open deve ser acessível
         assert!(dom.get_shadow_root(host_idx).is_some() || true); // Simplificado

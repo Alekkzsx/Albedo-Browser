@@ -66,21 +66,25 @@ impl CustomElementsRegistry {
     
     /// Upgrade um elemento específico
     pub fn upgrade_element(&mut self, dom: &mut AceDOM, element_idx: usize) {
-        if let Some(node) = dom.get_node(element_idx) {
+        let Some((tag, is_value)) = dom.get_node(element_idx).and_then(|node| {
             if let AceNodeType::Element(el) = &node.node_type {
-                let tag = el.tag.to_lowercase();
-                
-                // Verifica se há definição para este tag
-                if let Some(definition) = self.definitions.get(&tag).cloned() {
-                    self.perform_upgrade(dom, element_idx, &definition);
-                }
-                
-                // Verifica se é um built-in extendido via "is" attribute
-                if let Some(is_value) = el.attributes.get("is") {
-                    if let Some(definition) = self.definitions.get(is_value).cloned() {
-                        self.perform_upgrade(dom, element_idx, &definition);
-                    }
-                }
+                Some((el.tag.to_lowercase(), el.attributes.get("is").cloned()))
+            } else {
+                None
+            }
+        }) else {
+            return;
+        };
+
+        // Verifica se há definição para este tag
+        if let Some(definition) = self.definitions.get(&tag).cloned() {
+            self.perform_upgrade(dom, element_idx, &definition);
+        }
+
+        // Verifica se é um built-in extendido via "is" attribute
+        if let Some(is_value) = is_value {
+            if let Some(definition) = self.definitions.get(&is_value).cloned() {
+                self.perform_upgrade(dom, element_idx, &definition);
             }
         }
     }
@@ -231,7 +235,7 @@ impl AceDOM {
         name: String,
         value: String,
     ) {
-        let old_value = if let Some(node) = self.get_node(element_idx) {
+        let _old_value = if let Some(node) = self.get_node(element_idx) {
             if let AceNodeType::Element(el) = &node.node_type {
                 el.attributes.get(&name).cloned()
             } else {
@@ -242,7 +246,7 @@ impl AceDOM {
         };
         
         // Set o atributo
-        self.set_attribute(element_idx, name.clone(), value.clone());
+        self.set_attribute_notify(element_idx, name.clone(), value.clone());
         
         // Notifica sobre a mudança
         // Em produção, chamaria attributeChangedCallback se o atributo fosse observado
@@ -250,7 +254,7 @@ impl AceDOM {
     
     /// Remove attribute com suporte a attributeChangedCallback
     pub fn remove_attribute_with_callback(&mut self, element_idx: usize, name: String) {
-        let old_value = if let Some(node) = self.get_node(element_idx) {
+        let _old_value = if let Some(node) = self.get_node(element_idx) {
             if let AceNodeType::Element(el) = &node.node_type {
                 el.attributes.get(&name).cloned()
             } else {
@@ -261,58 +265,9 @@ impl AceDOM {
         };
         
         // Remove o atributo
-        self.remove_attribute(element_idx, name.clone());
+        self.remove_attribute_notify(element_idx, name.clone());
         
         // Notifica sobre a mudança
-    }
-}
-
-// Métodos auxiliares que precisam existir no AceDOM para o código acima compilar
-impl AceDOM {
-    pub fn set_attribute(&mut self, element_idx: usize, name: String, value: String) {
-        if let Some(node) = self.nodes.get_mut(element_idx) {
-            if let AceNodeType::Element(ref mut el) = node.node_type {
-                let old_value = el.attributes.insert(name.clone(), value.clone());
-                
-                // Notifica observers
-                self.notify_mutation(
-                    element_idx,
-                    crate::engine::dom::MutationRecord {
-                        type_: crate::engine::dom::MutationType::Attributes,
-                        target: element_idx,
-                        added_nodes: vec![],
-                        removed_nodes: vec![],
-                        previous_sibling: None,
-                        next_sibling: None,
-                        attribute_name: Some(name),
-                        old_value,
-                    },
-                );
-            }
-        }
-    }
-    
-    pub fn remove_attribute(&mut self, element_idx: usize, name: String) {
-        if let Some(node) = self.nodes.get_mut(element_idx) {
-            if let AceNodeType::Element(ref mut el) = node.node_type {
-                let old_value = el.attributes.remove(&name);
-                
-                // Notifica observers
-                self.notify_mutation(
-                    element_idx,
-                    crate::engine::dom::MutationRecord {
-                        type_: crate::engine::dom::MutationType::Attributes,
-                        target: element_idx,
-                        added_nodes: vec![],
-                        removed_nodes: vec![],
-                        previous_sibling: None,
-                        next_sibling: None,
-                        attribute_name: Some(name),
-                        old_value,
-                    },
-                );
-            }
-        }
     }
 }
 

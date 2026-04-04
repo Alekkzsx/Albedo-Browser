@@ -113,18 +113,14 @@ impl ArenaBlock {
         if index >= self.len.get() {
             return None;
         }
-        unsafe {
-            Some(&*self.data.as_ptr().add(index))
-        }
+        unsafe { self.data.as_ref().get(index) }
     }
     
     fn get_mut(&mut self, index: usize) -> Option<&mut ArenaNode> {
         if index >= self.len.get() {
             return None;
         }
-        unsafe {
-            Some(&mut *self.data.as_ptr().add(index))
-        }
+        unsafe { self.data.as_mut().get_mut(index) }
     }
 }
 
@@ -175,7 +171,7 @@ impl DomArena {
     /// Aloca um novo node na arena
     pub fn alloc(&mut self, node: ArenaNode) -> usize {
         // Tenta alocar no bloco atual
-        if let Some(idx) = self.blocks[self.current_block].push(node) {
+        if let Some(idx) = self.blocks[self.current_block].push(node.clone()) {
             self.total_allocated += 1;
             return self.make_global_index(self.current_block, idx);
         }

@@ -232,20 +232,16 @@ pub enum EncodingSource {
 /// BOM signatures for various encodings
 const BOM_SIGNATURES: &[(&[u8], Encoding)] = &[
     (&[0xEF, 0xBB, 0xBF], Encoding::Utf8),
+    (&[0x00, 0x00, 0xFE, 0xFF], Encoding::Utf8),
+    (&[0xFF, 0xFE, 0x00, 0x00], Encoding::Utf8),
     (&[0xFE, 0xFF], Encoding::Utf16Be),
     (&[0xFF, 0xFE], Encoding::Utf16Le),
-    (&[0x00, 0x00, 0xFE, 0xFF], Encoding::Utf32Be), // Will be treated as UTF-8
-    (&[0xFF, 0xFE, 0x00, 0x00], Encoding::Utf32Le), // Will be treated as UTF-8
 ];
 
 /// Detect encoding from raw bytes using BOM
 pub fn detect_encoding_from_bom(bytes: &[u8]) -> Option<(Encoding, usize)> {
     for &(bom, encoding) in BOM_SIGNATURES {
         if bytes.len() >= bom.len() && bytes[..bom.len()] == *bom {
-            // UTF-32 is not directly supported, fall back to UTF-8
-            if encoding == Encoding::Utf32Be || encoding == Encoding::Utf32Le {
-                return Some((Encoding::Utf8, bom.len()));
-            }
             return Some((encoding, bom.len()));
         }
     }
@@ -259,7 +255,7 @@ pub fn parse_content_type_header(header: &str) -> Option<Encoding> {
     // Look for charset parameter
     if let Some(charset_pos) = header.find("charset") {
         let after_charset = &header[charset_pos + 7..]; // Skip "charset"
-        let after_charset = after_charset.trim_start_matches(|c| c == '=' || c.is_whitespace());
+        let after_charset = after_charset.trim_start_matches(|c: char| c == '=' || c.is_whitespace());
         
         // Extract the charset value (until whitespace, semicolon, or end)
         let value_end = after_charset
@@ -280,7 +276,7 @@ pub fn extract_charset_from_meta(content: &str) -> Option<Encoding> {
     // Try to find charset= pattern
     if let Some(charset_pos) = content.find("charset") {
         let after_charset = &content[charset_pos + 7..];
-        let after_charset = after_charset.trim_start_matches(|c| c == '=' || c.is_whitespace());
+        let after_charset = after_charset.trim_start_matches(|c: char| c == '=' || c.is_whitespace());
         
         let value_end = after_charset
             .find(|c: char| c.is_whitespace() || c == ';' || c == '"')
@@ -374,7 +370,7 @@ impl EncodingPrescanner {
         // Look for charset attribute
         if let Some(charset_pos) = tag_lower.find("charset") {
             let after_charset = &tag_str[charset_pos + 7..];
-            let after_charset = after_charset.trim_start_matches(|c| c == '=' || c.is_whitespace());
+            let after_charset = after_charset.trim_start_matches(|c: char| c == '=' || c.is_whitespace());
             
             let value_end = after_charset
                 .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
@@ -385,7 +381,7 @@ impl EncodingPrescanner {
         }
         
         // Look for http-equiv="Content-Type" with content containing charset
-        if let Some(http_equiv_pos) = tag_lower.find("http-equiv") {
+        if tag_lower.contains("http-equiv") {
             // Simplified parsing - look for content attribute nearby
             if let Some(content_pos) = tag_lower.find("content") {
                 let content_start = content_pos + 7;

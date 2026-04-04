@@ -26,7 +26,7 @@ pub enum TestStatus {
 }
 
 /// Resultado consolidado de uma suíte de testes
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SuiteResult {
     pub suite_name: String,
     pub total: usize,

@@ -75,11 +75,11 @@ pub unsafe fn fast_ascii_tag_scan_avx2(data: &[u8], start: usize) -> usize {
     let chunk = _mm256_loadu_si256(data[start..].as_ptr() as *const __m256i);
     
     // Check for '>' which ends tag
-    let gt = _mm256_set1_epi8(b'>');
+    let gt = _mm256_set1_epi8(b'>' as i8);
     let is_gt = _mm256_cmpeq_epi8(chunk, gt);
     
     // Check for whitespace (ends attributes)
-    let space = _mm256_set1_epi8(b' ');
+    let space = _mm256_set1_epi8(b' ' as i8);
     let is_space = _mm256_cmpeq_epi8(chunk, space);
     
     // Combine
