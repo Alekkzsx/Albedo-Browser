@@ -10,8 +10,6 @@
 //! - Prescan algorithm for encoding detection
 //! - Full Unicode support including surrogate pairs and normalization
 
-use std::collections::HashMap;
-
 /// Supported character encodings
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Encoding {

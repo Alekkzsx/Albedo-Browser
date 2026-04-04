@@ -30,6 +30,29 @@ pub use string_intern::global as string_interning;
 pub use wpt_harness::{WPTRunner, WPTBuilder, TestStatus, SuiteResult};
 pub use benchmarks::{AceDOMBenchmarks, BenchmarkResult};
 
+pub type NodeId = usize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeType {
+    Element,
+    Text,
+    Comment,
+    Document,
+    ShadowRoot,
+    DocumentFragment,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeRef {
+    id: usize,
+}
+
+impl NodeRef {
+    pub fn id(self) -> usize {
+        self.id
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AceDOM {
     pub nodes: Vec<AceNode>,
@@ -150,6 +173,41 @@ impl AceNode {
             _ => String::new(),
         }
     }
+
+    pub fn node_type(&self) -> NodeType {
+        match self.node_type {
+            AceNodeType::Element(_) => NodeType::Element,
+            AceNodeType::Text(_) => NodeType::Text,
+            AceNodeType::Comment(_) => NodeType::Comment,
+            AceNodeType::Document => NodeType::Document,
+            AceNodeType::ShadowRoot => NodeType::ShadowRoot,
+            AceNodeType::DocumentFragment => NodeType::DocumentFragment,
+        }
+    }
+
+    pub fn text_content(&self) -> Option<&str> {
+        match &self.node_type {
+            AceNodeType::Text(text) | AceNodeType::Comment(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub fn set_text_content(&mut self, text: &str) {
+        match &mut self.node_type {
+            AceNodeType::Text(current) | AceNodeType::Comment(current) => {
+                *current = std::sync::Arc::from(text);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn parent(&self) -> Option<NodeRef> {
+        self.parent.map(|id| NodeRef { id })
+    }
+
+    pub fn children(&self) -> &[usize] {
+        &self.children
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -236,6 +294,56 @@ impl AceDOM {
 
     pub fn get_node(&self, id: usize) -> Option<&AceNode> {
         self.nodes.get(id)
+    }
+
+    pub fn get_node_mut(&mut self, id: usize) -> Option<&mut AceNode> {
+        self.nodes.get_mut(id)
+    }
+
+    pub fn create_text_node(&mut self, text: impl AsRef<str>) -> usize {
+        let id = self.nodes.len();
+        self.nodes.push(AceNode {
+            node_type: AceNodeType::Text(std::sync::Arc::from(text.as_ref())),
+            parent: None,
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+            shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
+        });
+        id
+    }
+
+    pub fn create_comment_node(&mut self, text: impl AsRef<str>) -> usize {
+        let id = self.nodes.len();
+        self.nodes.push(AceNode {
+            node_type: AceNodeType::Comment(std::sync::Arc::from(text.as_ref())),
+            parent: None,
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+            shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
+        });
+        id
+    }
+
+    pub fn create_element_node(&mut self, tag: impl AsRef<str>) -> usize {
+        let id = self.nodes.len();
+        self.nodes.push(AceNode {
+            node_type: AceNodeType::Element(AceElement {
+                tag: tag.as_ref().to_string(),
+                namespace: crate::ace::html::Namespace::Html,
+                attributes: HashMap::new(),
+            }),
+            parent: None,
+            children: Vec::new(),
+            prev_sibling: None,
+            next_sibling: None,
+            shadow_root: None,
+            dirty: NodeDirtyFlags::LAYOUT | NodeDirtyFlags::STYLE,
+        });
+        id
     }
 
     /// DEPRECATED: Função removida junto com kuchiki
@@ -1015,4 +1123,3 @@ impl AceDOM {
         }
     }
 }
-

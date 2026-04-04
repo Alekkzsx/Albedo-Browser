@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::engine::dom::{AceNode, AceNodeType, NodeId, DomManipulation};
+use crate::engine::dom::{AceDOM, AceNode, AceNodeType, NodeId};
 
 /// Representação leve de um nó no Virtual DOM
 #[derive(Debug, Clone, PartialEq)]
@@ -213,7 +213,7 @@ impl VirtualDom {
     }
 
     /// Aplica patches no DOM real
-    pub fn apply_patches(dom: &mut DomManipulation, root_id: NodeId, patches: &[PatchOp]) {
+    pub fn apply_patches(dom: &mut AceDOM, root_id: NodeId, patches: &[PatchOp]) {
         for patch in patches {
             match patch {
                 PatchOp::Insert { index, node } => {
@@ -230,11 +230,11 @@ impl VirtualDom {
                 }
                 PatchOp::SetAttribute { index, key, value } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
-                    // dom.set_attribute(node_id, key, value);
+                    // dom.set_attribute(node_id, key.to_string(), value.to_string());
                 }
                 PatchOp::RemoveAttribute { index, key } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
-                    // dom.remove_attribute(node_id, key);
+                    // dom.remove_attribute(node_id, key.to_string());
                 }
                 PatchOp::SetText { index, text } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
@@ -247,7 +247,7 @@ impl VirtualDom {
         }
     }
 
-    fn vnode_to_ace_node(vnode: &VNode, dom: &DomManipulation) -> NodeId {
+    fn vnode_to_ace_node(vnode: &VNode, dom: &mut AceDOM) -> NodeId {
         // Conversão simplificada
         match vnode {
             VNode::Text(content) => dom.create_text_node(content),
@@ -255,7 +255,7 @@ impl VirtualDom {
             VNode::Element { tag, attrs, children, .. } => {
                 let id = dom.create_element_node(tag);
                 for (k, v) in attrs {
-                    dom.set_attribute(id, k, v);
+                    dom.set_attribute(id, k.to_string(), v.to_string());
                 }
                 for child in children {
                     let child_id = Self::vnode_to_ace_node(child, dom);

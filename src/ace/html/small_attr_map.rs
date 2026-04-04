@@ -9,9 +9,9 @@
 //! - Iteração mais rápida (dados contíguos no SmallVec)
 //! - Menor pressão no garbage collector
 
-use std::borrow::Cow;
-use smallvec::{SmallVec, smallvec};
-use crate::html::interner::StringId;
+use smallvec::SmallVec;
+
+use super::interner::StringId;
 
 /// Número máximo de atributos armazenados inline antes de promover para HashMap
 const SMALL_CAPACITY: usize = 4;
@@ -306,7 +306,7 @@ impl<const N: usize> From<[(StringId, StringId); N]> for SmallAttributeMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::html::interner::StringInterner;
+    use super::super::interner::StringInterner;
 
     fn setup_interner() -> StringInterner {
         StringInterner::new()

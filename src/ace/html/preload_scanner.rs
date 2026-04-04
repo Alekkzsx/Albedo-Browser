@@ -1,12 +1,7 @@
+//! Preload scanner fast-path para descoberta especulativa de recursos.
 
-//! Preload Scanner Avançado para ACE-HTML
-//! 
-//! Detecta recursos críticos em documentos HTML para pré-carregamento otimizado.
-//! Suporta detecção de scripts, stylesheets, imagens, vídeos, fonts, e mais.
+use std::collections::{HashMap, HashSet};
 
-use std::collections::HashSet;
-
-/// Tipos de recursos que podem ser pré-carregados
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PreloadResourceType {
     Script,
@@ -69,7 +64,6 @@ impl PreloadResourceType {
     }
 }
 
-/// Prioridade de carregamento de recursos
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourcePriority {
     Lowest,
@@ -85,7 +79,7 @@ impl ResourcePriority {
         match value.to_ascii_lowercase().as_str() {
             "high" => Self::High,
             "low" => Self::Low,
-            "auto" | _ => Self::Normal,
+            _ => Self::Normal,
         }
     }
 
@@ -94,15 +88,12 @@ impl ResourcePriority {
             PreloadResourceType::Stylesheet => Self::Highest,
             PreloadResourceType::Script | PreloadResourceType::ModuleScript => Self::Highest,
             PreloadResourceType::Font => Self::High,
-            PreloadResourceType::Image => Self::Normal,
-            PreloadResourceType::Video | PreloadResourceType::Audio => Self::Normal,
             PreloadResourceType::Prefetch | PreloadResourceType::DnsPrefetch => Self::Low,
             _ => Self::Normal,
         }
     }
 }
 
-/// Atributo crossorigin para recursos
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CrossOrigin {
     Anonymous,
@@ -112,15 +103,13 @@ pub enum CrossOrigin {
 impl CrossOrigin {
     pub fn from_attr(value: &str) -> Option<Self> {
         match value.to_ascii_lowercase().as_str() {
-            "anonymous" => Some(Self::Anonymous),
+            "anonymous" | "" => Some(Self::Anonymous),
             "use-credentials" => Some(Self::UseCredentials),
-            "" => Some(Self::Anonymous),
             _ => None,
         }
     }
 }
 
-/// Requisição de pré-carregamento
 #[derive(Debug, Clone)]
 pub struct PreloadRequest {
     pub url: String,
@@ -135,16 +124,15 @@ pub struct PreloadRequest {
     pub is_module: bool,
     pub is_async: bool,
     pub is_defer: bool,
-    pub loading: Option<String>, // "lazy", "eager"
+    pub loading: Option<String>,
 }
 
 impl PreloadRequest {
     pub fn new(url: String, resource_type: PreloadResourceType) -> Self {
-        let priority = ResourcePriority::default_for_type(resource_type);
         Self {
             url,
             resource_type,
-            priority,
+            priority: ResourcePriority::default_for_type(resource_type),
             crossorigin: None,
             integrity: None,
             media: None,
@@ -183,7 +171,6 @@ impl PreloadRequest {
         self
     }
 
-    /// Se este recurso deve bloquear o render
     pub fn blocks_render(&self) -> bool {
         match self.resource_type {
             PreloadResourceType::Stylesheet => true,
@@ -192,7 +179,6 @@ impl PreloadRequest {
         }
     }
 
-    /// Se este recurso pode ser adiado
     pub fn can_defer(&self) -> bool {
         match self.resource_type {
             PreloadResourceType::Script => self.is_async || self.is_defer,
@@ -202,14 +188,30 @@ impl PreloadRequest {
     }
 }
 
-/// Scanner avançado de pré-carregamento
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreloadScannerState {
+    Data,
+    TagOpen,
+    TagName,
+    BeforeAttributeName,
+    AttributeName,
+    AfterAttributeName,
+    BeforeAttributeValue,
+    AttributeValueDoubleQuoted,
+    AttributeValueSingleQuoted,
+    AttributeValueUnquoted,
+    AfterAttributeValueQuoted,
+    Comment,
+    BogusComment,
+}
+
 pub struct PreloadScanner {
     state: PreloadScannerState,
     current_tag: String,
     current_attr_name: String,
     current_attr_value: String,
-    current_rel: String,
-    current_as: String,
+    current_attrs: HashMap<String, String>,
+    current_is_end_tag: bool,
     requests: Vec<PreloadRequest>,
     seen_urls: HashSet<String>,
     base_url: String,
@@ -222,8 +224,8 @@ impl PreloadScanner {
             current_tag: String::new(),
             current_attr_name: String::new(),
             current_attr_value: String::new(),
-            current_rel: String::new(),
-            current_as: String::new(),
+            current_attrs: HashMap::new(),
+            current_is_end_tag: false,
             requests: Vec::new(),
             seen_urls: HashSet::new(),
             base_url: String::new(),
@@ -236,22 +238,23 @@ impl PreloadScanner {
         scanner
     }
 
-    /// Escaneia HTML e retorna requisições de preload
     pub fn scan(&mut self, input: &str) -> Vec<PreloadRequest> {
         self.requests.clear();
         self.seen_urls.clear();
-        let mut chars = input.chars().peekable();
+        self.reset_tag_state();
+        self.state = PreloadScannerState::Data;
 
+        let mut chars = input.chars().peekable();
         while let Some(ch) = chars.next() {
             match self.state {
                 PreloadScannerState::Data => {
                     if ch == '<' {
                         self.state = PreloadScannerState::TagOpen;
+                        self.reset_tag_state();
                     }
                 }
                 PreloadScannerState::TagOpen => {
                     if ch == '!' {
-                        // Verifica se é comentário ou doctype
                         if chars.peek() == Some(&'-') {
                             chars.next();
                             if chars.peek() == Some(&'-') {
@@ -260,39 +263,18 @@ impl PreloadScanner {
                             } else {
                                 self.state = PreloadScannerState::BogusComment;
                             }
-                        } else if chars.peek().map(|c| c.is_alphabetic()).unwrap_or(false) {
-                            // DOCTYPE
-                            self.state = PreloadScannerState::TagName;
                         } else {
                             self.state = PreloadScannerState::BogusComment;
                         }
                     } else if ch == '?' {
                         self.state = PreloadScannerState::BogusComment;
                     } else if ch == '/' {
-                        // End tag - ignora para preload
+                        self.current_is_end_tag = true;
                         self.state = PreloadScannerState::TagName;
-                    } else if ch.is_alphabetic() {
-                        self.current_tag.clear();
+                    } else if ch.is_ascii_alphabetic() {
                         self.current_tag.push(ch.to_ascii_lowercase());
                         self.state = PreloadScannerState::TagName;
                     } else {
-                        self.state = PreloadScannerState::Data;
-                    }
-                }
-                PreloadScannerState::Comment => {
-                    // Busca por -->
-                    if ch == '-' {
-                        if chars.peek() == Some(&'-') {
-                            chars.next();
-                            if chars.peek() == Some(&'>') {
-                                chars.next();
-                                self.state = PreloadScannerState::Data;
-                            }
-                        }
-                    }
-                }
-                PreloadScannerState::BogusComment => {
-                    if ch == '>' {
                         self.state = PreloadScannerState::Data;
                     }
                 }
@@ -301,24 +283,20 @@ impl PreloadScanner {
                         self.state = PreloadScannerState::BeforeAttributeName;
                     } else if ch == '>' {
                         self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else if ch == '/' {
-                        // Self-closing tag - continua
-                    } else {
+                    } else if ch != '/' {
                         self.current_tag.push(ch.to_ascii_lowercase());
                     }
                 }
                 PreloadScannerState::BeforeAttributeName => {
                     if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '>' {
+                        continue;
+                    }
+                    if ch == '>' {
                         self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else if ch == '/' {
-                        // Self-closing - continua
-                    } else {
+                    } else if ch != '/' {
                         self.current_attr_name.clear();
                         self.current_attr_name.push(ch.to_ascii_lowercase());
+                        self.current_attr_value.clear();
                         self.state = PreloadScannerState::AttributeName;
                     }
                 }
@@ -326,11 +304,13 @@ impl PreloadScanner {
                     if ch == '=' {
                         self.state = PreloadScannerState::BeforeAttributeValue;
                     } else if ch.is_whitespace() {
+                        self.process_attribute();
                         self.state = PreloadScannerState::AfterAttributeName;
                     } else if ch == '>' {
+                        self.process_attribute();
                         self.emit_tag();
-                        self.state = PreloadScannerState::Data;
                     } else if ch == '/' {
+                        self.process_attribute();
                         self.state = PreloadScannerState::BeforeAttributeName;
                     } else {
                         self.current_attr_name.push(ch.to_ascii_lowercase());
@@ -338,36 +318,32 @@ impl PreloadScanner {
                 }
                 PreloadScannerState::AfterAttributeName => {
                     if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '=' {
+                        continue;
+                    }
+                    if ch == '=' {
                         self.state = PreloadScannerState::BeforeAttributeValue;
                     } else if ch == '>' {
                         self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else if ch == '/' {
-                        // Self-closing
-                    } else {
+                    } else if ch != '/' {
                         self.current_attr_name.clear();
                         self.current_attr_name.push(ch.to_ascii_lowercase());
+                        self.current_attr_value.clear();
                         self.state = PreloadScannerState::AttributeName;
                     }
                 }
                 PreloadScannerState::BeforeAttributeValue => {
                     if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '"' {
-                        self.current_attr_value.clear();
-                        self.state = PreloadScannerState::AttributeValueDoubleQuoted;
-                    } else if ch == '\'' {
-                        self.current_attr_value.clear();
-                        self.state = PreloadScannerState::AttributeValueSingleQuoted;
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.current_attr_value.clear();
-                        self.current_attr_value.push(ch);
-                        self.state = PreloadScannerState::AttributeValueUnquoted;
+                        continue;
+                    }
+                    self.current_attr_value.clear();
+                    match ch {
+                        '"' => self.state = PreloadScannerState::AttributeValueDoubleQuoted,
+                        '\'' => self.state = PreloadScannerState::AttributeValueSingleQuoted,
+                        '>' => self.emit_tag(),
+                        _ => {
+                            self.current_attr_value.push(ch);
+                            self.state = PreloadScannerState::AttributeValueUnquoted;
+                        }
                     }
                 }
                 PreloadScannerState::AttributeValueDoubleQuoted => {
@@ -393,7 +369,6 @@ impl PreloadScanner {
                     } else if ch == '>' {
                         self.process_attribute();
                         self.emit_tag();
-                        self.state = PreloadScannerState::Data;
                     } else {
                         self.current_attr_value.push(ch);
                     }
@@ -401,197 +376,244 @@ impl PreloadScanner {
                 PreloadScannerState::AfterAttributeValueQuoted => {
                     if ch.is_whitespace() {
                         self.state = PreloadScannerState::BeforeAttributeName;
-                    } else if ch == '/' {
-                        // Self-closing
                     } else if ch == '>' {
                         self.emit_tag();
+                    } else if ch != '/' {
+                        self.current_attr_name.clear();
+                        self.current_attr_name.push(ch.to_ascii_lowercase());
+                        self.current_attr_value.clear();
+                        self.state = PreloadScannerState::AttributeName;
+                    }
+                }
+                PreloadScannerState::Comment => {
+                    if ch == '-' && chars.peek() == Some(&'-') {
+                        chars.next();
+                        if chars.peek() == Some(&'>') {
+                            chars.next();
+                            self.state = PreloadScannerState::Data;
+                        }
+                    }
+                }
+                PreloadScannerState::BogusComment => {
+                    if ch == '>' {
                         self.state = PreloadScannerState::Data;
-                    } else {
-                        self.state = PreloadScannerState::BeforeAttributeName;
                     }
                 }
             }
         }
 
-        self.requests.clone()
-    }
-            match self.state {
-                PreloadScannerState::Data => {
-                    if ch == '<' {
-                        self.state = PreloadScannerState::TagOpen;
-                    }
-                }
-                PreloadScannerState::TagOpen => {
-                    if ch == '!' {
-                        self.state = PreloadScannerState::Comment;
-                    } else if ch == '?' {
-                        self.state = PreloadScannerState::BogusComment;
-                    } else if ch.is_alphabetic() {
-                        self.current_tag.clear();
-                        self.current_tag.push(ch.to_ascii_lowercase());
-                        self.state = PreloadScannerState::TagName;
-                    } else {
-                        self.state = PreloadScannerState::Data;
-                    }
-                }
-                PreloadScannerState::Comment => {
-                    // Simplified: just look for -->
-                    if ch == '-' {
-                        if chars.peek() == Some(&'-') {
-                            chars.next();
-                            if chars.peek() == Some(&'>') {
-                                chars.next();
-                                self.state = PreloadScannerState::Data;
-                            }
-                        }
-                    }
-                }
-                PreloadScannerState::BogusComment => {
-                    if ch == '>' {
-                        self.state = PreloadScannerState::Data;
-                    }
-                }
-                PreloadScannerState::TagName => {
-                    if ch.is_whitespace() {
-                        self.state = PreloadScannerState::BeforeAttributeName;
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.current_tag.push(ch.to_ascii_lowercase());
-                    }
-                }
-                PreloadScannerState::BeforeAttributeName => {
-                    if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else if ch == '/' {
-                        // Skip
-                    } else {
-                        self.current_attr_name.clear();
-                        self.current_attr_name.push(ch.to_ascii_lowercase());
-                        self.state = PreloadScannerState::AttributeName;
-                    }
-                }
-                PreloadScannerState::AttributeName => {
-                    if ch == '=' {
-                        self.state = PreloadScannerState::BeforeAttributeValue;
-                    } else if ch.is_whitespace() {
-                        self.state = PreloadScannerState::AfterAttributeName;
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.current_attr_name.push(ch.to_ascii_lowercase());
-                    }
-                }
-                PreloadScannerState::AfterAttributeName => {
-                    if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '=' {
-                        self.state = PreloadScannerState::BeforeAttributeValue;
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else if ch == '/' {
-                        // Skip
-                    } else {
-                        self.current_attr_name.clear();
-                        self.current_attr_name.push(ch.to_ascii_lowercase());
-                        self.state = PreloadScannerState::AttributeName;
-                    }
-                }
-                PreloadScannerState::BeforeAttributeValue => {
-                    if ch.is_whitespace() {
-                        // Skip
-                    } else if ch == '"' {
-                        self.current_attr_value.clear();
-                        self.state = PreloadScannerState::AttributeValueDoubleQuoted;
-                    } else if ch == '\'' {
-                        self.current_attr_value.clear();
-                        self.state = PreloadScannerState::AttributeValueSingleQuoted;
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.current_attr_value.clear();
-                        self.current_attr_value.push(ch);
-                        self.state = PreloadScannerState::AttributeValueUnquoted;
-                    }
-                }
-                PreloadScannerState::AttributeValueDoubleQuoted => {
-                    if ch == '"' {
-                        self.process_attribute();
-                        self.state = PreloadScannerState::AfterAttributeValueQuoted;
-                    } else {
-                        self.current_attr_value.push(ch);
-                    }
-                }
-                PreloadScannerState::AttributeValueSingleQuoted => {
-                    if ch == '\'' {
-                        self.process_attribute();
-                        self.state = PreloadScannerState::AfterAttributeValueQuoted;
-                    } else {
-                        self.current_attr_value.push(ch);
-                    }
-                }
-                PreloadScannerState::AttributeValueUnquoted => {
-                    if ch.is_whitespace() {
-                        self.process_attribute();
-                        self.state = PreloadScannerState::BeforeAttributeName;
-                    } else if ch == '>' {
-                        self.process_attribute();
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.current_attr_value.push(ch);
-                    }
-                }
-                PreloadScannerState::AfterAttributeValueQuoted => {
-                    if ch.is_whitespace() {
-                        self.state = PreloadScannerState::BeforeAttributeName;
-                    } else if ch == '/' {
-                        // Skip
-                    } else if ch == '>' {
-                        self.emit_tag();
-                        self.state = PreloadScannerState::Data;
-                    } else {
-                        self.state = PreloadScannerState::BeforeAttributeName;
-                        // Reprocess character in BeforeAttributeName? No, we skip for simplicity in fast scan
-                    }
-                }
-            }
+        if matches!(
+            self.state,
+            PreloadScannerState::AttributeName
+                | PreloadScannerState::AfterAttributeName
+                | PreloadScannerState::AttributeValueDoubleQuoted
+                | PreloadScannerState::AttributeValueSingleQuoted
+                | PreloadScannerState::AttributeValueUnquoted
+                | PreloadScannerState::AfterAttributeValueQuoted
+                | PreloadScannerState::BeforeAttributeName
+                | PreloadScannerState::TagName
+        ) {
+            self.process_attribute();
+            self.emit_tag();
         }
 
         self.requests.clone()
     }
 
     fn process_attribute(&mut self) {
-        if self.current_attr_value.is_empty() { return; }
-
-        let resource_type = match self.current_tag.as_str() {
-            "script" if self.current_attr_name == "src" => Some(PreloadResourceType::Script),
-            "link" if self.current_attr_name == "href" => Some(PreloadResourceType::Stylesheet), // Simpler: assumed CSS for now
-            "img" if self.current_attr_name == "src" => Some(PreloadResourceType::Image),
-            "video" if self.current_attr_name == "poster" => Some(PreloadResourceType::Video),
-            "audio" if self.current_attr_name == "src" => Some(PreloadResourceType::Audio),
-            "source" if self.current_attr_name == "src" => Some(PreloadResourceType::Source),
-            _ => None,
-        };
-
-        if let Some(rt) = resource_type {
-            self.requests.push(PreloadRequest {
-                url: self.current_attr_value.clone(),
-                resource_type: rt,
-            });
+        if self.current_attr_name.is_empty() {
+            return;
         }
-    }
 
-    fn emit_tag(&mut self) {
-        self.current_tag.clear();
+        let value = self.current_attr_value.clone();
+        self.current_attrs
+            .insert(self.current_attr_name.clone(), value);
         self.current_attr_name.clear();
         self.current_attr_value.clear();
     }
+
+    fn emit_tag(&mut self) {
+        if !self.current_is_end_tag {
+            self.emit_requests_for_current_tag();
+        }
+        self.reset_tag_state();
+        self.state = PreloadScannerState::Data;
+    }
+
+    fn emit_requests_for_current_tag(&mut self) {
+        match self.current_tag.as_str() {
+            "script" => {
+                if let Some(src) = self.current_attrs.get("src").cloned() {
+                    let type_attr = self
+                        .current_attrs
+                        .get("type")
+                        .map(|v| v.to_ascii_lowercase())
+                        .unwrap_or_default();
+                    let resource_type = if type_attr == "module" {
+                        PreloadResourceType::ModuleScript
+                    } else {
+                        PreloadResourceType::Script
+                    };
+
+                    let mut req = PreloadRequest::new(src, resource_type);
+                    req.is_module = resource_type == PreloadResourceType::ModuleScript;
+                    req.is_async = self.current_attrs.contains_key("async");
+                    req.is_defer = self.current_attrs.contains_key("defer");
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+            }
+            "link" => {
+                let rel = self
+                    .current_attrs
+                    .get("rel")
+                    .map(|v| v.to_ascii_lowercase())
+                    .unwrap_or_default();
+                if let Some(href) = self.current_attrs.get("href").cloned() {
+                    let resource_type = if rel.contains("stylesheet") {
+                        Some(PreloadResourceType::Stylesheet)
+                    } else if rel.contains("manifest") {
+                        Some(PreloadResourceType::Manifest)
+                    } else if rel.contains("icon") {
+                        Some(PreloadResourceType::Icon)
+                    } else if rel.contains("preload") {
+                        self.current_attrs
+                            .get("as")
+                            .and_then(|v| PreloadResourceType::from_as_attr(v))
+                    } else if rel.contains("prefetch") {
+                        Some(PreloadResourceType::Prefetch)
+                    } else if rel.contains("dns-prefetch") {
+                        Some(PreloadResourceType::DnsPrefetch)
+                    } else if rel.contains("preconnect") {
+                        Some(PreloadResourceType::Preconnect)
+                    } else {
+                        None
+                    };
+
+                    if let Some(resource_type) = resource_type {
+                        let mut req = PreloadRequest::new(href, resource_type);
+                        self.apply_common_attrs(&mut req);
+                        req.rel = Some(rel);
+                        req.as_attribute = self.current_attrs.get("as").cloned();
+                        self.push_request(req);
+                    }
+                }
+            }
+            "img" => {
+                if let Some(src) = self.current_attrs.get("src").cloned() {
+                    let mut req = PreloadRequest::new(src, PreloadResourceType::Image);
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+
+                if let Some(srcset) = self.current_attrs.get("srcset") {
+                    for candidate in parse_srcset_urls(srcset) {
+                        let mut req = PreloadRequest::new(candidate, PreloadResourceType::Image);
+                        self.apply_common_attrs(&mut req);
+                        self.push_request(req);
+                    }
+                }
+            }
+            "source" => {
+                if let Some(src) = self.current_attrs.get("src").cloned() {
+                    let mut req = PreloadRequest::new(src, PreloadResourceType::Source);
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+                if let Some(srcset) = self.current_attrs.get("srcset") {
+                    for candidate in parse_srcset_urls(srcset) {
+                        let mut req = PreloadRequest::new(candidate, PreloadResourceType::Source);
+                        self.apply_common_attrs(&mut req);
+                        self.push_request(req);
+                    }
+                }
+            }
+            "video" => {
+                if let Some(src) = self.current_attrs.get("src").cloned() {
+                    let mut req = PreloadRequest::new(src, PreloadResourceType::Video);
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+                if let Some(poster) = self.current_attrs.get("poster").cloned() {
+                    let mut req = PreloadRequest::new(poster, PreloadResourceType::Image);
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+            }
+            "audio" => {
+                if let Some(src) = self.current_attrs.get("src").cloned() {
+                    let mut req = PreloadRequest::new(src, PreloadResourceType::Audio);
+                    self.apply_common_attrs(&mut req);
+                    self.push_request(req);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn apply_common_attrs(&self, req: &mut PreloadRequest) {
+        if let Some(fetchpriority) = self.current_attrs.get("fetchpriority").cloned() {
+            req.priority = ResourcePriority::from_fetchpriority(&fetchpriority);
+            req.fetchpriority = Some(fetchpriority);
+        }
+        if let Some(crossorigin) = self.current_attrs.get("crossorigin") {
+            req.crossorigin = CrossOrigin::from_attr(crossorigin);
+        }
+        if let Some(integrity) = self.current_attrs.get("integrity").cloned() {
+            req.integrity = Some(integrity);
+        }
+        if let Some(media) = self.current_attrs.get("media").cloned() {
+            req.media = Some(media);
+        }
+        if let Some(loading) = self.current_attrs.get("loading").cloned() {
+            req.loading = Some(loading);
+        }
+    }
+
+    fn push_request(&mut self, req: PreloadRequest) {
+        let key = normalize_request_url(&self.base_url, &req.url);
+        if self.seen_urls.insert(key) {
+            self.requests.push(req);
+        }
+    }
+
+    fn reset_tag_state(&mut self) {
+        self.current_tag.clear();
+        self.current_attr_name.clear();
+        self.current_attr_value.clear();
+        self.current_attrs.clear();
+        self.current_is_end_tag = false;
+    }
+}
+
+impl Default for PreloadScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn normalize_request_url(base_url: &str, url: &str) -> String {
+    if base_url.is_empty()
+        || url.starts_with("http://")
+        || url.starts_with("https://")
+        || url.starts_with("//")
+        || url.starts_with("data:")
+    {
+        return url.to_string();
+    }
+
+    if base_url.ends_with('/') || url.starts_with('/') {
+        format!("{base_url}{url}")
+    } else {
+        format!("{base_url}/{url}")
+    }
+}
+
+fn parse_srcset_urls(srcset: &str) -> Vec<String> {
+    srcset
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .collect()
 }

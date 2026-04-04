@@ -12,9 +12,9 @@
 //! - Latência por chunk (streaming)
 
 use std::time::{Duration, Instant};
-use crate::html::arena::ArenaStats;
-use crate::html::interner::InternerStats;
-use crate::html::small_attr_map::SmallAttributeMapStats;
+
+use super::arena::ArenaStats;
+use super::interner::InternerStats;
 
 /// Estatísticas completas do parser
 #[derive(Debug, Clone)]
