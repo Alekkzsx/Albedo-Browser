@@ -305,9 +305,8 @@ impl DoctypeBuilder {
     }
 }
 
-pub struct HtmlLexer<'a> {
-    _input: &'a str,
-    chars: Vec<char>,
+pub struct HtmlLexer {
+    chars: VecDeque<char>,
     pos: usize,
     state: LexerState,
 
@@ -325,6 +324,7 @@ pub struct HtmlLexer<'a> {
 
     errors: Vec<LexerError>,
     eof_emitted: bool,
+    input_ended: bool,
 
     // Position Tracking
     line: usize,
@@ -337,11 +337,10 @@ pub struct HtmlLexer<'a> {
     cdata_section_allowed: bool,
 }
 
-impl<'a> HtmlLexer<'a> {
-    pub fn new(input: &'a str) -> Self {
-        Self {
-            _input: input,
-            chars: input.chars().collect(),
+impl HtmlLexer {
+    pub fn new(input: &str) -> Self {
+        let mut lexer = Self {
+            chars: VecDeque::new(),
             pos: 0,
             state: LexerState::Data,
             pending: VecDeque::new(),
@@ -355,6 +354,37 @@ impl<'a> HtmlLexer<'a> {
             raw_text_tag: None,
             errors: Vec::new(),
             eof_emitted: false,
+            input_ended: false,
+
+            line: 1,
+            column: 1,
+            last_column: 1,
+
+            return_state: LexerState::Data,
+            character_reference_code: 0,
+            cdata_section_allowed: false,
+        };
+        lexer.feed(input);
+        lexer
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            chars: VecDeque::new(),
+            pos: 0,
+            state: LexerState::Data,
+            pending: VecDeque::new(),
+            text_buffer: String::new(),
+            text_buffer_line: 1,
+            text_buffer_column: 1,
+            current_tag: None,
+            current_comment: String::new(),
+            current_doctype: None,
+            temporary_buffer: String::new(),
+            raw_text_tag: None,
+            errors: Vec::new(),
+            eof_emitted: false,
+            input_ended: false,
 
             line: 1,
             column: 1,
@@ -364,6 +394,14 @@ impl<'a> HtmlLexer<'a> {
             character_reference_code: 0,
             cdata_section_allowed: false,
         }
+    }
+
+    pub fn feed(&mut self, input: &str) {
+        self.chars.extend(input.chars());
+    }
+
+    pub fn end(&mut self) {
+        self.input_ended = true;
     }
 
     pub fn set_raw_text_tag(&mut self, tag: Option<String>) {
@@ -388,23 +426,27 @@ impl<'a> HtmlLexer<'a> {
         std::mem::take(&mut self.errors)
     }
 
-    pub fn next_token(&mut self) -> HtmlToken {
+    pub fn next_token(&mut self) -> Option<HtmlToken> {
         loop {
             if let Some(token) = self.pending.pop_front() {
-                return token;
+                return Some(token);
             }
 
             if self.eof_emitted {
-                return HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column };
+                return Some(HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column });
             }
 
             let was_at_end = self.pos >= self.chars.len();
+            if was_at_end && !self.input_ended {
+                return None; // Need more data from feed()
+            }
+
             self.step();
 
-            if self.pos >= self.chars.len() {
+            if self.pos >= self.chars.len() && self.input_ended {
                 self.flush_text();
                 if let Some(token) = self.pending.pop_front() {
-                    return token;
+                    return Some(token);
                 }
 
                 if !was_at_end {
@@ -412,7 +454,17 @@ impl<'a> HtmlLexer<'a> {
                 }
 
                 self.eof_emitted = true;
-                return HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column };
+                return Some(HtmlToken { kind: HtmlTokenKind::Eof, line: self.line, column: self.column });
+            }
+            
+            // If we're not at the end, or we just emitted tokens (like a tag), return them
+            if let Some(token) = self.pending.pop_front() {
+                return Some(token);
+            }
+            
+            // If we didn't emit a token and we are at the end of current chunk, return None
+            if self.pos >= self.chars.len() && !self.input_ended {
+                return None;
             }
         }
     }
@@ -2816,15 +2868,14 @@ impl<'a> HtmlLexer<'a> {
     }
 
     fn starts_with_case_insensitive(&self, needle: &str) -> bool {
-        let len = needle.chars().count();
+        let needle_chars: Vec<char> = needle.chars().collect();
+        let len = needle_chars.len();
         if self.pos + len > self.chars.len() {
             return false;
         }
 
-        self.chars[self.pos..self.pos + len]
-            .iter()
-            .zip(needle.chars())
-            .all(|(a, b)| a.eq_ignore_ascii_case(&b))
+        self.chars.iter().skip(self.pos).zip(needle_chars.iter())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
     }
 }
 
@@ -2975,13 +3026,18 @@ fn decode_reference_from_text(text: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_character_references, HtmlLexer, HtmlToken, LexerErrorKind};
+    use super::{decode_character_references, HtmlLexer, HtmlToken, HtmlTokenKind, LexerErrorKind};
 
-    fn next_non_eof(lexer: &mut HtmlLexer<'_>) -> Vec<HtmlToken> {
+    fn build_lexer(input: &str) -> HtmlLexer {
+        let mut lexer = HtmlLexer::new(input);
+        lexer.end();
+        lexer
+    }
+
+    fn next_non_eof(lexer: &mut HtmlLexer) -> Vec<HtmlToken> {
         let mut out = Vec::new();
-        loop {
-            let token = lexer.next_token();
-            if matches!(token, HtmlToken::Eof) {
+        while let Some(token) = lexer.next_token() {
+            if matches!(token.kind, HtmlTokenKind::Eof) {
                 break;
             }
             out.push(token);
@@ -2991,27 +3047,27 @@ mod tests {
 
     #[test]
     fn tokenizes_basic_markup() {
-        let mut lexer = HtmlLexer::new(r#"<div class="hero">Hi &amp; bye</div>"#);
+        let mut lexer = build_lexer(r#"<div class="hero">Hi &amp; bye</div>"#);
 
         let tokens = next_non_eof(&mut lexer);
         assert_eq!(tokens.len(), 3);
 
-        let HtmlToken::StartTag(tag) = &tokens[0] else {
+        let HtmlTokenKind::StartTag(tag) = &tokens[0].kind else {
             panic!("expected start tag");
         };
         assert_eq!(tag.name, "div");
         assert_eq!(tag.attributes.get("class"), Some(&"hero".to_string()));
 
-        assert_eq!(tokens[1], HtmlToken::Character("Hi & bye".to_string()));
-        assert_eq!(tokens[2], HtmlToken::EndTag("div".to_string()));
+        assert_eq!(tokens[1].kind, HtmlTokenKind::Character("Hi & bye".to_string()));
+        assert_eq!(tokens[2].kind, HtmlTokenKind::EndTag("div".to_string()));
     }
 
     #[test]
     fn tokenizes_comment_and_doctype() {
         let mut lexer = HtmlLexer::new(r#"<!DOCTYPE html><!-- note -->"#);
         let tokens = next_non_eof(&mut lexer);
-        assert!(matches!(tokens[0], HtmlToken::Doctype(_)));
-        assert_eq!(tokens[1], HtmlToken::Comment(" note ".to_string()));
+        assert!(matches!(tokens[0].kind, HtmlTokenKind::Doctype(_)));
+        assert_eq!(tokens[1].kind, HtmlTokenKind::Comment(" note ".to_string()));
     }
 
     #[test]
@@ -3020,7 +3076,7 @@ mod tests {
             HtmlLexer::new(r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "about:legacy-compat">"#);
 
         let tokens = next_non_eof(&mut lexer);
-        let HtmlToken::Doctype(dt) = &tokens[0] else {
+        let HtmlTokenKind::Doctype(dt) = &tokens[0].kind else {
             panic!("expected doctype token");
         };
 
@@ -3056,7 +3112,7 @@ mod tests {
         let mut lexer = HtmlLexer::new("Hello &amp; <b>");
         lexer.set_raw_text_tag(Some("textarea".to_string()));
         let tokens = next_non_eof(&mut lexer);
-        assert_eq!(tokens[0], HtmlToken::Character("Hello & ".to_string()));
+        assert_eq!(tokens[0].kind, HtmlTokenKind::Character("Hello & ".to_string()));
     }
 
     #[test]
@@ -3113,7 +3169,7 @@ mod tests {
 
     #[test]
     fn keeps_script_escaped_sequences_as_text() {
-        let mut lexer = HtmlLexer::new("<script><!-- alert(1) //--></script>");
+        let mut lexer = build_lexer("<script><!-- alert(1) //--></script>");
         let tokens = next_non_eof(&mut lexer);
 
         let script_text: String = tokens
@@ -3132,7 +3188,7 @@ mod tests {
 
     #[test]
     fn keeps_script_double_escaped_sequences_as_text() {
-        let mut lexer = HtmlLexer::new("<script><!--<script>var a = 1;</script>--></script>");
+        let mut lexer = build_lexer("<script><!--<script>var a = 1;</script>--></script>");
         let tokens = next_non_eof(&mut lexer);
 
         let script_text: String = tokens
@@ -3174,12 +3230,12 @@ mod tests {
                 input.push(alphabet[idx]);
             }
 
-            let mut lexer = HtmlLexer::new(&input);
+            let mut lexer = build_lexer(&input);
             let mut guard = 0usize;
-            loop {
+            while let Some(token) = lexer.next_token() {
                 guard += 1;
                 assert!(guard < 4096, "lexer did not terminate for input {:?}", input);
-                if matches!(lexer.next_token().kind, HtmlTokenKind::Eof) {
+                if matches!(token.kind, HtmlTokenKind::Eof) {
                     break;
                 }
             }
