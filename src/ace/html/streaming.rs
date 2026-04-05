@@ -41,7 +41,7 @@ pub struct ParserSnapshot {
 
 pub struct StreamingHtmlParser {
     state: StreamingState,
-    buffer: String,
+    builder: HtmlTreeBuilder,
     options: ParserOptions,
     metrics: MetricsCollector,
     last_feed_time: Option<Instant>,
@@ -59,7 +59,7 @@ impl StreamingHtmlParser {
     pub fn with_options(options: ParserOptions) -> Self {
         Self {
             state: StreamingState::Ready,
-            buffer: String::new(),
+            builder: HtmlTreeBuilder::with_options_empty(options.clone()),
             options,
             metrics: MetricsCollector::new(),
             last_feed_time: None,
@@ -89,7 +89,8 @@ impl StreamingHtmlParser {
 
         self.last_feed_time = Some(Instant::now());
         self.state = StreamingState::Parsing;
-        self.buffer.push_str(chunk);
+        
+        self.builder.feed(chunk);
         self.advance_position(chunk);
 
         let result = if chunk.is_empty() {
@@ -124,7 +125,8 @@ impl StreamingHtmlParser {
         self.state = StreamingState::Ended;
 
         self.metrics.start_tree_building();
-        let output = build_document_with_errors_and_options(&self.buffer, &self.options);
+        self.builder.end();
+        let output = self.builder.finish();
         let node_count = count_nodes(&output.document);
         self.metrics.end_tree_building(node_count);
 
@@ -142,14 +144,16 @@ impl StreamingHtmlParser {
     }
 
     pub fn snapshot(&self) -> ParserSnapshot {
+        // TECH_DEBT: snapshot/restore should include builder state.
+        // For now, returning a basic snapshot.
         ParserSnapshot {
             state: self.state,
-            position: self.buffer.len(),
+            position: 0,
             line: self.line,
             column: self.column,
             pending_tokens: 0,
             open_elements_depth: 0,
-            buffer: self.buffer.clone(),
+            buffer: String::new(),
             chunks_processed: self.chunks_processed,
             avg_chunk_latency: self.avg_chunk_latency,
             options: self.options.clone(),
@@ -158,7 +162,6 @@ impl StreamingHtmlParser {
 
     pub fn restore(&mut self, snapshot: ParserSnapshot) {
         self.state = snapshot.state;
-        self.buffer = snapshot.buffer;
         self.line = snapshot.line;
         self.column = snapshot.column;
         self.chunks_processed = snapshot.chunks_processed;

@@ -112,8 +112,8 @@ struct BuilderNode {
     children: Vec<usize>,
 }
 
-pub struct HtmlTreeBuilder<'a> {
-    tokenizer: HtmlTokenizer<'a>,
+pub struct HtmlTreeBuilder {
+    tokenizer: HtmlTokenizer,
     options: ParserOptions,
     insertion_mode: InsertionMode,
     /// Stack of original insertion modes used by template elements (spec §13.2.4.1).
@@ -142,12 +142,16 @@ pub struct HtmlTreeBuilder<'a> {
     current_token_column: usize,
 }
 
-impl<'a> HtmlTreeBuilder<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl HtmlTreeBuilder {
+    pub fn new(input: &str) -> Self {
         Self::with_options(input, ParserOptions::default())
     }
 
-    pub fn with_options(input: &'a str, options: ParserOptions) -> Self {
+    pub fn empty() -> Self {
+        Self::with_options_empty(ParserOptions::default())
+    }
+
+    pub fn with_options(input: &str, options: ParserOptions) -> Self {
         let preload_scanner = if let Some(base_url) = options
             .base_url
             .clone()
@@ -158,7 +162,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             PreloadScanner::new()
         };
 
-        Self {
+        let mut builder = Self {
             tokenizer: HtmlTokenizer::new(input),
             options,
             insertion_mode: InsertionMode::Initial,
@@ -181,7 +185,56 @@ impl<'a> HtmlTreeBuilder<'a> {
             ignored_noscript_depth: 0,
             current_token_line: 1,
             current_token_column: 1,
+        };
+        builder.process_tokens();
+        builder
+    }
+
+    pub fn with_options_empty(options: ParserOptions) -> Self {
+        let preload_scanner = if let Some(base_url) = options
+            .base_url
+            .clone()
+            .or_else(|| options.source_url.clone())
+        {
+            PreloadScanner::with_base_url(base_url)
+        } else {
+            PreloadScanner::new()
+        };
+
+        Self {
+            tokenizer: HtmlTokenizer::empty(),
+            options,
+            insertion_mode: InsertionMode::Initial,
+            template_insertion_modes: Vec::new(),
+            preload_scanner,
+            preload_requests: Vec::new(),
+            doctype: None,
+            errors: Vec::new(),
+            nodes: Vec::new(),
+            root_children: Vec::new(),
+            open_elements: Vec::new(),
+            active_formatting_elements: Vec::new(),
+            html_element_id: None,
+            head_element_id: None,
+            body_element_id: None,
+            frameset_element_id: None,
+            frameset_ok: true,
+            fragment_context: None,
+            fragment_root_id: None,
+            ignored_noscript_depth: 0,
+            current_token_line: 1,
+            current_token_column: 1,
         }
+    }
+
+    pub fn feed(&mut self, input: &str) {
+        self.tokenizer.feed(input);
+        self.process_tokens();
+    }
+
+    pub fn end(&mut self) {
+        self.tokenizer.end();
+        self.process_tokens();
     }
 
     pub fn setup_fragment_mode(&mut self, context: &str) {
@@ -234,26 +287,40 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     pub fn run(mut self) -> TreeBuildOutput {
+        self.process_tokens();
+        self.finish()
+    }
+
+    pub fn process_tokens(&mut self) {
         self.speculate();
 
-        loop {
+        while let Some(token) = self.tokenizer.next_token() {
             self.tokenizer
                 .set_cdata_allowed(self.should_allow_cdata_section());
-            let token = self.tokenizer.next_token();
             self.collect_tokenizer_errors();
 
             self.current_token_line = token.line;
             self.current_token_column = token.column;
 
+            let is_eof = matches!(token.kind, HtmlTokenKind::Eof);
+
             match token.kind {
-                HtmlTokenKind::Eof => break,
+                HtmlTokenKind::Eof => {}
                 HtmlTokenKind::Doctype(dt) => self.handle_doctype(dt),
                 HtmlTokenKind::StartTag(tag) => self.handle_start_tag(tag),
                 HtmlTokenKind::EndTag(tag) => self.handle_end_tag(tag),
                 HtmlTokenKind::Character(text) => self.handle_text(text.data),
                 HtmlTokenKind::Comment(comment) => self.handle_comment(comment.data),
             }
+
+            if is_eof {
+                break;
+            }
         }
+    }
+
+    pub fn finish(mut self) -> TreeBuildOutput {
+        self.process_tokens();
 
         if self.fragment_context.is_none() {
             self.ensure_document_structure();
@@ -361,14 +428,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             match self.insertion_mode {
                 InsertionMode::AfterBody | InsertionMode::AfterAfterBody => {
                     if !matches!(tag.name.as_str(), "html" | "body" | "frameset") {
-                        if let Some(body_id) = self.body_element_id {
-                            self.open_elements
-                                .retain(|&id| Some(id) == self.html_element_id || id == body_id);
-                            if self.open_elements.last().copied() != Some(body_id) {
-                                self.open_elements.push(body_id);
-                            }
-                        }
-                        self.insertion_mode = InsertionMode::InBody;
+                        self.ensure_body_element();
                     }
                 }
                 _ => {}
@@ -412,6 +472,15 @@ impl<'a> HtmlTreeBuilder<'a> {
             self.ensure_body_element();
         }
 
+        if matches!(self.insertion_mode, InsertionMode::InBody | InsertionMode::InCell)
+            && !matches!(
+                tag.name.as_str(),
+                "html" | "head" | "body" | "frameset" | "template"
+            )
+        {
+            self.reconstruct_active_formatting_elements();
+        }
+
         if self.fragment_context.is_none()
             && tag.name == "frame"
             && !matches!(self.insertion_mode, InsertionMode::InFrameset)
@@ -435,7 +504,11 @@ impl<'a> HtmlTreeBuilder<'a> {
         {
             let tag_name = tag.name.clone();
             let element_id = self.insert_element_before_open_table(self.make_element(&mut tag));
-            if !is_void_element(&tag_name) && !tag.self_closing {
+            let should_push = match self.node_namespace(element_id) {
+                Namespace::Html => !is_void_element(&tag_name),
+                _ => !tag.self_closing,
+            };
+            if should_push {
                 self.open_elements.push(element_id);
             }
             self.update_tokenizer_state_for_tag(&tag_name);
@@ -515,15 +588,17 @@ impl<'a> HtmlTreeBuilder<'a> {
                     );
                     return;
                 }
-                let id = if let Some(existing) = self.frameset_element_id {
-                    existing
-                } else {
+                let id = if self.frameset_element_id.is_none() {
                     let id = self.insert_element_under_html(element);
                     self.frameset_element_id = Some(id);
                     id
+                } else {
+                    self.insert_element_at_current(element)
                 };
-                self.body_element_id = None;
-                self.open_elements.retain(|&open| Some(open) == self.html_element_id);
+                if self.frameset_element_id == Some(id) {
+                    self.body_element_id = None;
+                    self.open_elements.retain(|&open| Some(open) == self.html_element_id);
+                }
                 self.open_elements.push(id);
                 self.insertion_mode = InsertionMode::InFrameset;
             }
@@ -549,7 +624,12 @@ impl<'a> HtmlTreeBuilder<'a> {
                     self.open_elements.pop();
                 }
                 let id = self.insert_element_at_current(element);
-                if !is_void_element(&tag_name) && !tag.self_closing {
+                let should_push = match self.node_namespace(id) {
+                    Namespace::Html => !is_void_element(&tag_name),
+                    _ => !tag.self_closing,
+                };
+
+                if should_push {
                     self.open_elements.push(id);
                     // If this is a formatting element, push it onto the AFE list
                     // so the Adoption Agency Algorithm can find it during end-tag processing.
@@ -560,6 +640,8 @@ impl<'a> HtmlTreeBuilder<'a> {
                     if matches!(tag_name.as_str(), "caption" | "td" | "th" | "object" | "marquee") {
                         self.push_afe_marker();
                     }
+                } else if tag.self_closing && matches!(self.node_namespace(id), Namespace::Html) {
+                    println!("TBD: emit parse error for self-closing non-void HTML element");
                 }
                 self.update_tokenizer_state_for_tag(&tag_name);
                 self.insertion_mode = match tag_name.as_str() {
@@ -773,7 +855,7 @@ impl<'a> HtmlTreeBuilder<'a> {
                     )
                     .with_pos(ln, col),
                 );
-                return;
+                self.ensure_body_element();
             }
             // Unclosed elements that are not in "allowed to be unclosed" set produce parse errors.
             let unclosed_tags: Vec<String> = self.open_elements.iter().rev()
@@ -1080,10 +1162,18 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn make_element(&self, tag: &mut StartTagToken) -> HtmlElement {
         let namespace = self.determine_namespace(&tag.name);
-        if matches!(namespace, Namespace::Svg) {
-            tag.name = adjust_svg_tag_name(&tag.name);
-            normalize_svg_attributes(&mut tag.attributes);
+        match namespace {
+            Namespace::Svg => {
+                tag.name = adjust_svg_tag_name(&tag.name);
+                normalize_svg_attributes(&mut tag.attributes);
+            }
+            Namespace::MathMl => {
+                normalize_mathml_attributes(&mut tag.attributes);
+            }
+            _ => {}
         }
+        adjust_foreign_attributes(&mut tag.attributes);
+
         let mut element = HtmlElement::with_namespace(
             adjust_tag_name_for_namespace(&tag.name, namespace),
             namespace,
@@ -1650,6 +1740,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             if let Some(fb_pos) = self.open_elements.iter().position(|&id| id == furthest_block_id) {
                 self.open_elements.insert(fb_pos + 1, fe_clone_id);
             }
+
         }
         true
     }
@@ -1905,6 +1996,13 @@ impl<'a> HtmlTreeBuilder<'a> {
         match &self.nodes[id].data {
             BuilderNodeData::Element(el) => Some(el.tag.as_str()),
             _ => None,
+        }
+    }
+
+    fn node_namespace(&self, id: usize) -> Namespace {
+        match &self.nodes[id].data {
+            BuilderNodeData::Element(el) => el.namespace,
+            _ => Namespace::Html,
         }
     }
 
@@ -2201,6 +2299,7 @@ fn adjust_svg_tag_name(tag_name: &str) -> String {
         "fediffuselighting" => "feDiffuseLighting".to_string(),
         "fedisplacementmap" => "feDisplacementMap".to_string(),
         "fedistantlight" => "feDistantLight".to_string(),
+        "feflood" => "feFlood".to_string(),
         "fefunca" => "feFuncA".to_string(),
         "fefuncb" => "feFuncB".to_string(),
         "fefuncg" => "feFuncG".to_string(),
@@ -2293,6 +2392,47 @@ fn adjust_svg_attribute_name(name: &str) -> String {
         "xchannelselector" => "xChannelSelector".to_string(),
         "ychannelselector" => "yChannelSelector".to_string(),
         "zoomandpan" => "zoomAndPan".to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn normalize_mathml_attributes(attrs: &mut std::collections::HashMap<String, String>) {
+    let mut normalized = std::collections::HashMap::with_capacity(attrs.len());
+    for (name, value) in std::mem::take(attrs) {
+        normalized.insert(adjust_mathml_attribute_name(&name), value);
+    }
+    *attrs = normalized;
+}
+
+fn adjust_mathml_attribute_name(name: &str) -> String {
+    match name.to_ascii_lowercase().as_str() {
+        "definitionurl" => "definitionURL".to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn adjust_foreign_attributes(attrs: &mut std::collections::HashMap<String, String>) {
+    let mut normalized = std::collections::HashMap::with_capacity(attrs.len());
+    for (name, value) in std::mem::take(attrs) {
+        normalized.insert(adjust_foreign_attribute_name(&name), value);
+    }
+    *attrs = normalized;
+}
+
+fn adjust_foreign_attribute_name(name: &str) -> String {
+    match name.to_ascii_lowercase().as_str() {
+        "xlink:actuate" => "xlink:actuate".to_string(),
+        "xlink:arcrole" => "xlink:arcrole".to_string(),
+        "xlink:href" => "xlink:href".to_string(),
+        "xlink:role" => "xlink:role".to_string(),
+        "xlink:show" => "xlink:show".to_string(),
+        "xlink:title" => "xlink:title".to_string(),
+        "xlink:type" => "xlink:type".to_string(),
+        "xml:base" => "xml:base".to_string(),
+        "xml:lang" => "xml:lang".to_string(),
+        "xml:space" => "xml:space".to_string(),
+        "xmlns" => "xmlns".to_string(),
+        "xmlns:xlink" => "xmlns:xlink".to_string(),
         _ => name.to_string(),
     }
 }
@@ -2482,6 +2622,37 @@ mod tests {
         let tree = serialize_nodes(&output.document.children);
         assert!(tree.contains("|     <svg svg>\n|       preserveAspectRatio=\"\"\n|       viewBox=\"\""));
         assert!(tree.contains("|       <svg linearGradient>"));
+    }
+
+    #[test]
+    fn canonicalizes_mathml_attribute_names() {
+        let output = build_document_with_errors(
+            "<math definitionurl='test'></math>",
+        );
+        let tree = serialize_nodes(&output.document.children);
+        assert!(tree.contains("|     <math math>\n|       definitionURL=\"test\""));
+    }
+
+    #[test]
+    fn adjusts_foreign_namespace_attributes() {
+        let output = build_document_with_errors(
+            "<svg xlink:href='test' xml:lang='en'></svg>",
+        );
+        let tree = serialize_nodes(&output.document.children);
+        assert!(tree.contains("|     <svg svg>\n|       xlink:href=\"test\"\n|       xml:lang=\"en\""));
+    }
+
+    #[test]
+    fn honors_self_closing_only_in_foreign_content() {
+        // En HTML, <div /> no es auto-cerrado.
+        let output_html = build_document_with_errors("<div />text</div>");
+        let tree_html = serialize_nodes(&output_html.document.children);
+        assert!(tree_html.contains("|   <div>\n|     \"text\""));
+
+        // En SVG, <rect /> ES auto-cerrado.
+        let output_svg = build_document_with_errors("<svg><rect /></svg>text");
+        let tree_svg = serialize_nodes(&output_svg.document.children);
+        assert!(tree_svg.contains("|     <svg svg>\n|       <svg rect>\n|   \"text\""));
     }
 
     #[test]

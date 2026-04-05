@@ -105,17 +105,32 @@ impl TokenizerError {
     }
 }
 
-pub struct HtmlTokenizer<'a> {
-    pub lexer: HtmlLexer<'a>,
+pub struct HtmlTokenizer {
+    pub lexer: HtmlLexer,
     errors: Vec<TokenizerError>,
 }
 
-impl<'a> HtmlTokenizer<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl HtmlTokenizer {
+    pub fn new(input: &str) -> Self {
         Self {
             lexer: HtmlLexer::new(input),
             errors: Vec::new(),
         }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            lexer: HtmlLexer::empty(),
+            errors: Vec::new(),
+        }
+    }
+
+    pub fn feed(&mut self, input: &str) {
+        self.lexer.feed(input);
+    }
+
+    pub fn end(&mut self) {
+        self.lexer.end();
     }
 
     pub fn set_raw_text_tag(&mut self, tag: Option<String>) {
@@ -138,7 +153,7 @@ impl<'a> HtmlTokenizer<'a> {
         std::mem::take(&mut self.errors)
     }
 
-    pub fn next_token(&mut self) -> HtmlToken {
+    pub fn next_token(&mut self) -> Option<HtmlToken> {
         // Guard against degenerate inputs where the lexer produces an unbounded
         // stream of skipped tokens (e.g., repeated empty characters on a stuck state).
         // After 65535 iterations without a real token, emit EOF to terminate parsing.
@@ -147,17 +162,17 @@ impl<'a> HtmlTokenizer<'a> {
             guard += 1;
             if guard > 65535 {
                 // SAFETY: defensive escape hatch — should never trigger on valid paths.
-                return HtmlToken {
+                return Some(HtmlToken {
                     kind: HtmlTokenKind::Eof,
                     line: 0,
                     column: 0,
-                };
+                });
             }
-            let raw = self.lexer.next_token();
+            let raw = self.lexer.next_token()?;
             self.collect_lexer_errors();
 
             if let Some(token) = self.convert_raw_token(raw) {
-                return token;
+                return Some(token);
             }
         }
     }
@@ -276,26 +291,26 @@ fn map_lexer_error(err: RawLexerError) -> TokenizerError {
 
 #[cfg(test)]
 mod tests {
-    use super::{HtmlToken, HtmlTokenizer, TokenizerErrorKind, TokenizerErrorSource};
+    use super::{HtmlTokenKind, HtmlTokenizer, TokenizerErrorKind, TokenizerErrorSource};
 
     #[test]
     fn converts_raw_tokens_into_typed_tokens() {
         let mut tokenizer = HtmlTokenizer::new(r#"<div class="hero">Hello</div>"#);
 
-        let token = tokenizer.next_token();
+        let token = tokenizer.next_token().unwrap();
         let HtmlTokenKind::StartTag(tag) = token.kind else {
             panic!("expected start tag");
         };
         assert_eq!(tag.name, "div");
         assert_eq!(tag.attributes.get("class"), Some(&"hero".to_string()));
 
-        let token = tokenizer.next_token();
+        let token = tokenizer.next_token().unwrap();
         let HtmlTokenKind::Character(text) = token.kind else {
             panic!("expected character token");
         };
         assert_eq!(text.data, "Hello");
 
-        let token = tokenizer.next_token();
+        let token = tokenizer.next_token().unwrap();
         let HtmlTokenKind::EndTag(tag) = token.kind else {
             panic!("expected end tag");
         };
@@ -306,7 +321,7 @@ mod tests {
     fn ignores_invalid_doctype_with_recovery() {
         let mut tokenizer = HtmlTokenizer::new("<!DOCTYPE><p>ok</p>");
 
-        let token = tokenizer.next_token();
+        let token = tokenizer.next_token().unwrap();
         let HtmlTokenKind::StartTag(tag) = token.kind else {
             panic!("expected start tag after invalid doctype");
         };
@@ -321,7 +336,7 @@ mod tests {
     #[test]
     fn replaces_null_characters_and_keeps_stream_valid() {
         let mut tokenizer = HtmlTokenizer::new("a\0b");
-        let token = tokenizer.next_token();
+        let token = tokenizer.next_token().unwrap();
 
         let HtmlTokenKind::Character(text) = token.kind else {
             panic!("expected character token");
@@ -336,7 +351,7 @@ mod tests {
     #[test]
     fn maps_lexer_errors_with_source() {
         let mut tokenizer = HtmlTokenizer::new("</>");
-        let _ = tokenizer.next_token();
+        let _ = tokenizer.next_token().unwrap();
 
         assert!(tokenizer.errors().iter().any(|err| {
             err.source == TokenizerErrorSource::Lexer
@@ -348,17 +363,20 @@ mod tests {
     fn treats_noscript_contents_as_raw_text() {
         let mut tokenizer = HtmlTokenizer::new("<noscript><style>.x{}</style></noscript>");
 
-        let HtmlTokenKind::StartTag(start) = tokenizer.next_token().kind else {
+        let start_token = tokenizer.next_token().unwrap();
+        let HtmlTokenKind::StartTag(start) = start_token.kind else {
             panic!("expected noscript start tag");
         };
         assert_eq!(start.name, "noscript");
 
-        let HtmlTokenKind::Character(text) = tokenizer.next_token().kind else {
+        let text_token = tokenizer.next_token().unwrap();
+        let HtmlTokenKind::Character(text) = text_token.kind else {
             panic!("expected noscript raw text");
         };
         assert_eq!(text.data, "<style>.x{}</style>");
 
-        let HtmlTokenKind::EndTag(end) = tokenizer.next_token().kind else {
+        let end_token = tokenizer.next_token().unwrap();
+        let HtmlTokenKind::EndTag(end) = end_token.kind else {
             panic!("expected noscript end tag");
         };
         assert_eq!(end.name, "noscript");
