@@ -106,3 +106,87 @@ fn streaming_path_matches_integrated_path_for_chunked_input() {
     assert_eq!(batch.stats.total_errors, streamed.stats.total_errors);
     assert_eq!(batch.stats.total_preloads, streamed.stats.total_preloads);
 }
+
+#[test]
+fn streaming_snapshot_restore_matches_batch_after_rewind() {
+    let options = ParserOptions::default();
+    let input = "<div><b>left</b><i>right</i></div>";
+
+    let mut streaming = StreamingHtmlParser::with_options(options.clone());
+    assert!(!matches!(
+        streaming.feed("<div><b>left"),
+        albedo::ace::html::streaming::ChunkResult::Error(_)
+    ));
+    let snapshot = streaming.snapshot();
+    assert!(!matches!(
+        streaming.feed("</b><i>wrong</i></div>"),
+        albedo::ace::html::streaming::ChunkResult::Error(_)
+    ));
+
+    streaming.restore(snapshot);
+    assert!(!matches!(
+        streaming.feed("</b><i>right</i></div>"),
+        albedo::ace::html::streaming::ChunkResult::Error(_)
+    ));
+
+    let streamed = streaming.end_with_parse_result();
+    let batch = parse_html_integrated_with_options(input, &options);
+
+    assert_eq!(batch.document, streamed.document);
+    assert_eq!(batch.parse_errors, streamed.parse_errors);
+}
+
+#[test]
+fn malformed_doctype_keeps_error_positions_across_string_and_byte_paths() {
+    let input = "\n<!DOCTYPE>";
+    let options = ParserOptions::default();
+
+    let string_result = parse_document_with_errors_and_options(input, &options);
+    let byte_result = parse_document_from_bytes_with_errors_and_options(input.as_bytes(), None, &options)
+        .expect("byte parsing should succeed");
+    let integrated = parse_html_integrated_from_bytes_with_options(input.as_bytes(), None, &options)
+        .expect("integrated byte parsing should succeed");
+
+    let string_errors = string_result.parse_errors();
+    let byte_errors = byte_result.parse_errors();
+
+    assert_eq!(string_errors, byte_errors);
+    assert_eq!(byte_errors, integrated.parse_errors);
+    assert!(!integrated.parse_errors.is_empty());
+    assert!(integrated.parse_errors.iter().all(|error| error.line >= 1));
+    assert!(integrated.parse_errors.iter().any(|error| error.line == 2));
+}
+
+#[test]
+fn noscript_scripting_flag_matches_between_batch_and_streaming() {
+    let input = "<noscript><style>.x{}</style></noscript><div>ok</div>";
+    let scripting_on = ParserOptions::default();
+    let scripting_off = ParserOptions {
+        scripting_enabled: false,
+        ..ParserOptions::default()
+    };
+
+    let batch_on = parse_html_integrated_with_options(input, &scripting_on);
+    let batch_off = parse_html_integrated_with_options(input, &scripting_off);
+
+    let mut streaming_on = StreamingHtmlParser::with_options(scripting_on);
+    let mut streaming_off = StreamingHtmlParser::with_options(scripting_off);
+
+    for chunk in ["<noscript><style>", ".x{}", "</style></noscript><div>ok</div>"] {
+        assert!(!matches!(
+            streaming_on.feed(chunk),
+            albedo::ace::html::streaming::ChunkResult::Error(_)
+        ));
+        assert!(!matches!(
+            streaming_off.feed(chunk),
+            albedo::ace::html::streaming::ChunkResult::Error(_)
+        ));
+    }
+
+    let streamed_on = streaming_on.end_with_parse_result();
+    let streamed_off = streaming_off.end_with_parse_result();
+
+    assert_eq!(batch_on.document, streamed_on.document);
+    assert_eq!(batch_off.document, streamed_off.document);
+    assert_ne!(batch_on.document, batch_off.document);
+}
