@@ -120,6 +120,7 @@ pub enum LexerState {
     // Missing 16 states for character references, comments and CDATA
     CharacterReference,
     NamedCharacterReference,
+    AmbiguousAmpersand,
     NumericCharacterReference,
     HexadecimalCharacterReferenceStart,
     DecimalCharacterReferenceStart,
@@ -169,6 +170,7 @@ pub enum LexerErrorKind {
     UnknownNamedCharacterReference,
     MissingSemicolonAfterCharacterReference,
     AbsenceOfDigitsInNumericCharacterReference,
+    AmbiguousAmpersand,
     NullCharacterReference,
     NestedComment,
     EofInCdata,
@@ -579,6 +581,7 @@ impl HtmlLexer {
 
             LexerState::CharacterReference => self.state_character_reference(ch),
             LexerState::NamedCharacterReference => self.state_named_character_reference(ch),
+            LexerState::AmbiguousAmpersand => self.state_ambiguous_ampersand(ch),
             LexerState::NumericCharacterReference => self.state_numeric_character_reference(ch),
             LexerState::HexadecimalCharacterReferenceStart => {
                 self.state_hexadecimal_character_reference_start(ch)
@@ -2490,6 +2493,38 @@ impl HtmlLexer {
         }
     }
 
+    fn state_ambiguous_ampersand(&mut self, ch: Option<char>) {
+        // WHATWG §13.2.5.72: Ambiguous ampersand state
+        match ch {
+            Some(c) if is_ascii_alnum(c) => {
+                // If consumed as part of an attribute, append to attribute value
+                if matches!(
+                    self.return_state,
+                    LexerState::AttributeValueDoubleQuoted
+                        | LexerState::AttributeValueSingleQuoted
+                        | LexerState::AttributeValueUnquoted
+                ) {
+                    self.with_current_tag_mut(|tag| tag.push_attribute_value_char(c));
+                } else {
+                    self.push_text_char(c);
+                }
+            }
+            Some(';') => {
+                self.parse_error(
+                    LexerErrorKind::AmbiguousAmpersand,
+                    "ambiguous ampersand followed by semicolon",
+                );
+                self.reconsume_in(self.return_state);
+            }
+            Some(c) => {
+                self.reconsume_in_with_char(self.return_state, c);
+            }
+            None => {
+                self.reconsume_in(self.return_state);
+            }
+        }
+    }
+
     fn state_numeric_character_reference(&mut self, ch: Option<char>) {
         self.character_reference_code = 0;
         match ch {
@@ -2585,8 +2620,25 @@ impl HtmlLexer {
     fn state_numeric_character_reference_end(&mut self, _ch: Option<char>) {
         // Validate code point
         let mut code = self.character_reference_code;
-        if code == 0 || (code > 0x10FFFF) || (code >= 0xD800 && code <= 0xDFFF) {
-            self.parse_error(LexerErrorKind::NullCharacterReference, "invalid numeric character reference range");
+        
+        // Check for surrogate pairs (0xD800-0xDFFF)
+        if code >= 0xD800 && code <= 0xDFFF {
+            self.parse_error(
+                LexerErrorKind::SurrogateCharacterReference,
+                "surrogate character reference",
+            );
+            code = 0xFFFD;
+        } else if code == 0 {
+            self.parse_error(
+                LexerErrorKind::NullCharacterReference,
+                "null character reference",
+            );
+            code = 0xFFFD;
+        } else if code > 0x10FFFF {
+            self.parse_error(
+                LexerErrorKind::CharacterReferenceOutsideUnicodeRange,
+                "character reference outside unicode range",
+            );
             code = 0xFFFD;
         }
         

@@ -424,15 +424,52 @@ impl HtmlTreeBuilder {
             self.ensure_document_structure();
         }
 
+        // Handle AfterAfterBody and AfterAfterFrameset modes
         if self.fragment_context.is_none() {
             match self.insertion_mode {
-                InsertionMode::AfterBody | InsertionMode::AfterAfterBody => {
+                InsertionMode::AfterAfterBody => {
+                    if tag.name != "html" {
+                        self.errors.push(
+                            TreeBuilderError::new(
+                                TreeBuilderErrorKind::UnexpectedToken,
+                                self.insertion_mode,
+                                format!("unexpected start tag <{}> in AfterAfterBody mode", tag.name),
+                            )
+                            .with_pos(self.current_token_line, self.current_token_column),
+                        );
+                        self.insertion_mode = InsertionMode::InBody;
+                        // Reprocess token
+                        return self.handle_start_tag(tag);
+                    }
+                }
+                InsertionMode::AfterAfterFrameset => {
+                    if !matches!(tag.name.as_str(), "html" | "noframes") {
+                        self.errors.push(
+                            TreeBuilderError::new(
+                                TreeBuilderErrorKind::UnexpectedToken,
+                                self.insertion_mode,
+                                format!("unexpected start tag <{}> in AfterAfterFrameset mode", tag.name),
+                            )
+                            .with_pos(self.current_token_line, self.current_token_column),
+                        );
+                        return;
+                    }
+                }
+                InsertionMode::AfterBody => {
                     if !matches!(tag.name.as_str(), "html" | "body" | "frameset") {
                         self.ensure_body_element();
                     }
                 }
                 _ => {}
             }
+        }
+
+        // Handle InFrameset mode (spec §13.2.6.4.18)
+        if matches!(self.insertion_mode, InsertionMode::InFrameset) {
+            if self.process_in_frameset_mode(&tag) {
+                return;
+            }
+            // If process_in_frameset_mode returns false, continue with normal processing
         }
 
         self.maybe_exit_foreign_content_for_start_tag(&tag.name);
@@ -619,6 +656,13 @@ impl HtmlTreeBuilder {
                 self.open_elements.push(content_id);
                 self.insertion_mode = InsertionMode::InTemplate;
             }
+            "noframes" if matches!(self.insertion_mode, InsertionMode::InFrameset | InsertionMode::AfterFrameset | InsertionMode::AfterAfterFrameset) => {
+                // In frameset contexts, noframes is handled as raw text
+                let id = self.insert_element_at_current(element);
+                self.open_elements.push(id);
+                self.tokenizer.set_raw_text_tag(Some("noframes".to_string()));
+                self.tokenizer.set_state(LexerState::RawText);
+            }
             _ => {
                 if tag_name == "option" && matches!(self.current_tag(), Some("option")) {
                     self.open_elements.pop();
@@ -672,6 +716,14 @@ impl HtmlTreeBuilder {
                         self.insertion_mode
                     }
                     "frameset" => InsertionMode::InFrameset,
+                    _ if matches!(self.insertion_mode, InsertionMode::InTemplate) => {
+                        // In template mode, handle specific tags that change mode (spec §13.2.6.4.16)
+                        if let Some(new_mode) = self.process_in_template_start_tag(&tag_name) {
+                            new_mode
+                        } else {
+                            self.insertion_mode
+                        }
+                    }
                     _ => InsertionMode::InBody,
                 };
             }
@@ -686,6 +738,31 @@ impl HtmlTreeBuilder {
             self.ignored_noscript_depth -= 1;
             self.reset_insertion_mode();
             return;
+        }
+
+        // ── InFrameset mode handling (spec §13.2.6.4.18) ──────────────────────
+        if matches!(self.insertion_mode, InsertionMode::InFrameset) {
+            if self.process_in_frameset_end_tag(&tag.name) {
+                return;
+            }
+        }
+
+        // ── InTemplate mode handling (spec §13.2.6.4.16) ─────────────────────
+        if matches!(self.insertion_mode, InsertionMode::InTemplate) {
+            // Only </template> is valid in InTemplate mode
+            if tag.name != "template" {
+                // Parse error: ignore any other end tag
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        format!("unexpected end tag </{tag_name}> in template mode", tag_name = tag.name),
+                    )
+                    .with_pos(ln, col),
+                );
+                return;
+            }
+            // </template> will be handled below
         }
 
         // ── </head> ──────────────────────────────────────────────────────────
@@ -922,6 +999,26 @@ impl HtmlTreeBuilder {
             return;
         }
 
+        // ── </noframes> in frameset contexts ──────────────────────────────────
+        if tag.name == "noframes" && matches!(
+            self.insertion_mode,
+            InsertionMode::InFrameset | InsertionMode::AfterFrameset | InsertionMode::AfterAfterFrameset
+        ) {
+            if !self.close_until("noframes") {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        "end tag </noframes> but no <noframes> in scope",
+                    )
+                    .with_pos(ln, col),
+                );
+                return;
+            }
+            self.reset_insertion_mode();
+            return;
+        }
+
         // ── </table> ──────────────────────────────────────────────────────────
         if tag.name == "table" {
             if !self.has_element_in_table_scope("table") {
@@ -1083,6 +1180,49 @@ impl HtmlTreeBuilder {
             return;
         }
 
+        // Handle AfterAfterBody and AfterAfterFrameset modes
+        if self.fragment_context.is_none() {
+            match self.insertion_mode {
+                InsertionMode::AfterAfterBody => {
+                    if !text.trim().is_empty() {
+                        self.errors.push(TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedCharacter,
+                            self.insertion_mode,
+                            "unexpected non-whitespace character in AfterAfterBody mode",
+                        ));
+                        self.insertion_mode = InsertionMode::InBody;
+                        // Reprocess
+                        return self.handle_text(text);
+                    }
+                    // Whitespace is ignored
+                    return;
+                }
+                InsertionMode::AfterAfterFrameset => {
+                    if !text.trim().is_empty() {
+                        self.errors.push(TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedCharacter,
+                            self.insertion_mode,
+                            "unexpected non-whitespace character in AfterAfterFrameset mode",
+                        ));
+                        return;
+                    }
+                    // Whitespace is allowed
+                }
+                InsertionMode::InFrameset | InsertionMode::AfterFrameset => {
+                    // Only whitespace is allowed in frameset modes
+                    if !text.trim().is_empty() {
+                        self.errors.push(TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedCharacter,
+                            self.insertion_mode,
+                            "unexpected non-whitespace character in frameset mode",
+                        ));
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+
         if self.fragment_context.is_none() && self.current_parent_id().is_none() {
             self.ensure_body_element();
         }
@@ -1117,6 +1257,16 @@ impl HtmlTreeBuilder {
 
     fn handle_comment(&mut self, comment: String) {
         if self.ignored_noscript_depth > 0 {
+            return;
+        }
+
+        // In AfterAfterBody and AfterAfterFrameset, comments go to the document root
+        if matches!(
+            self.insertion_mode,
+            InsertionMode::AfterAfterBody | InsertionMode::AfterAfterFrameset
+        ) {
+            let comment_id = self.create_comment_node(comment, None);
+            self.root_children.push(comment_id);
             return;
         }
 
@@ -2125,6 +2275,206 @@ impl HtmlTreeBuilder {
             BuilderNodeData::Text(text) => HtmlNode::Text(text.clone()),
             BuilderNodeData::Comment(comment) => HtmlNode::Comment(comment.clone()),
         }
+    }
+
+    /// Process a start tag token in "in template" insertion mode (spec §13.2.6.4.16).
+    fn process_in_template_start_tag(&mut self, tag: &str) -> Option<InsertionMode> {
+        match tag {
+            // Characters, comments, DOCTYPE → process using "in body" rules
+            // (handled by caller)
+            
+            // base, basefont, bgsound, link, meta, noframes, script, style, template, title
+            // → process using "in head" rules (handled by caller)
+            
+            // caption, colgroup, tbody, tfoot, thead
+            "caption" | "colgroup" | "tbody" | "tfoot" | "thead" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InTable);
+                Some(InsertionMode::InTable)
+            }
+            
+            // col
+            "col" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InColumnGroup);
+                Some(InsertionMode::InColumnGroup)
+            }
+            
+            // tr
+            "tr" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InTableBody);
+                Some(InsertionMode::InTableBody)
+            }
+            
+            // td, th
+            "td" | "th" => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InRow);
+                Some(InsertionMode::InRow)
+            }
+            
+            // Anything else
+            _ => {
+                self.template_insertion_modes.pop();
+                self.template_insertion_modes.push(InsertionMode::InBody);
+                Some(InsertionMode::InBody)
+            }
+        }
+    }
+
+    /// Handle end tag </template> in "in template" insertion mode (spec §13.2.6.4.16).
+    fn process_in_template_end_tag(&mut self, tag_name: &str) -> bool {
+        if tag_name == "template" {
+            // Process using "in head" rules
+            // This will be handled by the existing template end tag logic
+            return true;
+        }
+        // Any other end tag → parse error, ignore
+        false
+    }
+
+    /// Process tokens in "in frameset" insertion mode (spec §13.2.6.4.18).
+    fn process_in_frameset_mode(&mut self, tag: &StartTagToken) -> bool {
+        match tag.name.as_str() {
+            // Whitespace characters → insert
+            // (handled by handle_text)
+            
+            // Comments → insert
+            // (handled by handle_comment)
+            
+            // DOCTYPE → parse error, ignore
+            // (handled by handle_doctype)
+            
+            // <html> → process using "in body" rules
+            "html" => false, // Let caller handle it
+            
+            // <frameset> → insert element
+            "frameset" => {
+                let element = self.make_element(&mut tag.clone());
+                let id = self.insert_element_at_current(element);
+                self.open_elements.push(id);
+                self.insertion_mode = InsertionMode::InFrameset;
+                true
+            }
+            
+            // <frame> → insert element, immediately pop, acknowledge self-closing
+            "frame" => {
+                let element = self.make_element(&mut tag.clone());
+                let id = self.insert_element_at_current(element);
+                // Immediately pop (frame is void)
+                // Don't push to open_elements
+                let _ = id;
+                true
+            }
+            
+            // <noframes> → process using "in head" rules
+            "noframes" => false, // Already handled in handle_start_tag
+            
+            // Anything else → parse error, ignore
+            _ => {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedToken,
+                        self.insertion_mode,
+                        format!("unexpected start tag <{}> in frameset mode", tag.name),
+                    )
+                    .with_pos(self.current_token_line, self.current_token_column),
+                );
+                true // Token handled (ignored)
+            }
+        }
+    }
+
+    /// Process end tags in "in frameset" insertion mode (spec §13.2.6.4.18).
+    fn process_in_frameset_end_tag(&mut self, tag_name: &str) -> bool {
+        if tag_name == "frameset" {
+            // If current node is root html element → parse error, ignore
+            if self.open_elements.len() == 1 {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        "unexpected </frameset> when current node is root html element",
+                    )
+                    .with_pos(self.current_token_line, self.current_token_column),
+                );
+                return true;
+            }
+            
+            // Otherwise, pop current node
+            self.open_elements.pop();
+            
+            // If not fragment case and current node is no longer frameset → switch to after frameset
+            if self.fragment_context.is_none() {
+                if let Some(&current_id) = self.open_elements.last() {
+                    if !matches!(self.node_tag(current_id), Some("frameset")) {
+                        self.insertion_mode = InsertionMode::AfterFrameset;
+                    }
+                }
+            }
+            
+            return true;
+        }
+        
+        // Any other end tag → parse error, ignore
+        self.errors.push(
+            TreeBuilderError::new(
+                TreeBuilderErrorKind::UnexpectedEndTag,
+                self.insertion_mode,
+                format!("unexpected end tag </{tag_name}> in frameset mode"),
+            )
+            .with_pos(self.current_token_line, self.current_token_column),
+        );
+        true
+    }
+
+    /// Process tokens in "after frameset" insertion mode (spec §13.2.6.4.19).
+    fn process_after_frameset_mode(&mut self, tag: &StartTagToken) -> bool {
+        match tag.name.as_str() {
+            // Whitespace → insert (handled by handle_text)
+            // Comments → insert (handled by handle_comment)
+            // DOCTYPE → parse error, ignore (handled by handle_doctype)
+            
+            // <html> → process using "in body" rules
+            "html" => false, // Let caller handle it
+            
+            // <noframes> → process using "in head" rules
+            "noframes" => false, // Already handled in handle_start_tag
+            
+            // Anything else → parse error, ignore
+            _ => {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedToken,
+                        self.insertion_mode,
+                        format!("unexpected start tag <{}> in after frameset mode", tag.name),
+                    )
+                    .with_pos(self.current_token_line, self.current_token_column),
+                );
+                true // Token handled (ignored)
+            }
+        }
+    }
+
+    /// Process end tags in "after frameset" insertion mode (spec §13.2.6.4.19).
+    fn process_after_frameset_end_tag(&mut self, tag_name: &str) -> bool {
+        if tag_name == "html" {
+            // Switch to "after after frameset"
+            self.insertion_mode = InsertionMode::AfterAfterFrameset;
+            return true;
+        }
+        
+        // Any other end tag → parse error, ignore
+        self.errors.push(
+            TreeBuilderError::new(
+                TreeBuilderErrorKind::UnexpectedEndTag,
+                self.insertion_mode,
+                format!("unexpected end tag </{tag_name}> in after frameset mode"),
+            )
+            .with_pos(self.current_token_line, self.current_token_column),
+        );
+        true
     }
 }
 
