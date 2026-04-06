@@ -37,7 +37,7 @@ struct Chunk {
     /// Capacidade total em bytes
     capacity: usize,
     /// Quantidade já alocada
-    allocated: Cell<usize>,
+    allocated: usize,
 }
 
 impl Chunk {
@@ -54,29 +54,29 @@ impl Chunk {
             Self {
                 data: NonNull::new_unchecked(ptr),
                 capacity,
-                allocated: Cell::new(0),
+                allocated: 0,
             }
         }
     }
 
     #[inline]
-    fn alloc(&self, size: usize, align: usize) -> Option<NonNull<u8>> {
-        let current = unsafe { self.data.as_ptr().add(self.allocated.get()) };
+    fn alloc(&mut self, size: usize, align: usize) -> Option<NonNull<u8>> {
+        let current = unsafe { self.data.as_ptr().add(self.allocated) };
         
         // Calcula alinhamento necessário
         let aligned = ((current as usize) + (align - 1)) & !(align - 1);
         let padding = aligned - current as usize;
         
-        if self.allocated.get() + padding + size > self.capacity {
+        if self.allocated + padding + size > self.capacity {
             return None;
         }
         
-        self.allocated.set(self.allocated.get() + padding + size);
+        self.allocated += padding + size;
         Some(unsafe { NonNull::new_unchecked(aligned as *mut u8) })
     }
 
     fn clear(&mut self) {
-        self.allocated.set(0);
+        self.allocated = 0;
     }
 }
 
@@ -96,20 +96,22 @@ impl Drop for Chunk {
 /// ```
 /// use ace::html::arena::NodeArena;
 /// 
-/// let arena = NodeArena::new();
+/// let mut arena = NodeArena::new();
 /// let id1 = arena.alloc(String::from("div"));
 /// let id2 = arena.alloc(String::from("span"));
 /// 
-/// let div = arena.get::<String>(id1);
-/// assert_eq!(div, "div");
+/// unsafe {
+///     let div = arena.get::<String>(id1);
+///     assert_eq!(div, "div");
+/// }
 /// ```
 pub struct NodeArena {
     /// Chunks de memória (pelo menos um sempre existe)
-    chunks: Cell<Vec<Chunk>>,
+    chunks: Vec<Chunk>,
     /// Índice do chunk atual
-    current_chunk: Cell<usize>,
+    current_chunk: usize,
     /// Contador de alocações (para debugging/stats)
-    allocation_count: Cell<usize>,
+    allocation_count: usize,
 }
 
 impl NodeArena {
@@ -122,9 +124,9 @@ impl NodeArena {
     pub fn with_capacity(initial_capacity: usize) -> Self {
         let chunk = Chunk::new(initial_capacity);
         Self {
-            chunks: Cell::new(vec![chunk]),
-            current_chunk: Cell::new(0),
-            allocation_count: Cell::new(0),
+            chunks: vec![chunk],
+            current_chunk: 0,
+            allocation_count: 0,
         }
     }
 
@@ -132,8 +134,8 @@ impl NodeArena {
     /// 
     /// Retorna um NodeId que pode ser usado para recuperar o valor
     #[inline]
-    pub fn alloc<T>(&self, value: T) -> NodeId {
-        self.allocation_count.set(self.allocation_count.get() + 1);
+    pub fn alloc<T>(&mut self, value: T) -> NodeId {
+        self.allocation_count += 1;
         
         let size = std::mem::size_of::<T>();
         let align = std::mem::align_of::<T>();
@@ -173,7 +175,7 @@ impl NodeArena {
 
     /// Recupera uma referência mutável para um valor
     #[inline]
-    pub unsafe fn get_mut<T>(&self, id: NodeId) -> &mut T {
+    pub unsafe fn get_mut<T>(&mut self, id: NodeId) -> &mut T {
         debug_assert!(!id.is_null(), "Cannot get_mut null NodeId");
         &mut *(id.0 as *mut T)
     }
@@ -181,28 +183,24 @@ impl NodeArena {
     /// Limpa toda a arena, permitindo reuso da memória
     /// 
     /// ⚠️ **Atenção:** Todos os NodeIds anteriores se tornam inválidos!
-    pub fn clear(&self) {
-        let mut chunks = self.chunks.take();
-        for chunk in chunks.iter_mut() {
+    pub fn clear(&mut self) {
+        for chunk in self.chunks.iter_mut() {
             chunk.clear();
         }
-        self.current_chunk.set(0);
-        self.chunks.set(chunks);
-        self.allocation_count.set(0);
+        self.current_chunk = 0;
+        self.allocation_count = 0;
     }
 
     /// Retorna estatísticas da arena
     pub fn stats(&self) -> ArenaStats {
-        let chunks = self.chunks.take();
-        let total_capacity: usize = chunks.iter().map(|c| c.capacity).sum();
-        let total_allocated: usize = chunks.iter().map(|c| c.allocated.get()).sum();
-        self.chunks.set(chunks);
+        let total_capacity: usize = self.chunks.iter().map(|c| c.capacity).sum();
+        let total_allocated: usize = self.chunks.iter().map(|c| c.allocated).sum();
         
         ArenaStats {
-            chunk_count: self.chunks.take().len(),
+            chunk_count: self.chunks.len(),
             total_capacity,
             total_allocated,
-            allocation_count: self.allocation_count.get(),
+            allocation_count: self.allocation_count,
             utilization: if total_capacity > 0 {
                 total_allocated as f32 / total_capacity as f32
             } else {
@@ -213,31 +211,22 @@ impl NodeArena {
 
     /// Tenta alocar no chunk atual
     #[inline]
-    fn try_alloc_in_current(&self, size: usize, align: usize) -> Option<NonNull<u8>> {
-        let chunks = self.chunks.take();
-        let current_idx = self.current_chunk.get();
-        
-        if current_idx < chunks.len() {
-            let result = chunks[current_idx].alloc(size, align);
-            self.chunks.set(chunks);
-            return result;
+    fn try_alloc_in_current(&mut self, size: usize, align: usize) -> Option<NonNull<u8>> {
+        if self.current_chunk < self.chunks.len() {
+            self.chunks[self.current_chunk].alloc(size, align)
+        } else {
+            None
         }
-        
-        self.chunks.set(chunks);
-        None
     }
 
     /// Aloca um novo chunk grande o suficiente para o valor
-    fn allocate_new_chunk(&self, min_size: usize, _align: usize) {
-        let mut chunks = self.chunks.take();
-        
-        // Novo chunk com pelo menos o dobro do tamanho necessário
+    fn allocate_new_chunk(&mut self, min_size: usize, _align: usize) {
+        // Novo chunk com pelo menos o dobro do tamanho necessário ou DEFAULT_CHUNK_SIZE
         let new_capacity = std::cmp::max(DEFAULT_CHUNK_SIZE, min_size * 2);
         let new_chunk = Chunk::new(new_capacity);
         
-        chunks.push(new_chunk);
-        self.current_chunk.set(chunks.len() - 1);
-        self.chunks.set(chunks);
+        self.chunks.push(new_chunk);
+        self.current_chunk = self.chunks.len() - 1;
     }
 }
 
@@ -275,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_basic_allocation() {
-        let arena = NodeArena::new();
+        let mut arena = NodeArena::new();
         let id = arena.alloc(42u32);
         
         unsafe {
@@ -285,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_multiple_allocations() {
-        let arena = NodeArena::new();
+        let mut arena = NodeArena::new();
         
         let id1 = arena.alloc(1u32);
         let id2 = arena.alloc(2u32);
@@ -300,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_clear_and_reuse() {
-        let arena = NodeArena::new();
+        let mut arena = NodeArena::new();
         
         let _id1 = arena.alloc(100u32);
         let stats_before = arena.stats();
@@ -315,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_large_allocation() {
-        let arena = NodeArena::new();
+        let mut arena = NodeArena::new();
         
         // Aloca um array grande
         let data = vec![1u32, 2, 3, 4, 5];
@@ -325,6 +314,99 @@ mod tests {
             let retrieved = arena.get::<Vec<u32>>(id);
             assert_eq!(retrieved.len(), 5);
             assert_eq!(retrieved[0], 1);
+        }
+    }
+
+    #[test]
+    fn test_chunk_allocation_64kb() {
+        let mut arena = NodeArena::new();
+        
+        // Verifica que o chunk inicial tem 64KB
+        let stats = arena.stats();
+        assert_eq!(stats.chunk_count, 1);
+        assert_eq!(stats.total_capacity, DEFAULT_CHUNK_SIZE);
+        assert_eq!(DEFAULT_CHUNK_SIZE, 64 * 1024);
+    }
+
+    #[test]
+    fn test_multiple_chunks() {
+        let mut arena = NodeArena::new();
+        
+        // Aloca muitos valores pequenos para preencher o primeiro chunk
+        let mut ids = Vec::new();
+        for i in 0..10000 {
+            ids.push(arena.alloc(i as u64));
+        }
+        
+        let stats = arena.stats();
+        // Deve ter alocado múltiplos chunks
+        assert!(stats.chunk_count >= 2, "Expected at least 2 chunks, got {}", stats.chunk_count);
+        
+        // Verifica que todos os valores estão corretos
+        for (i, id) in ids.iter().enumerate() {
+            unsafe {
+                assert_eq!(*arena.get::<u64>(*id), i as u64);
+            }
+        }
+    }
+
+    #[test]
+    fn test_alignment() {
+        let mut arena = NodeArena::new();
+        
+        // Aloca valores com diferentes alinhamentos
+        let id1 = arena.alloc(1u8);  // align 1
+        let id2 = arena.alloc(2u16); // align 2
+        let id3 = arena.alloc(3u32); // align 4
+        let id4 = arena.alloc(4u64); // align 8
+        
+        unsafe {
+            assert_eq!(*arena.get::<u8>(id1), 1);
+            assert_eq!(*arena.get::<u16>(id2), 2);
+            assert_eq!(*arena.get::<u32>(id3), 3);
+            assert_eq!(*arena.get::<u64>(id4), 4);
+            
+            // Verifica alinhamento correto
+            let ptr4 = id4.0 as *const u64;
+            assert_eq!(ptr4 as usize % 8, 0, "u64 should be 8-byte aligned");
+        }
+    }
+
+    #[test]
+    fn test_new_chunk_when_full() {
+        let mut arena = NodeArena::with_capacity(128); // Chunk pequeno para teste
+        
+        let stats_before = arena.stats();
+        assert_eq!(stats_before.chunk_count, 1);
+        
+        // Aloca valores até preencher o chunk
+        for _ in 0..20 {
+            arena.alloc([0u64; 2]); // 16 bytes cada
+        }
+        
+        let stats_after = arena.stats();
+        // Deve ter alocado novo chunk
+        assert!(stats_after.chunk_count > 1, "Expected multiple chunks");
+    }
+
+    #[test]
+    fn test_stats_tracking() {
+        let mut arena = NodeArena::new();
+        
+        let id1 = arena.alloc(100u32);
+        let id2 = arena.alloc(200u32);
+        let id3 = arena.alloc(300u32);
+        
+        let stats = arena.stats();
+        assert_eq!(stats.allocation_count, 3);
+        assert!(stats.total_allocated >= 12); // At least 3 * 4 bytes
+        assert!(stats.utilization > 0.0);
+        assert!(stats.utilization <= 1.0);
+        
+        unsafe {
+            assert_eq!(*arena.get::<u32>(id1), 100);
+            assert_eq!(*arena.get::<u32>(id2), 200);
+            assert_eq!(*arena.get::<u32>(id3), 300);
         }
     }
 }
