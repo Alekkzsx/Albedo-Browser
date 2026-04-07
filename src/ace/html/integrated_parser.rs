@@ -142,11 +142,11 @@ fn build_parser_stats(
     total_errors: usize,
     total_preloads: usize,
 ) -> ParserStats {
-    let arena = NodeArena::new();
+    let mut arena = NodeArena::new();
     let mut string_mentions = HashMap::<String, usize>::new();
 
     for child in &document.children {
-        collect_node_stats(child, &arena, &mut string_mentions);
+        collect_node_stats(child, &mut arena, &mut string_mentions);
     }
 
     let arena_stats = arena.stats();
@@ -172,7 +172,7 @@ fn build_parser_stats(
 
 fn collect_node_stats(
     node: &HtmlNode,
-    arena: &NodeArena,
+    arena: &mut NodeArena,
     string_mentions: &mut HashMap<String, usize>,
 ) {
     let _marker = arena.alloc(count_node(node));
