@@ -243,25 +243,25 @@
   - [x] 4.1.2.4 Amazon product (800 KB)
   - [x] 4.1.2.5 YouTube watch (1.5 MB)
 - [x] 4.1.3 Synthetic stress tests
-  - [-] 4.1.3.1 Large table (10K rows)
-  - [~] 4.1.3.2 Deep nesting (1K levels)
-  - [~] 4.1.3.3 Many attributes (100 per element)
-  - [~] 4.1.3.4 Entity heavy (50% entities)
-- [~] 4.1.4 Comparison com Chrome/Firefox
-  - [~] 4.1.4.1 Setup Chrome benchmark
-  - [~] 4.1.4.2 Setup Firefox benchmark
-  - [~] 4.1.4.3 Side-by-side comparison
-  - [~] 4.1.4.4 Report generation
+  - [x] 4.1.3.1 Large table (10K rows)
+  - [ ] 4.1.3.2 Deep nesting (1K levels)
+  - [ ] 4.1.3.3 Many attributes (100 per element)
+  - [ ] 4.1.3.4 Entity heavy (50% entities)
+- [ ] 4.1.4 Comparison com Chrome/Firefox
+  - [ ] 4.1.4.1 Setup Chrome benchmark
+  - [ ] 4.1.4.2 Setup Firefox benchmark
+  - [ ] 4.1.4.3 Side-by-side comparison
+  - [ ] 4.1.4.4 Report generation
 
 ### 4.2 Documentação
-- [~] 4.2.1 API documentation
-  - [~] 4.2.1.1 Rustdoc para todas as APIs públicas
-  - [~] 4.2.1.2 Code examples
-  - [~] 4.2.1.3 Usage guide
-- [~] 4.2.2 Architecture guide
-  - [~] 4.2.2.1 High-level overview
-  - [~] 4.2.2.2 Component details
-  - [~] 4.2.2.3 Data flow diagrams
+- [ ] 4.2.1 API documentation
+  - [ ] 4.2.1.1 Rustdoc para todas as APIs públicas
+  - [ ] 4.2.1.2 Code examples
+  - [ ] 4.2.1.3 Usage guide
+- [ ] 4.2.2 Architecture guide
+  - [ ] 4.2.2.1 High-level overview
+  - [ ] 4.2.2.2 Component details
+  - [ ] 4.2.2.3 Data flow diagrams
 - [~] 4.2.3 Performance guide
   - [~] 4.2.3.1 Optimization techniques
   - [~] 4.2.3.2 Profiling guide

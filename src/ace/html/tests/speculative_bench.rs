@@ -3,7 +3,9 @@
 //! Tests the performance of speculative (multi-threaded) parsing vs single-threaded parsing
 //! Target: 2-3x speedup for large documents (> 1 MB)
 
+#[cfg(test)]
 use std::time::{Duration, Instant};
+#[cfg(test)]
 use crate::ace::html::{
     speculative::{parse_speculative, parse_document_speculative},
     build_document_with_errors_and_options, ParserOptions,
@@ -171,7 +173,7 @@ fn bench_speculative_overhead_small() {
 }
 
 /// Helper function to print benchmark statistics
-fn print_stats(stats: &BenchStats) {
+fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);
     println!("  StdDev: {:?}", stats.std_dev);
