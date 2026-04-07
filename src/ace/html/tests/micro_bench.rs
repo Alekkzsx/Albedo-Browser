@@ -2,7 +2,9 @@
 //! 
 //! Tests individual components: Lexer, Tokenizer, Tree Builder, SIMD operations
 
+#[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
 use crate::ace::html::{
     HtmlTokenizer, build_document,
     bench::{BenchRunner, BenchConfig, BenchStats},
@@ -726,7 +728,7 @@ fn bench_tree_builder_full() {
 // Helper Functions
 // ============================================================================
 
-fn print_stats(stats: &BenchStats) {
+fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);
     println!("  P95:    {:?}", stats.p95);

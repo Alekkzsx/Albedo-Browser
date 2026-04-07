@@ -2,7 +2,9 @@
 //! 
 //! Tests realistic documents: Wikipedia, GitHub, Twitter, Amazon, YouTube
 
+#[cfg(test)]
 use std::time::Duration;
+#[cfg(test)]
 use crate::ace::html::{
     build_document,
     bench::{BenchRunner, BenchConfig, BenchStats},
@@ -468,7 +470,7 @@ fn bench_macro_youtube() {
 // Helper Functions
 // ============================================================================
 
-fn print_stats(stats: &BenchStats) {
+fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);
     println!("  P95:    {:?}", stats.p95);

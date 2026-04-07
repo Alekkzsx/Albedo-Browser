@@ -51,20 +51,20 @@ fn generate_large_table() -> String {
     html
 }
 
-/// Generate deeply nested structure (100 levels - reasonable limit)
+/// Generate deeply nested structure (1,000 levels)
 #[allow(dead_code)]
 fn generate_deep_nesting() -> String {
     let mut html = String::from("<!DOCTYPE html><html><body>");
     
-    // Create 100 levels of nesting (more reasonable than 1000)
-    for i in 0..100 {
+    // Create 1,000 levels of nesting
+    for i in 0..1000 {
         html.push_str(&format!("<div id='level-{}'>", i));
     }
     
     html.push_str("Deep content");
     
     // Close all divs
-    for _ in 0..100 {
+    for _ in 0..1000 {
         html.push_str("</div>");
     }
     
@@ -146,16 +146,16 @@ fn bench_stress_large_table() {
     assert!(result.stats.mean < Duration::from_millis(500));
 }
 
-/// Benchmark 2: Deep nesting (100 levels)
+/// Benchmark 2: Deep nesting (1,000 levels)
 #[test]
 fn bench_stress_deep_nesting() {
     let html = generate_deep_nesting();
     
-    println!("\n=== Stress Test: Deep Nesting (100 levels) ===");
-    println!("Document size: {} bytes", html.len());
-    println!("Nesting depth: 100 levels");
+    println!("\n=== Stress Test: Deep Nesting (1,000 levels) ===");
+    println!("Document size: {} bytes ({:.2} KB)", html.len(), html.len() as f64 / 1_000.0);
+    println!("Nesting depth: 1,000 levels");
     
-    let config = BenchConfig::new("Deep Nesting (100 levels)")
+    let config = BenchConfig::new("Deep Nesting (1,000 levels)")
         .with_warmup(3)
         .with_measurements(10);
     
@@ -167,7 +167,8 @@ fn bench_stress_deep_nesting() {
     print_stats(&result.stats);
     
     // Should handle deep nesting without stack overflow
-    assert!(result.stats.mean < Duration::from_millis(50));
+    // Allow more time for 1K levels vs 100 levels
+    assert!(result.stats.mean < Duration::from_millis(500));
 }
 
 /// Benchmark 3: Many attributes (100 per element)
