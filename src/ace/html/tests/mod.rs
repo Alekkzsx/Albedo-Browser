@@ -1,3 +1,8 @@
 pub mod html5lib_harness;
+pub mod macro_bench;
+pub mod micro_bench;
 pub mod preload;
+pub mod preload_bench;
+pub mod speculative_bench;
+pub mod stress_bench;
 pub mod tokenizer_tests;

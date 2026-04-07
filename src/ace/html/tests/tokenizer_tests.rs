@@ -3,6 +3,7 @@ use crate::ace::json::{parse, JsonValue};
 use std::collections::HashMap;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct TokenizerTest {
     id: String,
     category: String,

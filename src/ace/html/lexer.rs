@@ -2894,7 +2894,7 @@ impl HtmlLexer {
     }
 
     pub fn remaining_input(&self) -> String {
-        self.chars[self.pos..].iter().collect()
+        self.chars.iter().skip(self.pos).copied().collect()
     }
 
     fn reconsume_in(&mut self, new_state: LexerState) {
@@ -2913,10 +2913,13 @@ impl HtmlLexer {
             return false;
         }
 
-        self.chars[self.pos..self.pos + len]
+        self.chars
             .iter()
+            .skip(self.pos)
+            .take(len)
+            .copied()
             .zip(needle.chars())
-            .all(|(a, b)| *a == b)
+            .all(|(a, b)| a == b)
     }
 
     fn starts_with_case_insensitive(&self, needle: &str) -> bool {

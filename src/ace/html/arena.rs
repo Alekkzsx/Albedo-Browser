@@ -7,7 +7,7 @@
 //! - Dealocação em O(1) (clear da arena inteira)
 //! - Redução de fragmentação de memória
 
-use std::cell::Cell;
+
 use std::ptr::NonNull;
 
 /// Tamanho padrão de cada chunk na arena (64KB)
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_chunk_allocation_64kb() {
-        let mut arena = NodeArena::new();
+        let arena = NodeArena::new();
         
         // Verifica que o chunk inicial tem 64KB
         let stats = arena.stats();

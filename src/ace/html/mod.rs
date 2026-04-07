@@ -15,6 +15,9 @@ pub mod metrics;
 pub mod streaming;
 pub mod simd;
 pub mod integrated_parser;
+pub mod thread_pool;
+pub mod speculative;
+pub mod bench;
 pub mod tests;
 
 pub use lexer::{
@@ -46,10 +49,15 @@ pub use simd::{
     fast_entity_lookup, decode_numeric_entity, simd_find_byte,
     normalize_whitespace_simd, has_simd_support, get_optimization_level,
 };
+pub use thread_pool::{ThreadPool, BoundedChannel, SenderWithTimeout, ReceiverWithTimeout};
 pub use integrated_parser::{
     parse_html_integrated, parse_html_integrated_from_bytes,
     parse_html_integrated_from_bytes_with_options, parse_html_integrated_with_options,
     IntegratedTreeBuilder, ParseResult, ParserStats as IntegratedParserStats,
+};
+pub use speculative::{
+    parse_speculative, parse_document_speculative, SpeculativeResult,
+    SpeculativeTokenizer, SpeculativeTreeBuilder,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -80,6 +80,7 @@ impl TreeBuilderError {
     }
 }
 
+#[derive(Debug)]
 pub struct TreeBuildOutput {
     pub document: HtmlDocument,
     pub errors: Vec<TreeBuilderError>,
@@ -259,12 +260,19 @@ impl HtmlTreeBuilder {
         );
         self.fragment_root_id = Some(context_id);
         self.open_elements.push(context_id);
+        
+        // If context is a template element, push "in template" onto the stack (spec §13.4)
+        if normalized_tag_name == "template" {
+            self.template_insertion_modes.push(InsertionMode::InTemplate);
+        }
+        
         self.insertion_mode = match normalized_tag_name.as_str() {
             "table" => InsertionMode::InTable,
             "tbody" | "thead" | "tfoot" => InsertionMode::InTableBody,
             "tr" => InsertionMode::InRow,
             "td" | "th" => InsertionMode::InCell,
             "select" => InsertionMode::InSelect,
+            "template" => InsertionMode::InTemplate,
             _ => InsertionMode::InBody,
         };
 
@@ -470,6 +478,14 @@ impl HtmlTreeBuilder {
                 return;
             }
             // If process_in_frameset_mode returns false, continue with normal processing
+        }
+
+        // Handle AfterFrameset mode (spec §13.2.6.4.19)
+        if matches!(self.insertion_mode, InsertionMode::AfterFrameset) {
+            if self.process_after_frameset_mode(&tag) {
+                return;
+            }
+            // If process_after_frameset_mode returns false, continue with normal processing
         }
 
         self.maybe_exit_foreign_content_for_start_tag(&tag.name);
@@ -745,6 +761,27 @@ impl HtmlTreeBuilder {
             if self.process_in_frameset_end_tag(&tag.name) {
                 return;
             }
+        }
+
+        // ── AfterFrameset mode handling (spec §13.2.6.4.19) ───────────────────
+        if matches!(self.insertion_mode, InsertionMode::AfterFrameset) {
+            if self.process_after_frameset_end_tag(&tag.name) {
+                return;
+            }
+        }
+
+        // ── AfterAfterFrameset mode handling (spec §13.2.6.4.21) ──────────────
+        if matches!(self.insertion_mode, InsertionMode::AfterAfterFrameset) {
+            // Any end tag → parse error, ignore
+            self.errors.push(
+                TreeBuilderError::new(
+                    TreeBuilderErrorKind::UnexpectedEndTag,
+                    self.insertion_mode,
+                    format!("unexpected end tag </{tag_name}> in after after frameset mode", tag_name = tag.name),
+                )
+                .with_pos(ln, col),
+            );
+            return;
         }
 
         // ── InTemplate mode handling (spec §13.2.6.4.16) ─────────────────────
@@ -1185,16 +1222,19 @@ impl HtmlTreeBuilder {
             match self.insertion_mode {
                 InsertionMode::AfterAfterBody => {
                     if !text.trim().is_empty() {
+                        // Non-whitespace → parse error, switch to "in body" and reprocess
                         self.errors.push(TreeBuilderError::new(
                             TreeBuilderErrorKind::UnexpectedCharacter,
                             self.insertion_mode,
                             "unexpected non-whitespace character in AfterAfterBody mode",
                         ));
                         self.insertion_mode = InsertionMode::InBody;
-                        // Reprocess
                         return self.handle_text(text);
                     }
-                    // Whitespace is ignored
+                    // Whitespace → process using "in body" rules (insert into body)
+                    if let Some(body_id) = self.body_element_id {
+                        self.append_text_to_parent(body_id, text);
+                    }
                     return;
                 }
                 InsertionMode::AfterAfterFrameset => {
@@ -1385,13 +1425,45 @@ impl HtmlTreeBuilder {
     }
 
     fn insert_element_before_open_table(&mut self, element: HtmlElement) -> usize {
-        let Some(table_id) = self.find_open_element("table") else {
-            return self.insert_element_at_current(element);
+        // Foster parenting algorithm (spec §13.2.6.1)
+        
+        // Step 1: Find last template and last table in stack
+        let last_template_pos = self.open_elements.iter().rposition(|&id| {
+            self.node_tag(id).map_or(false, |tag| tag.eq_ignore_ascii_case("template"))
+        });
+        let last_table_pos = self.open_elements.iter().rposition(|&id| {
+            self.node_tag(id).map_or(false, |tag| tag.eq_ignore_ascii_case("table"))
+        });
+        
+        // Step 2: If there's a template and (no table OR template is below table)
+        if let Some(template_pos) = last_template_pos {
+            if last_table_pos.is_none() || template_pos > last_table_pos.unwrap() {
+                // Insert inside template's template content
+                let template_id = self.open_elements[template_pos];
+                // Find the template-content child
+                if let Some(&content_id) = self.nodes[template_id].children.iter().find(|&&child_id| {
+                    matches!(&self.nodes[child_id].data, BuilderNodeData::Element(el) if el.tag == "template-content")
+                }) {
+                    return self.create_and_attach(element, content_id);
+                }
+                // Fallback: insert directly in template
+                return self.create_and_attach(element, template_id);
+            }
+        }
+        
+        // Step 3: If no table, insert inside first element (html) after its last child
+        let Some(table_pos) = last_table_pos else {
+            if let Some(&html_id) = self.open_elements.first() {
+                return self.create_and_attach(element, html_id);
+            }
+            return self.insert_root_element(element);
         };
-
+        
+        let table_id = self.open_elements[table_pos];
         let parent_id = self.nodes[table_id].parent;
         let inserted_id = self.create_element(element, parent_id);
 
+        // Step 4: If table has parent, insert before table
         if let Some(parent_id) = parent_id {
             let siblings = &mut self.nodes[parent_id].children;
             if let Some(pos) = siblings.iter().position(|&id| id == table_id) {
@@ -1402,7 +1474,14 @@ impl HtmlTreeBuilder {
         } else if let Some(pos) = self.root_children.iter().position(|&id| id == table_id) {
             self.root_children.insert(pos, inserted_id);
         } else {
-            self.root_children.push(inserted_id);
+            // Step 5: Otherwise, insert in element above table (previous element)
+            if table_pos > 0 {
+                let previous_element_id = self.open_elements[table_pos - 1];
+                self.nodes[inserted_id].parent = Some(previous_element_id);
+                self.nodes[previous_element_id].children.push(inserted_id);
+            } else {
+                self.root_children.push(inserted_id);
+            }
         }
 
         inserted_id
@@ -1779,31 +1858,51 @@ impl HtmlTreeBuilder {
             // Steps 4j–4n: Inner loop.
             let mut last_node_id = furthest_block_id;
             let mut node_pos = furthest_block_pos;
-            for inner_iter in 0..3usize {
-                // Step 4k1: Move node to the one before it in the stack.
+            let mut inner_loop_counter = 0usize;
+            
+            loop {
+                // Step 4k1: Increment innerLoopCounter
+                inner_loop_counter += 1;
+                
+                // Step 4k2: Move node to the one before it in the stack.
                 if node_pos == 0 {
                     break;
                 }
                 node_pos -= 1;
                 let node_id = self.open_elements[node_pos];
 
-                // If we reached the formatting element, stop inner loop.
+                // Step 4k3: If node is formattingElement, break.
                 if node_id == formatting_element_id {
                     break;
                 }
 
-                // Step 4k2: If node not in AFE, remove from open elements, continue.
+                // Step 4k4: If innerLoopCounter > 3 and node is in AFE, remove from AFE.
+                let node_afe_pos = self.active_formatting_elements.iter().rposition(|e| {
+                    matches!(e, ActiveFormattingElement::Element(id) if *id == node_id)
+                });
+                
+                if let Some(afe_pos) = node_afe_pos {
+                    if inner_loop_counter > 3 {
+                        self.active_formatting_elements.remove(afe_pos);
+                        // After removal, node is no longer in AFE, so continue to next step
+                    }
+                }
+                
+                // Step 4k5: If node not in AFE, remove from open elements, continue.
                 let node_afe_pos = self.active_formatting_elements.iter().rposition(|e| {
                     matches!(e, ActiveFormattingElement::Element(id) if *id == node_id)
                 });
                 if node_afe_pos.is_none() {
                     self.open_elements.remove(node_pos);
-                    // furthest_block_pos and fe_open_pos may shift — recompute.
+                    // Adjust node_pos since we removed an element
+                    if node_pos > 0 {
+                        node_pos += 1; // Will be decremented in next iteration
+                    }
                     continue;
                 }
                 let node_afe_pos = node_afe_pos.unwrap();
 
-                // Step 4k3: Create a clone of node; replace in AFE and open elements.
+                // Step 4k6: Create a clone of node; replace in AFE and open elements.
                 let clone_data = if let BuilderNodeData::Element(el) = &self.nodes[node_id].data {
                     el.clone()
                 } else {
@@ -1813,19 +1912,22 @@ impl HtmlTreeBuilder {
                 self.active_formatting_elements[node_afe_pos] = ActiveFormattingElement::Element(clone_id);
                 self.open_elements[node_pos] = clone_id;
 
-                // Step 4k4: If last_node is the furthest block, update bookmark.
-                if last_node_id == furthest_block_id && inner_iter > 0 {
+                // Step 4k7: If last_node is the furthest block, update bookmark.
+                if last_node_id == furthest_block_id {
                     bookmark = node_afe_pos + 1;
                 }
 
-                // Step 4k5: If last_node has a parent, remove it from parent's children.
+                // Step 4k8: Append last_node to node (the clone).
+                // First, remove last_node from its current parent.
                 let last_parent = self.nodes[last_node_id].parent;
                 if let Some(p) = last_parent {
                     self.nodes[p].children.retain(|&c| c != last_node_id);
                 }
-                // Append last_node to clone.
+                // Then append to clone.
                 self.nodes[last_node_id].parent = Some(clone_id);
                 self.nodes[clone_id].children.push(last_node_id);
+                
+                // Step 4k9: Set last_node to node (the clone).
                 last_node_id = clone_id;
             }
 
@@ -2066,18 +2168,56 @@ impl HtmlTreeBuilder {
     }
 
     fn insert_foster_parented_text(&mut self, text: String) -> bool {
-        let Some(table_id) = self.find_open_element("table") else {
+        // Foster parenting algorithm for text (spec §13.2.6.1)
+        
+        // Step 1: Find last template and last table in stack
+        let last_template_pos = self.open_elements.iter().rposition(|&id| {
+            self.node_tag(id).map_or(false, |tag| tag.eq_ignore_ascii_case("template"))
+        });
+        let last_table_pos = self.open_elements.iter().rposition(|&id| {
+            self.node_tag(id).map_or(false, |tag| tag.eq_ignore_ascii_case("table"))
+        });
+        
+        // Step 2: If there's a template and (no table OR template is below table)
+        if let Some(template_pos) = last_template_pos {
+            if last_table_pos.is_none() || template_pos > last_table_pos.unwrap() {
+                // Insert inside template's template content
+                let template_id = self.open_elements[template_pos];
+                // Find the template-content child
+                if let Some(&content_id) = self.nodes[template_id].children.iter().find(|&&child_id| {
+                    matches!(&self.nodes[child_id].data, BuilderNodeData::Element(el) if el.tag == "template-content")
+                }) {
+                    let text_id = self.create_text_node(text, Some(content_id));
+                    self.nodes[content_id].children.push(text_id);
+                    return true;
+                }
+                // Fallback: insert directly in template
+                let text_id = self.create_text_node(text, Some(template_id));
+                self.nodes[template_id].children.push(text_id);
+                return true;
+            }
+        }
+        
+        // Step 3: If no table, insert in body or first element
+        let Some(table_pos) = last_table_pos else {
             if let Some(body_id) = self.body_element_id {
                 let text_id = self.create_text_node(text, Some(body_id));
                 self.nodes[body_id].children.push(text_id);
                 return true;
             }
+            if let Some(&html_id) = self.open_elements.first() {
+                let text_id = self.create_text_node(text, Some(html_id));
+                self.nodes[html_id].children.push(text_id);
+                return true;
+            }
             return false;
         };
 
+        let table_id = self.open_elements[table_pos];
         let parent_id = self.nodes[table_id].parent;
         let text_id = self.create_text_node(text, parent_id);
 
+        // Step 4: If table has parent, insert before table
         if let Some(parent_id) = parent_id {
             let siblings = &mut self.nodes[parent_id].children;
             if let Some(pos) = siblings.iter().position(|&id| id == table_id) {
@@ -2088,7 +2228,14 @@ impl HtmlTreeBuilder {
         } else if let Some(pos) = self.root_children.iter().position(|&id| id == table_id) {
             self.root_children.insert(pos, text_id);
         } else {
-            self.root_children.push(text_id);
+            // Step 5: Otherwise, insert in element above table
+            if table_pos > 0 {
+                let previous_element_id = self.open_elements[table_pos - 1];
+                self.nodes[text_id].parent = Some(previous_element_id);
+                self.nodes[previous_element_id].children.push(text_id);
+            } else {
+                self.root_children.push(text_id);
+            }
         }
 
         true
@@ -2324,6 +2471,7 @@ impl HtmlTreeBuilder {
     }
 
     /// Handle end tag </template> in "in template" insertion mode (spec §13.2.6.4.16).
+    #[allow(dead_code)]
     fn process_in_template_end_tag(&mut self, tag_name: &str) -> bool {
         if tag_name == "template" {
             // Process using "in head" rules
