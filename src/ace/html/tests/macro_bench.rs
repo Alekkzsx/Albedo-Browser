@@ -7,7 +7,7 @@ use std::time::Duration;
 #[cfg(test)]
 use crate::ace::html::{
     build_document,
-    bench::{BenchRunner, BenchConfig, BenchStats},
+    bench::{BenchRunner, BenchConfig},
 };
 
 // ============================================================================
@@ -15,6 +15,7 @@ use crate::ace::html::{
 // ============================================================================
 
 /// Generate Wikipedia-like homepage (1.2 MB)
+#[allow(dead_code)]
 fn generate_wikipedia_html() -> String {
     let mut html = String::from(r#"<!DOCTYPE html>
 <html lang="en">
@@ -78,6 +79,7 @@ fn generate_wikipedia_html() -> String {
 }
 
 /// Generate GitHub README-like page (500 KB)
+#[allow(dead_code)]
 fn generate_github_html() -> String {
     let mut html = String::from(r#"<!DOCTYPE html>
 <html lang="en">
@@ -135,6 +137,7 @@ fn main() {{
 }
 
 /// Generate Twitter timeline-like page (2 MB)
+#[allow(dead_code)]
 fn generate_twitter_html() -> String {
     let mut html = String::from(r#"<!DOCTYPE html>
 <html lang="en">
@@ -190,6 +193,7 @@ fn generate_twitter_html() -> String {
 }
 
 /// Generate Amazon product page-like (800 KB)
+#[allow(dead_code)]
 fn generate_amazon_html() -> String {
     let mut html = String::from(r#"<!DOCTYPE html>
 <html lang="en">
@@ -267,6 +271,7 @@ fn generate_amazon_html() -> String {
 }
 
 /// Generate YouTube watch page-like (1.5 MB)
+#[allow(dead_code)]
 fn generate_youtube_html() -> String {
     let mut html = String::from(r#"<!DOCTYPE html>
 <html lang="en">
@@ -470,6 +475,7 @@ fn bench_macro_youtube() {
 // Helper Functions
 // ============================================================================
 
+#[allow(dead_code)]
 fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);

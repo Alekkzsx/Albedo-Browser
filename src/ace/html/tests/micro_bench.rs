@@ -7,7 +7,7 @@ use std::time::Duration;
 #[cfg(test)]
 use crate::ace::html::{
     HtmlTokenizer, build_document,
-    bench::{BenchRunner, BenchConfig, BenchStats},
+    bench::{BenchRunner, BenchConfig},
 };
 
 // ============================================================================
@@ -728,6 +728,7 @@ fn bench_tree_builder_full() {
 // Helper Functions
 // ============================================================================
 
+#[allow(dead_code)]
 fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);

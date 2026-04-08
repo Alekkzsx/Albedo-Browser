@@ -155,19 +155,33 @@ fn bench_stress_deep_nesting() {
     println!("Document size: {} bytes ({:.2} KB)", html.len(), html.len() as f64 / 1_000.0);
     println!("Nesting depth: 1,000 levels");
     
-    let config = BenchConfig::new("Deep Nesting (1,000 levels)")
-        .with_warmup(3)
-        .with_measurements(10);
+    // Run in a thread with larger stack size (16 MB) to handle deep nesting
+    // The default stack size (2 MB on Windows) is insufficient for 1,000 levels
+    let result = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024) // 16 MB stack
+        .spawn(move || {
+            let config = BenchConfig::new("Deep Nesting (1,000 levels)")
+                .with_warmup(3)
+                .with_measurements(10);
+            
+            let runner = BenchRunner::new(config);
+            let result = runner.run(|| {
+                let _doc = build_document(&html);
+            });
+            
+            print_stats(&result.stats);
+            
+            // Should handle deep nesting without stack overflow
+            // Allow more time for 1K levels vs 100 levels
+            assert!(result.stats.mean < Duration::from_millis(500));
+            
+            result
+        })
+        .expect("Failed to spawn thread")
+        .join()
+        .expect("Thread panicked");
     
-    let runner = BenchRunner::new(config);
-    let result = runner.run(|| {
-        let _doc = build_document(&html);
-    });
-    
-    print_stats(&result.stats);
-    
-    // Should handle deep nesting without stack overflow
-    // Allow more time for 1K levels vs 100 levels
+    // Verify the benchmark completed successfully
     assert!(result.stats.mean < Duration::from_millis(500));
 }
 

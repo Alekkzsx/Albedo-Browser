@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 use crate::ace::html::{
     speculative::{parse_speculative, parse_document_speculative},
     build_document_with_errors_and_options, ParserOptions,
-    bench::{BenchRunner, BenchConfig, BenchStats},
+    bench::{BenchRunner, BenchConfig},
 };
 
 /// Generate a large HTML document for benchmarking
+#[allow(dead_code)]
 fn generate_large_html(size_kb: usize) -> String {
     let mut html = String::from("<!DOCTYPE html><html><head><title>Test</title></head><body>");
     
@@ -32,6 +33,7 @@ fn generate_large_html(size_kb: usize) -> String {
 }
 
 /// Generate a small HTML document for overhead testing
+#[allow(dead_code)]
 fn generate_small_html() -> String {
     String::from("<!DOCTYPE html><html><body><p>Hello World</p></body></html>")
 }
@@ -173,6 +175,7 @@ fn bench_speculative_overhead_small() {
 }
 
 /// Helper function to print benchmark statistics
+#[allow(dead_code)]
 fn print_stats(stats: &crate::ace::html::bench::BenchStats) {
     println!("  Mean:   {:?}", stats.mean);
     println!("  Median: {:?}", stats.median);
