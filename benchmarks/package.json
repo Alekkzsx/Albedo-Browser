@@ -1,25 +1,30 @@
 {
-  "name": "ace-html-chrome-benchmarks",
+  "name": "ace-html-browser-benchmarks",
   "version": "1.0.0",
-  "description": "Chrome HTML parser benchmarks for ACE HTML parser comparison",
+  "description": "Chrome and Firefox HTML parser benchmarks for ACE HTML parser comparison",
   "main": "chrome_parser_bench.js",
   "scripts": {
-    "bench": "node chrome_parser_bench.js",
-    "bench-puppeteer": "node chrome_parser_bench_puppeteer.js",
-    "install-puppeteer": "npm install puppeteer"
+    "bench-chrome": "node chrome_parser_bench.js",
+    "bench-chrome-puppeteer": "node chrome_parser_bench_puppeteer.js",
+    "bench-firefox": "node firefox_parser_bench_playwright.js",
+    "install-puppeteer": "npm install puppeteer",
+    "install-playwright": "npm install playwright",
+    "install-all": "npm install puppeteer playwright"
   },
   "keywords": [
     "benchmark",
     "html",
     "parser",
     "chrome",
+    "firefox",
     "performance"
   ],
   "author": "Albedo Browser Team",
   "license": "MIT",
   "dependencies": {},
   "optionalDependencies": {
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^21.0.0",
+    "playwright": "^1.40.0"
   },
   "devDependencies": {},
   "engines": {

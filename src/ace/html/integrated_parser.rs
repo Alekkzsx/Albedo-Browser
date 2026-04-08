@@ -8,11 +8,34 @@ use super::{
     ParseError, ParserOptions, PreloadRequest, TreeBuildOutput,
 };
 
+/// Result of parsing with integrated statistics.
+///
+/// This struct provides the parsed document along with detailed statistics about
+/// the parsing process, including memory usage, string interning efficiency, and
+/// any errors encountered.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_html_integrated;
+///
+/// let html = "<div><span>Hello</span></div>";
+/// let result = parse_html_integrated(html);
+///
+/// println!("Parsed {} nodes", result.document.children.len());
+/// println!("Memory usage: {} KB", result.stats.arena_capacity_kb);
+/// println!("String hit rate: {:.1}%", result.stats.interner_hit_rate * 100.0);
+/// ```
 pub struct ParseResult {
+    /// The parsed HTML document.
     pub document: HtmlDocument,
+    /// Error messages (simplified).
     pub errors: Vec<String>,
+    /// Detailed parse errors with positions.
     pub parse_errors: Vec<ParseError>,
+    /// Resources discovered by the preload scanner.
     pub preload_requests: Vec<PreloadRequest>,
+    /// Parsing statistics.
     pub stats: ParserStats,
 }
 
@@ -32,35 +55,113 @@ impl ParseResult {
     }
 }
 
+/// Statistics collected during HTML parsing.
+///
+/// These statistics provide insights into memory usage, string interning efficiency,
+/// and other performance metrics.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_html_integrated;
+///
+/// let html = "<div class='test'><p>Hello</p></div>";
+/// let result = parse_html_integrated(html);
+///
+/// println!("Arena chunks: {}", result.stats.arena_chunk_count);
+/// println!("Unique strings: {}", result.stats.interner_unique_strings);
+/// println!("Hit rate: {:.2}%", result.stats.interner_hit_rate * 100.0);
+/// ```
 pub struct ParserStats {
+    /// Number of memory chunks allocated by the arena.
     pub arena_chunk_count: usize,
+    /// Total arena capacity in kilobytes.
     pub arena_capacity_kb: usize,
+    /// Arena memory utilization (0.0 to 1.0).
     pub arena_utilization: f32,
+    /// Number of unique strings in the interner.
     pub interner_unique_strings: usize,
+    /// String interner hit rate (0.0 to 1.0).
     pub interner_hit_rate: f32,
+    /// Total number of parse errors.
     pub total_errors: usize,
+    /// Total number of preload requests discovered.
     pub total_preloads: usize,
 }
 
+/// Builder for parsing HTML with integrated statistics collection.
+///
+/// This builder provides a fluent API for configuring and executing HTML parsing
+/// with automatic statistics collection.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{IntegratedTreeBuilder, ParserOptions};
+///
+/// let mut options = ParserOptions::default();
+/// options.collect_preloads = true;
+///
+/// let result = IntegratedTreeBuilder::with_options("<div>Hello</div>", options)
+///     .parse();
+///
+/// assert!(!result.document.children.is_empty());
+/// ```
 pub struct IntegratedTreeBuilder<'a> {
     input: &'a str,
     options: ParserOptions,
 }
 
 impl<'a> IntegratedTreeBuilder<'a> {
+    /// Creates a new builder with default options.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::IntegratedTreeBuilder;
+    ///
+    /// let builder = IntegratedTreeBuilder::new("<div>Hello</div>");
+    /// let result = builder.parse();
+    /// ```
     pub fn new(input: &'a str) -> Self {
         Self::with_options(input, ParserOptions::default())
     }
 
+    /// Creates a new builder with custom options.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::{IntegratedTreeBuilder, ParserOptions};
+    ///
+    /// let mut options = ParserOptions::default();
+    /// options.scripting_enabled = false;
+    ///
+    /// let builder = IntegratedTreeBuilder::with_options("<noscript>Hi</noscript>", options);
+    /// ```
     pub fn with_options(input: &'a str, options: ParserOptions) -> Self {
         Self { input, options }
     }
 
+    /// Parses the HTML and returns results with statistics.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::IntegratedTreeBuilder;
+    ///
+    /// let result = IntegratedTreeBuilder::new("<div>Hello</div>").parse();
+    /// assert!(result.stats.arena_chunk_count > 0);
+    /// ```
     pub fn parse(self) -> ParseResult {
         let output = build_document_with_errors_and_options(self.input, &self.options);
         Self::to_parse_result(output)
     }
 
+    /// Parses the HTML and returns the raw tree build output.
+    ///
+    /// Use this method if you need access to the raw [`TreeBuildOutput`] instead
+    /// of the processed [`ParseResult`].
     pub fn parse_output(self) -> TreeBuildOutput {
         build_document_with_errors_and_options(self.input, &self.options)
     }
@@ -70,18 +171,90 @@ impl<'a> IntegratedTreeBuilder<'a> {
     }
 }
 
+/// Parses HTML with integrated statistics collection.
+///
+/// This is a convenience function that creates an [`IntegratedTreeBuilder`] with
+/// default options and returns the parsing results with statistics.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_html_integrated;
+///
+/// let html = "<div><p>Hello, World!</p></div>";
+/// let result = parse_html_integrated(html);
+///
+/// println!("Parsed successfully!");
+/// println!("Memory used: {} KB", result.stats.arena_capacity_kb);
+/// println!("Errors: {}", result.stats.total_errors);
+/// ```
 pub fn parse_html_integrated(input: &str) -> ParseResult {
     IntegratedTreeBuilder::new(input).parse()
 }
 
+/// Parses HTML with custom options and integrated statistics.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_html_integrated_with_options, ParserOptions};
+///
+/// let mut options = ParserOptions::default();
+/// options.collect_preloads = true;
+///
+/// let html = "<link rel='stylesheet' href='app.css'>";
+/// let result = parse_html_integrated_with_options(html, &options);
+///
+/// assert!(result.stats.total_preloads > 0);
+/// ```
 pub fn parse_html_integrated_with_options(input: &str, options: &ParserOptions) -> ParseResult {
     IntegratedTreeBuilder::with_options(input, options.clone()).parse()
 }
 
+/// Parses HTML from bytes with integrated statistics.
+///
+/// The character encoding is automatically detected from the byte stream.
+///
+/// # Errors
+///
+/// Returns an error if the bytes cannot be decoded to valid text.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_html_integrated_from_bytes;
+///
+/// let bytes = b"<div>Hello</div>";
+/// let result = parse_html_integrated_from_bytes(bytes).unwrap();
+/// assert!(!result.document.children.is_empty());
+/// ```
 pub fn parse_html_integrated_from_bytes(bytes: &[u8]) -> Result<ParseResult, String> {
     parse_html_integrated_from_bytes_with_options(bytes, None, &ParserOptions::default())
 }
 
+/// Parses HTML from bytes with custom options and integrated statistics.
+///
+/// # Arguments
+///
+/// * `bytes` - The raw bytes of the HTML document
+/// * `http_header` - Optional HTTP Content-Type header for encoding detection
+/// * `options` - Parser configuration options
+///
+/// # Errors
+///
+/// Returns an error if the bytes cannot be decoded to valid text.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_html_integrated_from_bytes_with_options, ParserOptions};
+///
+/// let bytes = b"<div>Hello</div>";
+/// let options = ParserOptions::default();
+///
+/// let result = parse_html_integrated_from_bytes_with_options(bytes, None, &options).unwrap();
+/// assert!(result.stats.arena_chunk_count > 0);
+/// ```
 pub fn parse_html_integrated_from_bytes_with_options(
     bytes: &[u8],
     http_header: Option<&str>,
