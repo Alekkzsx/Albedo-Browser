@@ -1,0 +1,28 @@
+{
+  "name": "ace-html-chrome-benchmarks",
+  "version": "1.0.0",
+  "description": "Chrome HTML parser benchmarks for ACE HTML parser comparison",
+  "main": "chrome_parser_bench.js",
+  "scripts": {
+    "bench": "node chrome_parser_bench.js",
+    "bench-puppeteer": "node chrome_parser_bench_puppeteer.js",
+    "install-puppeteer": "npm install puppeteer"
+  },
+  "keywords": [
+    "benchmark",
+    "html",
+    "parser",
+    "chrome",
+    "performance"
+  ],
+  "author": "Albedo Browser Team",
+  "license": "MIT",
+  "dependencies": {},
+  "optionalDependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

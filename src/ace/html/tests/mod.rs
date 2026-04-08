@@ -6,3 +6,5 @@ pub mod preload_bench;
 pub mod speculative_bench;
 pub mod stress_bench;
 pub mod tokenizer_tests;
+pub mod chrome_bench;
+pub mod chrome_comparison_tests;

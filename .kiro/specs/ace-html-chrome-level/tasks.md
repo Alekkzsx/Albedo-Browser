@@ -248,7 +248,7 @@
   - [x] 4.1.3.3 Many attributes (100 per element)
   - [x] 4.1.3.4 Entity heavy (50% entities)
 - [ ] 4.1.4 Comparison com Chrome/Firefox
-  - [-] 4.1.4.1 Setup Chrome benchmark
+  - [x] 4.1.4.1 Setup Chrome benchmark
   - [ ] 4.1.4.2 Setup Firefox benchmark
   - [ ] 4.1.4.3 Side-by-side comparison
   - [ ] 4.1.4.4 Report generation
