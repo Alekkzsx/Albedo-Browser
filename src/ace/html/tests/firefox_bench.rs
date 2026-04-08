@@ -1,12 +1,12 @@
-//! Chrome HTML Parser Benchmark Comparison
+// ! Firefox HTML Parser Benchmark Comparison
 //! 
 //! This module provides infrastructure to benchmark ACE HTML parser against
-//! Chrome's HTML parser using Node.js with Puppeteer or similar tools.
+//! Firefox's HTML parser using Node.js with Playwright.
 //! 
-//! Since we can't directly call Chrome's C++ parser from Rust, we:
+//! Since we can't directly call Firefox's C++ parser from Rust, we:
 //! 1. Generate benchmark HTML documents
 //! 2. Run ACE parser benchmarks in Rust
-//! 3. Run Chrome parser benchmarks via Node.js script
+//! 3. Run Firefox parser benchmarks via Node.js script
 //! 4. Compare and generate reports
 
 use std::time::Duration;
@@ -15,9 +15,9 @@ use std::fs;
 use std::path::Path;
 use crate::ace::html::{build_document, bench::{BenchRunner, BenchConfig, BenchResult}};
 
-/// Chrome benchmark result from Node.js
+/// Firefox benchmark result from Node.js
 #[derive(Debug, Clone)]
-pub struct ChromeBenchResult {
+pub struct FirefoxBenchResult {
     pub name: String,
     pub mean: Duration,
     pub median: Duration,
@@ -28,22 +28,22 @@ pub struct ChromeBenchResult {
     pub throughput_mbps: f64,
 }
 
-/// Comparison between ACE and Chrome
+/// Comparison between ACE and Firefox
 #[derive(Debug, Clone)]
 pub struct ParserComparison {
     pub name: String,
     pub ace_result: BenchResult,
-    pub chrome_result: Option<ChromeBenchResult>,
-    pub speedup: Option<f64>, // ACE vs Chrome (> 1.0 means ACE is faster)
+    pub firefox_result: Option<FirefoxBenchResult>,
+    pub speedup: Option<f64>, // ACE vs Firefox (> 1.0 means ACE is faster)
 }
 
 impl ParserComparison {
-    pub fn new(name: String, ace_result: BenchResult, chrome_result: Option<ChromeBenchResult>) -> Self {
-        let speedup = chrome_result.as_ref().map(|chrome| {
+    pub fn new(name: String, ace_result: BenchResult, firefox_result: Option<FirefoxBenchResult>) -> Self {
+        let speedup = firefox_result.as_ref().map(|firefox| {
             let ace_secs = ace_result.stats.mean.as_secs_f64();
-            let chrome_secs = chrome.mean.as_secs_f64();
+            let firefox_secs = firefox.mean.as_secs_f64();
             if ace_secs > 0.0 {
-                chrome_secs / ace_secs
+                firefox_secs / ace_secs
             } else {
                 1.0
             }
@@ -52,7 +52,7 @@ impl ParserComparison {
         Self {
             name,
             ace_result,
-            chrome_result,
+            firefox_result,
             speedup,
         }
     }
@@ -68,13 +68,13 @@ impl ParserComparison {
         println!("  P95:        {:?}", self.ace_result.stats.p95);
         println!("  P99:        {:?}", self.ace_result.stats.p99);
         
-        if let Some(chrome) = &self.chrome_result {
-            println!("\nChrome HTML Parser:");
-            println!("  Mean:       {:?}", chrome.mean);
-            println!("  Median:     {:?}", chrome.median);
-            println!("  P95:        {:?}", chrome.p95);
-            println!("  P99:        {:?}", chrome.p99);
-            println!("  Throughput: {:.2} MB/s", chrome.throughput_mbps);
+        if let Some(firefox) = &self.firefox_result {
+            println!("\nFirefox HTML Parser:");
+            println!("  Mean:       {:?}", firefox.mean);
+            println!("  Median:     {:?}", firefox.median);
+            println!("  P95:        {:?}", firefox.p95);
+            println!("  P99:        {:?}", firefox.p99);
+            println!("  Throughput: {:.2} MB/s", firefox.throughput_mbps);
             
             if let Some(speedup) = self.speedup {
                 println!("\nComparison:");
@@ -87,22 +87,22 @@ impl ParserComparison {
                 }
             }
         } else {
-            println!("\nChrome benchmark not available (Node.js script not run)");
+            println!("\nFirefox benchmark not available (Node.js script not run)");
         }
         
         println!("{}", "=".repeat(70));
     }
 }
 
-/// Chrome benchmark runner
-pub struct ChromeBenchRunner {
+/// Firefox benchmark runner
+pub struct FirefoxBenchRunner {
     node_script_path: String,
 }
 
-impl ChromeBenchRunner {
+impl FirefoxBenchRunner {
     pub fn new() -> Self {
         Self {
-            node_script_path: "benchmarks/chrome_parser_bench.js".to_string(),
+            node_script_path: "benchmarks/firefox_parser_bench_playwright.js".to_string(),
         }
     }
     
@@ -121,14 +121,14 @@ impl ChromeBenchRunner {
         Path::new(&self.node_script_path).exists()
     }
     
-    /// Run Chrome benchmark via Node.js
-    pub fn run_chrome_benchmark(&self, html: &str, name: &str) -> Result<ChromeBenchResult, String> {
+    /// Run Firefox benchmark via Node.js
+    pub fn run_firefox_benchmark(&self, html: &str, name: &str) -> Result<FirefoxBenchResult, String> {
         if !self.is_available() {
             return Err("Node.js or benchmark script not available".to_string());
         }
         
         // Write HTML to temporary file
-        let temp_path = format!("target/bench_temp_{}.html", name.replace(" ", "_"));
+        let temp_path = format!("target/bench_temp_firefox_{}.html", name.replace(" ", "_"));
         fs::write(&temp_path, html)
             .map_err(|e| format!("Failed to write temp file: {}", e))?;
         
@@ -150,11 +150,11 @@ impl ChromeBenchRunner {
         
         // Parse JSON output
         let stdout = String::from_utf8_lossy(&output.stdout);
-        self.parse_chrome_result(&stdout, name)
+        self.parse_firefox_result(&stdout, name)
     }
     
-    /// Parse Chrome benchmark result from JSON
-    fn parse_chrome_result(&self, json: &str, name: &str) -> Result<ChromeBenchResult, String> {
+    /// Parse Firefox benchmark result from JSON
+    fn parse_firefox_result(&self, json: &str, name: &str) -> Result<FirefoxBenchResult, String> {
         // Simple JSON parsing (we avoid serde to maintain zero dependencies)
         // Expected format: {"mean":1.5,"median":1.4,"p95":2.0,"p99":2.5,"min":1.0,"max":3.0,"throughput":500.0}
         
@@ -166,7 +166,7 @@ impl ChromeBenchRunner {
                 .ok_or_else(|| format!("Failed to parse field: {}", field))
         };
         
-        Ok(ChromeBenchResult {
+        Ok(FirefoxBenchResult {
             name: name.to_string(),
             mean: Duration::from_secs_f64(parse_field("mean")? / 1000.0),
             median: Duration::from_secs_f64(parse_field("median")? / 1000.0),
@@ -178,7 +178,7 @@ impl ChromeBenchRunner {
         })
     }
     
-    /// Run comparison benchmark: ACE vs Chrome
+    /// Run comparison benchmark: ACE vs Firefox
     pub fn compare_parsers(&self, html: &str, name: &str) -> ParserComparison {
         println!("\n🔬 Running comparison benchmark: {}", name);
         println!("Document size: {} bytes ({:.2} MB)", html.len(), html.len() as f64 / 1_000_000.0);
@@ -196,24 +196,24 @@ impl ChromeBenchRunner {
         
         println!("  ACE Mean: {:?}", ace_result.stats.mean);
         
-        // Run Chrome benchmark
-        println!("\n⏱️  Benchmarking Chrome HTML Parser...");
-        let chrome_result = match self.run_chrome_benchmark(html, name) {
+        // Run Firefox benchmark
+        println!("\n⏱️  Benchmarking Firefox HTML Parser...");
+        let firefox_result = match self.run_firefox_benchmark(html, name) {
             Ok(result) => {
-                println!("  Chrome Mean: {:?}", result.mean);
+                println!("  Firefox Mean: {:?}", result.mean);
                 Some(result)
             }
             Err(e) => {
-                println!("  ⚠️  Chrome benchmark failed: {}", e);
+                println!("  ⚠️  Firefox benchmark failed: {}", e);
                 None
             }
         };
         
-        ParserComparison::new(name.to_string(), ace_result, chrome_result)
+        ParserComparison::new(name.to_string(), ace_result, firefox_result)
     }
 }
 
-impl Default for ChromeBenchRunner {
+impl Default for FirefoxBenchRunner {
     fn default() -> Self {
         Self::new()
     }
@@ -221,16 +221,16 @@ impl Default for ChromeBenchRunner {
 
 /// Generate comparison report
 pub fn generate_comparison_report(comparisons: &[ParserComparison]) -> String {
-    let mut report = String::from("# ACE HTML Parser vs Chrome Comparison\n\n");
+    let mut report = String::from("# ACE HTML Parser vs Firefox Comparison\n\n");
     report.push_str("## Performance Comparison\n\n");
-    report.push_str("| Benchmark | ACE Mean | Chrome Mean | Speedup | Status |\n");
-    report.push_str("|-----------|----------|-------------|---------|--------|\n");
+    report.push_str("| Benchmark | ACE Mean | Firefox Mean | Speedup | Status |\n");
+    report.push_str("|-----------|----------|--------------|---------|--------|\n");
     
     for comp in comparisons {
         let ace_ms = comp.ace_result.stats.mean.as_secs_f64() * 1000.0;
         
-        if let Some(chrome) = &comp.chrome_result {
-            let chrome_ms = chrome.mean.as_secs_f64() * 1000.0;
+        if let Some(firefox) = &comp.firefox_result {
+            let firefox_ms = firefox.mean.as_secs_f64() * 1000.0;
             let speedup = comp.speedup.unwrap_or(1.0);
             let status = if speedup > 1.0 {
                 format!("✓ {:.1}% faster", (speedup - 1.0) * 100.0)
@@ -240,11 +240,11 @@ pub fn generate_comparison_report(comparisons: &[ParserComparison]) -> String {
             
             report.push_str(&format!(
                 "| {} | {:.2}ms | {:.2}ms | {:.2}x | {} |\n",
-                comp.name, ace_ms, chrome_ms, speedup, status
+                comp.name, ace_ms, firefox_ms, speedup, status
             ));
         } else {
             report.push_str(&format!(
-                "| {} | {:.2}ms | N/A | N/A | Chrome data unavailable |\n",
+                "| {} | {:.2}ms | N/A | N/A | Firefox data unavailable |\n",
                 comp.name, ace_ms
             ));
         }
@@ -261,13 +261,13 @@ pub fn generate_comparison_report(comparisons: &[ParserComparison]) -> String {
         report.push_str(&format!("- P99: {:?}\n", comp.ace_result.stats.p99));
         report.push_str(&format!("- CV: {:.2}%\n", comp.ace_result.stats.coefficient_of_variation()));
         
-        if let Some(chrome) = &comp.chrome_result {
-            report.push_str("\n**Chrome HTML Parser:**\n");
-            report.push_str(&format!("- Mean: {:?}\n", chrome.mean));
-            report.push_str(&format!("- Median: {:?}\n", chrome.median));
-            report.push_str(&format!("- P95: {:?}\n", chrome.p95));
-            report.push_str(&format!("- P99: {:?}\n", chrome.p99));
-            report.push_str(&format!("- Throughput: {:.2} MB/s\n", chrome.throughput_mbps));
+        if let Some(firefox) = &comp.firefox_result {
+            report.push_str("\n**Firefox HTML Parser:**\n");
+            report.push_str(&format!("- Mean: {:?}\n", firefox.mean));
+            report.push_str(&format!("- Median: {:?}\n", firefox.median));
+            report.push_str(&format!("- P95: {:?}\n", firefox.p95));
+            report.push_str(&format!("- P99: {:?}\n", firefox.p99));
+            report.push_str(&format!("- Throughput: {:.2} MB/s\n", firefox.throughput_mbps));
         }
         
         report.push_str("\n");
@@ -281,9 +281,9 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_chrome_bench_runner_creation() {
-        let runner = ChromeBenchRunner::new();
-        assert_eq!(runner.node_script_path, "benchmarks/chrome_parser_bench.js");
+    fn test_firefox_bench_runner_creation() {
+        let runner = FirefoxBenchRunner::new();
+        assert_eq!(runner.node_script_path, "benchmarks/firefox_parser_bench_playwright.js");
     }
     
     #[test]
@@ -312,7 +312,7 @@ mod tests {
         let comparison = ParserComparison::new("test".to_string(), ace_result, None);
         let report = generate_comparison_report(&[comparison]);
         
-        assert!(report.contains("# ACE HTML Parser vs Chrome Comparison"));
+        assert!(report.contains("# ACE HTML Parser vs Firefox Comparison"));
         assert!(report.contains("test"));
     }
 }

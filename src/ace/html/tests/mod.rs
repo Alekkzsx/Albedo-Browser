@@ -8,3 +8,7 @@ pub mod stress_bench;
 pub mod tokenizer_tests;
 pub mod chrome_bench;
 pub mod chrome_comparison_tests;
+pub mod firefox_bench;
+pub mod firefox_comparison_tests;
+pub mod browser_comparison;
+pub mod browser_comparison_tests;

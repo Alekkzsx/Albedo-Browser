@@ -1,3 +1,85 @@
+//! ACE HTML Parser - A high-performance, WHATWG-compliant HTML5 parser.
+//!
+//! This module provides a complete HTML5 parsing implementation following the
+//! [WHATWG HTML Living Standard](https://html.spec.whatwg.org/). It includes
+//! a lexer, tokenizer, and tree builder that work together to parse HTML documents
+//! and fragments into a DOM-like tree structure.
+//!
+//! # Features
+//!
+//! - **WHATWG Conformance**: Implements all lexer states, insertion modes, and algorithms
+//! - **High Performance**: SIMD optimizations, zero-copy string handling, and speculative parsing
+//! - **Streaming Support**: Incremental parsing with low latency
+//! - **Error Recovery**: Robust error handling following the HTML5 specification
+//! - **Preload Scanning**: Early resource discovery for improved page load performance
+//! - **Encoding Detection**: Automatic character encoding detection and conversion
+//!
+//! # Quick Start
+//!
+//! Parse a complete HTML document:
+//!
+//! ```
+//! use ace::html::parse_document;
+//!
+//! let html = r#"
+//!     <!DOCTYPE html>
+//!     <html>
+//!         <head><title>Example</title></head>
+//!         <body><h1>Hello, World!</h1></body>
+//!     </html>
+//! "#;
+//!
+//! let document = parse_document(html);
+//! assert!(!document.children.is_empty());
+//! ```
+//!
+//! Parse an HTML fragment:
+//!
+//! ```
+//! use ace::html::parse_fragment;
+//!
+//! let html = "<div><p>Hello</p></div>";
+//! let nodes = parse_fragment(html, Some("body"));
+//! assert_eq!(nodes.len(), 1);
+//! ```
+//!
+//! Parse with error reporting:
+//!
+//! ```
+//! use ace::html::parse_document_with_errors;
+//!
+//! let html = "<div><p>Unclosed paragraph</div>";
+//! let output = parse_document_with_errors(html);
+//! assert!(!output.errors.is_empty());
+//! ```
+//!
+//! # Architecture
+//!
+//! The parser consists of three main components:
+//!
+//! 1. **Lexer** ([`HtmlLexer`]): Tokenizes raw HTML text into tokens
+//! 2. **Tokenizer** ([`HtmlTokenizer`]): Processes lexer tokens and handles character references
+//! 3. **Tree Builder** ([`build_document`]): Constructs the DOM tree from tokens
+//!
+//! # Performance Features
+//!
+//! - **SIMD Acceleration**: Uses AVX2/AVX-512 for whitespace detection and entity lookup
+//! - **String Interning**: Reduces memory usage by deduplicating common strings
+//! - **Arena Allocation**: Fast memory allocation with minimal overhead
+//! - **Speculative Parsing**: Parallel tokenization for improved throughput
+//! - **Preload Scanner**: Early resource discovery without full parsing
+//!
+//! # Modules
+//!
+//! - [`lexer`]: Low-level HTML tokenization
+//! - [`tokenizer`]: High-level token processing
+//! - [`tree_builder`]: DOM tree construction
+//! - [`preload_scanner`]: Resource preload discovery
+//! - [`encoding`]: Character encoding detection and conversion
+//! - [`streaming`]: Incremental parsing support
+//! - [`speculative`]: Parallel parsing support
+//! - [`integrated_parser`]: Simplified parsing API with statistics
+
 #![deny(warnings)]
 
 use std::collections::HashMap;
@@ -60,23 +142,75 @@ pub use speculative::{
     SpeculativeTokenizer, SpeculativeTreeBuilder,
 };
 
+/// Represents a complete HTML document.
+///
+/// An HTML document consists of an optional DOCTYPE declaration and a list of root-level nodes.
+/// Typically, a well-formed document will have a single `<html>` element as its child.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_document;
+///
+/// let html = "<!DOCTYPE html><html><body>Content</body></html>";
+/// let doc = parse_document(html);
+///
+/// assert!(doc.doctype.is_some());
+/// assert!(!doc.children.is_empty());
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlDocument {
+    /// The DOCTYPE declaration, if present.
     pub doctype: Option<DoctypeToken>,
+    /// The root-level nodes of the document.
     pub children: Vec<HtmlNode>,
 }
 
+/// A node in the HTML document tree.
+///
+/// HTML nodes can be elements, text nodes, or comments. This enum provides
+/// a unified representation for all node types in the document tree.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{HtmlNode, HtmlElement};
+///
+/// let element = HtmlNode::Element(HtmlElement::new("div"));
+/// let text = HtmlNode::Text("Hello".to_string());
+/// let comment = HtmlNode::Comment("TODO: fix this".to_string());
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HtmlNode {
+    /// An HTML element with tag name, attributes, and children.
     Element(HtmlElement),
+    /// A text node containing character data.
     Text(String),
+    /// A comment node.
     Comment(String),
 }
 
+/// XML namespace for HTML elements.
+///
+/// HTML5 supports three namespaces: HTML, SVG, and MathML. The parser automatically
+/// switches namespaces when encountering foreign content elements.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::Namespace;
+///
+/// let html_ns = Namespace::Html;
+/// let svg_ns = Namespace::Svg;
+/// let mathml_ns = Namespace::MathMl;
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Namespace {
+    /// HTML namespace (default).
     Html,
+    /// SVG namespace for scalable vector graphics.
     Svg,
+    /// MathML namespace for mathematical markup.
     MathMl,
 }
 
@@ -86,25 +220,60 @@ impl Default for Namespace {
     }
 }
 
+/// An HTML element with tag name, attributes, and children.
+///
+/// Elements are the primary building blocks of HTML documents. Each element has a tag name,
+/// optional attributes, and may contain child nodes. Elements can also have special properties
+/// for Web Components (shadow DOM, slots) and custom elements.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{HtmlElement, Namespace};
+///
+/// // Create a simple div element
+/// let div = HtmlElement::new("div");
+///
+/// // Create an SVG element
+/// let svg = HtmlElement::with_namespace("svg", Namespace::Svg);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HtmlElement {
+    /// The tag name (e.g., "div", "p", "span").
     pub tag: String,
+    /// The XML namespace of this element.
     pub namespace: Namespace,
+    /// The element's attributes as key-value pairs.
     pub attributes: HashMap<String, String>,
+    /// The element's child nodes.
     pub children: Vec<HtmlNode>,
-    /// Slot assignment for Shadow DOM (slot="..." attribute)
+    /// Slot assignment for Shadow DOM (slot="..." attribute).
     pub slot_name: Option<String>,
-    /// Is attribute for custom elements (is="x-button")
+    /// Is attribute for custom elements (is="x-button").
     pub is_value: Option<String>,
-    /// Indicates if this element is a shadow root host
+    /// Indicates if this element is a shadow root host.
     pub shadow_root_mode: Option<ShadowRootMode>,
-    /// Shadow root content (for declarative shadow DOM)
+    /// Shadow root content (for declarative shadow DOM).
     pub shadow_root: Option<Box<HtmlDocument>>,
 }
 
+/// Shadow DOM attachment mode.
+///
+/// Determines whether the shadow root is accessible from JavaScript.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::ShadowRootMode;
+///
+/// let open_mode = ShadowRootMode::Open;
+/// let closed_mode = ShadowRootMode::Closed;
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShadowRootMode {
+    /// Shadow root is accessible via `element.shadowRoot`.
     Open,
+    /// Shadow root is not accessible from JavaScript.
     Closed,
 }
 
@@ -115,6 +284,20 @@ impl Default for ShadowRootMode {
 }
 
 impl HtmlElement {
+    /// Creates a new HTML element with the given tag name.
+    ///
+    /// The element is created in the HTML namespace with no attributes or children.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::HtmlElement;
+    ///
+    /// let div = HtmlElement::new("div");
+    /// assert_eq!(div.tag, "div");
+    /// assert!(div.attributes.is_empty());
+    /// assert!(div.children.is_empty());
+    /// ```
     pub fn new(tag: impl Into<String>) -> Self {
         Self {
             tag: tag.into(),
@@ -128,6 +311,18 @@ impl HtmlElement {
         }
     }
 
+    /// Creates a new element with the given tag name and namespace.
+    ///
+    /// Use this constructor when creating SVG or MathML elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::{HtmlElement, Namespace};
+    ///
+    /// let svg = HtmlElement::with_namespace("svg", Namespace::Svg);
+    /// assert_eq!(svg.namespace, Namespace::Svg);
+    /// ```
     pub fn with_namespace(tag: impl Into<String>, ns: Namespace) -> Self {
         Self {
             tag: tag.into(),
@@ -142,13 +337,34 @@ impl HtmlElement {
     }
 }
 
+/// Configuration options for the HTML parser.
+///
+/// These options control various aspects of parsing behavior, including scripting support,
+/// base URL resolution, encoding hints, and feature flags.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{ParserOptions, Encoding};
+///
+/// let mut options = ParserOptions::default();
+/// options.scripting_enabled = false;
+/// options.base_url = Some("https://example.com/".to_string());
+/// options.encoding_hint = Some(Encoding::Utf8);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParserOptions {
+    /// Whether scripting is enabled (affects `<noscript>` parsing).
     pub scripting_enabled: bool,
+    /// Base URL for resolving relative URLs.
     pub base_url: Option<String>,
+    /// Source URL of the document being parsed.
     pub source_url: Option<String>,
+    /// Hint for character encoding detection.
     pub encoding_hint: Option<Encoding>,
+    /// Whether to track line and column positions for errors.
     pub track_positions: bool,
+    /// Whether to collect preload requests during parsing.
     pub collect_preloads: bool,
 }
 
@@ -165,14 +381,47 @@ impl Default for ParserOptions {
     }
 }
 
+/// Context information for parsing HTML fragments.
+///
+/// When parsing a fragment (e.g., `innerHTML`), the parser needs to know the context
+/// element to determine the correct parsing rules. This struct provides that context.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{FragmentContext, Namespace};
+///
+/// // Parse as if inside a <div> element
+/// let context = FragmentContext::new("div");
+///
+/// // Parse as if inside an SVG element
+/// let svg_context = FragmentContext::new("svg")
+///     .with_namespace(Namespace::Svg);
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentContext {
+    /// The tag name of the context element.
     pub tag_name: String,
+    /// The namespace of the context element.
     pub namespace: Namespace,
+    /// Whether scripting is enabled in the context.
     pub scripting_enabled: bool,
 }
 
 impl FragmentContext {
+    /// Creates a new fragment context with the given tag name.
+    ///
+    /// The tag name is automatically converted to lowercase, and the namespace
+    /// defaults to HTML with scripting enabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::FragmentContext;
+    ///
+    /// let context = FragmentContext::new("div");
+    /// assert_eq!(context.tag_name, "div");
+    /// ```
     pub fn new(tag_name: impl Into<String>) -> Self {
         Self {
             tag_name: tag_name.into().to_ascii_lowercase(),
@@ -181,29 +430,129 @@ impl FragmentContext {
         }
     }
 
+    /// Sets the namespace for this fragment context.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::{FragmentContext, Namespace};
+    ///
+    /// let context = FragmentContext::new("svg")
+    ///     .with_namespace(Namespace::Svg);
+    /// assert_eq!(context.namespace, Namespace::Svg);
+    /// ```
     pub fn with_namespace(mut self, namespace: Namespace) -> Self {
         self.namespace = namespace;
         self
     }
 
+    /// Sets whether scripting is enabled for this fragment context.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::FragmentContext;
+    ///
+    /// let context = FragmentContext::new("div")
+    ///     .with_scripting(false);
+    /// assert!(!context.scripting_enabled);
+    /// ```
     pub fn with_scripting(mut self, scripting_enabled: bool) -> Self {
         self.scripting_enabled = scripting_enabled;
         self
     }
 }
 
+/// Parses an HTML document from a string.
+///
+/// This is the simplest way to parse HTML. It uses default parser options and
+/// returns only the document structure without error information.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_document;
+///
+/// let html = "<!DOCTYPE html><html><body>Hello</body></html>";
+/// let doc = parse_document(html);
+/// assert!(!doc.children.is_empty());
+/// ```
+///
+/// # See Also
+///
+/// - [`parse_document_with_options`] - Parse with custom options
+/// - [`parse_document_with_errors`] - Parse and collect errors
 pub fn parse_document(input: &str) -> HtmlDocument {
     parse_document_with_options(input, &ParserOptions::default())
 }
 
+/// Parses an HTML document with custom parser options.
+///
+/// This function allows you to customize parsing behavior through [`ParserOptions`].
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_document_with_options, ParserOptions};
+///
+/// let mut options = ParserOptions::default();
+/// options.scripting_enabled = false;
+///
+/// let html = "<noscript>Visible content</noscript>";
+/// let doc = parse_document_with_options(html, &options);
+/// ```
 pub fn parse_document_with_options(input: &str, options: &ParserOptions) -> HtmlDocument {
     build_document_with_errors_and_options(input, options).document
 }
 
+/// Parses an HTML document from bytes, detecting the character encoding.
+///
+/// The encoding is detected from:
+/// 1. Byte Order Mark (BOM)
+/// 2. HTTP Content-Type header (if provided)
+/// 3. `<meta charset>` declaration
+/// 4. Defaults to UTF-8
+///
+/// # Errors
+///
+/// Returns an error if the bytes cannot be decoded to valid text.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_document_from_bytes;
+///
+/// let html_bytes = b"<!DOCTYPE html><html><body>Hello</body></html>";
+/// let doc = parse_document_from_bytes(html_bytes).unwrap();
+/// assert!(!doc.children.is_empty());
+/// ```
 pub fn parse_document_from_bytes(bytes: &[u8]) -> Result<HtmlDocument, String> {
     parse_document_from_bytes_with_options(bytes, None, &ParserOptions::default())
 }
 
+/// Parses an HTML document from bytes with custom options and HTTP header.
+///
+/// # Arguments
+///
+/// * `bytes` - The raw bytes of the HTML document
+/// * `http_header` - Optional HTTP Content-Type header for encoding detection
+/// * `options` - Parser configuration options
+///
+/// # Errors
+///
+/// Returns an error if the bytes cannot be decoded to valid text.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_document_from_bytes_with_options, ParserOptions};
+///
+/// let bytes = b"<!DOCTYPE html><html><body>Hello</body></html>";
+/// let header = Some("text/html; charset=utf-8");
+/// let options = ParserOptions::default();
+///
+/// let doc = parse_document_from_bytes_with_options(bytes, header, &options).unwrap();
+/// ```
 pub fn parse_document_from_bytes_with_options(
     bytes: &[u8],
     http_header: Option<&str>,
@@ -212,14 +561,65 @@ pub fn parse_document_from_bytes_with_options(
     Ok(parse_document_from_bytes_with_errors_and_options(bytes, http_header, options)?.document)
 }
 
+/// Parses an HTML document and returns detailed error information.
+///
+/// This function returns a [`TreeBuildOutput`] that includes the parsed document
+/// and any errors encountered during parsing.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_document_with_errors;
+///
+/// let html = "<div><p>Unclosed paragraph</div>";
+/// let output = parse_document_with_errors(html);
+///
+/// assert!(!output.document.children.is_empty());
+/// // May have errors for unclosed tags
+/// ```
 pub fn parse_document_with_errors(input: &str) -> TreeBuildOutput {
     parse_document_with_errors_and_options(input, &ParserOptions::default())
 }
 
+/// Parses an HTML document with custom options and returns detailed error information.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_document_with_errors_and_options, ParserOptions};
+///
+/// let mut options = ParserOptions::default();
+/// options.track_positions = true;
+///
+/// let html = "<div><p>Content</div>";
+/// let output = parse_document_with_errors_and_options(html, &options);
+/// ```
 pub fn parse_document_with_errors_and_options(input: &str, options: &ParserOptions) -> TreeBuildOutput {
     build_document_with_errors_and_options(input, options)
 }
 
+/// Parses HTML document from bytes with full error reporting.
+///
+/// # Arguments
+///
+/// * `bytes` - The raw bytes of the HTML document
+/// * `http_header` - Optional HTTP Content-Type header for encoding detection
+/// * `options` - Parser configuration options
+///
+/// # Errors
+///
+/// Returns an error if the bytes cannot be decoded to valid text.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_document_from_bytes_with_errors_and_options, ParserOptions};
+///
+/// let bytes = b"<div><p>Content</div>";
+/// let output = parse_document_from_bytes_with_errors_and_options(
+///     bytes, None, &ParserOptions::default()
+/// ).unwrap();
+/// ```
 pub fn parse_document_from_bytes_with_errors_and_options(
     bytes: &[u8],
     http_header: Option<&str>,
@@ -229,6 +629,25 @@ pub fn parse_document_from_bytes_with_errors_and_options(
     Ok(build_document_with_errors_and_options(&decoded.content, options))
 }
 
+/// Parses an HTML fragment.
+///
+/// Fragment parsing is used when parsing HTML that will be inserted into an existing
+/// document (e.g., `innerHTML`). The context element determines how the HTML is parsed.
+///
+/// # Arguments
+///
+/// * `input` - The HTML fragment to parse
+/// * `context` - Optional context element tag name (defaults to "body")
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_fragment;
+///
+/// let html = "<div><p>Hello</p></div>";
+/// let nodes = parse_fragment(html, Some("body"));
+/// assert_eq!(nodes.len(), 1);
+/// ```
 pub fn parse_fragment(input: &str, context: Option<&str>) -> Vec<HtmlNode> {
     parse_fragment_with_context(
         input,
@@ -237,6 +656,19 @@ pub fn parse_fragment(input: &str, context: Option<&str>) -> Vec<HtmlNode> {
     )
 }
 
+/// Parses an HTML fragment with custom context and options.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_fragment_with_context, FragmentContext, ParserOptions};
+///
+/// let html = "<li>Item</li>";
+/// let context = FragmentContext::new("ul");
+/// let options = ParserOptions::default();
+///
+/// let nodes = parse_fragment_with_context(html, Some(&context), &options);
+/// ```
 pub fn parse_fragment_with_context(
     input: &str,
     context: Option<&FragmentContext>,
@@ -245,6 +677,20 @@ pub fn parse_fragment_with_context(
     build_fragment_with_context_and_options(input, context, options).document.children
 }
 
+/// Parses an HTML fragment and returns detailed error information.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::{parse_fragment_with_errors_and_context, FragmentContext, ParserOptions};
+///
+/// let html = "<div><p>Unclosed</div>";
+/// let context = FragmentContext::new("body");
+/// let options = ParserOptions::default();
+///
+/// let output = parse_fragment_with_errors_and_context(html, Some(&context), &options);
+/// assert!(!output.errors.is_empty());
+/// ```
 pub fn parse_fragment_with_errors_and_context(
     input: &str,
     context: Option<&FragmentContext>,
@@ -253,6 +699,19 @@ pub fn parse_fragment_with_errors_and_context(
     build_fragment_with_context_and_options(input, context, options)
 }
 
+/// HTML5 parse error codes as defined by the WHATWG specification.
+///
+/// These error codes correspond to the parse errors defined in the
+/// [WHATWG HTML Living Standard](https://html.spec.whatwg.org/#parse-errors).
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::AceHtmlErrorCode;
+///
+/// let error = AceHtmlErrorCode::UnexpectedNullCharacter;
+/// assert_eq!(error.as_str(), "unexpected-null-character");
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AceHtmlErrorCode {
     // Lexer Errors
@@ -313,6 +772,18 @@ pub enum AceHtmlErrorCode {
 }
 
 impl AceHtmlErrorCode {
+    /// Returns the string representation of this error code.
+    ///
+    /// The string format matches the error codes defined in the WHATWG specification.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ace::html::AceHtmlErrorCode;
+    ///
+    /// let error = AceHtmlErrorCode::EofInComment;
+    /// assert_eq!(error.as_str(), "eof-in-comment");
+    /// ```
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::AbruptClosingOfEmptyComment => "abrupt-closing-of-empty-comment",
@@ -371,19 +842,47 @@ impl AceHtmlErrorCode {
     }
 }
 
+/// A parse error encountered during HTML parsing.
+///
+/// Parse errors include information about the error type, source component,
+/// error message, and position in the input.
+///
+/// # Examples
+///
+/// ```
+/// use ace::html::parse_document_with_errors;
+///
+/// let html = "<div><p>Unclosed</div>";
+/// let output = parse_document_with_errors(html);
+///
+/// for error in output.parse_errors() {
+///     println!("Error at {}:{}: {}", error.line, error.column, error.message);
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseError {
+    /// The error code as defined by the WHATWG specification.
     pub code: AceHtmlErrorCode,
+    /// The parser component that generated this error.
     pub source: ParseErrorSource,
+    /// A human-readable error message.
     pub message: String,
+    /// The line number where the error occurred (1-indexed).
     pub line: usize,
+    /// The column number where the error occurred (1-indexed).
     pub column: usize,
 }
 
+/// The source component that generated a parse error.
+///
+/// Parse errors can originate from the lexer, tokenizer, or tree builder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParseErrorSource {
+    /// Error from the lexer (low-level tokenization).
     Lexer,
+    /// Error from the tokenizer (token processing).
     Tokenizer,
+    /// Error from the tree builder (DOM construction).
     TreeBuilder,
 }
 
