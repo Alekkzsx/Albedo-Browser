@@ -274,8 +274,8 @@
 
 ### 4.3 Final Validation
 - [~] 4.3.1 Performance validation
-  - [-] 4.3.1.1 Throughput ≥ 500 MB/s ✓
-  - [~] 4.3.1.2 Latência < 1ms ✓
+  - [x] 4.3.1.1 Throughput ≥ 500 MB/s ✓
+  - [-] 4.3.1.2 Latência < 1ms ✓
   - [~] 4.3.1.3 Memória ≤ 50% Chrome ✓
 - [~] 4.3.2 Conformance validation
   - [~] 4.3.2.1 html5lib 100% ✓
