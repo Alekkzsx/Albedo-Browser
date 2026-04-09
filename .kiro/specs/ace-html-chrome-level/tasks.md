@@ -277,14 +277,14 @@
   - [x] 4.3.1.1 Throughput ≥ 500 MB/s ✓
   - [x] 4.3.1.2 Latência < 1ms ✓
   - [x] 4.3.1.3 Memória ≤ 50% Chrome ✓
-- [~] 4.3.2 Conformance validation
-  - [-] 4.3.2.1 html5lib 100% ✓
-  - [~] 4.3.2.2 WPT > 99% ✓
-  - [~] 4.3.2.3 Chrome compatibility 99.9% ✓
-- [~] 4.3.3 Quality validation
-  - [~] 4.3.3.1 Test coverage > 95% ✓
-  - [~] 4.3.3.2 Zero memory leaks ✓
-  - [~] 4.3.3.3 Zero panics on fuzzing ✓
+- [x] 4.3.2 Conformance validation
+  - [x] 4.3.2.1 html5lib 100% ✓
+  - [x] 4.3.2.2 WPT > 99% ✓
+  - [x] 4.3.2.3 Chrome compatibility 99.9% ✓
+- [ ] 4.3.3 Quality validation
+  - [ ] 4.3.3.1 Test coverage > 95% ✓
+  - [ ] 4.3.3.2 Zero memory leaks ✓
+  - [ ] 4.3.3.3 Zero panics on fuzzing ✓
 
 ---
 
