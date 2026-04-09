@@ -1952,10 +1952,9 @@ impl HtmlTreeBuilder {
                 });
                 if node_afe_pos.is_none() {
                     self.open_elements.remove(node_pos);
-                    // Adjust node_pos since we removed an element
-                    if node_pos > 0 {
-                        node_pos += 1; // Will be decremented in next iteration
-                    }
+                    // After removal, elements shift down, so node_pos now points to the next element
+                    // We don't need to adjust node_pos because the loop will decrement it
+                    // But we need to ensure we don't go below 0 in the next iteration
                     continue;
                 }
                 let node_afe_pos = node_afe_pos.unwrap();
