@@ -12,3 +12,4 @@ pub mod firefox_bench;
 pub mod firefox_comparison_tests;
 pub mod browser_comparison;
 pub mod browser_comparison_tests;
+pub mod throughput_validation;

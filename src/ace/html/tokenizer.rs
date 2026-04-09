@@ -112,8 +112,12 @@ pub struct HtmlTokenizer {
 
 impl HtmlTokenizer {
     pub fn new(input: &str) -> Self {
+        // Non-streaming constructor: the full input is already available.
+        // Signal end-of-input so the lexer can flush trailing text and emit EOF.
+        let mut lexer = HtmlLexer::new(input);
+        lexer.end();
         Self {
-            lexer: HtmlLexer::new(input),
+            lexer,
             errors: Vec::new(),
         }
     }
