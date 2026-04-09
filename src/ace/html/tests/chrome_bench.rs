@@ -26,6 +26,22 @@ pub struct ChromeBenchResult {
     pub min: Duration,
     pub max: Duration,
     pub throughput_mbps: f64,
+    pub memory: Option<MemoryStats>,
+}
+
+/// Memory statistics from Chrome benchmark
+#[derive(Debug, Clone)]
+pub struct MemoryStats {
+    pub mean_bytes: f64,
+    pub median_bytes: f64,
+    pub p95_bytes: f64,
+    pub p99_bytes: f64,
+    pub min_bytes: f64,
+    pub max_bytes: f64,
+    pub mean_mb: f64,
+    pub median_mb: f64,
+    pub p95_mb: f64,
+    pub p99_mb: f64,
 }
 
 /// Comparison between ACE and Chrome
@@ -156,7 +172,7 @@ impl ChromeBenchRunner {
     /// Parse Chrome benchmark result from JSON
     fn parse_chrome_result(&self, json: &str, name: &str) -> Result<ChromeBenchResult, String> {
         // Simple JSON parsing (we avoid serde to maintain zero dependencies)
-        // Expected format: {"mean":1.5,"median":1.4,"p95":2.0,"p99":2.5,"min":1.0,"max":3.0,"throughput":500.0}
+        // Expected format: {"mean":1.5,"median":1.4,"p95":2.0,"p99":2.5,"min":1.0,"max":3.0,"throughput":500.0,"memory":{...}}
         
         let parse_field = |field: &str| -> Result<f64, String> {
             json.split(&format!("\"{}\":", field))
@@ -164,6 +180,31 @@ impl ChromeBenchRunner {
                 .and_then(|s| s.split(',').next().or_else(|| s.split('}').next()))
                 .and_then(|s| s.trim().parse::<f64>().ok())
                 .ok_or_else(|| format!("Failed to parse field: {}", field))
+        };
+        
+        // Parse memory stats if available
+        let memory = if json.contains("\"memory\"") {
+            let parse_memory_field = |field: &str| -> Option<f64> {
+                json.split(&format!("\"{}\":", field))
+                    .nth(1)
+                    .and_then(|s| s.split(',').next().or_else(|| s.split('}').next()))
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+            };
+            
+            Some(MemoryStats {
+                mean_bytes: parse_memory_field("mean_bytes").unwrap_or(0.0),
+                median_bytes: parse_memory_field("median_bytes").unwrap_or(0.0),
+                p95_bytes: parse_memory_field("p95_bytes").unwrap_or(0.0),
+                p99_bytes: parse_memory_field("p99_bytes").unwrap_or(0.0),
+                min_bytes: parse_memory_field("min_bytes").unwrap_or(0.0),
+                max_bytes: parse_memory_field("max_bytes").unwrap_or(0.0),
+                mean_mb: parse_memory_field("mean_mb").unwrap_or(0.0),
+                median_mb: parse_memory_field("median_mb").unwrap_or(0.0),
+                p95_mb: parse_memory_field("p95_mb").unwrap_or(0.0),
+                p99_mb: parse_memory_field("p99_mb").unwrap_or(0.0),
+            })
+        } else {
+            None
         };
         
         Ok(ChromeBenchResult {
@@ -175,6 +216,7 @@ impl ChromeBenchRunner {
             min: Duration::from_secs_f64(parse_field("min")? / 1000.0),
             max: Duration::from_secs_f64(parse_field("max")? / 1000.0),
             throughput_mbps: parse_field("throughput")?,
+            memory,
         })
     }
     
