@@ -903,6 +903,64 @@ impl HtmlTreeBuilder {
         }
 
         // ── </h1> … </h6> — spec §13.2.6.4.7 ───────────────────────────────
+                // In-body block/container end tags.
+        if matches!(
+            tag.name.as_str(),
+            "address"
+                | "article"
+                | "aside"
+                | "blockquote"
+                | "button"
+                | "center"
+                | "details"
+                | "dialog"
+                | "dir"
+                | "div"
+                | "dl"
+                | "fieldset"
+                | "figcaption"
+                | "figure"
+                | "footer"
+                | "header"
+                | "hgroup"
+                | "main"
+                | "menu"
+                | "nav"
+                | "ol"
+                | "section"
+                | "summary"
+                | "ul"
+        ) {
+            if !self.has_element_in_scope(&tag.name) {
+                self.errors.push(
+                    TreeBuilderError::new(
+                        TreeBuilderErrorKind::UnexpectedEndTag,
+                        self.insertion_mode,
+                        format!("end tag </{tag_name}> but not in scope", tag_name = tag.name),
+                    )
+                    .with_pos(ln, col),
+                );
+            } else {
+                self.generate_implied_end_tags(None);
+                if self.current_tag().map_or(true, |current| !current.eq_ignore_ascii_case(&tag.name))
+                {
+                    self.errors.push(
+                        TreeBuilderError::new(
+                            TreeBuilderErrorKind::UnexpectedEndTag,
+                            self.insertion_mode,
+                            format!(
+                                "end tag </{tag_name}> did not match current node",
+                                tag_name = tag.name
+                            ),
+                        )
+                        .with_pos(ln, col),
+                    );
+                }
+                self.close_until(&tag.name);
+            }
+            self.reset_insertion_mode();
+            return;
+        }
         if matches!(tag.name.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             // Check if any heading is in scope.
             let any_heading_in_scope = ["h1", "h2", "h3", "h4", "h5", "h6"]
@@ -2972,11 +3030,15 @@ pub fn build_fragment_with_context_and_options(
     context: Option<&FragmentContext>,
     options: &ParserOptions,
 ) -> TreeBuildOutput {
-    let mut builder = HtmlTreeBuilder::with_options(input, options.clone());
+    // Fragment parsing must configure context BEFORE token consumption.
+    // `with_options` eagerly processes tokens, so use the empty constructor here.
+    let mut builder = HtmlTreeBuilder::with_options_empty(options.clone());
     if let Some(context) = context {
         builder.setup_fragment_context(context);
     }
-    builder.run()
+    builder.feed(input);
+    builder.end();
+    builder.finish()
 }
 
 #[cfg(test)]
@@ -3171,3 +3233,4 @@ mod tests {
         assert!(!tree.contains("|   <body>\n|     <noframes>"));
     }
 }
+

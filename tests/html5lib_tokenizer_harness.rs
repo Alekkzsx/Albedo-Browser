@@ -166,7 +166,9 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
                     ));
                 }
 
-                let token = tokenizer.next_token();
+                let Some(token) = tokenizer.next_token() else {
+                    break;
+                };
                 let reached_eof = matches!(token.kind, HtmlTokenKind::Eof);
                 if let Some(mapped) = ExpectedToken::from_runtime(token) {
                     if matches!(mapped, ExpectedToken::Eof) && !include_eof {

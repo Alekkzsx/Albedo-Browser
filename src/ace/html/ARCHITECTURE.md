@@ -1535,13 +1535,14 @@ RUSTFLAGS="-C target-feature=+avx2" cargo build --release
 
 For additional information, see:
 
-- **Data Flow Diagrams**: [ARCHITECTURE_DATAFLOW.md](ARCHITECTURE_DATAFLOW.md) (coming soon)
-- **Performance Guide**: [PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md) (coming soon)
+- **Data Flow Diagrams**: [DATAFLOW.md](DATAFLOW.md)
+- **Performance Guide**: [PERFORMANCE_GUIDE.md](PERFORMANCE_GUIDE.md)
 - **API Documentation**: Run `cargo doc --open`
 - **Usage Guide**: [USAGE_GUIDE.md](USAGE_GUIDE.md)
+- **Contributing Guide**: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
-**Last Updated**: 2024-01-06  
+**Last Updated**: 2026-04-09  
 **Version**: 1.1  
 **ACE HTML Parser** - Part of the Albedo Engine

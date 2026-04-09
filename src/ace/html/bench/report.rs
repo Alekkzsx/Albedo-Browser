@@ -150,7 +150,7 @@ impl ReportGenerator {
             let regressions = self.results.iter()
                 .filter(|r| r.comparison.as_ref().map_or(false, |c| c.is_regression))
                 .count();
-            writeln!(file, "        <div class=\"summary-card {}\">")?;
+            writeln!(file, "        <div class=\"summary-card\">")?;
             writeln!(file, "          <div class=\"summary-value\">{}</div>", regressions)?;
             writeln!(file, "          <div class=\"summary-label\">Regressions</div>")?;
             writeln!(file, "        </div>")?;

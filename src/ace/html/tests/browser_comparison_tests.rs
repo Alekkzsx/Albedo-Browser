@@ -2,6 +2,7 @@
 //! 
 //! Tests for the side-by-side browser comparison functionality.
 
+#[cfg(test)]
 use crate::ace::html::tests::browser_comparison::{BrowserComparisonRunner, generate_comprehensive_report};
 
 #[test]
