@@ -13,3 +13,5 @@ pub mod firefox_comparison_tests;
 pub mod browser_comparison;
 pub mod browser_comparison_tests;
 pub mod throughput_validation;
+pub mod memory_validation;
+pub mod memory_validation_demo;

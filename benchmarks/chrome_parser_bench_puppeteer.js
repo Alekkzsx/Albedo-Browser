@@ -56,8 +56,18 @@ async function runPuppeteerBenchmark(html, name) {
     // Measurement phase
     console.error(`Measurement: ${MEASUREMENT_ITERATIONS} iterations...`);
     const samples = [];
+    const memorySamples = [];
     
     for (let i = 0; i < MEASUREMENT_ITERATIONS; i++) {
+        // Clear previous content and force GC
+        await page.evaluate(() => {
+            document.body.innerHTML = '';
+            if (window.gc) window.gc();
+        });
+        
+        // Measure memory before parsing
+        const memoryBefore = await page.metrics();
+        
         // Measure parsing time using Chrome's Performance API
         const timing = await page.evaluate((htmlContent) => {
             const start = performance.now();
@@ -70,16 +80,30 @@ async function runPuppeteerBenchmark(html, name) {
             return end - start;
         }, html);
         
+        // Measure memory after parsing
+        const memoryAfter = await page.metrics();
+        
+        // Calculate memory delta (in bytes)
+        const memoryDelta = memoryAfter.JSHeapUsedSize - memoryBefore.JSHeapUsedSize;
+        
         samples.push(timing);
+        memorySamples.push(memoryDelta);
     }
     
     await browser.close();
     
     // Calculate statistics
     const stats = calculateStats(samples, html.length);
+    const memoryStats = calculateMemoryStats(memorySamples);
+    
+    // Merge stats
+    const result = {
+        ...stats,
+        memory: memoryStats
+    };
     
     // Output JSON to stdout
-    console.log(JSON.stringify(stats));
+    console.log(JSON.stringify(result));
 }
 
 /**
@@ -155,6 +179,38 @@ function calculateStats(samples, docSize) {
         max,       // milliseconds
         stdDev,    // milliseconds
         throughput // MB/s
+    };
+}
+
+/**
+ * Calculate memory statistics
+ */
+function calculateMemoryStats(samples) {
+    samples.sort((a, b) => a - b);
+    
+    const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const median = samples[Math.floor(samples.length / 2)];
+    const p95 = samples[Math.floor(samples.length * 0.95)];
+    const p99 = samples[Math.floor(samples.length * 0.99)];
+    const min = samples[0];
+    const max = samples[samples.length - 1];
+    
+    // Calculate standard deviation
+    const variance = samples.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / samples.length;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+        mean_bytes: mean,
+        median_bytes: median,
+        p95_bytes: p95,
+        p99_bytes: p99,
+        min_bytes: min,
+        max_bytes: max,
+        stdDev_bytes: stdDev,
+        mean_mb: mean / 1_000_000.0,
+        median_mb: median / 1_000_000.0,
+        p95_mb: p95 / 1_000_000.0,
+        p99_mb: p99 / 1_000_000.0
     };
 }
 
