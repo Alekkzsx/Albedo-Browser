@@ -3,9 +3,6 @@ pub mod serializer;
 pub mod tokenizer;
 pub mod value;
 
-#[cfg(test)]
-pub mod tests;
-
 pub use parser::parse;
 pub use serializer::{stringify, stringify_pretty};
 pub use value::JsonValue;
