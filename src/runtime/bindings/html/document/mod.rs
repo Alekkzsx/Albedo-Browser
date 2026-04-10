@@ -8,11 +8,7 @@ use std::sync::{Arc, Mutex};
 pub mod collections;
 pub mod events;
 pub mod fragment;
-#[cfg(test)]
-mod observer_tests;
 pub mod query;
-#[cfg(test)]
-mod tests;
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]

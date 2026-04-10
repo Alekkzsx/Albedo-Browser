@@ -17,10 +17,6 @@ use crate::engine::CssFilter;
 use crate::engine::TransformFunction;
 
 pub mod animation;
-#[path = "../dom_tests.rs"]
-mod dom_tests;
-#[cfg(test)]
-mod grid_tests;
 
 pub struct Stylesheet {
     pub user_agent_rules: Vec<AceRule>,

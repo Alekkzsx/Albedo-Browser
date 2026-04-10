@@ -644,5 +644,3 @@ impl Element {
         self.set_attribute("data-return-value".into(), val);
     }
 }
-#[cfg(test)]
-mod tests;

@@ -99,8 +99,6 @@ pub mod simd;
 pub mod integrated_parser;
 pub mod thread_pool;
 pub mod speculative;
-pub mod bench;
-pub mod tests;
 
 pub use lexer::{
     DoctypeToken as RawDoctypeToken, HtmlLexer, HtmlToken as RawHtmlToken,

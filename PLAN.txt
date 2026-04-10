@@ -1,1953 +1,1029 @@
 ╔══════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                  ║
-║                  🌑  ALBEDO BROWSER — PLANO DE DESENVOLVIMENTO                   ║
+║              🌑  ALBEDO BROWSER — PLANO MESTRE DE DESENVOLVIMENTO                ║
 ║                                                                                  ║
-║        Um navegador real, leve e de produção — 100% PRÓPRIO em Rust             ║
-║                    ZERO DEPENDÊNCIAS EXTERNAS CRÍTICAS                           ║
+║    O navegador Rust-native mais leve do mundo. Powered by ACE Engine.            ║
 ║                                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════════╝
 
-  📅 Última Atualização  →  2026-03-24  (Reformulação total: tudo próprio do Albedo)
-  🔧 Versão Atual        →  0.1.0-alpha  →  Target: v1.0.0 (100% Albedo)
+  📅 Última Atualização  →  2026-04-10
+  🔧 Versão Atual        →  0.1.0-alpha
   📊 Codebase            →  ~15.700 LOC Rust  |  ~103 arquivos
-  📈 Completude Geral    →  ≈ 5% (visão 100% próprio — tudo a refazer internamente)
-  ⚡ Build Time          →  46.9s  (target: < 30s com pipeline próprio)
-  🎯 Objetivo            →  Browser de produção 100% PRÓPRIO que rivaliza com
-                             Firefox/Chrome — ZERO bibliotecas externas críticas
-  🏛️ Filosofia           →  Cada linha de código que roda no Albedo é do Albedo.
-                             Nenhum crate de terceiro em subsistema crítico.
+  🏛️ Engine              →  ACE (Albedo Core Engine)
 
-  Legenda de Status:
-    ✅  Implementado 100% PRÓPRIO e funcional (sem dependência externa)
-    🟡  Código existe mas DEPENDE de crate externo (migrar para ACE-*)
-    ❌  Não implementado
-    ⚠️  Atenção / Bloqueador crítico / Stub sem funcionalidade real
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          O QUE É O ALBEDO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  O Albedo é um navegador web completo, escrito em Rust, com motor próprio.
+
+  O Chrome tem o Blink. O Firefox tem o Gecko. O Safari tem o WebKit.
+  O Albedo tem o ACE.
+
+  O ACE (Albedo Core Engine) é o motor do Albedo. Ele não é um fork do Chromium,
+  não é baseado no Gecko, não usa o WebKit. É uma engine independente, construída
+  do zero pelo projeto Albedo.
+
+  Assim como o Blink internamente usa Skia, BoringSSL, zlib e ICU como ferramentas,
+  o ACE internamente usa crates Rust (cssparser, taffy, tiny-skia, QuickJS, rustls)
+  como ferramentas. A engine — a arquitetura, o pipeline, a orquestração de tudo —
+  é do Albedo.
+
+  O objetivo: ser um browser tão capaz quanto Chrome/Firefox, mas
+  BIZARRAMENTE mais leve.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          METAS DE LEVEZA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌────────────────────────────┬────────────┬────────────┬────────────┐
+  │ Métrica                    │ 🌑 Albedo  │ Chrome     │ Firefox    │
+  ├────────────────────────────┼────────────┼────────────┼────────────┤
+  │ RAM por aba (idle)         │ < 5 MB     │ 50-80 MB   │ 30-50 MB   │
+  │ Startup (cold)             │ < 50 ms    │ 2000-5000  │ 1000-3000  │
+  │ Tamanho do binário         │ < 15 MB    │ ~200 MB    │ ~100 MB    │
+  │ Processos em idle          │ 1          │ 15-30      │ 8-15       │
+  │ CPU em idle (%)            │ < 0.1%     │ 1-5%       │ 0.5-2%     │
+  │ Tempo p/ first paint       │ < 100 ms   │ ~300 ms    │ ~400 ms    │
+  │ Telemetria enviada         │ ZERO       │ Constante  │ Opcional   │
+  │ Processos de background    │ ZERO       │ 3-5        │ 1-3        │
+  └────────────────────────────┴────────────┴────────────┴────────────┘
+
+  Por que o Albedo consegue ser tão leve:
+  • Rust: zero garbage collector, controle total de memória
+  • Single-process + async (Tokio): sem overhead de IPC entre processos
+  • Zero telemetria, zero serviços de background
+  • QuickJS como JS engine (~300KB vs V8 ~30MB)
+  • Sem 25 anos de código legado acumulado
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    ANATOMIA COMPLETA: OS 7 PILARES DO ALBEDO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Um browser moderno é composto por 7 grandes pilares. Abaixo está o que o
+  Chrome tem em cada pilar e o equivalente no Albedo/ACE — com o status real
+  de cada componente.
+
+  Legenda:
+    ✅  Implementado e funcional
+    🔧  Parcialmente implementado / precisa de melhorias
+    ❌  Não implementado ainda
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 1 — MOTOR DE RENDERIZAÇÃO
+  Chrome: Blink + Skia  |  Albedo: ACE Engine + tiny-skia
+═══════════════════════════════════════════════════════════════════════════════════
+
+  O coração de um browser. Transforma bytes da rede em pixels na tela.
+  Pipeline: HTML → DOM → CSS → Estilos Computados → Layout → Paint → Composição
+
+  ─── 1.1 HTML Parser ─────────────────────────────────────────────────────────
+  Chrome usa: parser HTML integrado ao Blink
+  ACE usa: ACE-HTML (parser 100% próprio)
+
+  ✅  Lexer com state machine (~80 estados do HTML5 spec)
+  ✅  Tokenizer (StartTag, EndTag, Character, Comment, DOCTYPE)
+  ✅  Tree Builder com insertion modes completos
+  ✅  Adoption Agency Algorithm
+  ✅  Foster parenting
+  ✅  Streaming parser (parse incremental de chunks)
+  ✅  SIMD acceleration para scanning
+  ✅  Preload scanner (pré-carregamento especulativo de recursos)
+  ✅  Speculative parser (parsing paralelo)
+  ✅  String interner + Arena allocator
+  ✅  Character references (~2200 named entities)
+
+  ─── 1.2 DOM (Document Object Model) ─────────────────────────────────────────
+  Chrome usa: Blink DOM (C++)
+  ACE usa: AceDOM (Rust nativo, arena-allocated)
+
+  ✅  AceNode: Element, Text, Comment, Document, DocumentFragment, DocumentType
+  ✅  Navegação: parent, children, siblings, firstChild, lastChild
+  ✅  Manipulação: appendChild, removeChild, insertBefore, replaceChild
+  ✅  querySelector / querySelectorAll com seletores CSS
+  ✅  Shadow DOM v1
+  ✅  Custom Elements (Web Components)
+  ✅  Live NodeList
+  ✅  Range e Selection API
+  ✅  Virtual DOM diffing
+  ✅  String interning para reduzir alocações
+  ✅  Accessibility tree (a11y)
+  ✅  Dirty flags para invalidação incremental
+  🔧  MutationObserver (binding JS existe, integração parcial)
+  ❌  TreeWalker / NodeIterator
+  ❌  DOMParser / XMLSerializer
+
+  ─── 1.3 CSS Engine (Estilos) ────────────────────────────────────────────────
+  Chrome usa: Blink Style Engine
+  ACE usa: ACE Style Engine (usa cssparser + selectors internamente)
+
+  ✅  Cascade e herança
+  ✅  User Agent Stylesheet
+  ✅  Computed Styles com herança de propriedades
+  ✅  Specificity calculation
+  ✅  Box model: margin, padding, border, width, height, min/max, box-sizing
+  ✅  Display: block, inline, inline-block, flex, inline-flex, grid, none
+  ✅  Position: static, relative, absolute, fixed, sticky
+  ✅  Flexbox completo: direction, wrap, justify, align, grow/shrink/basis, gap
+  ✅  CSS Grid: template-columns/rows, areas, repeat(), minmax(), auto-fill/fit
+  ✅  Background: color, image, linear-gradient, radial-gradient
+  ✅  Typography: font-family, size, weight, style, line-height, text-align
+  ✅  Overflow: visible, hidden, scroll, auto
+  ✅  Border-radius, box-shadow, text-shadow
+  ✅  @keyframes + animations
+  ✅  Transitions com interpolação
+  ✅  Transform 2D/3D: translate, scale, rotate, skew, matrix
+  ✅  Filters: blur, brightness, contrast, grayscale, invert, opacity, saturate, sepia
+  ✅  backdrop-filter, mix-blend-mode (16 modos)
+  ✅  @media queries, @supports, @container queries, @font-face
+  ✅  calc(), clamp(), min(), max()
+  ✅  aspect-ratio, object-fit, object-position, clip-path
+  ✅  CSS custom properties (variáveis)
+  ✅  ::before, ::after, ::placeholder, ::selection, ::first-line
+  ✅  visibility, pointer-events, cursor, z-index
+  ✅  white-space, vertical-align
+  ✅  Float e clear
+  🔧  CSS Containment (contain) — parcial
+  ❌  :has() pseudo-class
+  ❌  CSS Nesting
+  ❌  @layer (cascade layers)
+  ❌  @property (typed custom properties)
+  ❌  CSS Scroll Snap
+  ❌  CSS Logical Properties
+  ❌  Multi-column layout
+  ❌  ::marker, ::backdrop
+  ❌  counters (counter-increment, counter-reset)
+  ❌  word-break, overflow-wrap avançado
+  ❌  hyphens
+
+  ─── 1.4 Layout Engine (Geometria) ──────────────────────────────────────────
+  Chrome usa: Blink LayoutNG
+  ACE usa: ACE Layout (usa taffy internamente para Flex/Grid)
+
+  ✅  Block Formatting Context (BFC)
+  ✅  Inline Formatting Context (IFC)
+  ✅  Flexbox layout
+  ✅  CSS Grid layout
+  ✅  Table layout com colspan/rowspan
+  ✅  Float layout + clear
+  ✅  Absolute/fixed/sticky positioning
+  ✅  Viewport responsivo com scroll
+  ✅  Incremental layout (dirty rects)
+  🔧  Margin collapsing — parcial
+  🔧  Inline text wrapping — precisa de melhorias
+  🔧  Box model extraction — TODOs pendentes
+  🔧  Content dimensions calculation — TODOs pendentes
+  ❌  Multi-column layout
+  ❌  Subgrid
+  ❌  Masonry layout
+
+  ─── 1.5 Text Shaping & Rendering ───────────────────────────────────────────
+  Chrome usa: HarfBuzz + FreeType + Skia
+  ACE usa: cosmic-text (shaping + rasterização de glifos)
+
+  ✅  Font loading e seleção por family/weight/style
+  ✅  Text layout com line breaking
+  ✅  Unicode support
+  ✅  Glyph rendering com anti-aliasing
+  🔧  text-decoration (underline, line-through) — parcial
+  🔧  text-overflow: ellipsis — parcial
+  ❌  Bidi text (RTL: árabe, hebraico)
+  ❌  Complex script shaping (ligaduras, kerning avançado)
+  ❌  text-transform (uppercase, lowercase, capitalize)
+  ❌  letter-spacing, word-spacing
+  ❌  @font-face com formatos woff/woff2
+  ❌  Font subsetting
+
+  ─── 1.6 Paint & Rasterização ───────────────────────────────────────────────
+  Chrome usa: Skia (rasterizador 2D)
+  ACE usa: tiny-skia (rasterizador 2D leve)
+
+  ✅  Primitivas visuais (ACEPrimitive): retângulos, textos, imagens, borders
+  ✅  Framebuffer rendering
+  ✅  Anti-aliasing
+  ✅  Clipping
+  ✅  Gradientes lineares e radiais
+  ✅  Border-radius rendering
+  ✅  Box shadows
+  🔧  Display lists otimizadas — básico
+  🔧  Paint invalidation — básico
+  ❌  Subpixel rendering
+  ❌  GPU-accelerated rasterização
+
+  ─── 1.7 GPU Compositor ──────────────────────────────────────────────────────
+  Chrome usa: cc (Chrome Compositor) + Skia GPU backend
+  ACE usa: ACE Compositor (usa wgpu internamente)
+
+  ✅  GPU compositing pipeline
+  ✅  Layer tree management
+  ✅  WGSL shaders
+  ✅  Texture management
+  🔧  Layer promotion (quais elementos viram layers) — básico
+  ❌  Compositor-driven animations (transform/opacity sem layout)
+  ❌  Tile-based rendering
+  ❌  Off-thread compositing (compositor em thread separada)
+  ❌  Scrolling acelerado por GPU
+
+  ─── 1.8 SVG ──────────────────────────────────────────────────────────────────
+  Chrome usa: Blink SVG engine
+  ACE usa: resvg/usvg (rendering SVG)
+
+  ✅  SVG rendering via resvg
+  🔧  SVG inline no HTML — parcial
+  ❌  SVG animations (SMIL)
+  ❌  SVG filters como CSS filters
+  ❌  SVG interatividade (eventos, JS)
+
+  ─── 1.9 Canvas 2D ────────────────────────────────────────────────────────────
+  Chrome usa: Skia backend
+  ACE usa: ACE Canvas2D (engine/graphics/canvas2d.rs)
+
+  ✅  Canvas 2D context básico
+  🔧  Drawing primitives — parcial
+  ❌  Full Canvas 2D API (paths, gradients, patterns, compositing, text)
+  ❌  OffscreenCanvas
+  ❌  ImageBitmap
+
+  ─── 1.10 Image Decoding ─────────────────────────────────────────────────────
+  Chrome usa: libpng, libjpeg-turbo, libwebp
+  ACE usa: image crate
+
+  ✅  PNG, JPEG, GIF, WebP decoding
+  ✅  Image rendering no pipeline
+  🔧  Aspect ratio preservation — precisa de melhorias
+  ❌  AVIF decoding
+  ❌  Lazy image loading (loading="lazy")
+  ❌  Responsive images (srcset, <picture>)
+  ❌  Async image decode (off-thread)
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 2 — MOTOR JAVASCRIPT
+  Chrome: V8  |  Albedo: QuickJS (via rquickjs) → futuro AlbedoJIT
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ─── 2.1 JS Engine ────────────────────────────────────────────────────────────
+  Chrome usa: V8 (Ignition + Sparkplug + Maglev + TurboFan)
+  ACE usa: QuickJS (via rquickjs) — o engine JS mais leve do mundo
+
+  ✅  ECMAScript 2023 completo (QuickJS)
+  ✅  ES Modules (import/export, import() dinâmico)
+  ✅  Async/await, Promises, generators
+  ✅  Closures, prototypes, classes
+  ✅  RegExp
+  ✅  Proxy, Reflect
+  ✅  Map, Set, WeakMap, WeakSet
+  ✅  ArrayBuffer, TypedArrays, DataView
+  ✅  Symbol, iterators
+  ✅  JSON parse/stringify
+  ✅  Error handling (try/catch/finally)
+  ❌  WeakRef / FinalizationRegistry
+  ❌  SharedArrayBuffer / Atomics
+
+  ─── 2.2 DOM Bindings (JS ↔ DOM) ──────────────────────────────────────────────
+  Chrome usa: Blink IDL bindings (C++)
+  ACE usa: Rust bindings via rquickjs
+
+  ✅  document.getElementById, querySelector, querySelectorAll
+  ✅  document.createElement, createTextNode
+  ✅  element.innerHTML, outerHTML, textContent
+  ✅  element.getAttribute, setAttribute, removeAttribute
+  ✅  element.classList (add, remove, toggle, contains)
+  ✅  element.style (CSSStyleDeclaration)
+  ✅  element.getBoundingClientRect
+  ✅  element.scrollIntoView
+  ✅  getComputedStyle
+  ✅  Node manipulation (appendChild, removeChild, insertBefore, cloneNode)
+  🔧  element.children, childNodes — parcial
+  ❌  document.cookie
+  ❌  document.readyState / DOMContentLoaded correto
+  ❌  document.title (get/set)
+  ❌  document.createDocumentFragment completo
+  ❌  element.closest
+  ❌  element.matches
+  ❌  insertAdjacentHTML / insertAdjacentElement
+
+  ─── 2.3 Event System ────────────────────────────────────────────────────────
+  Chrome usa: Blink EventTarget
+  ACE usa: ACE Event System
+
+  ✅  addEventListener / removeEventListener
+  ✅  dispatchEvent
+  ✅  Event bubbling e capture
+  ✅  stopPropagation, preventDefault
+  ✅  Click, mousedown, mouseup, mousemove, mouseover, mouseout
+  ✅  Keyboard events (keydown, keyup, keypress)
+  ✅  Input events
+  ✅  Focus / blur events
+  ✅  Pointer Events
+  ✅  Touch Events
+  ✅  Scroll events
+  ❌  Wheel events (deltaX, deltaY, deltaMode)
+  ❌  Drag and Drop events
+  ❌  Clipboard events (cut, copy, paste)
+  ❌  Transition/Animation events (transitionend, animationend)
+  ❌  Resize events (on window/element)
+  ❌  hashchange, popstate events
+
+  ─── 2.4 Web APIs ────────────────────────────────────────────────────────────
+  Chrome usa: Blink Web API implementations (C++)
+  ACE usa: Rust implementations expostas via rquickjs
+
+  TIMERS & SCHEDULING:
+  ✅  setTimeout / setInterval / clearTimeout / clearInterval
+  ✅  requestAnimationFrame
+  ✅  requestIdleCallback
+  ❌  queueMicrotask
+  ❌  Correto microtask/macrotask ordering
+
+  NETWORKING APIS:
+  ✅  Fetch API (GET, POST, PUT, DELETE, PATCH, HEAD)
+  ✅  XMLHttpRequest — não (Fetch é suficiente para web moderna)
+  ✅  WebSocket
+  ❌  Server-Sent Events (EventSource)
+  ❌  Beacon API (navigator.sendBeacon)
+
+  STORAGE:
+  ✅  localStorage / sessionStorage
+  ✅  IndexedDB (backend SQLite via rusqlite)
+  ✅  Cache API (para Service Workers)
+  ❌  Cookie Store API
+  ❌  Storage quotas e estimativas
+
+  WORKERS:
+  ✅  Web Workers (dedicated)
+  ✅  Service Workers (offline, background sync)
+  🔧  SharedWorker — parcial
+  ❌  Worklets (PaintWorklet, AudioWorklet)
+
+  URL & ENCODING:
+  ✅  URL / URLSearchParams
+  ✅  TextEncoder / TextDecoder
+  ✅  structuredClone
+  ✅  btoa / atob (base64)
+  ❌  Blob / File constructor completo
+  ❌  FileReader completo
+  ❌  FormData completo
+
+  OBSERVERS:
+  ✅  MutationObserver
+  ✅  IntersectionObserver
+  ✅  ResizeObserver
+  ❌  PerformanceObserver
+  ❌  ReportingObserver
+
+  CRYPTO:
+  ✅  SubtleCrypto: digest, generateKey, importKey, exportKey
+  ✅  sign/verify (HMAC), encrypt/decrypt (AES-GCM), deriveBits (ECDH)
+  ✅  crypto.getRandomValues
+  ❌  crypto.randomUUID (binding JS)
+
+  MEDIA:
+  ❌  HTMLMediaElement (<video>, <audio>) com controles JS
+  ❌  Media Source Extensions (MSE)
+  ❌  Web Audio API (AudioContext)
+  ❌  MediaStream / getUserMedia
+  ❌  MediaRecorder
+  ❌  Picture-in-Picture
+  ❌  WebRTC (RTCPeerConnection)
+
+  GRAPHICS:
+  ❌  WebGL / WebGL2
+  ❌  WebGPU
+  ❌  OffscreenCanvas
+
+  WINDOW & NAVIGATION:
+  ✅  window.location
+  ✅  window.navigator (básico)
+  ✅  window.history (pushState, replaceState, back, forward)
+  ✅  matchMedia
+  ❌  window.open / window.close
+  ❌  window.postMessage (cross-origin)
+  ❌  window.print
+  ❌  window.screen / window.screenX/Y
+  ❌  window.scrollTo / window.scrollBy (JS)
+  ❌  Fullscreen API
+
+  MISC:
+  ✅  console.log/warn/error/info/debug/table/time/timeEnd
+  ✅  Clipboard API (arboard)
+  ✅  Notification API (notify-rust)
+  ✅  Geolocation (stub)
+  ✅  File API (básico)
+  ❌  Performance API (performance.now, mark, measure)
+  ❌  Streams API (ReadableStream, WritableStream)
+  ❌  Broadcast Channel
+  ❌  MessageChannel / MessagePort
+  ❌  Web Locks API
+  ❌  Web Animations API
+  ❌  Resize Observer completo
+  ❌  AbortController / AbortSignal
+  ❌  Trusted Types
+  ❌  Permissions API
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 3 — NETWORKING
+  Chrome: Chrome Network Stack  |  Albedo: ACE Network Stack
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ─── 3.1 Protocolos ──────────────────────────────────────────────────────────
+  ✅  HTTP/1.1 (via reqwest)
+  ✅  HTTP/2 com multiplexing (via reqwest)
+  ✅  HTTP/3 / QUIC (via quinn + h3)
+  ✅  TLS 1.3 (via rustls)
+  ✅  WebSocket (via tokio-tungstenite)
+  ✅  data: URLs
+  ✅  blob: URLs
+  ✅  albedo:// protocol (páginas internas)
+  ❌  Server-Sent Events
+  ❌  WebTransport
+
+  ─── 3.2 Resource Loading ───────────────────────────────────────────────────
+  ✅  Resource Manager assíncrono (priorização de recursos)
+  ✅  Fetch paralelo de HTML, CSS, JS, imagens
+  ✅  Compression: gzip (flate2), brotli, zstd
+  ✅  DNS prefetching
+  🔧  Resource prioritization — básico
+  ❌  Preconnect, preload, prefetch (<link rel=...>)
+  ❌  Lazy loading de imagens
+  ❌  Priority Hints (fetchpriority)
+
+  ─── 3.3 Cache ───────────────────────────────────────────────────────────────
+  ✅  Disk cache (via rusqlite)
+  ✅  Cache-Control header parsing
+  ✅  ETag / If-None-Match
+  ✅  Last-Modified / If-Modified-Since
+  🔧  Cache eviction policy — básico
+  ❌  Memory cache (para navegação back/forward instantânea)
+  ❌  Back/forward cache (bfcache)
+
+  ─── 3.4 Cookies ─────────────────────────────────────────────────────────────
+  ✅  Cookie jar (envio/recebimento)
+  ✅  Set-Cookie parsing
+  ✅  Same-Site attribute
+  🔧  HttpOnly, Secure flags — parcial
+  ❌  Cookie Store API (JS)
+  ❌  Third-party cookie blocking
+  ❌  Cookie partitioning (CHIPS)
+
+  ─── 3.5 Redirect Handling ───────────────────────────────────────────────────
+  🔧  301/302 redirects — básico
+  ❌  307/308 (preservar método)
+  ❌  Redirect loop detection
+  ❌  Max redirects limit
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 4 — SEGURANÇA E ISOLAMENTO
+  Chrome: Site Isolation + Sandbox  |  Albedo: ACE Security
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ✅  Same-Origin Policy (SOP)
+  ✅  CORS (Cross-Origin Resource Sharing)
+  ✅  Content Security Policy (CSP)
+  ✅  Mixed Content blocking
+  🔧  Sandboxing — parcial (via Rust memory safety)
+  ❌  HTTPS certificate UI (ícone 🔒 na barra)
+  ❌  Subresource Integrity (SRI)
+  ❌  HSTS (HTTP Strict Transport Security)
+  ❌  Referrer Policy
+  ❌  COEP / COOP headers
+  ❌  Permissions Policy / Feature Policy
+  ❌  XSS protection (sanitização de innerHTML, Trusted Types)
+  ❌  URL input validation e sanitização
+  ❌  Safe Browsing (lista de sites maliciosos)
+  ❌  Certificate pinning
+  ❌  Site Isolation (isolamento por origin)
+  ❌  Process sandboxing (seccomp, AppContainer)
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 5 — UI DO NAVEGADOR (Browser Chrome)
+  Chrome: Views/Aura  |  Albedo: Slint UI
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ─── 5.1 Componentes de UI ───────────────────────────────────────────────────
+  ✅  Janela principal com GPU acceleration (Slint)
+  ✅  Barra de endereços (URL bar)
+  ✅  Sistema de abas (TabManager)
+  ✅  Botões de navegação (voltar, avançar, recarregar)
+  ✅  Área de renderização de conteúdo
+  ✅  Scrollbars custom interativas
+  ✅  Página inicial (albedo://start)
+  ✅  Monitor de sistema (CPU/RAM) com ACE-SysInfo
+  🔧  Favicon nas abas — parcial (via Google Favicons Service)
+  ❌  Loading indicator (barra de progresso fina no topo)
+  ❌  Omnibox (busca unificada: URL + bookmarks + histórico + web search)
+  ❌  Context menu (botão direito)
+  ❌  Tooltips nativos (atributo title)
+  ❌  Barra de downloads
+  ❌  Notificação de permissões (câmera, localização, notificação)
+  ❌  Popup de autopreenchimento
+  ❌  Tela de configurações (albedo://settings)
+  ❌  Tela de histórico (albedo://history)
+  ❌  Print preview
+
+  ─── 5.2 Keyboard Shortcuts ──────────────────────────────────────────────────
+  ❌  Ctrl+T — Nova aba
+  ❌  Ctrl+W — Fechar aba
+  ❌  Ctrl+L — Focar barra de endereço
+  ❌  Ctrl+R / F5 — Recarregar
+  ❌  Alt+Left / Alt+Right — Voltar / Avançar
+  ❌  Ctrl+Tab / Ctrl+Shift+Tab — Trocar abas
+  ❌  Ctrl+Shift+T — Reabrir aba fechada
+  ❌  Ctrl+F — Find in page
+  ❌  Ctrl+Plus/Minus/0 — Zoom
+  ❌  F11 — Fullscreen
+  ❌  F12 — DevTools
+  ❌  Ctrl+D — Favoritar página
+  ❌  Ctrl+H — Histórico
+  ❌  Ctrl+J — Downloads
+  ❌  Escape — Parar loading / Fechar dialogs
+
+  ─── 5.3 Páginas Internas ────────────────────────────────────────────────────
+  ✅  albedo://start (página inicial)
+  ❌  albedo://settings
+  ❌  albedo://history
+  ❌  albedo://bookmarks
+  ❌  albedo://downloads
+  ❌  albedo://extensions
+  ❌  albedo://about
+  ❌  albedo://error (DNS fail, SSL error, timeout, 404)
+
+  ─── 5.4 Funcionalidades de Navegação ────────────────────────────────────────
+  🔧  Scroll — funcional mas sem smooth behavior
+  ❌  Find in page (Ctrl+F) — busca, highlight, next/prev
+  ❌  Zoom de página (25% a 500%)
+  ❌  Tab navigation (Tab/Shift+Tab entre elementos focáveis)
+  ❌  Scroll suave (scroll-behavior: smooth)
+  ❌  Fullscreen API
+  ❌  Drag & Drop de arquivos para upload
+  ❌  Print (Ctrl+P)
+  ❌  View Source (Ctrl+U)
+
+  ─── 5.5 Gerenciamento de Dados ──────────────────────────────────────────────
+  ❌  Downloads manager (lista, progresso, pausa/resume)
+  ❌  Bookmarks (favoritos com pastas, import/export)
+  ❌  Histórico pesquisável
+  ❌  Password manager
+  ❌  Autofill (formulários, cartões de crédito)
+  ❌  Clear browsing data (cache, cookies, histórico)
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 6 — MEDIA ENGINE
+  Chrome: Chromium Media Stack  |  Albedo: ACE Media (a construir)
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ✅  Audio playback básico (rodio)
+  ❌  <video> element com controles nativos (play, pause, seek, volume)
+  ❌  <audio> element com controles nativos
+  ❌  Video decoders (H.264, VP8/VP9, AV1)
+  ❌  Audio decoders (MP3, AAC, Opus, Vorbis, FLAC)
+  ❌  Container parsers (MP4, WebM, Ogg)
+  ❌  Media Source Extensions (MSE) — necessário para YouTube/Netflix
+  ❌  Encrypted Media Extensions (EME / DRM)
+  ❌  Web Audio API (AudioContext, nós de processamento)
+  ❌  WebRTC (vídeo/áudio P2P, data channels)
+  ❌  getUserMedia (acesso a câmera/microfone)
+  ❌  MediaRecorder
+  ❌  Picture-in-Picture
+  ❌  <track> / WebVTT (legendas)
+  ❌  Fullscreen video
+  ❌  Hardware video decode acceleration
+
+═══════════════════════════════════════════════════════════════════════════════════
+  PILAR 7 — DEVELOPER TOOLS
+  Chrome: Chrome DevTools  |  Albedo: ACE DevTools (a construir)
+═══════════════════════════════════════════════════════════════════════════════════
+
+  ❌  Elements panel (DOM tree inspector, edição de atributos, hover→highlight)
+  ❌  Styles panel (CSS rules aplicadas, computed styles, box model visual)
+  ❌  Console (REPL JS com acesso ao contexto da página)
+  ❌  Network panel (requests, status, size, timing waterfall, headers)
+  ❌  Performance profiler (timeline, FPS, flame chart)
+  ❌  Sources panel (breakpoints, stepping, watch expressions)
+  ❌  Application panel (storage, cookies, service workers, cache)
+  ❌  Accessibility inspector (a11y tree, ARIA)
+  ❌  Device emulation (responsive design mode)
+  ❌  Remote debugging protocol (como Chrome DevTools Protocol)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    SUBSISTEMAS UTILITÁRIOS JÁ IMPLEMENTADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✅  ACE-JSON — parser/serializer JSON próprio (src/ace/json/)
+  ✅  ACE-URL — parser WHATWG URL próprio (src/ace/url/)
+  ✅  ACE-Crypto — SHA1, SHA2, HMAC, HKDF, AES-GCM, ECDH, CSPRNG (src/ace/crypto/)
+  ✅  ACE-SysInfo — monitor CPU/RAM via OS APIs (src/ace/util/sysinfo.rs)
+  ✅  ACE-Random — PRNG Xoshiro256** com seed CSPRNG (src/ace/util/random.rs)
+  ✅  ACE-Base64 — encode/decode Base64 e Hex (src/ace/util/)
+  ✅  ACE-UUID — gerador UUID v4 (src/ace/util/)
+  ✅  ACE-Time — data/hora e formatação (src/ace/util/)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          TESTES EXISTENTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✅  ACE-HTML parser tests (src/ace/html/tests/)
+  ✅  engine/dom_tests.rs — parsing HTML, metadata, atributos
+  ✅  runtime/core/runtime_tests.rs — JS execution, DOM sync, timers
+  ✅  runtime/bindings/html/document/tests.rs — DOM API, eventos, bubbling
+  ✅  tests/form_validation_tests.rs — 9/9 passando
+  ✅  tests/table_colspan_tests.rs — 5/5 passando
+  ✅  engine/inline.rs (unit tests) — 4/4 IFC passando
+  ✅  engine/style/grid_tests.rs — testes Grid
+  ⚠️  tests/white_space_tests.rs.bak — desativado, precisa restaurar
+
+  Testes a criar:
+  ❌  Snapshot rendering tests (render page → compare pixels)
+  ❌  End-to-end navigation tests
+  ❌  Benchmark regression tests (layout time, CSS matching, FPS)
+  ❌  Fuzzing harness (ACE-HTML, CSS, DOM)
+  ❌  Acid1, Acid2, Acid3 conformance
+  ❌  Web Platform Tests (WPT) integration
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          🎯  ROADMAP
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│  📖  DOCUMENTAÇÃO DO PROJETO                                                     │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                  │
-│  ✅  PLAN.txt                           Este arquivo — plano mestre              │
-│  ✅  PLAN_DETAILED.md                   Análise ✅/🟡/❌ de tudo implementado    │
-│  ✅  ROADMAP_EXECUTIVE.md               Resumo executivo + Top 5 bloqueadores    │
-│  ✅  COMPETITIVE_ANALYSIS.md            Albedo vs Firefox vs Chrome              │
-│  ✅  IMPLEMENTATION_GUIDE.md            Como implementar features críticas       │
-│  ✅  STATUS_DASHBOARD.md               Dashboard visual de progresso             │
-│                                                                                  │
+│  FASE 1 — BROWSER NAVEGÁVEL (0 a 6 meses)                                       │
+│  Objetivo: Abrir sites estáticos reais e renderizar corretamente.               │
+│  Benchmark: Wikipedia, MDN, docs.rs, GitHub READMEs, blogs.                     │
 └──────────────────────────────────────────────────────────────────────────────────┘
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          📊  ESTADO ATUAL DO PROJETO (VISÃO 100% PRÓPRIO)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  ⚠️  NOTA: Itens marcados 🟡 abaixo TÊM código funcional, porém DEPENDEM de
-  crates/bibliotecas externas. Precisam ser reescritos com implementação 100%
-  própria do Albedo para se tornarem ✅.
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🟡  FUNCIONAL MAS DEPENDE DE CRATES EXTERNAS (migrar para 100% próprio)        │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-─── 🏗️  ARQUITETURA CORE ────────────────────────────────────────────────────────
-
-  🟡  TabManager com suporte a múltiplas abas
-         → Depende de: slint (UI framework externo) → migrar para ACE-UI próprio
-  🟡  Event loop principal com timer de 16ms (60 FPS)
-         → Depende de: slint event loop → migrar para ACE-UI event loop próprio
-  🟡  Callbacks de navegação, cliques, hover, teclado e scroll
-         → Depende de: slint callbacks → migrar para ACE-UI callbacks próprios
-  🟡  Ponte Engine ↔ UI (browser/bridge.rs) com hooks de animação e eventos
-         → Depende de: slint bridge → migrar para ACE-UI bridge próprio
-
-─── 🌐  ENGINE ACE (Albedo Core Engine) ─────────────────────────────────────────
-
-  ✅  Parser HTML5 funcional
-         → ACE-HTML próprio ativo, sem fallback legado automático
-  🟡  DOM tree (AceDOM) com navegação de nós, seletores CSS, manipulação
-         → Depende de: kuchiki internamente → migrar para AceDOM 100% próprio
-  🟡  Layout engine funcional
-         → Depende de: taffy (layout externo) → migrar para ACE-Layout próprio
-  🟡  Sistema de primitivas visuais (ACEPrimitive)
-         → Depende de: tiny-skia (raster) → migrar para ACE-Raster próprio
-  🟡  Text rendering funcional
-         → Depende de: cosmic-text → migrar para ACE-Text próprio
-  🟡  Viewport responsivo (set_viewport_size)
-         → Depende de: slint viewport → migrar para ACE-UI viewport próprio
-  🟡  Detecção de hover (find_element_at_position)
-         → Lógica própria, mas integrada a stack com deps externas
-  🟡  Pseudo-elementos ::before / ::after com content
-         → Lógica própria, mas deps de CSS parser externo
-  🟡  IFC (Inline Formatting Context) — layout de texto inline
-         → Depende de: cosmic-text para métricas → migrar para ACE-Text
-  ❌  Data-Oriented Layout (SoA - Structure of Arrays)
-
-─── 🎨  CSS ENGINE (engine/style/) ──────────────────────────────────────────────
-
-  🟡  Parser CSS completo
-         → Depende de: cssparser crate → migrar para ACE-CSS parser próprio
-  🟡  Selector engine
-         → Depende de: selectors + precomputed-hash → migrar para ACE-CSS matcher
-  🟡  Cascade, herança e User Agent Stylesheet padrão
-         → Depende de: cssparser/selectors → migrar para ACE-CSS
-  🟡  Unidades: px, %, em, rem, vw, vh, fr
-         → Parsing depende de cssparser → migrar
-  🟡  Flexbox: direction, wrap, justify-content, align-items, flex-grow/shrink/basis
-         → Layout depende de taffy → migrar para ACE-Layout
-  🟡  Grid: grid-template-columns/rows, areas, repeat(), minmax(), auto-fill/fit
-         → Layout depende de taffy → migrar para ACE-Layout
-  🟡  Box model: margin, padding, border, width, height, min/max, box-sizing
-         → Parsing depende de cssparser → migrar
-  🟡  Background: color, image, gradientes lineares e radiais
-         → Raster depende de tiny-skia → migrar para ACE-Raster
-  🟡  Tipografia: font-family, font-size, font-weight, line-height, text-align
-         → Depende de cosmic-text → migrar para ACE-Text
-  🟡  Posicionamento: static, relative, absolute, fixed, sticky — funcional
-  🟡  Display: block, inline, inline-block, flex, inline-flex, grid, none
-  🟡  Overflow: visible, hidden, scroll, auto
-  🟡  Border-radius, box-shadow, text-shadow
-         → Rendering depende de tiny-skia → migrar para ACE-Raster
-  🟡  @keyframes + animations com loop integrado ao ACE Engine Tick
-  🟡  Transitions com interpolação de valores (color, length, float)
-  🟡  Transform 2D/3D: translate, scale, rotate, skew
-  🟡  Filtros: blur, brightness, contrast, grayscale, invert, opacity, saturate, sepia
-  🟡  backdrop-filter, mix-blend-mode (16 modos)
-  🟡  @media queries, @supports, @container queries, @font-face
-  🟡  Funções: calc(), clamp(), min(), max()
-  🟡  aspect-ratio, object-fit, object-position, clip-path
-  🟡  Variáveis CSS (custom properties)
-  🟡  Pseudo-classes: :hover, :focus, :active, :not(), :is(), :where(), :nth-child(), etc.
-  🟡  Pseudo-elementos: ::before, ::after, ::placeholder, ::selection, ::first-line
-  🟡  Visibilidade: visibility, pointer-events, cursor
-  🟡  White-space, vertical-align — funcional mas com deps
-  ❌  Bit-Parallel Selector Matching (SIMD)
-
-─── ⚙️  JAVASCRIPT RUNTIME (runtime/) ──────────────────────────────────────────
-
-  🟡  Runtime JS funcional
-         → Depende de: rquickjs (QuickJS wrapper) → migrar para AlbedoJIT + Albedo Runtime
-  🟡  DOM Bindings completos
-         → Bindings próprios, mas executam via rquickjs → migrar
-  🟡  Event System: addEventListener, removeEventListener, dispatchEvent
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  Console API, Timers, requestAnimationFrame
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  Storage API: localStorage, sessionStorage
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  Fetch API: GET/POST/PUT/DELETE/PATCH/HEAD
-         → Depende de: rquickjs + reqwest → migrar para Albedo Runtime + ACE-Net
-  🟡  Location, Navigator, History, WebSocket, Crypto
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  File API, Clipboard API, Notification API, URL/URLSearchParams
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  FormData, MutationObserver, StyleDeclaration/getComputedStyle
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  IndexedDB API (backend de persistência)
-         → Depende de: rquickjs + rusqlite → migrar para Albedo Runtime + ACE-Store
-  🟡  ES Modules (import/export, import() dinâmico)
-         → Funcional mas via rquickjs module system → migrar
-  🟡  Service Workers (offline, Cache API, background sync)
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  requestIdleCallback, matchMedia, Pointer Events, Touch Events
-         → Lógica própria, mas integrada via rquickjs → migrar
-  🟡  TextEncoder/TextDecoder, structuredClone
-         → Polyfills JS, executam via rquickjs → migrar para Albedo Runtime
-
-─── 🌐  NETWORKING (network/) ───────────────────────────────────────────────────
-
-  🟡  Resource Manager assíncrono funcional
-         → Depende de: reqwest + tokio → migrar para ACE-Net + ACE-Async
-  🟡  FetchClient com suporte completo a métodos HTTP
-         → Depende de: reqwest → migrar para ACE-Net
-  🟡  HTTP/2 com multiplexing, header compression
-         → Depende de: reqwest (hyper) → migrar para ACE-Net
-  🟡  HTTP/3 / QUIC
-         → Depende de: quinn + h3 + h3-quinn → migrar para ACE-QUIC + ACE-H3
-  🟡  TLS 1.3
-         → Depende de: rustls + rustls-native-certs → migrar para ACE-TLS
-  🟡  Cache-Control / ETag / disk cache
-         → Depende de: rusqlite para backend → migrar para ACE-Store
-  🟡  Compression: gzip, brotli, zstd
-         → Depende de: flate2 + brotli + zstd → migrar para ACE-Deflate/Brotli/Zstd
-  🟡  Same-Origin Policy, CSP, CORS, Mixed Content, Cookies
-         → Lógica própria mas integrada a stack com deps
-  🟡  data: URLs, blob: URLs
-         → Depende de: base64 crate → migrar para ACE-Base64
-  🟡  DNS prefetching
-         → Depende de: tokio DNS → migrar para ACE-Async DNS
-
-─── 🎨  GRÁFICOS (engine/graphics/) ─────────────────────────────────────────────
-
-  🟡  Canvas 2D funcional
-         → Depende de: tiny-skia → migrar para ACE-Canvas2D com ACE-Raster próprio
-  🟡  SVG parsing e rendering funcional
-         → Depende de: resvg + usvg → migrar para ACE-SVG próprio
-  🟡  Imagens: PNG, JPEG
-         → Depende de: image crate → migrar para ACE-Image codecs próprios
-  🟡  GPU Rendering funcional
-         → Depende de: wgpu → migrar para ACE-GPU backend próprio
-
-─── 🖥️  INTERFACE UI (camada atual — ui/) ─────────────────────────────────────────
-
-  🟡  GUI acelerada por hardware
-         → Depende de: slint framework → migrar para ACE-UI próprio
-  🟡  Barra de endereços, sistema de abas, área de renderização, barra de nav
-         → Todo em .slint → migrar para ACE-UI
-  🟡  Monitor de sistema (CPU/RAM)
-         → Usa ACE-SysInfo próprio; UI ainda depende de slint → migrar para ACE-UI
-  🟡  Página inicial (albedo://start)
-         → Em .slint → migrar para ACE-UI
-  🟡  Scrollbars custom interativas
-         → Em .slint → migrar para ACE-UI
-
-
-─── 🧭  PROGRAMA ALBEDO FULL STACK (ZERO DEPENDÊNCIAS EXTERNAS) ───────────────────
-
-  Objetivo: substituir TODAS as dependências externas por implementação 100% própria.
-  Este é o CORAÇÃO do projeto Albedo — cada subsistema é do Albedo.
-
-  GRUPO 1 — HTML & DOM (Substituir html5ever + kuchiki)
-  ──────────────────────────────────────────────────────
-
-  [ ]  AFS-1  ACE-HTML parser próprio (lexer + tokenizer + tree builder)
-         → Substituir: html5ever (0.25)
-         O que fazer:
-           1. Criar src/ace/html/lexer.rs — Scanner de caracteres que emite tokens brutos
-              (start tag, end tag, comment, doctype, character data, EOF).
-              Implementar a state machine do HTML5 spec (§13.2.5) com ~80 estados:
-              Data, TagOpen, TagName, BeforeAttributeName, AttributeName,
-              AfterAttributeName, AttributeValue*, SelfClosingStartTag, etc.
-              Tratar character references (&amp; &lt; &#x27; etc.) com tabela de entidades.
-           2. Criar src/ace/html/tokenizer.rs — Converte tokens brutos em tokens tipados
-              (StartTag{name, attributes, self_closing}, EndTag{name}, Character{data},
-              Comment{data}, DOCTYPE{name, public_id, system_id, force_quirks}).
-              Implementar error handling com recovery (spec diz "parse error, ignore token").
-           3. Criar src/ace/html/tree_builder.rs — Consome tokens e constrói a DOM tree.
-              Implementar o algoritmo de tree construction (§13.2.6) com insertion modes:
-              Initial, BeforeHtml, BeforeHead, InHead, InHeadNoscript, AfterHead,
-              InBody, Text, InTable, InTableText, InCaption, InColumnGroup,
-              InTableBody, InRow, InCell, InSelect, InSelectInTable,
-              InTemplate, AfterBody, InFrameset, AfterFrameset, AfterAfterBody.
-              Implementar "adoption agency algorithm" para tags formatadoras.
-              Implementar "foster parenting" para nós inseridos em contextos errados.
-              Implementar stack de elementos abertos e lista de active formatting elements.
-           --4. Criar src/ace/html/entities.rs — Tabela de named character references
-              (~2200 entidades do HTML5 spec) via HashMap<&str, &str> gerado por build script
-              ou const array.
-           5. Criar tests/ace_html_tests.rs — Suite de testes contra html5lib-tests
-              (dataset público: ~2800 test cases de tree construction).
-         Arquivos atuais que usam html5ever (a migrar depois):
-           - engine/dom/mod.rs (parsing principal)
-           - engine/mod.rs (build_layout_tree usa NodeData de kuchiki)
-         Status atual:
-           ✅ src/ace/html/lexer.rs criado com tokens próprios
-           ✅ src/ace/html/tokenizer.rs criado (tokens tipados + recovery de parse error)
-           ✅ src/ace/html/tree_builder.rs criado (insertion modes + stack de elementos abertos)
-           ✅ active formatting elements + adoption agency algorithm (versão simplificada)
-           ✅ foster parenting implementado para conteúdo fora de contexto de tabela
-           ✅ src/ace/html/mod.rs criado com parse_document + parse_fragment
-           ✅ character references básicas e numéricas implementadas
-           ✅ tree builder leve implementado (stack de elementos abertos + auto-close básico)
-           ✅ engine/mod.rs migrado para usar AceDOM::from_html
-           ✅ runtime DOMParser e setters de innerHTML/outerHTML migrados para o parser próprio
-           ✅ cargo check fecha com sucesso
-           ✅ tokenizer/tree builder com gate de conformidade required = 100%
-           ✅ regressões críticas de lexer/tree/fragment/DOM cobrindo os casos fechados
-           ✅ fallback legado removido do fluxo automático do parser ACE-HTML
-           ⚠️ pendências reais para 100% absoluto de conformidade:
-           [ ] ampliar corpus autoral `required` (tokenizer/document/fragment) para cobrir mais estados WHATWG e edge-cases
-           [ ] remover caráter apenas informativo do `non_required` (promover casos críticos para `required` ou torná-lo gate)
-           [ ] criar gate de tamanho/cobertura mínima do corpus (evitar “100%” por redução de casos)
-           [ ] remover `#![allow(dead_code)]` de `src/ace/html/mod.rs` na limpeza final do módulo
-         Estimativa: concluído no escopo definido para ACE-HTML
-         Critério de aceite: build verde + required=100% + non_required verde.
-
-  [ ]  AFS-2  AceDOM 100% próprio (sem kuchiki)
-         → Substituir: kuchiki (0.8)
-         O que fazer:
-           1. Criar src/ace/html/dom.rs — Estrutura de dados da DOM tree.
-              Implementar Node como arena-allocated (Vec<Node> + NodeId = usize).
-              Cada Node contém: parent, first_child, last_child, prev_sibling,
-              next_sibling (todos Option<NodeId>), node_type (Element/Text/Comment/
-              Document/DocumentFragment/DocumentType), e data específica por tipo.
-              ElementData: tag_name (intern/enum), namespace, attributes (Vec<Attr>),
-              id (cached Option<String>), class_list (cached Vec<String>).
-           2. Criar src/ace/html/dom_ops.rs — Operações de manipulação:
-              append_child, remove_child, insert_before, replace_child,
-              clone_node (deep/shallow), create_element, create_text_node,
-              set_attribute, get_attribute, remove_attribute, has_attribute.
-              Implementar MutationObserver hooks em cada operação de mutação.
-           3. Criar src/ace/html/selectors.rs — Query engine de seletores CSS no DOM.
-              Implementar querySelector/querySelectorAll com parser de seletores:
-              type selectors (div, p), class (.foo), id (#bar), attribute ([href]),
-              combinators (descendant, child >, sibling ~, adjacent +),
-              pseudo-classes (:hover, :nth-child(), :not(), :is(), :where(), etc.).
-              Implementar matches() para verificar se um elemento casa com um seletor.
-           4. Criar src/ace/html/traversal.rs — TreeWalker e NodeIterator.
-              Implementar walk APIs: descendants(), ancestors(), children(),
-              following_siblings(), preceding_siblings(), depth-first traversal.
-           5. Migrar engine/dom/mod.rs para usar AceDOM em vez de kuchiki.
-              Substituir NodeRef/NodeData por NodeId + arena lookup.
-         Estimativa: ~2.000-3.000 LOC | ~150-250h
-         Critério de aceite: todos os testes DOM_tests.rs passando sem kuchiki.
-
-  GRUPO 2 — CSS (Substituir cssparser + selectors)
-  ─────────────────────────────────────────────────
-
-  [ ]  AFS-3  ACE-CSS parser/matcher próprio
-         → Substituir: cssparser (0.36) + selectors (0.35) + precomputed-hash (0.1)
-         O que fazer:
-           1. Criar src/ace/css/tokenizer.rs — CSS tokenizer conforme CSS Syntax Module L3.
-              Emitir tokens: Ident, Function, AtKeyword, Hash, String, Number,
-              Percentage, Dimension, Whitespace, CDO, CDC, Colon, Semicolon,
-              Comma, SquareBracket, Paren, CurlyBracket, Delim, URL, BadURL.
-              Tratar escapes CSS (\\), strings com aspas/single-quotes, comments.
-           2. Criar src/ace/css/parser.rs — Parser de regras CSS.
-              Parsear: style rules (selector { declarations }), at-rules
-              (@media, @keyframes, @font-face, @supports, @container, @layer,
-              @import, @property), shorthand expansion (margin, padding, background,
-              border, font, flex, grid-template, animation, transition, outline).
-              Parsear valores: cores (hex, rgb, hsl, named), lengths (px, em, rem,
-              vw, vh, %), funções (calc, min, max, clamp, var, url, linear-gradient,
-              radial-gradient, conic-gradient), listas de valores separadas por espaço/vírgula.
-           3. Criar src/ace/css/cascade.rs — Cascade e herança.
-              Implementar sorting por specificity (a,b,c) + source order.
-              Implementar herança de propriedades (quais herdam, quais não).
-              Implementar valores computed/used/resolved.
-              Implementar initial, inherit, unset, revert keywords.
-           4. Criar src/ace/css/matching.rs — Selector matching engine.
-              Matching de seletores contra nós do AceDOM.
-              Implementar specificity calculation.
-              Cache: compute_style_hash() para style sharing.
-           5. Criar src/ace/css/values.rs — Tipos de valor CSS.
-              Enums para cada propriedade com variantes tipadas.
-              Resolver unidades relativas (em→px, rem→px, vw→px, %→px).
-           6. Migrar engine/style/mod.rs e css_values.rs para usar ACE-CSS.
-         Estimativa: ~4.000-7.000 LOC | ~300-500h
-         Critério de aceite: sites do Fase 1 renderizam visualmente igual.
-
-  GRUPO 3 — Layout (Substituir taffy)
-  ────────────────────────────────────
-
-  [ ]  AFS-4  ACE-Layout próprio (Flex/Grid/Block/Inline)
-         → Substituir: taffy (0.3)
-         O que fazer:
-           1. Criar src/ace/layout/mod.rs — Entry point do layout engine.
-              Recebe DOM tree + computed styles → produz LayoutTree com geometrias.
-              Implementar two-pass layout: measure pass + place pass.
-           2. Criar src/ace/layout/block.rs — Block Formatting Context (BFC).
-              Implementar layout de blocos: margin collapsing (parent-child, sibling,
-              empty blocks), auto margins (centering), min/max constraints,
-              percentage resolution, auto height (content-based).
-           3. Criar src/ace/layout/inline.rs — Inline Formatting Context (IFC).
-              Implementar line breaking (via ACE-Text para métricas de glyph),
-              text-align (left, right, center, justify), vertical-align,
-              white-space handling, word-wrap/overflow-wrap.
-              Migrar lógica existente de engine/inline.rs.
-           4. Criar src/ace/layout/flex.rs — Flexbox layout algorithm.
-              Implementar CSS Flexbox spec COMPLETO:
-              flex-direction (row/column/row-reverse/column-reverse),
-              flex-wrap (nowrap/wrap/wrap-reverse), justify-content (6 valores),
-              align-items (5 valores), align-self, align-content,
-              flex-grow/shrink/basis, order, gap.
-              Implementar multi-line flex com distribuição de espaço.
-           5. Criar src/ace/layout/grid.rs — CSS Grid layout algorithm.
-              Implementar: grid-template-columns/rows (explicit grid),
-              grid-template-areas, grid-auto-columns/rows (implicit grid),
-              repeat(), minmax(), auto-fill/auto-fit, fr units,
-              grid-column/row (placement), gap, named lines, named areas.
-              Implementar track sizing algorithm (§12.3 da spec).
-           6. Criar src/ace/layout/table.rs — Table layout algorithm.
-              Implementar fixed e auto table layout.
-              colspan/rowspan, <col>/<colgroup>, caption position.
-           7. Criar src/ace/layout/positioned.rs — Posicionamento absoluto/fixed.
-              Containg block resolution, offset calculation (top/right/bottom/left),
-              stacking context creation, z-index ordering.
-           8. Criar src/ace/layout/float.rs — Float layout.
-              Float context com float rects, clear processing, line shortening.
-              Migrar lógica existente de apply_floats_and_clear().
-           9. Criar src/ace/layout/types.rs — Tipos de geometria.
-              LayoutBox, Rect, EdgeSizes, LayoutResult, BoxFragment.
-         Estimativa: ~5.000-8.000 LOC | ~400-600h
-         Critério de aceite: páginas reais sem regressão visual vs taffy.
-
-  GRUPO 4 — Texto & Tipografia (Substituir cosmic-text)
-  ──────────────────────────────────────────────────────
-
-  [ ]  AFS-5  ACE-Text próprio (shaping, line breaking, glyph cache)
-         → Substituir: cosmic-text (0.12)
-         O que fazer:
-           1. Criar src/ace/text/font_loader.rs — Carregamento de fontes do OS.
-              Enumerar fontes do sistema (Win: DirectWrite/Registry,
-              Linux: fontconfig/fc-list, macOS: CoreText).
-              Parsear arquivos TrueType/OpenType: offset table, cmap (char→glyph),
-              head (metrics), hhea (horizontal metrics), hmtx (advance widths),
-              glyf (glyph outlines), os2 (font metrics), name (font names).
-              Implementar font fallback chain (fontstack → first match com glyph).
-           2. Criar src/ace/text/shaper.rs — Text shaping básico.
-              Mapear codepoints → glyph IDs via cmap table.
-              Aplicar kerning (kern table ou GPOS) para ajuste de espaçamento.
-              Calcular advance widths por glyph.
-              Para MVP, shaping simples (LTR sem ligatures) é suficiente.
-              Futuro: ligatures via GSUB, Arabic shaping, bidi.
-           3. Criar src/ace/text/rasterizer.rs — Rasterização de glyphs.
-              Ler outlines do glyf table (contours, points on/off curve).
-              Rasterizar contornos quadráticos (TrueType) para bitmap usando
-              scanline fill: decompose curves → segments → coverage map.
-              Aplicar hinting básico ou sub-pixel rendering.
-              Cache de glyphs rasterizados: HashMap<(GlyphId, Size, SubpixelOffset), Bitmap>.
-           4. Criar src/ace/text/layout.rs — Text layout e line breaking.
-              Implementar Unicode line break algorithm (UAX #14).
-              Calcular posições de glyphs em linhas.
-              Suportar: word-spacing, letter-spacing, text-indent, text-align.
-           5. Criar src/ace/text/measurement.rs — Medição de texto.
-              measure_text(text, font, size) → (width, height, baseline).
-              Usado pelo layout engine para dimensionar text nodes.
-           6. Migrar engine/text.rs para usar ACE-Text.
-         Estimativa: ~3.000-5.000 LOC | ~250-400h
-         Critério de aceite: texto legível em todas as fontes do sistema.
-
-  GRUPO 5 — Gráficos & Rasterização (Substituir tiny-skia + resvg + usvg + image)
-  ────────────────────────────────────────────────────────────────────────────────
-
-  [ ]  AFS-6  ACE-Raster próprio (rasterizador 2D)
-         → Substituir: tiny-skia (0.11)
-         O que fazer:
-           1. Criar src/ace/raster/mod.rs — Framebuffer RGBA8 com operações.
-              Pixmap struct: Vec<u8> (RGBA), width, height.
-              Operações básicas: clear, fill_rect, blend_pixel.
-           2. Criar src/ace/raster/path.rs — Paths 2D.
-              PathBuilder: move_to, line_to, quad_to, cubic_to, close, arc_to.
-              Flatten curves → line segments com tolerância configurável.
-           3. Criar src/ace/raster/fill.rs — Preenchimento de paths.
-              Scanline rasterizer: edge table → active edge list → span fill.
-              Fill rules: even-odd e non-zero winding.
-              Anti-aliasing: 8x supersampling ou coverage-based.
-           4. Criar src/ace/raster/stroke.rs — Stroke de paths.
-              Stroke expansion: offset curves por line-width/2.
-              Line caps (butt, round, square), line joins (miter, round, bevel).
-              Dash patterns (StrokeDash: array + offset).
-           5. Criar src/ace/raster/gradient.rs — Gradientes.
-              Linear gradient: interpolação de cores ao longo de vetor.
-              Radial gradient: interpolação de cores do centro para fora.
-              Conic gradient: interpolação angular.
-              Color stops, spread modes (pad, reflect, repeat).
-           6. Criar src/ace/raster/blend.rs — Blending e compositing.
-              Porter-Duff modes: src-over (principal), src-in, src-out, dst-over, etc.
-              Blend modes: multiply, screen, overlay, darken, lighten,
-              color-dodge, color-burn, hard-light, soft-light, difference,
-              exclusion, hue, saturation, color, luminosity.
-           7. Criar src/ace/raster/clip.rs — Clipping.
-              Clip mask (bitmask) para restringir região de desenho.
-              Clip com rect (rápido) ou clip com path (via mask).
-           8. Criar src/ace/raster/transform.rs — Transformações 2D.
-              Affine transform matrix (3x2): translate, scale, rotate, skew.
-              Transformar paths antes de rasterizar.
-           9. Criar src/ace/raster/image.rs — Desenho de imagens.
-              Blit de Pixmap com transform, clip, opacity.
-              Interpolação bilinear para scaling.
-         Estimativa: ~3.000-5.000 LOC | ~200-350h
-         Critério de aceite: renderizar todas as primitivas visuais do Albedo.
-
-  [ ]  AFS-7  ACE-SVG próprio (parser + renderer)
-         → Substituir: resvg (0.45) + usvg (0.45)
-         O que fazer:
-           1. Criar src/ace/svg/parser.rs — Parser SVG (subset).
-              Parsear XML (tags, atributos, namespaces) — parser XML mínimo.
-              Suportar elementos: svg, g, rect, circle, ellipse, line, polyline,
-              polygon, path, text, tspan, image, use, defs, clipPath, mask,
-              linearGradient, radialGradient, stop, pattern.
-              Parsear atributos: fill, stroke, stroke-width, transform, viewBox,
-              preserveAspectRatio, opacity, display, visibility.
-           2. Criar src/ace/svg/path_parser.rs — Parser de path data (d="M 0 0 L 10 10").
-              Comandos: M/m, L/l, H/h, V/v, C/c, S/s, Q/q, T/t, A/a, Z/z.
-           3. Criar src/ace/svg/renderer.rs — Renderizar SVG tree → Pixmap.
-              Usar ACE-Raster para desenhar formas, paths, texto, gradientes.
-              Aplicar transforms, clipping, masking por nó SVG.
-           4. Criar tests/ace_svg_tests.rs — Testes com SVGs comuns de sites reais.
-         Estimativa: ~2.000-3.500 LOC | ~150-250h
-         Critério de aceite: ícones SVG de sites reais renderizam corretamente.
-
-  [ ]  AFS-8  ACE-Image próprio (codecs PNG, JPEG, WebP, AVIF)
-         → Substituir: image (0.25)
-         O que fazer:
-           1. Criar src/ace/image/png.rs — Decoder PNG.
-              Parsear chunks: IHDR (header), IDAT (compressed data), PLTE (palette),
-              tRNS (transparency), IEND. Decompressão via ACE-Compress (DEFLATE).
-              Reconstituir scanlines: filter types (None, Sub, Up, Average, Paeth).
-              Suportar: grayscale, RGB, indexed, grayscale+alpha, RGBA.
-              Interlacing Adam7 (opcional — não crítico para MVP).
-           2. Criar src/ace/image/jpeg.rs — Decoder JPEG (baseline).
-              Parsear markers: SOI, APP0 (JFIF), DQT (quantization tables),
-              SOF0 (baseline DCT), DHT (Huffman tables), SOS (scan), EOI.
-              Implementar: Huffman decoding → dequantization → IDCT 8x8 →
-              YCbCr→RGB conversion → upsampling (4:2:0, 4:2:2, 4:4:4).
-           3. Criar src/ace/image/webp.rs — Decoder WebP (lossy VP8 + lossless).
-              VP8 lossy: frame header → macroblock decoding → loop filter → output.
-              VP8L lossless: prefix coding → LZ77 → ARGB output.
-              (WebP é complexo — priorizar VP8 lossy para MVP).
-           4. Criar src/ace/image/mod.rs — API unificada.
-              decode(bytes) → Result<Pixmap> com detecção de formato por magic bytes.
-              PNG: \x89PNG, JPEG: \xFF\xD8, WebP: RIFF....WEBP.
-         Estimativa: ~3.000-5.000 LOC | ~200-350h
-         Critério de aceite: imagens de sites reais decodificam sem erro.
-
-  [ ]  AFS-9  ACE-Canvas2D próprio
-         → Substituir: dependência interna de tiny-skia no canvas
-         O que fazer:
-           1. Refatorar engine/graphics/canvas2d.rs para usar ACE-Raster.
-              Substituir todas as chamadas a tiny-skia por chamadas ao ACE-Raster.
-           2. Implementar API Canvas 2D completa sobre ACE-Raster:
-              fillRect, strokeRect, clearRect, fillText, strokeText,
-              beginPath, moveTo, lineTo, arc, arcTo, quadraticCurveTo,
-              bezierCurveTo, closePath, fill, stroke, clip,
-              drawImage (Pixmap), createLinearGradient, createRadialGradient,
-              save/restore (stack de estados: transform, clip, styles),
-              globalAlpha, globalCompositeOperation, lineWidth, lineCap, lineJoin.
-           3. Criar tests/ace_canvas2d_tests.rs — Testes de primitivas canvas.
-         Estimativa: ~1.000-1.500 LOC | ~80-120h
-         Critério de aceite: canvas 2D funcional sem tiny-skia.
-
-  GRUPO 6 — GPU (Substituir wgpu)
-  ────────────────────────────────
-
-  [ ]  AFS-10 ACE-GPU backend próprio
-         → Substituir: wgpu (23.0)
-         O que fazer:
-           1. Criar src/ace/gpu/mod.rs — Abstração de GPU.
-              Trait GpuBackend com métodos: create_surface, create_texture,
-              submit_command_buffer, present_frame.
-           2. Criar src/ace/gpu/vulkan.rs — Backend Vulkan (Linux/Windows).
-              Usar vkCreateInstance, vkCreateDevice via FFI direto (vulkan-sys ou
-              load dinâmico). Criar swapchain, render pass, command buffers.
-              Shaders SPIR-V pré-compilados para composição de layers.
-              Operações: blit texture (layer → screen), blend, clear.
-           3. Criar src/ace/gpu/dx12.rs — Backend DirectX 12 (Windows).
-              Usar D3D12CreateDevice via FFI (windows-sys).
-              Command queue, command allocator, pipeline state.
-           4. Criar src/ace/gpu/metal.rs — Backend Metal (macOS).
-              Usar MTLCreateSystemDefaultDevice via FFI (objc/metal-rs ou raw).
-              Command buffer, render pipeline, drawable.
-           5. Criar src/ace/gpu/software.rs — Fallback software.
-              Composição de layers em CPU para ambientes sem GPU.
-              Usa ACE-Raster para blending de layers.
-           6. Criar src/ace/gpu/compositor.rs — Layer compositor.
-              Recebe layers (Pixmaps com z-order + transforms) → compõe frame final.
-              Layer tree: paint layers, compositing layers, scroll layers.
-              Damage tracking: só re-compor layers que mudaram.
-         Estimativa: ~4.000-7.000 LOC | ~300-500h
-         Critério de aceite: rendering GPU funcional em Windows/Linux/macOS.
-
-  GRUPO 7 — JavaScript (Substituir rquickjs)
-  ───────────────────────────────────────────
-
-  [ ]  AFS-11 AlbedoJIT + Albedo Runtime (motor JS 100% próprio)
-         → Substituir: rquickjs (0.6) — wrapper de QuickJS
-         O que fazer: VER SEÇÃO DEDICADA DO ALBEDOJIT ABAIXO.
-         Resumo: Implementar lexer/parser ECMAScript, bytecode próprio (AIR),
-         interpretador (Tier 0), baseline JIT (Tier 1), optimizing JIT (Tier 2),
-         GC geracional, builtins em Rust, bridge com AceDOM.
-         Este é o módulo mais complexo — ~60.000-95.000 LOC estimadas.
-         Estimativa: ~9.500-15.600h (ver seção JIT para breakdown por fase)
-         Critério de aceite: rquickjs removido do Cargo.toml.
-
-  GRUPO 8 — Networking (Substituir reqwest + quinn + h3 + rustls + tokio)
-  ──────────────────────────────────────────────────────────────────────────
-
-  [ ]  AFS-12 ACE-Net próprio (HTTP client)
-         → Substituir: reqwest (0.13) + http (1.2) + bytes (1.11)
-         O que fazer:
-           1. Criar src/ace/net/tcp.rs — TCP client assíncrono.
-              Wrapper sobre std::net::TcpStream (ou ACE-Async socket).
-              connect, read, write, shutdown com timeout.
-           2. Criar src/ace/net/http1.rs — HTTP/1.1 client.
-              Serializar request (method, path, headers, body) → bytes.
-              Parsear response: status line, headers (Transfer-Encoding: chunked,
-              Content-Length), body. Implementar chunked transfer decoding.
-              Connection: keep-alive com reuso de socket.
-           3. Criar src/ace/net/http2.rs — HTTP/2 client.
-              Implementar framing (§4): DATA, HEADERS, PRIORITY, RST_STREAM,
-              SETTINGS, PUSH_PROMISE, PING, GOAWAY, WINDOW_UPDATE, CONTINUATION.
-              HPACK header compression (§B): Huffman coding + dynamic table.
-              Multiplexing: múltiplos streams sobre uma conexão TCP.
-              Flow control: per-stream e per-connection.
-           4. Criar src/ace/net/pool.rs — Connection pooling.
-              Pool por (host, port, scheme). Max connections por host.
-              Idle timeout, health check antes de reusar.
-           5. Criar src/ace/net/client.rs — HTTP client de alto nível.
-              request(method, url, headers, body) → Response.
-              Auto: connection reuse, compression decompression, redirect following.
-           6. Criar src/ace/net/types.rs — Request, Response, Headers, StatusCode.
-              Headers com case-insensitive lookup.
-         Estimativa: ~3.000-5.000 LOC | ~200-350h
-         Critério de aceite: GET/POST em sites reais funcional.
-
-  [ ]  AFS-13 ACE-QUIC próprio
-         → Substituir: quinn (0.11)
-         O que fazer:
-           1. Criar src/ace/net/quic/mod.rs — QUIC transport (RFC 9000).
-              Packet parsing: Initial, Handshake, 0-RTT, 1-RTT.
-              Connection establishment com TLS 1.3 (via ACE-TLS).
-              Stream multiplexing (bidirecional e unidirecional).
-              Loss detection e congestion control (New Reno ou CUBIC).
-              Flow control por stream e por conexão.
-              Connection migration (futuro — não crítico para MVP).
-           2. Criar src/ace/net/quic/crypto.rs — QUIC packet protection.
-              Header protection, payload encryption/decryption (AES-128-GCM, ChaCha20-Poly1305).
-              Key derivation com TLS 1.3 secrets.
-           3. Criar src/ace/net/quic/recovery.rs — Loss recovery + congestion control.
-         Estimativa: ~4.000-6.000 LOC | ~300-500h
-         Critério de aceite: conexões QUIC com sites HTTP/3 reais.
-
-  [ ]  AFS-14 ACE-H3 próprio (HTTP/3 framing)
-         → Substituir: h3 (0.0.8) + h3-quinn (0.0.10)
-         O que fazer:
-           1. Criar src/ace/net/h3.rs — HTTP/3 framing sobre QUIC (RFC 9114).
-              Frame types: DATA, HEADERS, CANCEL_PUSH, SETTINGS, PUSH_PROMISE, GOAWAY.
-              QPACK header compression (RFC 9204): encoder/decoder com tabelas estática e dinâmica.
-           2. Integrar com ACE-QUIC para transport.
-           3. Implementar fallback automático: HTTP/3 → HTTP/2 → HTTP/1.1.
-         Estimativa: ~1.500-2.500 LOC | ~100-200h
-         Critério de aceite: fallback HTTP/3→2→1.1 funcional.
-
-  [ ]  AFS-15 ACE-TLS próprio (TLS 1.3)
-         → Substituir: rustls (0.23) + rustls-native-certs (0.8)
-         O que fazer:
-           1. Criar src/ace/net/tls/handshake.rs — TLS 1.3 handshake (RFC 8446).
-              ClientHello → ServerHello → EncryptedExtensions → Certificate →
-              CertificateVerify → Finished. Key schedule com HKDF-SHA256.
-              Suportar cipher suites: TLS_AES_128_GCM_SHA256,
-              TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256.
-           2. Criar src/ace/net/tls/record.rs — TLS record layer.
-              Fragmentação, padding, encryption/decryption de records.
-           3. Criar src/ace/net/tls/crypto.rs — Primitivas criptográficas.
-              AES-GCM (128/256), ChaCha20-Poly1305, HKDF, HMAC, SHA-256/384.
-              ECDHE key exchange (P-256 curve / X25519).
-              RSA PKCS#1 v1.5 e PSS para verificação de certificados.
-           4. Criar src/ace/net/tls/x509.rs — Verificação de certificados.
-              Parser ASN.1/DER mínimo para certificados X.509.
-              Validação de cadeia: issuer→subject, validity period, key usage.
-              Acesso ao trust store do OS (Win: CertOpenSystemStore,
-              Linux: /etc/ssl/certs, macOS: SecTrustEvaluate).
-         Estimativa: ~5.000-8.000 LOC | ~400-600h
-         Critério de aceite: HTTPS funcional com sites reais.
-
-  [ ]  AFS-16 ACE-WebSocket próprio
-         → Substituir: tokio-tungstenite (0.24)
-         O que fazer:
-           1. Criar src/ace/net/websocket.rs — WebSocket client (RFC 6455).
-              HTTP/1.1 upgrade handshake (Upgrade: websocket, Sec-WebSocket-Key).
-              Frame parsing: opcode (text/binary/close/ping/pong), masking,
-              payload length (7/16/64 bit), fragmentation.
-              Enviar/receber mensagens de texto e binário.
-              Ping/pong heartbeat, close handshake.
-         Estimativa: ~500-800 LOC | ~40-60h
-         Critério de aceite: WebSocket bidirecional funcionando.
-
-  GRUPO 9 — Async Runtime (Substituir tokio)
-  ───────────────────────────────────────────
-
-  [ ]  AFS-17 ACE-Async próprio
-         → Substituir: tokio (1.0) + futures-util (0.3)
-         O que fazer:
-           1. Criar src/ace/async/reactor.rs — I/O reactor.
-              Windows: IOCP (CreateIoCompletionPort, GetQueuedCompletionStatus).
-              Linux: epoll (epoll_create, epoll_ctl, epoll_wait).
-              macOS: kqueue (kqueue, kevent).
-              Registrar file descriptors/handles para events READ/WRITE.
-           2. Criar src/ace/async/executor.rs — Task executor.
-              Spawn tasks (Future + 'static + Send), poll para completude.
-              Work-stealing thread pool (ou single-threaded para simplicidade inicial).
-              Waker implementation para acordar tasks quando I/O está pronto.
-           3. Criar src/ace/async/timer.rs — Timers assíncronos.
-              sleep(duration), interval(period), timeout(future, duration).
-              Implementar via timer wheel ou heap de deadlines.
-           4. Criar src/ace/async/channel.rs — Channels assíncronos.
-              mpsc (multi-producer, single-consumer), oneshot.
-              Async send/recv com waker integration.
-           5. Criar src/ace/async/io.rs — I/O assíncrono.
-              AsyncTcpStream, AsyncTcpListener com read/write/accept.
-              AsyncUdpSocket para QUIC.
-           6. Criar src/ace/async/dns.rs — DNS resolver assíncrono.
-              Parsear /etc/resolv.conf (Linux) ou GetAdaptersAddresses (Win).
-              Enviar queries DNS (A/AAAA records) via UDP.
-              Cache de resultados com TTL.
-         Estimativa: ~3.000-5.000 LOC | ~250-400h
-         Critério de aceite: todas as operações de rede async sem tokio.
-
-  GRUPO 10 — UI (Substituir slint)
-  ─────────────────────────────────
-
-  [ ]  AFS-18 ACE-UI próprio (framework de interface)
-         → Substituir: slint (1.9) + slint-build (1.9) + raw-window-handle (0.6)
-         O que fazer:
-           1. Criar src/ace/ui/window.rs — Criação de janela nativa.
-              Windows: RegisterClassExW + CreateWindowExW + message pump (GetMessage/DispatchMessage).
-              Linux: XOpenDisplay + XCreateWindow (X11) ou wl_display (Wayland).
-              macOS: NSApplication + NSWindow via objc runtime.
-              Expor: open, close, resize, set_title, set_icon, fullscreen toggle.
-           2. Criar src/ace/ui/event_loop.rs — Event loop principal.
-              Processar eventos do OS (mouse, keyboard, resize, close, focus).
-              Timer de 16ms (60 FPS) para render loop.
-              Integrar com ACE-Async reactor para I/O concorrente.
-           3. Criar src/ace/ui/input.rs — Input handling.
-              Mouse: position, buttons, wheel/scroll, enter/leave.
-              Keyboard: key codes, modifiers (Ctrl/Alt/Shift/Meta), text input (IME).
-              Touch: touchstart/move/end com IDs por dedo.
-           4. Criar src/ace/ui/widgets/ — Widgets do browser chrome.
-              tab_bar.rs: barra de abas com drag, close, new tab, scroll.
-              nav_bar.rs: barra de endereço (text input), botões back/forward/reload.
-              status_bar.rs: barra de status com URL de hover e loading.
-              menu.rs: context menu, dropdown menus.
-              scrollbar.rs: scrollbars custom com drag e click.
-              dialog.rs: alert/confirm/prompt dialogs.
-           5. Criar src/ace/ui/render.rs — Renderer do chrome.
-              Usar ACE-Raster (software) ou ACE-GPU (hardware) para desenhar widgets.
-              Layout simples dos widgets (stack vertical/horizontal, padding, margins).
-              Text rendering via ACE-Text para labels e URL bar.
-           6. Criar src/ace/ui/theme.rs — Tema visual.
-              Cores, fontes, tamanhos, espaçamentos.
-              Detecção de dark/light mode do OS.
-         Estimativa: ~5.000-8.000 LOC | ~400-600h
-         Critério de aceite: janela nativa com abas, nav bar e page view funcional.
-
-  [ ]  AFS-19 ACE-Dialog próprio (diálogos nativos)
-         → Substituir: rfd (0.14)
-         O que fazer:
-           1. Criar src/ace/ui/native_dialog.rs — File open/save dialogs.
-              Windows: GetOpenFileNameW / GetSaveFileNameW (comdlg32).
-              Linux: zenity/kdialog via subprocess, ou GTK3 file chooser.
-              macOS: NSOpenPanel / NSSavePanel via objc.
-         Estimativa: ~300-500 LOC | ~20-40h
-
-  [ ]  AFS-20 ACE-Clipboard próprio
-         → Substituir: arboard (3.4)
-         O que fazer:
-           1. Criar src/ace/ui/clipboard.rs — Acesso ao clipboard do OS.
-              Windows: OpenClipboard, GetClipboardData(CF_UNICODETEXT), SetClipboardData.
-              Linux: X11 selections (XSetSelectionOwner, XConvertSelection).
-              macOS: NSPasteboard generalPasteboard.
-              Suportar leitura/escrita de texto (UTF-8/UTF-16).
-         Estimativa: ~200-400 LOC | ~15-30h
-
-  [ ]  AFS-21 ACE-Notify próprio (notificações)
-         → Substituir: notify-rust (4.11)
-         O que fazer:
-           1. Criar src/ace/ui/notification.rs — Notificações nativas.
-              Windows: ToastNotification via WinRT ou ShellNotifyIconW (tray).
-              Linux: D-Bus org.freedesktop.Notifications.Notify.
-              macOS: NSUserNotificationCenter ou UNUserNotificationCenter.
-         Estimativa: ~300-500 LOC | ~20-40h
-
-  GRUPO 11 — Storage & Persistência (Substituir rusqlite)
-  ───────────────────────────────────────────────────────
-
-  [ ]  AFS-22 ACE-Store próprio
-         → Substituir: rusqlite (0.32)
-         O que fazer:
-           1. Criar src/ace/store/mod.rs — Engine KV persistente.
-              Log-structured merge-tree (LSM-tree) ou B-tree simples.
-              API: get(key) → Option<bytes>, put(key, value), delete(key),
-              scan(range) → Iterator, batch(ops). Transações ACID básicas.
-           2. Criar src/ace/store/wal.rs — Write-ahead log.
-              Append-only log file para durabilidade antes de flush.
-              Recovery: replay WAL após crash.
-           3. Criar src/ace/store/format.rs — Formato de arquivo.
-              Páginas de dados (4KB ou 8KB), índice interno.
-              Compactação periódica (merge de SST files ou rebalance de B-tree).
-           4. Criar src/ace/store/cache_backend.rs — Backend para disk cache HTTP.
-              Armazenar responses com metadata (URL, headers, expiry, ETag).
-           5. Criar src/ace/store/idb_backend.rs — Backend para IndexedDB.
-              Object stores, indexes, key ranges, cursors.
-         Estimativa: ~2.000-4.000 LOC | ~150-300h
-         Critério de aceite: cache HTTP e IndexedDB persistentes sem rusqlite.
-
-  GRUPO 12 — Criptografia & Segurança (Substituir sha2 + sha1 + getrandom)
-  ─────────────────────────────────────────────────────────────────────────
-
-  [ ]  AFS-23 ACE-Crypto próprio
-         → Substituir: sha2 (0.10) + sha1 (0.10) + getrandom (0.2)
-         O que fazer:
-           1. Criar src/ace/crypto/sha1.rs — SHA-1 (160-bit).
-              Implementar conforme FIPS 180-4. 80 rounds, message schedule.
-              (Necessário para WebSocket handshake e verificação de integridade legada.)
-           2. Criar src/ace/crypto/sha2.rs — SHA-256/384/512.
-              Implementar SHA-256 (64 rounds, 32-bit words).
-              SHA-384/512 (80 rounds, 64-bit words).
-           3. Criar src/ace/crypto/hmac.rs — HMAC (RFC 2104).
-              HMAC-SHA256 e HMAC-SHA1 para TLS e SRI.
-           4. Criar src/ace/crypto/aes.rs — AES-128/256 (block cipher).
-              Implementar key expansion + encrypt/decrypt block (SubBytes,
-              ShiftRows, MixColumns, AddRoundKey). 10/14 rounds.
-           5. Criar src/ace/crypto/gcm.rs — AES-GCM (AEAD).
-              GCM mode: counter + GHASH para authenticated encryption.
-              Usado em TLS 1.3 record layer.
-           6. Criar src/ace/crypto/random.rs — CSPRNG.
-              Windows: BCryptGenRandom (bcrypt.dll).
-              Linux: getrandom(2) syscall ou /dev/urandom.
-              macOS: SecRandomCopyBytes.
-           7. Criar src/ace/crypto/hkdf.rs — HKDF (RFC 5869).
-              Extract + Expand para derivação de chaves TLS.
-           8. Criar src/ace/crypto/ecdh.rs — ECDH key exchange.
-              Curva P-256 (secp256r1): ponto em curva, multiplicação escalar.
-              X25519 (Curve25519): Montgomery ladder.
-         Status atual:
-           ✅ src/ace/crypto/sha1.rs implementado
-           ✅ src/ace/crypto/sha2.rs implementado (SHA-256/384/512)
-           ✅ src/ace/crypto/hmac.rs implementado
-           ✅ src/ace/crypto/hkdf.rs implementado
-           ✅ src/ace/crypto/random.rs implementado com backends por plataforma
-           ✅ src/ace/crypto/aes.rs implementado (AES-128/256)
-           ✅ src/ace/crypto/gcm.rs implementado (AES-GCM)
-           ✅ src/ace/crypto/ecdh.rs implementado com X25519 e P-256
-           ✅ runtime/bindings/webapi/crypto.rs migrado para ACE-Crypto
-           ✅ SubtleCrypto expõe digest, generateKey, importKey, exportKey,
-              sign/verify (HMAC), encrypt/decrypt (AES-GCM) e deriveBits (ECDH)
-           ✅ network/cache.rs migrado para ACE-Crypto
-           ✅ dependências sha1, sha2 e getrandom removidas do package principal
-           ✅ cargo check fecha com sucesso
-           ⚠️ Testes de lib continuam bloqueados por erros antigos e não relacionados
-              em src/engine/dom_tests.rs
-           ⚠️ Critério final de TLS handshake ainda não atingido
-         Estimativa: ~3.000-5.000 LOC | ~200-350h
-         Critério de aceite: SubtleCrypto API funcional + TLS handshake.
-
-  GRUPO 13 — Compressão (Substituir flate2 + brotli + zstd)
-  ──────────────────────────────────────────────────────────
-
-  [ ]  AFS-24 ACE-Compress próprio
-         → Substituir: flate2 (1.0) + brotli (7.0) + zstd (0.13)
-         O que fazer:
-           1. Criar src/ace/compress/deflate.rs — DEFLATE decompressor (RFC 1951).
-              Huffman decoding (fixed + dynamic), LZ77 back-references.
-              Usado em gzip (RFC 1952) e PNG.
-              Gzip wrapper: magic bytes 1f 8b, header parsing, CRC32.
-           2. Criar src/ace/compress/brotli.rs — Brotli decompressor (RFC 7932).
-              Prefix codes, context modeling, block types, distance codes.
-              Dicionário estático (122KB pré-computado pela spec).
-           3. Criar src/ace/compress/zstd.rs — Zstd decompressor (RFC 8878).
-              Frame header, block decompression, FSE tables, Huffman tables.
-              Offset codes, match lengths, literal lengths.
-           4. Criar src/ace/compress/mod.rs — API unificada.
-              decompress(encoding, bytes) → Result<Vec<u8>>.
-              Auto-detect por Content-Encoding header.
-         Estimativa: ~2.000-4.000 LOC | ~150-250h
-         Critério de aceite: decompressão de responses HTTP (gzip/br/zstd).
-
-  GRUPO 14 — Áudio (Substituir rodio)
-  ────────────────────────────────────
-
-  [ ]  AFS-25 ACE-Audio próprio
-         → Substituir: rodio (0.19)
-         O que fazer:
-           1. Criar src/ace/audio/output.rs — Playback de áudio via OS APIs.
-              Windows: WASAPI (IAudioClient, IAudioRenderClient).
-              Linux: PulseAudio (pa_simple_new, pa_simple_write) ou ALSA (snd_pcm_*).
-              macOS: CoreAudio (AudioQueueNewOutput, AudioQueueEnqueueBuffer).
-              API: open_output(sample_rate, channels) → AudioSink.
-              AudioSink: write(samples), pause, resume, close.
-           2. Criar src/ace/audio/decoder.rs — Decoders de áudio (MVP).
-              WAV: header parsing + PCM raw data.
-              MP3: frame sync, Huffman decoding, IMDCT, subband synthesis.
-              (MP3 é complexo — para MVP, suportar WAV e delegar MP3 para futuro.)
-           3. Criar src/ace/audio/mixer.rs — Mixer de áudio.
-              Múltiplas fontes → mix para um output.
-              Volume per-source, master volume.
-         Estimativa: ~1.500-3.000 LOC | ~100-200h
-         Critério de aceite: playback de <audio> com WAV funcional.
-
-  GRUPO 15 — Utilitários (Substituir crates auxiliares)
-  ─────────────────────────────────────────────────────
-
-  [X]  AFS-26 ACE-JSON próprio (parser/serializer)
-         → Substituir: serde (1.0) + serde_json (1.0)
-         O que fazer:
-           1. Criar src/ace/json/parser.rs — Parser JSON (RFC 8259).
-              Tokenizer: { } [ ] : , string number true false null.
-              Recursive descent parser → JsonValue enum (Object, Array, String,
-              Number, Bool, Null). Tratar escapes (\", \\, \/, \n, \r, \t, \uXXXX).
-           2. Criar src/ace/json/serializer.rs — Serializar JsonValue → String.
-              Pretty-print opcional com indentação.
-           3. Criar src/ace/json/mod.rs — API: parse(str) → Result<JsonValue>,
-              stringify(value) → String.
-         Estimativa: ~500-800 LOC | ~30-50h
-         Critério de aceite: parse/stringify de JSON de APIs reais.
-
-  [X]  AFS-27 ACE-URL próprio (parser de URLs)
-         → Substituir: url (2.5) + urlencoding (2.1)
-         O que fazer:
-           1. Criar src/ace/url/parser.rs — Parser WHATWG URL Standard.
-              Extrair: scheme, username, password, host, port, path, query, fragment.
-              Resolver URLs relativos contra base URL.
-              Punycode encoding para domínios internacionais (IDN).
-              Percent-encoding/decoding (espaço → %20, etc.).
-           2. Criar src/ace/url/search_params.rs — URLSearchParams.
-              get, set, append, delete, has, entries, toString.
-         Estimativa: ~600-1.000 LOC | ~40-60h
-         Critério de aceite: parse de URLs reais sem o crate url.
-
-  [X]  AFS-28 ACE-UUID próprio
-         → Substituir: uuid (1.20)
-         O que fazer:
-           1. Criar src/ace/util/uuid.rs — Gerador UUID v4.
-              128 bits aleatórios (via ACE-Crypto CSPRNG), set version=4, variant=1.
-              Formatar como string: 8-4-4-4-12 hex.
-         Estimativa: ~50-80 LOC | ~2-4h
-
-  [X]  AFS-29 ACE-Base64 próprio
-         → Substituir: base64 (0.22) + hex (0.4)
-         O que fazer:
-           1. Criar src/ace/util/base64.rs — Base64 encode/decode (RFC 4648).
-              Tabela de 64 caracteres. Padding com '='. URL-safe variant.
-           2. Criar src/ace/util/hex.rs — Hex encode/decode.
-              bytes → hex string, hex string → bytes.
-         Estimativa: ~150-250 LOC | ~5-10h
-
-  [X]  AFS-30 ACE-Time próprio
-         → Substituir: chrono (0.4)
-         O que fazer:
-           1. Criar src/ace/util/time.rs — Data/hora.
-              SystemTime wrapper com: now(), duration_since_epoch().
-              Formatação: ISO 8601, HTTP date (RFC 7231), Unix timestamp.
-              Parse de datas HTTP (para Cache-Control, Expires headers).
-              Dias da semana, dias por mês, leap year calculation.
-         Estimativa: ~300-500 LOC | ~20-30h
-
-  [X]  AFS-31 ACE-SysInfo próprio
-         → Substituir: sysinfo (0.38)
-         O que fazer:
-           1. Criar src/ace/util/sysinfo.rs — Info de sistema.
-              Windows: GetSystemInfo, GlobalMemoryStatusEx (kernel32).
-              Linux: /proc/cpuinfo, /proc/meminfo, /proc/stat.
-              macOS: sysctl(hw.ncpu), host_statistics (mach).
-              API: cpu_count(), cpu_usage(), total_memory(), used_memory().
-         Status atual:
-           ✅ src/ace/util/sysinfo.rs implementado
-           ✅ Integração ativa no monitor da UI
-           ✅ Testes básicos de smoke/consistência adicionados
-         Estimativa: ~200-400 LOC | ~15-25h
-
-  [X]  AFS-32 ACE-Random próprio
-         → Substituir: rand (0.10)
-         O que fazer:
-           1. Criar src/ace/util/random.rs — PRNG.
-              Xoshiro256** para uso geral (rápido, boa distribuição).
-              Seed via ACE-Crypto CSPRNG.
-              API: next_u32(), next_u64(), next_f64(), gen_range(min, max).
-         Status atual:
-           ✅ src/ace/util/random.rs implementado com Xoshiro256**
-           ✅ Seed via ACE-Crypto CSPRNG
-           ✅ Testes básicos adicionados
-           ✅ Dependência rand removida do workspace
-         Estimativa: ~100-200 LOC | ~5-10h
-
-  [X]  AFS-33 Substituir utilitários menores
-         O que fazer:
-           1. lazy_static → trocar todas as ocorrências por std::sync::LazyLock
-              (estável desde Rust 1.80). Buscar no código: grep -r "lazy_static".
-           2. bitflags → criar macro ace_bitflags! ou usar const + operações bitwise
-              manuais. Alternativa: manter bitflags pois é macro pura sem runtime.
-           3. bytemuck → substituir por transmute inline com checks de alinhamento.
-              Alternativa: manter pois é zero-cost abstraction sobre transmute.
-           4. thiserror → implementar Display e Error manualmente em cada tipo de erro.
-              Buscar: grep -r "thiserror" e reescrever derives.
-           5. crossbeam-channel → substituir por std::sync::mpsc ou channel próprio.
-           6. parking_lot → substituir por std::sync::Mutex e std::sync::RwLock.
-              Performance pode ser ligeiramente inferior, mas elimina dependência.
-           7. dirs → resolver diretórios manualmente:
-              Windows: SHGetKnownFolderPath (shell32).
-              Linux: XDG_DATA_HOME ou ~/.local/share.
-              macOS: NSSearchPathForDirectoriesInDomains.
-         Status atual:
-           ✅ lazy_static removido; usos migrados para std::sync::LazyLock
-           ✅ bitflags substituído por tipo próprio leve (NodeDirtyFlags)
-           ✅ thiserror removido; erros reescritos com Display/Error manual
-           ✅ parking_lot removido dos manifests; JIT usa wrapper local sobre std::sync
-           ✅ crossbeam-channel, bytemuck e dirs removidos dos manifests
-           ✅ cargo check fecha com sucesso
-         Estimativa: ~300-500 LOC de mudanças | ~20-40h
-
-  GATE FINAL
-  ──────────
-  [ ]  AFS-34 Gate "100% próprio" — Cargo.toml com ZERO dependências externas
-         O que fazer:
-           1. Verificar Cargo.toml — seção [dependencies] contém APENAS:
-              albedo-jit = { path = "albedo-jit" }
-           2. Rodar cargo build — compila sem erro com zero crates externas.
-           3. Rodar cargo test — todos os testes passam.
-           4. Teste de fumaça: abrir Albedo, navegar em 5 sites (Wikipedia, MDN,
-              docs.rs, GitHub README, blog estático) — tudo renderiza.
-         Critério: Cargo.toml lista ZERO dependências externas.
-
-
-
-─── 🧪  TESTES EXISTENTES ───────────────────────────────────────────────────────
-
-  ⚠️  Testes abaixo existem e passam, porém executam via rquickjs/html5ever/etc.
-  Precisam ser migrados para rodar no stack 100% próprio do Albedo.
-
-  🟡  engine/dom_tests.rs                  Parsing HTML, metadata, atributos (deps: html5ever)
-  🟡  runtime/core/runtime_tests.rs        JS execution, DOM sync, timers (deps: rquickjs)
-  🟡  runtime/bindings/html/document/tests.rs  DOM API, eventos, bubbling (deps: rquickjs)
-  🟡  tests/form_validation_tests.rs       9/9 testes passando (deps: rquickjs)
-  🟡  tests/table_colspan_tests.rs         5/5 testes passando (deps: html5ever)
-  🟡  engine/inline.rs (unit tests)        4/4 testes IFC passando (deps: cosmic-text)
-  ⚠️  tests/white_space_tests.rs.bak      RENOMEADO PARA .BAK — NÃO EXECUTA!
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🟡  FEATURES COM CÓDIGO EXISTENTE (migrar para 100% próprio)                    │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  🟡  <iframe> — Implementação avançada (código existe, deps de html5ever/rquickjs)
-  🟡  Web Workers (código existe, deps de rquickjs)
-  🟡  IntersectionObserver (código existe, deps de rquickjs)
-  🟡  ResizeObserver (código existe, deps de rquickjs)
-  🟡  Range e Selection (estrutura parcial, deps de rquickjs)
-  🟡  Geolocation (stub — retorna lat=0/lon=0)
-  🟡  Scroll (funcional, deps de slint para scrollbars)
-  🟡  Element Geometry (funcional, deps de stack legado)
-  🟡  Rendering de Form Widgets (funcional, deps de tiny-skia/slint)
-  🟡  Table Layout (funcional, deps de html5ever para parse)
-  🟡  Float & Clear CSS (funcional, deps de cssparser)
-  🟡  text-overflow, text-transform, letter-spacing, word-spacing (deps de cssparser)
-  🟡  outline vs border (deps de tiny-skia para render)
-  🟡  <details>/<summary>, <dialog> (deps de html5ever/rquickjs)
-  🟡  Sticky positioning (funcional, deps do stack legado)
-  🟡  Scroll em elementos internos (funcional, deps do stack legado)
-  🟡  Performance: incremental layout, style sharing cache, paint invalidation,
-       virtual scrolling, GPU compositing, font caching, async image decode
-       → Tudo funcional mas depende de crates externas no pipeline
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                       ❌  O QUE FALTA PARA UM BROWSER 100% PRÓPRIO DE PRODUÇÃO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Além das substituições AFS-1 a AFS-34 acima, faltam features novas:
-
-───────────────────────────────────────────────────────────────────────────────────
-🔴  PRIORIDADE 1 — FUNDAÇÃO 100% PRÓPRIA
-───────────────────────────────────────────────────────────────────────────────────
-
-  [A] SUBSTITUIÇÕES CRÍTICAS (AFS — ver seção detalhada acima)
-  ───────────────────────────────────────────────────────────
-  Todas as 34 substituições AFS são prioridade máxima.
-  Ordem sugerida de ataque:
-    1. AFS-26 ACE-JSON         (~30-50h) — menor risco, desbloqueia serialização
-    2. AFS-27 ACE-URL          (~40-60h) — menor risco, desbloqueia parse de URLs
-    3. AFS-28/29/30/31/32/33   (~70-120h) — utilitários menores batch
-    4. AFS-23 ACE-Crypto       (~200-350h) — SHA + CSPRNG + HMAC + AES
-    5. AFS-24 ACE-Compress     (~150-250h) — DEFLATE/Brotli/Zstd
-    6. AFS-22 ACE-Store        (~150-300h) — persistência KV
-    7. AFS-1/2 ACE-HTML+DOM    (~350-650h) — HTML parser e DOM tree
-    8. AFS-3 ACE-CSS           (~300-500h) — CSS parser/matcher
-    9. AFS-4 ACE-Layout        (~400-600h) — Flex/Grid/Block
-    10. AFS-5 ACE-Text         (~250-400h) — tipografia
-    11. AFS-6/7/8/9 Gráficos   (~430-770h) — Raster/SVG/Image/Canvas2D
-    12. AFS-10 ACE-GPU         (~300-500h) — Vulkan/Metal/DX12
-    13. AFS-12-16 Networking   (~640-1110h) — Net/QUIC/H3/TLS/WS
-    14. AFS-17 ACE-Async       (~250-400h) — runtime assíncrono
-    15. AFS-18-21 ACE-UI       (~435-670h) — UI/Dialog/Clipboard/Notify
-    16. AFS-25 ACE-Audio       (~100-200h) — playback
-    17. AFS-11 AlbedoJIT       (~9500-15600h) — motor JS completo
-    18. AFS-34 Gate            — validação final
-
-  [B] FEATURES DE BROWSER PENDENTES (implementar no Albedo Runtime próprio)
-  ────────────────────────────────────────────────────────────────────────
-  [ ]  document.cookie (leitura/escrita de cookies via JS)
-         O que fazer: Criar binding no Albedo Runtime que lê/escreve no CookieJar
-         do network/security.rs. Parsear Set-Cookie → {name, value, path, domain,
-         expires, httponly, secure, samesite}. Respeitar HttpOnly (não expor ao JS).
-         Arquivo: runtime/bindings/html/document/cookie.rs (CRIAR)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  document.readyState + DOMContentLoaded timing correto
-         O que fazer: Implementar estados "loading" → "interactive" → "complete".
-         Disparar evento "DOMContentLoaded" após parsing do HTML (antes de imagens).
-         Disparar evento "load" após todos os recursos carregados.
-         Arquivo: runtime/core/init.rs (modificar pipeline de inicialização)
-         Estimativa: ~150 LOC | ~10h
-
-  [ ]  document.title (get/set)
-         O que fazer: Ler/escrever o conteúdo do <title> no DOM.
-         Set: atualizar texto da aba no ACE-UI.
-         Arquivo: runtime/bindings/html/document/title.rs (CRIAR)
-         Estimativa: ~50 LOC | ~3h
-
-  [ ]  window.open() / window.close() / window.opener
-         O que fazer: window.open(url) → chamar TabManager para criar nova aba.
-         window.close() → fechar aba atual (se aba foi aberta via script).
-         window.opener → referência à janela que abriu esta via window.open.
-         Arquivo: runtime/bindings/webapi/window_ops.rs (CRIAR)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  queueMicrotask()
-         O que fazer: Enfileirar callback na microtask queue do event loop.
-         Executar antes de qualquer macrotask (setTimeout/setInterval).
-         Arquivo: runtime/bindings/webapi/timers.rs (adicionar)
-         Estimativa: ~50 LOC | ~3h
-
-  [ ]  Error stack traces legíveis (file/line info)
-         O que fazer: Armazenar source file e line number no bytecode/AIR.
-         Quando exceção ocorre, construir stack trace com frames:
-         {functionName, fileName, lineNumber, columnNumber}.
-         Arquivo: runtime/core/runtime.rs + jit/bytecode/
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  Streams API (ReadableStream, WritableStream, TransformStream)
-         O que fazer: Implementar WHATWG Streams Standard.
-         ReadableStream: underlying source (pull/cancel), ReadableStreamReader.
-         WritableStream: underlying sink (write/close/abort), WritableStreamWriter.
-         TransformStream: transformer (transform/flush).
-         Pipe: pipeTo() e pipeThrough() com backpressure.
-         Arquivo: runtime/bindings/webapi/streams.rs (CRIAR)
-         Estimativa: ~1.000 LOC | ~80h
-
-  [ ]  Broadcast Channel API
-         O que fazer: Criar canal de mensagens entre tabs do mesmo origin.
-         BroadcastChannel(name) → postMessage() notifica todos os outros.
-         Usar crossbeam-channel (ou mpsc) interno para comunicação entre JsRuntimes.
-         Arquivo: runtime/bindings/webapi/broadcast_channel.rs (CRIAR)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  MessageChannel / MessagePort
-         O que fazer: Criar par de ports conectados para comunicação bidirecional.
-         new MessageChannel() → {port1, port2}. port.postMessage(), port.onmessage.
-         Arquivo: runtime/bindings/webapi/message_channel.rs (CRIAR)
-         Estimativa: ~300 LOC | ~20h
-
-  [ ]  Web Locks API
-         O que fazer: Implementar navigator.locks.request(name, callback).
-         Mutex por nome (scope: same-origin). Modes: exclusive, shared.
-         Arquivo: runtime/bindings/webapi/locks.rs (CRIAR)
-         Estimativa: ~300 LOC | ~20h
-
-  [ ]  WeakRef / FinalizationRegistry
-         O que fazer: Implementar no Albedo Runtime / GC.
-         WeakRef: referência que não impede coleta pelo GC.
-         FinalizationRegistry: callback quando objeto é coletado.
-         Arquivo: jit/gc/ (integrar ao GC próprio)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  SharedArrayBuffer / Atomics
-         O que fazer: Implementar buffer compartilhado entre Workers.
-         SharedArrayBuffer: memória compartilhada (mmap/shared memory).
-         Atomics: load, store, add, sub, and, or, xor, compareExchange, wait, notify.
-         Requer: COOP/COEP headers para segurança (Spectre mitigation).
-         Arquivo: runtime/bindings/webapi/shared_array.rs (CRIAR)
-         Estimativa: ~500 LOC | ~40h
-
-  [C] SEGURANÇA MÍNIMA DE PRODUÇÃO (100% próprio)
-  ────────────────────────────────────────────────
-  [ ]  HTTPS certificate UI (ícone 🔒 na barra de endereços)
-         O que fazer: Exibir ícone de cadeado na nav bar quando conexão é HTTPS válida.
-         Mostrar warning quando certificado é inválido/expirado/self-signed.
-         Popup com detalhes: issuer, validity, cipher suite.
-         Arquivo: ui/widgets/nav_bar + network/security.rs (integrar)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  XSS protection (sanitização de innerHTML / Trusted Types)
-         O que fazer: Sanitizar innerHTML antes de inserir no DOM.
-         Bloquear <script>, javascript: URLs, event handlers inline.
-         Implementar Trusted Types API (createPolicy, createHTML).
-         Arquivo: runtime/bindings/html/element/mod.rs (modificar)
-         Estimativa: ~400 LOC | ~30h
-
-  [ ]  Subresource Integrity (SRI)
-         O que fazer: Verificar atributo integrity="sha256-..." em <script> e <link>.
-         Calcular hash do recurso baixado (via ACE-Crypto SHA-256/384/512).
-         Bloquear execução se hash não bate.
-         Arquivo: network/security.rs (adicionar)
-         Estimativa: ~150 LOC | ~10h
-
-  [ ]  COEP / COOP headers
-         O que fazer: Processar Cross-Origin-Embedder-Policy e Cross-Origin-Opener-Policy.
-         COEP: require-corp — bloquear recursos cross-origin sem CORS/CORP.
-         COOP: same-origin — isolar browsing context group.
-         Necessário para habilitar SharedArrayBuffer.
-         Arquivo: network/security.rs (adicionar)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  Permissions Policy / Feature Policy
-         O que fazer: Parsear header Permissions-Policy.
-         Controlar acesso a features: camera, microphone, geolocation, payment.
-         Bloquear iframes que não têm permissão.
-         Arquivo: network/security.rs (adicionar)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  HSTS (HTTP Strict Transport Security)
-         O que fazer: Parsear header Strict-Transport-Security (max-age, includeSubDomains).
-         Armazenar domínios HSTS em ACE-Store.
-         Auto-upgrade HTTP → HTTPS para domínios na lista.
-         Preload list (opcional — lista pública dos browsers).
-         Arquivo: network/security.rs + ace/store/ (adicionar)
-         Estimativa: ~200 LOC | ~15h
-
+  Core Engine:
+  [ ]  Corrigir rendering fidelity (text wrapping, overflow, box model TODOs)
+  [ ]  Melhorar table rendering (border-collapse, border-spacing)
+  [ ]  Melhorar image rendering (aspect-ratio, responsive)
+  [ ]  Completar text-decoration, text-transform, list-style-type
+  [ ]  Completar pseudo-elements rendering (::before, ::after conteúdo real)
+  [ ]  Corrigir margin collapsing
+  [ ]  Melhorar hit testing (z-index correto)
+
+  DOM & JS Bindings:
+  [ ]  document.cookie (leitura/escrita)
+  [ ]  document.readyState + DOMContentLoaded timing
+  [ ]  document.title (get/set + atualizar aba)
+  [ ]  queueMicrotask
+  [ ]  AbortController / AbortSignal
+
+  Browser UI:
+  [ ]  Keyboard shortcuts (Ctrl+T/W/L/R, F5, Alt+arrows, Ctrl+Tab, F11)
+  [ ]  Find in page (Ctrl+F)
+  [ ]  Zoom (Ctrl+/-, Ctrl+0)
+  [ ]  Loading indicator (barra fina no topo)
+  [ ]  Páginas de erro (albedo://error — DNS, SSL, timeout, 404)
+  [ ]  Scroll suave
+  [ ]  Tooltips (atributo title)
+
+  Segurança:
+  [ ]  HTTPS certificate UI (🔒)
+  [ ]  HSTS
   [ ]  Referrer Policy
-         O que fazer: Implementar Referrer-Policy header e <meta name="referrer">.
-         Policies: no-referrer, no-referrer-when-downgrade, origin, origin-when-cross-origin,
-         same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url.
-         Aplicar ao enviar Referer header em requests.
-         Arquivo: network/client.rs (modificar)
-         Estimativa: ~150 LOC | ~10h
+  [ ]  URL validation
 
-  [ ]  Redirect handling (301/302/307/308)
-         O que fazer: Verificar e completar redirect handling no ACE-Net.
-         301/302: redirecionar GET (converter POST→GET para 301/302).
-         307/308: preservar método original (POST continua POST).
-         Limit: máximo 20 redirects, detectar loops.
-         Arquivo: ace/net/client.rs (verificar/completar)
-         Estimativa: ~100 LOC | ~8h
+  Networking:
+  [ ]  Redirect completo (301/302/307/308 + loop detection)
+  [ ]  Preconnect, preload (<link rel=...>)
 
-  [ ]  Validação de inputs de URL
-         O que fazer: Sanitizar URLs antes de navegar.
-         Bloquear: javascript: URLs (exceto em href), data: URLs com scripts,
-         URLs com path traversal (../), URLs absurdamente longos (>2048).
-         Validar encoding e esquemas suportados.
-         Arquivo: browser/events.rs (adicionar validação)
-         Estimativa: ~100 LOC | ~8h
+  GATE: Abrir Wikipedia, MDN, docs.rs → texto legível, layout correto,
+  imagens carregadas, links clicáveis, scroll funcional.
 
-  [D] NAVEGADOR (UI — tudo via ACE-UI próprio)
-  ─────────────────────────────────────────────
-  [ ]  Favicon loading e exibição nas abas
-         O que fazer: Extrair <link rel="icon"> do DOM parseado.
-         Baixar favicon via ACE-Net, decodificar com ACE-Image (PNG/ICO/SVG).
-         Exibir ícone 16x16 na tab bar do ACE-UI.
-         Fallback: /favicon.ico na raiz do domínio.
-         Arquivo: browser/tabs/tab.rs + ace/ui/widgets/tab_bar.rs
-         Estimativa: ~200 LOC | ~15h
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  FASE 2 — APPS WEB (6 a 12 meses)                                               │
+│  Objetivo: SPAs e sites dinâmicos funcionando.                                  │
+│  Benchmark: GitHub, Medium, StackOverflow, Hacker News, Dev.to.                 │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-  [ ]  Loading indicator / progress bar
-         O que fazer: Barra fina no topo da página (estilo Chrome) mostrando progresso.
-         Backend: tab.is_loading e tab.loading_progress já existem.
-         Frontend: desenhar barra animada no ACE-UI renderer.
-         Estimativa: ~100 LOC | ~8h
+  CSS Avançado:
+  [ ]  :has(), CSS Nesting, @layer
+  [ ]  CSS Containment (contain)
+  [ ]  CSS Scroll Snap
+  [ ]  Multi-column layout
+  [ ]  CSS Logical Properties
 
-  [ ]  Páginas de erro customizadas (DNS, timeout, SSL, 404)
-         O que fazer: Criar páginas HTML embutidas no binário para cada tipo de erro.
-         albedo://error?type=dns — "Não foi possível encontrar o servidor"
-         albedo://error?type=ssl — "Sua conexão não é segura"
-         albedo://error?type=timeout — "A página demorou demais para responder"
-         albedo://error?type=404 — "Página não encontrada"
-         Renderizar via engine próprio (HTML→DOM→Layout→Render).
-         Arquivo: browser/error_pages.rs (CRIAR)
-         Estimativa: ~300 LOC | ~20h
+  Web APIs:
+  [ ]  Streams API (ReadableStream, WritableStream)
+  [ ]  Performance API (performance.now, mark, measure)
+  [ ]  Broadcast Channel, MessageChannel/MessagePort
+  [ ]  Web Locks API
+  [ ]  Web Animations API
+  [ ]  Server-Sent Events (EventSource)
+  [ ]  Fullscreen API
+  [ ]  window.open / window.close
+  [ ]  Drag and Drop
 
-  [ ]  Find in page — Ctrl+F
-         O que fazer: Overlay de busca na parte superior da página.
-         Input de texto + botões next/prev + contador "X de Y".
-         Buscar texto nos text nodes do DOM, highlight resultados.
-         Scroll para o resultado atual. Case-insensitive.
-         Arquivo: browser/find.rs (CRIAR) + engine/mod.rs (highlight)
-         Estimativa: ~500 LOC | ~40h
-
-  [ ]  Zoom de página — Ctrl+/Ctrl-
-         O que fazer: Escalar o viewport por fator (25%, 50%, 75%, 100%, 125%, 150%, 200%).
-         Multiplicar viewport dimensions pelo fator inverso antes de layout.
-         Escalar primitivas visuais pelo fator antes de render.
-         Ctrl+0 = reset para 100%.
-         Arquivo: engine/mod.rs (set_viewport_size com zoom factor)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  Scroll suave (scroll-behavior: smooth)
-         O que fazer: Animar scroll com easing (ease-in-out) ao invés de snap instantâneo.
-         Implementar scroll animation no event loop (interpolar offset por frame).
-         CSS property: scroll-behavior: smooth | auto.
-         JS: element.scrollTo({behavior: 'smooth'}).
-         Arquivo: engine/mod.rs + browser/tabs/manager.rs
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  Keyboard shortcuts padrão
-         O que fazer: Mapear teclas para ações do browser.
-         Ctrl+T: nova aba. Ctrl+W: fechar aba. Ctrl+L: focar URL bar.
-         Ctrl+R / F5: recarregar. Alt+Left: voltar. Alt+Right: avançar.
-         Ctrl+Shift+T: reabrir aba fechada. Ctrl+Tab: próxima aba.
-         F11: fullscreen. Escape: parar loading / fechar find bar.
-         Arquivo: browser/events.rs (expandir keyboard handler)
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  Tab index e navegação por teclado
-         O que fazer: Tab/Shift+Tab navega entre elementos focáveis.
-         Elementos focáveis: <a>, <button>, <input>, <select>, <textarea>,
-         [tabindex], [contenteditable]. Ordenar por tabindex.
-         Enter: ativar link/botão. Espaço: toggle checkbox.
-         Indicador visual de foco (outline) no elemento atual.
-         Arquivo: engine/mod.rs + browser/events.rs
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  Tooltips nativos (atributo title)
-         O que fazer: Exibir tooltip após hover de ~500ms em elemento com attr title.
-         Posicionar tooltip próximo ao cursor.
-         Desenhar via ACE-Raster: retângulo com borda, texto, fundo amarelo.
-         Remover tooltip ao mover mouse.
-         Arquivo: browser/bridge.rs + ace/ui/widgets/tooltip.rs (CRIAR)
-         Estimativa: ~200 LOC | ~15h
-
-───────────────────────────────────────────────────────────────────────────────────
-🟡  PRIORIDADE 2 — COMPATIBILIDADE WEB (100% próprio)
-───────────────────────────────────────────────────────────────────────────────────
-
-  [E] MEDIA ENGINE (ACE-Audio + ACE-Video próprios)
-  ─────────────────────────────────────────────────
-  [ ]  <video> com decoders próprios (H.264, VP8/VP9, AV1) — ACE-Video
-         O que fazer: Criar src/ace/video/ com: container parser (MP4/WebM),
-         video decoders (H.264 baseline profile, VP8, VP9), frame buffer + display.
-         Integrar com <video> element rendering e play/pause/seek API.
-         Estimativa: ~8.000-15.000 LOC | ~600-1200h
-
-  [ ]  <audio> com decoders próprios (MP3, AAC, Opus, Vorbis, FLAC) — ACE-Audio
-         O que fazer: Adicionar decoders ao ACE-Audio: MP3 (MPEG-1 Layer III),
-         AAC-LC (ISO 14496-3), Opus (RFC 6716), Vorbis, FLAC.
-         Integrar com <audio> element play/pause/seek/volume.
-         Estimativa: ~4.000-8.000 LOC | ~300-600h
-
-  [ ]  Media Source Extensions (MSE)
-         O que fazer: Implementar MediaSource, SourceBuffer, SourceBufferList.
-         Append ArrayBuffers de segmentos de mídia. Necessário para YouTube/Netflix.
-         Arquivo: runtime/bindings/webapi/media_source.rs (CRIAR)
-         Estimativa: ~1.500 LOC | ~120h
-
-  [ ]  Web Audio API (AudioContext)
-         O que fazer: Implementar AudioContext, AudioNode, GainNode, OscillatorNode,
-         AnalyserNode, BiquadFilterNode, AudioBufferSourceNode.
-         Audio graph: conectar nós, processar audio por blocos (128 samples).
-         Arquivo: runtime/bindings/webapi/web_audio.rs (CRIAR)
-         Estimativa: ~2.000 LOC | ~150h
-
-  [ ]  WebRTC (getUserMedia, RTCPeerConnection) — ACE-RTC
-         O que fazer: Implementar ICE, DTLS-SRTP, SDP parsing, data channels.
-         getUserMedia: captura de áudio/vídeo do OS. Extremamente complexo.
-         Arquivo: ace/rtc/ (CRIAR diretório)
-         Estimativa: ~10.000+ LOC | ~800+h (longo prazo)
-
-  [ ]  MediaStream / MediaRecorder
-         O que fazer: Implementar após WebRTC. MediaStream para pipelines de mídia.
-         MediaRecorder para gravar MediaStreams em blobs.
-         Estimativa: ~500 LOC | ~40h (pós-WebRTC)
-
-  [ ]  Picture-in-Picture API
-         O que fazer: Criar janela floating para <video> sobre todas as janelas.
-         requestPictureInPicture() → cria janela nativa via ACE-UI.
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  <track> / WebVTT subtitles
-         O que fazer: Parser WebVTT (cues com timestamps + texto/posição).
-         Render subtitles sobre <video> via ACE-Raster.
-         Estimativa: ~500 LOC | ~40h
-
-  [F] CSS AVANÇADO (tudo via ACE-CSS próprio)
-  ────────────────────────────────────────────
-  [ ]  CSS Containment (contain: layout/paint/size/style)
-         O que fazer: Implementar contaimment na engine de layout.
-         layout: subárvore não afeta layout externo.
-         paint: subárvore não pinta fora dos limites.
-         size: tamanho do elemento não depende dos filhos.
-         Arquivo: ace/layout/ + ace/css/values.rs
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  CSS Scroll Snap (scroll-snap-type, scroll-snap-align)
-         O que fazer: Snap points durante scroll.
-         scroll-snap-type: x/y mandatory/proximity.
-         scroll-snap-align: start/center/end por filho.
-         Arquivo: engine/mod.rs (scroll handling) + ace/css/
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  CSS Logical Properties (inline-start/end, block-start/end)
-         O que fazer: Mapear propriedades lógicas para físicas baseado em writing-mode.
-         margin-inline-start → margin-left (em LTR) ou margin-right (em RTL).
-         Arquivo: ace/css/values.rs + ace/layout/
-         Estimativa: ~200 LOC | ~15h
-
-  [ ]  :has() pseudo-class relacional
-         O que fazer: Implementar :has(selector) — seleciona pai que contém filho matching.
-         Requer: subject invalidation (quando filho muda, reavaliar seletor do pai).
-         Arquivo: ace/css/matching.rs
-         Estimativa: ~300 LOC | ~25h
-
-  [ ]  CSS Nesting, @layer, @property, ::marker, ::backdrop
-         O que fazer: Suportar seletores aninhados (& prefix), cascade layers (@layer),
-         typed custom properties (@property), marcador de lista (::marker),
-         backdrop de <dialog> (::backdrop).
-         Arquivo: ace/css/parser.rs + ace/css/cascade.rs
-         Estimativa: ~800 LOC | ~60h
-
-  [ ]  Multi-column layout, counters, text-decoration, word-break/hyphens
-         O que fazer: Implementar column-count/width/gap/rule, CSS counters,
-         text-decoration (underline/overline/line-through com estilos),
-         word-break/overflow-wrap/hyphens para quebra de linha avançada.
-         Arquivo: ace/layout/ + ace/css/ + ace/text/
-         Estimativa: ~1.000 LOC | ~80h
-
-  [G-J] GRÁFICOS, NETWORKING, JS e UI AVANÇADOS
-  ──────────────────────────────────────────────
-  (Para itens de prioridade 2 das seções G, H, I, J: cada um será detalhado
-   quando a Fase 0 estiver completa e o stack próprio estiver pronto.
-   Por ora, os itens das seções AFS são o foco absoluto.)
-
-───────────────────────────────────────────────────────────────────────────────────
-🔵  PRIORIDADE 3 — EXPERIÊNCIA DE USUÁRIO (100% próprio)
-───────────────────────────────────────────────────────────────────────────────────
-
-  [K] DEVELOPER TOOLS (ACE-DevTools próprio)
-  ──────────────────────────────────────────
-  [ ]  Inspector de DOM
-         O que fazer: Tree viewer de nós DOM com expand/collapse.
-         Hover no tree → highlight no viewport. Edição de atributos inline.
-         Arquivo: src/devtools/inspector.rs (CRIAR)
-         Estimativa: ~1.500 LOC | ~120h
-
-  [ ]  Console REPL
-         O que fazer: Input de JS executado no contexto da página.
-         Output com pretty-print de objetos, erros com stack trace, console.log.
-         Arquivo: src/devtools/console.rs (CRIAR)
-         Estimativa: ~800 LOC | ~60h
-
-  [ ]  Network panel
-         O que fazer: Lista de requests com: URL, method, status, size, time.
-         Detalhes: headers, body, timing waterfall.
-         Interceptar requests no ACE-Net antes de enviar.
-         Arquivo: src/devtools/network.rs (CRIAR)
-         Estimativa: ~1.000 LOC | ~80h
-
-  [ ]  Performance profiler
-         O que fazer: Timeline de frames com: layout time, paint time, JS time, idle.
-         FPS counter, long task detector (>50ms), flame chart.
-         Arquivo: src/devtools/profiler.rs (CRIAR)
-         Estimativa: ~1.000 LOC | ~80h
-
-  [L] UI FEATURES (tudo via ACE-UI próprio)
-  ─────────────────────────────────────────
+  Browser Features:
+  [ ]  Context menu (botão direito)
   [ ]  Downloads manager
-         O que fazer: Interceptar downloads (Content-Disposition: attachment).
-         UI: lista com nome, progresso, velocidade, pause/resume/cancel.
-         Armazenar em diretório Downloads do OS.
-         Arquivo: browser/downloads.rs (CRIAR)
-         Estimativa: ~600 LOC | ~50h
+  [ ]  Bookmarks (favoritos)
+  [ ]  Histórico pesquisável (albedo://history)
+  [ ]  Configurações (albedo://settings)
+  [ ]  RTL text support (Bidi)
+  [ ]  @font-face / woff2
+  [ ]  Lazy loading de imagens
 
-  [ ]  Bookmarks
-         O que fazer: Favoritar URL (Ctrl+D). Gerenciador de bookmarks (tree/folders).
-         Persistir em ACE-Store. Import/export JSON.
-         Arquivo: browser/bookmarks.rs (CRIAR)
-         Estimativa: ~500 LOC | ~40h
+  Segurança:
+  [ ]  SRI (Subresource Integrity)
+  [ ]  COEP / COOP
+  [ ]  Permissions Policy
+  [ ]  XSS protection
+  [ ]  Third-party cookie controls
+  [ ]  Safe Browsing básico
 
-  [ ]  History UI
-         O que fazer: Página albedo://history com lista pesquisável de URLs visitadas.
-         Limpar por período (1h, 24h, 7d, tudo). Persistir em ACE-Store.
-         Arquivo: browser/history_ui.rs (CRIAR)
-         Estimativa: ~400 LOC | ~30h
+  GATE: GitHub funcional (login, navegação, issues), Medium legível,
+  SPAs React/Vue básicas renderizando.
 
-  [ ]  Settings
-         O que fazer: Página albedo://settings com categorias:
-         Geral (homepage, startup), Aparência (tema, fonte, zoom),
-         Privacidade (cookies, tracking), Rede (proxy, DNS).
-         Persistir em ACE-Store. UI via ACE-UI widgets.
-         Arquivo: browser/settings.rs (CRIAR)
-         Estimativa: ~800 LOC | ~60h
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  FASE 3 — WEB COMPLETA (12 a 24 meses)                                          │
+│  Objetivo: Sites complexos e multimídia funcionando.                            │
+│  Benchmark: YouTube, Twitter/X, Gmail, Discord Web.                             │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
-  [ ]  Context menu (right-click)
-         O que fazer: Menu contextual com opções: Copiar, Colar, Copiar Link,
-         Salvar Imagem Como, Inspecionar Elemento, Ver Código-Fonte.
-         Posicionar na posição do mouse. Desenhar via ACE-Raster.
-         Arquivo: browser/context_menu.rs (CRIAR)
-         Estimativa: ~400 LOC | ~30h
+  Media:
+  [ ]  <video> com controles nativos e decoders
+  [ ]  <audio> com controles nativos e decoders
+  [ ]  Media Source Extensions (MSE) — YouTube/Netflix
+  [ ]  Web Audio API
+  [ ]  WebRTC (P2P, data channels)
+  [ ]  getUserMedia (câmera, microfone)
 
-  [M] ACESSIBILIDADE (APIs do OS diretamente)
-  ──────────────────────────────────────────
-  [ ]  Screen reader support
-         O que fazer: Expor árvore de acessibilidade para o OS.
-         Windows: UI Automation (IRawElementProviderSimple via COM).
-         Linux: AT-SPI2 via D-Bus.
-         macOS: NSAccessibility protocol.
-         Arquivo: src/accessibility/ (CRIAR diretório)
-         Estimativa: ~2.000 LOC | ~150h
+  Graphics:
+  [ ]  WebGL / WebGL2
+  [ ]  WebGPU
+  [ ]  OffscreenCanvas
+  [ ]  Compositor-driven animations
+  [ ]  Off-thread compositing
 
-  [ ]  ARIA roles e aria-* attributes
-         O que fazer: Mapear ARIA roles para a árvore de acessibilidade.
-         role="button", aria-label, aria-hidden, aria-expanded, aria-live, etc.
-         Arquivo: src/accessibility/aria.rs (CRIAR)
-         Estimativa: ~500 LOC | ~40h
+  DevTools v1:
+  [ ]  Elements panel (DOM inspector)
+  [ ]  Console (JS REPL)
+  [ ]  Network panel
+  [ ]  Performance profiler
 
-───────────────────────────────────────────────────────────────────────────────────
-🟣  PRIORIDADE 4 — DIFERENCIAÇÃO (100% próprio)
-───────────────────────────────────────────────────────────────────────────────────
+  Avançado:
+  [ ]  SharedArrayBuffer / Atomics
+  [ ]  Multi-column layout completo
+  [ ]  Subgrid
+  [ ]  Complex script shaping (ligaduras, kerning)
 
-  [ ]  Password Manager
-         O que fazer: Detectar <input type="password"> + <input type="text|email"> adjacente.
-         Popup de autofill. Storage encriptado (AES-256-GCM via ACE-Crypto).
-         Key derivation via PBKDF2/Argon2 de master password.
-         Import/export CSV.
-         Arquivo: browser/passwords.rs (CRIAR)
-         Estimativa: ~1.000 LOC | ~80h
+  GATE: YouTube reproduzindo vídeo. Gmail carregando inbox. Twitter/X
+  renderizando feed com scroll infinito.
 
-  [ ]  Sync & Accounts (AlbedoSync)
-         O que fazer: Conta Albedo (email+senha). Server-side: REST API + E2E encryption.
-         Sync: bookmarks, senhas, settings, abas abertas.
-         Protocolo próprio com E2E encryption (AES-256-GCM + X25519 key exchange).
-         Estimativa: ~3.000 LOC + backend | ~200h
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  FASE 4 — RIVALIZAR COM CHROME/FIREFOX (24+ meses)                              │
+│  Objetivo: Browser diário completo para qualquer usuário.                       │
+│  Benchmark: Qualquer site da web sem regressão.                                 │
+└──────────────────────────────────────────────────────────────────────────────────┘
 
   [ ]  Extensions API (WebExtensions compat)
-         O que fazer: Implementar API browser.tabs, browser.runtime, browser.storage.
-         Content scripts: injetar JS em páginas com sandboxing.
-         Background scripts: Service Worker-based.
-         Popup UI: HTML/CSS/JS isolado. Manifest v3 parser.
-         Estimativa: ~5.000 LOC | ~400h
-
-  [ ]  Privacy Features
-         O que fazer: Tracking protection (block list de URLs + heurística).
-         Fingerprint protection (canvas noise, WebGL noise, font enumeration block).
-         DNS over HTTPS (DoH) com resolver Cloudflare/Google.
-         HTTPS-Only mode. Private browsing (sem storage/histórico).
-         Estimativa: ~2.000 LOC | ~150h
-
-  [ ]  Multi-process architecture
-         O que fazer: Separar em processos: UI (browser chrome), Content (renderer
-         por origin/tab), GPU (compositing), Network (I/O isolated).
-         IPC via shared memory + channels. Process sandboxing (seccomp/SandboxAPI).
-         Estimativa: ~8.000 LOC | ~600h (longo prazo)
-
+  [ ]  Password manager com storage encriptado
+  [ ]  Sync & Accounts (bookmarks, senhas, settings — E2E encrypted)
+  [ ]  Privacy features (fingerprint protection, tracking protection, DoH)
+  [ ]  HTTPS-Only mode
+  [ ]  Private browsing (sem persistência)
+  [ ]  Acessibilidade completa (screen readers, ARIA)
+  [ ]  PWA support (install, offline, push notifications)
+  [ ]  Multi-process architecture (se benchmarks mostrarem necessidade)
+  [ ]  EME / DRM (para streaming services)
+  [ ]  Ad blocker nativo (nível de rede)
+  [ ]  Autofill completo
+  [ ]  Print support
+  [ ]  WPT conformance ≥ 80%
+  [ ]  Acid 1/2/3 conformance
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          🎯  ROADMAP DE DESENVOLVIMENTO (100% PRÓPRIO)
+                          ALBEDOJIT — PLANO DE LONGO PRAZO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🔨  FASE 0 — FUNDAÇÃO PRÓPRIA  (6-12 meses)                                    │
-│       Objetivo: Substituir TODAS as dependências externas por ACE-*              │
-│       ESTA É A FASE MAIS IMPORTANTE — sem ela, nada mais conta.                  │
-└──────────────────────────────────────────────────────────────────────────────────┘
+  O AlbedoJIT é o motor JavaScript JIT 100% próprio do Albedo, planejado para
+  o longo prazo. Só será priorizado quando:
+  1. O browser estiver funcional e renderizando sites reais (Fase 2+ completa)
+  2. Benchmarks mostrarem que o QuickJS é gargalo real de performance
+  3. Houver recursos (tempo/equipe) para um esforço de ~10.000-15.000 horas
 
-  ONDA 1 — Utilitários (rápidos de implementar, desbl. stack)
-  [ ]  ACE-JSON, ACE-URL, ACE-UUID, ACE-Base64, ACE-Time
-  [ ]  ACE-Random, ACE-SysInfo, ACE-Crypto
-  [X]  Substituir lazy_static, bitflags, bytemuck, thiserror, crossbeam, parking_lot
+  O QuickJS já é o engine JS mais leve do mundo (~300KB). O AlbedoJIT só
+  justifica existir se for COMPROVADAMENTE melhor em alguma métrica concreta.
 
-  ONDA 2 — Compressão + Storage
-  [ ]  ACE-Compress (DEFLATE/gzip, Brotli, Zstd)
-  [ ]  ACE-Store (KV engine para cache/IDB/metadados)
+  Arquitetura planejada:
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Tier 0: Interpretador AIR (cold code, startup rápido)         │
+  │  Tier 1: Baseline JIT (compilação rápida, ~50 invocações)     │
+  │  Tier 2: AlbedoTurbo (otimizações avançadas, ~5000 invocações)│
+  │  Bailout → Revert para Tier 0/1 se type guard falhar           │
+  └─────────────────────────────────────────────────────────────────┘
 
-  ONDA 3 — HTML + CSS + DOM
-  [X]  ACE-HTML parser (lexer + tokenizer + tree builder)
-  [ ]  AceDOM 100% próprio (sem kuchiki)
-  [ ]  ACE-CSS parser + selector matcher
+  Roadmap (quando ativado):
+  JIT-1: Pipeline mínimo (AIR, MIR SSA, assembler x86-64, register alloc)
+  JIT-2: Type specialization (IC slots, hidden classes, OSR, deopt)
+  JIT-3: Otimizações (inlining, loop opts, escape analysis, SIMD)
+  JIT-4: Garbage collector geracional (young/old, concurrent, write barriers)
+  JIT-5: DOM fast path (Rust→Rust sem FFI, zero-copy)
+  JIT-6: Conformance (Test262 ≥95%, fuzzing, ARM64)
+  JIT-7: Cutover (remover QuickJS do build)
 
-  ONDA 4 — Layout + Texto
-  [ ]  ACE-Layout (Flex/Grid/Block/Inline) — substituir taffy
-  [ ]  ACE-Text (shaping/raster/glyph cache) — substituir cosmic-text
-
-  ONDA 5 — Gráficos + Raster
-  [ ]  ACE-Raster (rasterizador 2D) — substituir tiny-skia
-  [ ]  ACE-SVG (parser + renderer) — substituir resvg/usvg
-  [ ]  ACE-Image (codecs PNG/JPEG/WebP) — substituir image crate
-  [ ]  ACE-Canvas2D próprio
-
-  ONDA 6 — GPU + UI
-  [ ]  ACE-GPU (Vulkan/Metal/DX12 direto) — substituir wgpu
-  [ ]  ACE-UI (framework de interface próprio) — substituir slint
-  [ ]  ACE-Dialog, ACE-Clipboard, ACE-Notify
-
-  ONDA 7 — Networking
-  [ ]  ACE-Async (runtime assíncrono) — substituir tokio
-  [ ]  ACE-Net (HTTP/1.1+2 client) — substituir reqwest
-  [ ]  ACE-TLS (TLS 1.3) — substituir rustls
-  [ ]  ACE-QUIC + ACE-H3 — substituir quinn/h3
-  [ ]  ACE-WebSocket — substituir tokio-tungstenite
-
-  ONDA 8 — JavaScript
-  [ ]  AlbedoJIT + Albedo Runtime — substituir rquickjs
-  [ ]  (Ver roadmap detalhado do AlbedoJIT abaixo)
-
-  ONDA 9 — Áudio
-  [ ]  ACE-Audio (playback via OS APIs) — substituir rodio
-
-  GATE: Cargo.toml com ZERO dependências externas = FASE 0 COMPLETA.
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🔥  FASE 1 — BROWSER NAVEGÁVEL (100% Próprio)  (6-12 meses pós Fase 0)         │
-│       Objetivo: Navegar em sites estáticos com stack 100% Albedo                 │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  [ ]  Sites estáticos renderizando (HTML+CSS+JS básico via stack próprio)
-  [ ]  document.cookie, document.readyState, DOMContentLoaded
-  [ ]  HTTPS certificate UI, SRI, HSTS, Referrer Policy
-  [ ]  Favicon, loading indicator, error pages
-  [ ]  Find in page, Zoom, Keyboard shortcuts
-  [ ]  Scroll suave, tab navigation, tooltips
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  ⚡  FASE 2 — APPS WEB (100% Próprio)  (12-18 meses pós Fase 0)                 │
-│       Objetivo: React, Vue, Svelte, apps SPA funcionando                         │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  [ ]  Streams API, Broadcast Channel, Shadow DOM, Custom Elements
-  [ ]  CSS: @layer, CSS Nesting, :has(), Containment
-  [ ]  Bookmarks, History UI, Downloads, Settings
-  [ ]  Context menu, Server-Sent Events
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🚀  FASE 3 — WEB COMPLETA (100% Próprio)  (18-30 meses pós Fase 0)             │
-│       Objetivo: YouTube, Twitter, Gmail funcionando                              │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  [ ]  <video>/<audio> com decoders próprios (ACE-Video/ACE-Audio)
-  [ ]  WebGL/WebGPU via ACE-GPU
-  [ ]  Multi-process, Site Isolation, sandboxing
-  [ ]  DevTools, PWA, Extensions API
-  [ ]  RTL + Bidi + AlbedoIntl
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🏆  FASE 4 — COMPETIR COM FIREFOX (100% Próprio)  (30-42 meses pós Fase 0)     │
-│       Objetivo: Browser diário para qualquer usuário, qualquer site              │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  [ ]  Password manager, Sync E2E, Extensions completas
-  [ ]  Acessibilidade completa, Private browsing, HTTPS-Only
-  [ ]  AlbedoJIT maduro  — Motor JIT 100% próprio
-  [ ]  CI/CD completo, fuzzing, benchmark regression
-  [ ]  Conformance: Acid1/2/3, WPT, CSS W3C
+  Metas: ≤1.5x mais lento que V8, 5-10x menos RAM, 2x mais rápido em startup.
+  Estimativa total: ~60.000-95.000 LOC | ~9.500-15.600h
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          📊  MÉTRICAS DE PROGRESSO (VISÃO 100% PRÓPRIO)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-┌──────────────────────────┬──────────┬─────────┬─────────┬─────────┬─────────┐
-│ Categoria                │ Atual    │ Fase 0  │ Fase 1  │ Fase 2  │ Fase 3+ │
-├──────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
-│ Deps Externas Eliminadas │ 0/40 🔴  │ 40/40✅ │  40/40  │  40/40  │  40/40  │
-│ HTML5 Parsing (próprio)  │ 0/10 🔴  │  7/10   │  8/10   │  9/10   │  9/10   │
-│ CSS Layout (próprio)     │ 0/10 🔴  │  7/10   │  8/10   │  9/10   │ 10/10   │
-│ JavaScript (próprio)     │ 0/10 🔴  │  5/10   │  6/10   │  8/10   │  9/10   │
-│ DOM & Web APIs (próprio) │ 0/10 🔴  │  6/10   │  7/10   │  8/10   │  9/10   │
-│ Networking (próprio)     │ 0/10 🔴  │  7/10   │  8/10   │  9/10   │  9/10   │
-│ Security (próprio)       │ 0/10 🔴  │  4/10   │  6/10   │  7/10   │  8/10   │
-│ Rendering (próprio)      │ 0/10 🔴  │  5/10   │  6/10   │  8/10   │  9/10   │
-│ Media (próprio)          │ 0/10 🔴  │  0/10   │  1/10   │  3/10   │  7/10   │
-│ Performance (próprio)    │ 0/10 🔴  │  4/10   │  6/10   │  7/10   │  9/10   │
-│ UI/UX (próprio)          │ 0/10 🔴  │  4/10   │  6/10   │  7/10   │  9/10   │
-│ DevTools                 │ 0/10 🔴  │  0/10   │  1/10   │  4/10   │  7/10   │
-│ Accessibility            │ 0/10 🔴  │  0/10   │  1/10   │  3/10   │  7/10   │
-│ Build & Infra            │ 0/10 🔴  │  3/10   │  4/10   │  6/10   │  8/10   │
-├──────────────────────────┼──────────┼─────────┼─────────┼─────────┼─────────┤
-│ GERAL (ponderado)        │ 0/10 🔴  │  4.4/10 │  5.6/10 │  7.0/10 │  8.5/10 │
-└──────────────────────────┴──────────┴─────────┴─────────┴─────────┴─────────┘
-
-  Legenda: ✅ 8+   ⚠️ 4-7   🔴 0-3
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          📈  BENCHMARK TARGETS & ESTIMATIVAS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Fase 0:  Albedo compila e roda COM ZERO crates externas
-  Fase 1:  Wikipedia, MDN, docs.rs, blogs estáticos, README de GitHub
-  Fase 2:  GitHub, Medium, Dev.to, StackOverflow, Hacker News
-  Fase 3:  Twitter/X, YouTube, Gmail, apps SPA complexas
-  Fase 4:  Qualquer site da web sem regressão
-
-  ESTIMATIVA DE ESFORÇO (100% PRÓPRIO):
-  Fase 0 (Fundação Própria)        →  3.000 - 5.000h   (~12-20 meses, 1 dev)
-  Fase 1 (Browser Navegável)       →  1.500 - 2.500h   (~6-10 meses, 1 dev)
-  Fase 2 (Apps Web)                →  2.000 - 3.000h   (~8-12 meses, 1 dev)
-  Fase 3 (Web Completa)            →  4.000 - 6.000h   (~16-24 meses, 1 dev)
-  Fase 4 (Competir c/ Firefox)     →  5.000 - 8.000h   (~20-32 meses, 1 dev)
-  ──────────────────────────────────────────────────────────────────────────
-  TOTAL:                           → 15.500 - 24.500h  (~5-8 anos, 1 dev)
-
-  Com equipe de 3-5 devs:   ~2-3 anos para Fase 2
-  Com equipe de 10+ devs:   ~1.5-2 anos para Fase 2
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          🧪  TESTES E VALIDAÇÃO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  EXISTENTES (a migrar para stack 100% próprio):
-  🟡  engine/dom_tests.rs, runtime_tests.rs, document/tests.rs
-  🟡  form_validation_tests.rs, table_colspan_tests.rs, inline.rs tests
-  ⚠️  white_space_tests.rs.bak → RESTAURAR
-
-  A CRIAR (por prioridade — todos rodando no stack 100% próprio):
-  [ ]  tests/ para cada módulo ACE-* novo
-  [ ]  Integration tests: snapshot rendering de página real com stack próprio
-  [ ]  Benchmark regression: layout, CSS matching, FPS — tudo sem deps
-  [ ]  Fuzzing: harness próprio para ACE-HTML, ACE-CSS, Albedo Runtime
-  [ ]  WPT integration no CI
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-               🔥⚡  ALBEDO JIT — MOTOR JAVASCRIPT JIT EM RUST PURO  ⚡🔥
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  📅 Início Planejado       →  Após Fase 0 (fundação própria)
-  🎯 Objetivo               →  Motor JS com JIT nativo 100% próprio que SUPERE o V8 em
-                                tempo de resposta (Time-to-Interactive) e rivalize
-                                em throughput computacional puro, mantendo uso de
-                                memória 5-10x menor que o V8.
-  🦀 Linguagem              →  100% Rust (zero C/C++, zero libs externas)
-  🔧 Backend de Codegen     →  Albedo Native Backend (100% próprio)
-  📦 Crate                  →  albedo-jit (workspace member — único crate interno)
-  ⚡ Meta de Performance    →  ≥80% da velocidade do V8 TurboFan em benchmarks
-
-  ⚠️  NOTA ESTRATÉGICA:
-  O AlbedoJIT é o substituto do rquickjs. Quando completo, o Albedo não dependerá
-  de NENHUMA biblioteca externa para executar JavaScript.
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  📐  ARQUITETURA GERAL DO ALBEDOJIT                                              │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  Pipeline em 3 Tiers (100% próprio, sem deps externas):
-
-  ┌─────────────────────────────────────────────────────────────────────────┐
-  │                                                                         │
-  │   JS Source Code                                                        │
-  │        │                                                                │
-  │        ▼                                                                │
-  │   ┌──────────────┐                                                      │
-  │   │  TIER 0      │  Albedo Interpreter (100% próprio)                   │
-  │   │  Interpretador│  → Bytecode AIR próprio, sem deps                   │
-  │   │  (Cold Code)  │  → Profiler conta execuções por função              │
-  │   └──────┬───────┘  → Substitui rquickjs completamente                 │
-  │          │                                                              │
-  │          │  Função chamada ≥50 vezes                                    │
-  │          ▼                                                              │
-  │   ┌──────────────┐                                                      │
-  │   │  TIER 1      │  Baseline JIT (compilação rápida)                    │
-  │   │  Baseline    │  → AIR → MIR → Nativo (Albedo Native Backend)       │
-  │   │  Compiler    │  → Sem inlining, sem type specialization             │
-  │   └──────┬───────┘  → Compile time: <1ms por função                    │
-  │          │                                                              │
-  │          │  Função chamada ≥5.000 vezes + type profile estável         │
-  │          ▼                                                              │
-  │   ┌──────────────┐                                                      │
-  │   │  TIER 2      │  Optimizing JIT (compilação lenta, máxima speed)     │
-  │   │  AlbedoTurbo │  → Type speculation + Inline caching                 │
-  │   │  Compiler    │  → Function inlining + Loop unrolling               │
-  │   │              │  → Dead code elimination + Escape analysis           │
-  │   └──────┬───────┘  → Compile time: 5-50ms por função                   │
-  │          │                                                              │
-  │          │  Type guard falhou! (deoptimization)                         │
-  │          ▼                                                              │
-  │   ┌──────────────┐                                                      │
-  │   │  BAILOUT     │  Reverte para Tier 0/1 sem crash                    │
-  │   └──────────────┘                                                      │
-  │                                                                         │
-  └─────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  🗂️  ESTRUTURA DE ARQUIVOS DO ALBEDOJIT (100% PRÓPRIO)                           │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  src/jit/                              AlbedoJIT — Motor JIT 100% Rust, 0 deps
-  ├── mod.rs                            Entry point
-  ├── bytecode/                         AIR — Albedo IR próprio
-  │   ├── opcodes.rs, decoder.rs, builder.rs
-  ├── profiler/                         Profiling + tiering
-  │   ├── counter.rs, type_feedback.rs, heuristics.rs, inline_cache.rs
-  ├── baseline/                         Tier 1 — Baseline Compiler
-  │   ├── lowering.rs, codegen.rs
-  ├── optimizing/                       Tier 2 — AlbedoTurbo
-  │   ├── ir.rs, type_specialize.rs, inlining.rs, loop_opts.rs
-  │   ├── escape_analysis.rs, dead_code.rs, range_analysis.rs
-  │   ├── scheduler.rs, codegen.rs
-  ├── runtime/                          Runtime support
-  │   ├── trampolines.rs, osr.rs, deopt.rs, code_cache.rs, memory.rs
-  ├── gc/                               GC geracional próprio
-  │   ├── heap.rs, young_gen.rs, old_gen.rs, write_barrier.rs
-  │   ├── roots.rs, safepoints.rs, concurrent.rs
-  ├── builtins/                         Builtins otimizados em Rust
-  │   ├── array.rs, string.rs, math.rs, json.rs, regexp.rs, promise.rs
-  ├── bridge/                           Ponte → AceDOM
-  │   ├── vm_intercept.rs, value_marshal.rs, dom_fast_path.rs
-  └── tests/
-      ├── baseline_tests.rs, optimizing_tests.rs, deopt_tests.rs
-      ├── gc_tests.rs, benchmark_suite.rs, conformance_tests.rs
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  📋  ROADMAP DO ALBEDOJIT (todas as fases 100% próprias, zero deps)              │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-─── FASE JIT-1: FUNDAÇÃO (Meses 1-4) ─────────────────────────────────────────────
-
-  [ ]  1.1  Pipeline mínimo 100% próprio (AIR v2, MIR SSA, verificador)
-  [ ]  1.2  Assembler x86-64 próprio (encoder + relocations)
-  [ ]  1.3  Alocador de registradores linear scan
-  [ ]  1.4  Trampolines, ABI bridge, code cache (RW → RX)
-  [ ]  1.5  Testes de equivalência: interpretador próprio vs JIT
-
-─── FASE JIT-2: TYPE SPECIALIZATION (Meses 5-8) ──────────────────────────────────
-
-  [ ]  2.1  Type feedback collector + IC slots próprios
-  [ ]  2.2  Guards de tipo com deoptimization segura
-  [ ]  2.3  Hidden classes/shapes + transições
-  [ ]  2.4  Lowering especializado int32/float64/string
-  [ ]  2.5  OSR (On-Stack Replacement)
-  [ ]  2.6  Builtins críticos em Rust (Math, Array, String, JSON)
-
-─── FASE JIT-3: OTIMIZAÇÕES AVANÇADAS (Meses 9-13) ───────────────────────────────
-
-  [ ]  3.1  Function inlining + Loop opts (LICM, unrolling)
-  [ ]  3.2  Escape analysis + scalar replacement
-  [ ]  3.3  Dead code elimination + constant folding
-  [ ]  3.4  Range analysis + bounds check elimination
-  [ ]  3.5  SIMD auto-vectorization (SSE/AVX/NEON via backend próprio)
-  [ ]  3.6  RegExp JIT próprio
-  [ ]  3.7  Exceções completas (try/catch/finally)
-
-─── FASE JIT-4: GARBAGE COLLECTOR (Meses 10-15) ──────────────────────────────────
-
-  [ ]  4.1  Heap layout (young/old/LOS) com alocador próprio
-  [ ]  4.2  Young gen semi-space copying collector
-  [ ]  4.3  Old gen mark-compact incremental
-  [ ]  4.4  Write barriers + remembered sets
-  [ ]  4.5  Safepoints e stack maps
-  [ ]  4.6  GC concorrente com pausas curtas
-
-─── FASE JIT-5: DOM FAST PATH (Meses 14-17) ──────────────────────────────────────
-
-  [ ]  5.1  DOM Fast Path (lookup/write direto no AceDOM)
-  [ ]  5.2  Event dispatch otimizado
-  [ ]  5.3  Style recalc fast path
-  [ ]  5.4  Ponte JS↔DOM zero-copy
-
-─── FASE JIT-6: POLIMENTO E PRODUÇÃO (Meses 17-22) ───────────────────────────────
-
-  [ ]  6.1  Cache de código nativo em disco
-  [ ]  6.2  Wasm integration (reusar backend MIR)
-  [ ]  6.3  Test262 conformance ≥95%
-  [ ]  6.4  Fuzzing e security hardening (W^X, CFI, guard pages)
-  [ ]  6.5  ARM64 de ponta a ponta
-
-─── FASE JIT-7: ABSORÇÃO TOTAL (Meses 22-30) ─────────────────────────────────────
-
-  [ ]  7.1  Frontend ECMAScript próprio (lexer + parser + AST)
-  [ ]  7.2  Compilador AST → AIR/MIR (sem bytecode legado)
-  [ ]  7.3  Runtime JS próprio (objetos, protótipos, closures)
-  [ ]  7.4  ESM loader próprio
-  [ ]  7.5  Event loop + Promise jobs próprios
-  [ ]  7.6  Shadow execution (dual-run para validação)
-  [ ]  7.7  Cutover por feature flag
-  [ ]  7.8  Remover rquickjs do build
-
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│  📊  MÉTRICAS TARGET DO ALBEDOJIT                                                │
-└──────────────────────────────────────────────────────────────────────────────────┘
-
-  ┌────────────────────────────┬────────────┬────────────┬────────────┬───────────┐
-  │ Benchmark                  │ rquickjs   │ Fase JIT-2 │ Fase JIT-3 │ V8 (ref)  │
-  ├────────────────────────────┼────────────┼────────────┼────────────┼───────────┤
-  │ Fibonacci(40) recursivo    │ ~3500ms    │ ~200ms     │ ~80ms      │ ~60ms     │
-  │ SunSpider (total)          │ ~8000ms    │ ~800ms     │ ~300ms     │ ~200ms    │
-  │ Richards                   │ ~2000ms    │ ~150ms     │ ~50ms      │ ~35ms     │
-  │ DeltaBlue                  │ ~3000ms    │ ~200ms     │ ~60ms      │ ~40ms     │
-  │ N-Body simulation          │ ~5000ms    │ ~400ms     │ ~120ms     │ ~90ms     │
-  │ React re-render 10k nodes  │ ~4000ms    │ ~500ms     │ ~150ms     │ ~100ms    │
-  ├────────────────────────────┼────────────┼────────────┼────────────┼───────────┤
-  │ Startup (cold)             │ ~5ms  ✅   │ ~8ms       │ ~10ms      │ ~80ms     │
-  │ RAM por aba (idle)         │ ~3MB  ✅   │ ~8MB       │ ~12MB      │ ~50-80MB  │
-  │ Tamanho do binário         │ +0.5MB ✅  │ +3MB       │ +5MB       │ +30MB     │
-  └────────────────────────────┴────────────┴────────────┴────────────┴───────────┘
-
-  → Meta: ≤1.5x mais lento que V8 COM 5-10x menos RAM.
-  → Meta: ≥2x mais rápido que V8 em startup.
-  → Meta: DOM manipulation mais rápido (vantagem Rust→Rust sem FFI).
-
-  ESTIMATIVA AlbedoJIT: ~9.500 - 15.600h (~28-34 meses, 1 dev)
-
-  [dependencies]
-  # AlbedoJIT 100% próprio: ZERO bibliotecas externas.
-  # Apenas std + módulos internos do Albedo.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          🏗️  ARQUITETURA DE ARQUIVOS (VISÃO 100% PRÓPRIO)
+                          ARQUITETURA DE ARQUIVOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   src/
-  ├── main.rs                         Entry point
-  ├── ace/                            ACE — Módulos 100% Próprios
-  │   ├── html/                       ACE-HTML (parser HTML5 próprio)
-  │   ├── css/                        ACE-CSS (parser/matcher CSS próprio)
-  │   ├── layout/                     ACE-Layout (Flex/Grid/Block/Inline próprio)
-  │   ├── text/                       ACE-Text (shaping/raster próprio)
-  │   ├── raster/                     ACE-Raster (rasterizador 2D próprio)
-  │   ├── svg/                        ACE-SVG (parser/renderer SVG próprio)
-  │   ├── image/                      ACE-Image (codecs PNG/JPEG/WebP próprios)
-  │   ├── gpu/                        ACE-GPU (Vulkan/Metal/DX12 direto)
-  │   ├── ui/                         ACE-UI (framework de interface próprio)
-  │   ├── net/                        ACE-Net (HTTP/1.1+2+3 + QUIC + TLS próprios)
-  │   ├── async/                      ACE-Async (runtime assíncrono próprio)
-  │   ├── store/                      ACE-Store (KV engine própria)
-  │   ├── crypto/                     ACE-Crypto (SHA/HMAC/CSPRNG próprios)
-  │   ├── compress/                   ACE-Compress (DEFLATE/Brotli/Zstd próprios)
-  │   ├── audio/                      ACE-Audio (playback via OS APIs)
-  │   ├── json/                       ACE-JSON (parser/serializer próprio)
-  │   ├── url/                        ACE-URL (parser WHATWG próprio)
-  │   └── util/                       Utilitários (UUID, Base64, Time, Random, etc.)
+  ├── main.rs                         Entry point + event loop
   │
-  ├── engine/                         Albedo Core Engine (usa módulos ACE-*)
-  │   ├── mod.rs                      Engine principal
-  │   ├── dom/                        AceDOM (DOM tree 100% próprio)
-  │   ├── style/                      Style engine (usa ACE-CSS)
-  │   ├── inline.rs                   IFC (usa ACE-Text)
+  ├── ace/                            ACE Engine — Subsistemas Core
+  │   ├── html/                       ACE-HTML parser (100% próprio)
+  │   │   ├── lexer.rs                State machine HTML5
+  │   │   ├── tokenizer.rs            Tokens tipados
+  │   │   ├── tree_builder.rs         Insertion modes, Adoption Agency
+  │   │   ├── entities.rs             ~2200 named character references
+  │   │   ├── streaming.rs            Streaming/incremental parse
+  │   │   ├── simd.rs                 SIMD acceleration
+  │   │   ├── preload_scanner.rs      Resource pre-loading
+  │   │   ├── speculative.rs          Parallel parsing
+  │   │   ├── interner.rs             String interning
+  │   │   ├── arena.rs                Arena allocator
+  │   │   ├── thread_pool.rs          Thread pool
+  │   │   └── metrics.rs              Parser metrics
+  │   ├── url/                        ACE-URL (parser WHATWG)
+  │   ├── json/                       ACE-JSON (parser/serializer)
+  │   ├── crypto/                     ACE-Crypto (SHA, HMAC, AES, ECDH, CSPRNG)
+  │   ├── contracts/                  Interfaces e contratos
+  │   └── util/                       SysInfo, Random, Base64, UUID, Time
+  │
+  ├── engine/                         Motor de Renderização
+  │   ├── mod.rs                      AceEngine principal (pipeline completo)
+  │   ├── dom/                        AceDOM
+  │   │   ├── mod.rs                  Árvore DOM (arena-allocated nodes)
+  │   │   ├── arena.rs                Arena allocator para nós
+  │   │   ├── shadow.rs               Shadow DOM v1
+  │   │   ├── custom_elements.rs      Web Components
+  │   │   ├── live_nodelist.rs         Live NodeList
+  │   │   ├── range.rs                Range API
+  │   │   ├── selection.rs            Selection API
+  │   │   ├── virtual_dom.rs          Virtual DOM diffing
+  │   │   ├── string_intern.rs        String interning
+  │   │   ├── a11y.rs                 Accessibility tree
+  │   │   └── wpt_harness.rs          WPT test harness
+  │   ├── style/                      CSS Engine
+  │   │   ├── mod.rs                  Cascade, matching, computed styles
+  │   │   ├── css_values.rs           Tipos de valor CSS
+  │   │   ├── animation.rs            Animations + transitions
+  │   │   └── grid_tests.rs           Grid tests
+  │   ├── inline.rs                   Inline Formatting Context
+  │   ├── compositor.rs               GPU Compositor (wgpu)
+  │   ├── layer_tree.rs               Layer management
+  │   ├── text.rs                     Text rendering (cosmic-text)
+  │   ├── svg.rs                      SVG rendering (resvg)
+  │   ├── types.rs                    Tipos compartilhados
+  │   ├── shaders.wgsl                GPU shaders
   │   └── graphics/
-  │       ├── canvas2d.rs             Canvas 2D (usa ACE-Raster)
-  │       └── compositor.rs           Compositing (usa ACE-GPU)
+  │       └── canvas2d.rs             Canvas 2D
   │
-  ├── runtime/                        Albedo Runtime (usa AlbedoJIT)
-  │   ├── core/                       Runtime JS próprio
-  │   └── bindings/                   DOM/Web API bindings
+  ├── runtime/                        JavaScript Runtime
+  │   ├── core/                       QuickJS runtime, event loop, module loader
+  │   ├── bindings/
+  │   │   ├── html/                   DOM bindings (document, element, events)
+  │   │   │   ├── document/           document.* APIs
+  │   │   │   ├── element/            element.* APIs
+  │   │   │   ├── event.rs            Event, EventTarget
+  │   │   │   ├── event_subclasses.rs MouseEvent, KeyboardEvent, etc.
+  │   │   │   ├── mutation_observer   MutationObserver
+  │   │   │   ├── intersection_observer
+  │   │   │   ├── resize_observer
+  │   │   │   ├── computed_style.rs   getComputedStyle
+  │   │   │   ├── style_declaration   CSSStyleDeclaration
+  │   │   │   ├── token_list.rs       classList
+  │   │   │   ├── form_data.rs        FormData
+  │   │   │   ├── range.rs            Range (JS binding)
+  │   │   │   └── selection.rs        Selection (JS binding)
+  │   │   ├── webapi/                 Web API bindings
+  │   │   │   ├── fetch.rs            Fetch API
+  │   │   │   ├── websocket.rs        WebSocket
+  │   │   │   ├── storage.rs          localStorage/sessionStorage
+  │   │   │   ├── indexeddb.rs        IndexedDB
+  │   │   │   ├── cache.rs            Cache API
+  │   │   │   ├── timers.rs           setTimeout/setInterval/rAF
+  │   │   │   ├── crypto.rs           SubtleCrypto
+  │   │   │   ├── location.rs         window.location
+  │   │   │   ├── history.rs          window.history
+  │   │   │   ├── navigator.rs        window.navigator
+  │   │   │   ├── worker.rs           Web Workers
+  │   │   │   ├── service_worker.rs   Service Workers
+  │   │   │   ├── url.rs              URL
+  │   │   │   ├── url_search_params   URLSearchParams
+  │   │   │   ├── text_encoding.rs    TextEncoder/TextDecoder
+  │   │   │   ├── structured_clone    structuredClone
+  │   │   │   ├── clipboard.rs        Clipboard API
+  │   │   │   ├── notification.rs     Notification API
+  │   │   │   ├── geolocation.rs      Geolocation
+  │   │   │   ├── file_api.rs         File/FileReader
+  │   │   │   ├── match_media.rs      matchMedia
+  │   │   │   ├── iframe.rs           iframe handling
+  │   │   │   ├── post_message.rs     postMessage
+  │   │   │   ├── sync.rs             Background Sync
+  │   │   │   └── window_proxy.rs     Window proxy
+  │   │   └── utils/                  Binding utilities
+  │   └── bridge/                     JS ↔ DOM bridge
   │
-  ├── network/                        Camada de rede (usa ACE-Net)
+  ├── network/                        Networking
+  │   ├── resources.rs                Resource Manager (priorização, fetch)
+  │   ├── client.rs                   HTTP client (reqwest)
+  │   ├── http3.rs                    HTTP/3 / QUIC (quinn + h3)
+  │   ├── cache.rs                    Disk cache (rusqlite)
+  │   ├── dns.rs                      DNS prefetching
+  │   ├── security.rs                 CSP, CORS, SOP, Mixed Content
+  │   ├── blob.rs                     Blob URLs
+  │   └── protocols/                  albedo:// protocol
   │
-  ├── browser/                        Lógica do navegador (usa ACE-UI)
+  ├── browser/                        Browser Shell
+  │   ├── tabs/                       Tab management
+  │   │   ├── manager.rs              TabManager
+  │   │   ├── tab.rs                  Tab state
+  │   │   └── collection.rs           Tab collection
+  │   ├── events.rs                   Event handlers (navigate, click, key...)
+  │   ├── bridge.rs                   Engine ↔ UI sync
+  │   └── setup.rs                    Initialization
   │
-  └── jit/                            AlbedoJIT (motor JIT 100% próprio)
+  ├── renderer.rs                     Renderer (tiny-skia framebuffer)
+  └── ui.rs                           UI definitions
+
+  ui/
+  ├── appwindow.slint                 Main window definition
+  └── components/                     UI components
+
+  albedo-jit/                         AlbedoJIT (futuro, longo prazo)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          💡  PRINCÍPIOS DO PROJETO
+                          DEPENDÊNCIAS DO ACE ENGINE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  1. 🏛️  100% PRÓPRIO — ZERO DEPENDÊNCIAS EXTERNAS
-     O Albedo não depende de NENHUMA biblioteca de terceiros em subsistemas
-     críticos. Cada módulo ACE-* é implementação 100% do Albedo.
-     O Cargo.toml final lista APENAS albedo-jit como dependência interna.
+  Assim como o Blink (Chrome) usa Skia, BoringSSL, zlib e ICU internamente,
+  o ACE Engine usa crates Rust como ferramentas internas:
 
-  2. 🎯  BROWSER REAL, NÃO EXPERIMENTAL
-     O Albedo é um browser de produção. Cada decisão deve considerar o impacto
-     para usuários reais navegando na web real.
+  ┌───────────────────┬──────────────────────────────────────────────────────┐
+  │ Crate             │ Papel no ACE Engine                                 │
+  ├───────────────────┼──────────────────────────────────────────────────────┤
+  │ cssparser         │ Tokenização/parsing de CSS                          │
+  │ selectors         │ CSS selector matching                               │
+  │ taffy             │ Cálculo de layout Flex/Grid                         │
+  │ cosmic-text       │ Text shaping e rasterização de glifos               │
+  │ tiny-skia         │ Rasterizador 2D (framebuffer)                       │
+  │ wgpu              │ GPU abstraction (Vulkan/Metal/DX12)                │
+  │ resvg/usvg        │ SVG rendering                                       │
+  │ image             │ Image decoding (PNG/JPEG/WebP/GIF)                  │
+  │ rquickjs          │ JavaScript engine (QuickJS)                         │
+  │ tokio             │ Async runtime                                       │
+  │ reqwest           │ HTTP/1.1 + HTTP/2 client                            │
+  │ quinn + h3        │ QUIC / HTTP/3                                       │
+  │ rustls            │ TLS 1.3                                             │
+  │ rusqlite          │ SQLite (cache, IndexedDB, storage)                  │
+  │ slint             │ UI framework                                        │
+  │ rodio             │ Audio playback                                      │
+  │ flate2/brotli/zstd│ HTTP compression                                    │
+  │ arboard           │ Clipboard                                           │
+  │ notify-rust       │ OS notifications                                    │
+  │ tokio-tungstenite │ WebSocket                                           │
+  └───────────────────┴──────────────────────────────────────────────────────┘
 
-  3. 🦀  RUST-FIRST, RUST-ONLY
-     Escrito inteiramente em Rust. Sem C, sem C++, sem bindings FFI para libs
-     externas. A segurança de memória e performance são vantagens competitivas.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          ESTIMATIVAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  4. ⚡  PERFORMANCE É FEATURE
-     Um browser lento é um browser ruim. Cada módulo ACE-* é otimizado para
-     performance desde o design, não como afterthought.
+  ┌──────────────────────────────┬───────────────────────────────────────────┐
+  │ Fase                         │ Estimativa (1 dev full-time)              │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ Fase 1: Browser Navegável    │ 1.000 - 2.000h  (~4-8 meses)            │
+  │ Fase 2: Apps Web             │ 1.500 - 2.500h  (~6-10 meses)           │
+  │ Fase 3: Web Completa         │ 3.000 - 5.000h  (~12-20 meses)          │
+  │ Fase 4: Rivalizar c/ Chrome  │ 4.000 - 6.000h  (~16-24 meses)          │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ TOTAL                        │ 9.500 - 15.500h (~3-5 anos, 1 dev)      │
+  └──────────────────────────────┴───────────────────────────────────────────┘
 
-  5. 🔐  SEGURANÇA É INEGOCIÁVEL
-     Implementações próprias de TLS, crypto e sandboxing — auditáveis,
-     sem supply chain risk de crates de terceiros.
+  Com equipe de 3-5 devs:  ~1.5-2 anos para Fase 2
+  Com equipe de 10+ devs:  ~1 ano para Fase 2
 
-  6. 🌐  COMPATIBILIDADE WEB ACIMA DE TUDO
-     Se um site funciona no Firefox, deve funcionar no Albedo.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          MÉTRICAS DE PROGRESSO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  7. 🧪  TESTAR TUDO — E TESTAR VERDADEIRAMENTE
-     Cada feature marcada como ✅ é 100% própria E tem testes que provam.
-
-  8. 📦  SHIPABLE MATTERS
-     Build system, packaging e auto-update são parte do produto.
-
-  9. 📊  PLANO COMO DOCUMENTO VIVO
-     O PLAN.txt reflete a realidade do código, não aspirações.
+  ┌──────────────────────────┬──────────┬─────────┬─────────┬─────────┐
+  │ Pilar                    │ Atual    │ Fase 1  │ Fase 2  │ Fase 3+ │
+  ├──────────────────────────┼──────────┼─────────┼─────────┼─────────┤
+  │ 1. Rendering Engine      │  6/10 🔧 │  8/10   │  9/10   │ 10/10   │
+  │ 2. JavaScript & Web APIs │  5/10 🔧 │  6/10   │  8/10   │  9/10   │
+  │ 3. Networking            │  7/10 ✅ │  8/10   │  9/10   │  9/10   │
+  │ 4. Security              │  3/10 ⚠️ │  5/10   │  7/10   │  8/10   │
+  │ 5. Browser UI            │  3/10 ⚠️ │  6/10   │  7/10   │  9/10   │
+  │ 6. Media                 │  1/10 ❌ │  1/10   │  3/10   │  7/10   │
+  │ 7. DevTools              │  0/10 ❌ │  0/10   │  2/10   │  6/10   │
+  ├──────────────────────────┼──────────┼─────────┼─────────┼─────────┤
+  │ GERAL                    │  3.6/10  │  4.9/10 │  6.4/10 │  8.3/10 │
+  └──────────────────────────┴──────────┴─────────┴─────────┴─────────┘
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  🚀  Albedo tem ~15.700 linhas de Rust, 30+ Web APIs, DOM funcional com testes,
-      CSS engine com 100+ propriedades. Porém TUDO depende de ~40 crates externas.
-      A missão é clara: substituir CADA UMA por implementação 100% própria.
-
-  ⚠️  PRÓXIMOS PASSOS (reformulação 2026-03-24):
-      1. Começar pela ONDA 1 — utilitários simples (ACE-JSON, ACE-URL, etc.)
-      2. Avançar para ONDA 2-3 — compressão + HTML/CSS parser próprios
-      3. Cada módulo substituído = 1 crate a menos no Cargo.toml
+  🌑 Albedo Browser — powered by ACE Engine.
+  O navegador Rust-native mais leve do mundo.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
