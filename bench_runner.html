@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Albedo Performance Benchmark</title>
+</head>
+<body>
+    <h1>Albedo vs Chrome Benchmark</h1>
+    <div id="status">Preparando teste...</div>
+    <div id="results"></div>
+
+    <script>
+        async function runBench() {
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            status.innerText = "Lendo arquivo de estresse (5MB)...";
+            const response = await fetch('stress_test.html');
+            const html = await response.text();
+            
+            status.innerText = "Iniciando benchmark do Chrome (DOMParser)...";
+            
+            const iterations = 20;
+            let totalTime = 0;
+            
+            // Warmup
+            new DOMParser().parseFromString(html, 'text/html');
+            
+            for (let i = 0; i < iterations; i++) {
+                const start = performance.now();
+                new DOMParser().parseFromString(html, 'text/html');
+                const end = performance.now();
+                totalTime += (end - start);
+            }
+            
+            const avgTime = totalTime / iterations;
+            const mbPerSec = (html.length / 1024 / 1024) / (avgTime / 1000);
+            
+            results.innerHTML = `
+                <h2>Resultados Chrome (Blink):</h2>
+                <p>Tamanho do arquivo: ${(html.length / 1024 / 1024).toFixed(2)} MB</p>
+                <p>Tempo Médio de Parsing: ${avgTime.toFixed(2)} ms</p>
+                <p>Velocidade: ${mbPerSec.toFixed(2)} MB/s</p>
+            `;
+            
+            status.innerText = "Benchmark concluído!";
+            console.log("BENCHMARK_DONE:" + JSON.stringify({
+                engine: "Blink (Chrome)",
+                avgTime: avgTime,
+                mbPerSec: mbPerSec
+            }));
+        }
+        
+        runBench();
+    </script>
+</body>
+</html>

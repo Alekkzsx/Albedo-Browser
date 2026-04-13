@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Benchmark de Parsing de Alta Precisão - Albedo</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 40px; }
+        .card { background: #1e293b; border-radius: 12px; padding: 30px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        h1 { color: #38bdf8; margin-bottom: 20px; }
+        .stat { margin-bottom: 15px; font-size: 1.2rem; }
+        .value { font-weight: bold; color: #fbbf24; }
+        .progress-container { width: 100%; background: #334155; height: 10px; border-radius: 5px; margin: 20px 0; overflow: hidden; }
+        .progress-bar { width: 0%; height: 100%; background: #38bdf8; transition: width 0.1s; }
+        #log { margin-top: 20px; font-family: 'Consolas', monospace; font-size: 0.9rem; color: #94a3b8; height: 150px; overflow-y: auto; background: #000; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Precisão Atômica: Benchmark Blink (Chrome)</h1>
+        <div id="status" class="stat">Preparando arquivos...</div>
+        <div class="progress-container"><div id="progress" class="progress-bar"></div></div>
+        
+        <div id="results" style="display:none;">
+            <div class="stat">Tamanho do HTML: <span id="res-size" class="value">0 MB</span></div>
+            <div class="stat">Média de Parsing: <span id="res-avg" class="value">0 ms</span></div>
+            <div class="stat">Melhor tempo: <span id="res-min" class="value">0 ms</span></div>
+            <div class="stat">Velocidade Real: <span id="res-speed" class="value">0 MB/s</span></div>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const progressEl = document.getElementById('progress');
+        
+        function log(msg) {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function startBenchmark() {
+            try {
+                log("Carregando stress_test.html de 5MB...");
+                const response = await fetch('stress_test.html');
+                const html = await response.text();
+                const sizeMB = html.length / (1024 * 1024);
+                
+                document.getElementById('res-size').textContent = `${sizeMB.toFixed(2)} MB`;
+                log(`Arquivo carregado. Iniciando 20 iterações isoladas.`);
+
+                const iterations = 20;
+                let times = [];
+                const parser = new DOMParser();
+
+                // Warmup (Fundamental para o JIT otimizar)
+                log("Warm-up (A aquecendo o V8)...");
+                parser.parseFromString(html, 'text/html');
+                
+                for (let i = 0; i < iterations; i++) {
+                    statusEl.textContent = `Executando iteração ${i + 1}/${iterations}...`;
+                    progressEl.style.width = `${((i + 1) / iterations) * 100}%`;
+                    
+                    // Medição pura (sem I/O, sem console, sem nada)
+                    const t0 = performance.now();
+                    parser.parseFromString(html, 'text/html');
+                    const t1 = performance.now();
+                    
+                    const duration = t1 - t0;
+                    times.push(duration);
+                    log(`It ${i + 1}: ${duration.toFixed(2)} ms`);
+                    
+                    // Pequena pausa para o Garbage Collector não acumular no teste
+                    if (i % 5 === 0) await new Promise(r => setTimeout(r, 50));
+                }
+
+                const avg = times.reduce((a, b) => a + b) / times.length;
+                const min = Math.min(...times);
+                const mbps = sizeMB / (avg / 1000);
+
+                document.getElementById('res-avg').textContent = `${avg.toFixed(2)} ms`;
+                document.getElementById('res-min').textContent = `${min.toFixed(2)} ms`;
+                document.getElementById('res-speed').textContent = `${mbps.toFixed(2)} MB/s`;
+                
+                statusEl.textContent = "Benchmark Concluído!";
+                statusEl.style.color = "#4ade80";
+                document.getElementById('results').style.display = 'block';
+                
+                console.log("FINAL_RESULT:" + JSON.stringify({
+                    avg, min, mbps, sizeMB
+                }));
+
+            } catch (err) {
+                log(`ERRO: ${err.message}`);
+                statusEl.textContent = "Erro na execução.";
+                statusEl.style.color = "#ef4444";
+            }
+        }
+
+        // Delay para garantir que o browser carregou os subsistemas
+        setTimeout(startBenchmark, 1000);
+    </script>
+</body>
+</html>
