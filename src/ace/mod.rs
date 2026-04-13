@@ -1,6 +1,6 @@
-pub mod contracts;
-pub mod crypto;
 pub mod html;
+pub mod util;
+pub mod crypto;
 pub mod json;
 pub mod url;
-pub mod util;
+pub mod contracts;
