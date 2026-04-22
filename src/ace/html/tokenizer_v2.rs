@@ -1,13 +1,11 @@
-use html5gum::{Tokenizer, Token, TokenizerState};
-use std::collections::HashMap;
-use crate::ace::html::{Namespace};
+use html5gum::{Tokenizer, Token, State as TokenizerState};
 use crate::ace::util::allocator::AceAllocator;
 
 /// O `AceTokenizer` é um wrapper de alta performance sobre o `html5gum`.
 /// Ele transforma bytes/strings em tokens WHATWG usando otimizações SIMD
 /// e minimizando alocações desnecessárias.
 pub struct AceTokenizer<'a> {
-    inner: Tokenizer<'a>,
+    inner: Tokenizer<html5gum::StringReader<'a>>,
     /// Referência ao alocador para strings temporárias se necessário.
     allocator: &'a AceAllocator,
 }
@@ -51,7 +49,7 @@ impl<'a> AceTokenizer<'a> {
     pub fn next_token(&mut self) -> Option<AceTokenKind<'a>> {
         // html5gum retorna Option<Token>
         match self.inner.next() {
-            Some(Token::StartTag(tag)) => {
+            Some(Ok(Token::StartTag(tag))) => {
                 let name = self.allocator.alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
                 let mut attributes = Vec::with_capacity(tag.attributes.len());
                 
@@ -67,22 +65,29 @@ impl<'a> AceTokenizer<'a> {
                     self_closing: tag.self_closing,
                 })
             }
-            Some(Token::EndTag(tag)) => {
+            Some(Ok(Token::EndTag(tag))) => {
                 let name = self.allocator.alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
                 Some(AceTokenKind::EndTag { name })
             }
-            Some(Token::Comment(data)) => {
+            Some(Ok(Token::Comment(data))) => {
                 let comment_text = self.allocator.alloc_str(std::str::from_utf8(&data).unwrap_or(""));
                 Some(AceTokenKind::Comment { data: comment_text })
             }
-            Some(Token::String(data)) => {
+            Some(Ok(Token::String(data))) => {
                 let text = self.allocator.alloc_str(std::str::from_utf8(&data).unwrap_or(""));
                 Some(AceTokenKind::Text { data: text })
             }
-            Some(Token::Doctype(dt)) => {
-                let name = dt.name.as_ref().map(|b| self.allocator.alloc_str(std::str::from_utf8(b).unwrap_or("")));
-                let public_id = dt.public_id.as_ref().map(|b| self.allocator.alloc_str(std::str::from_utf8(b).unwrap_or("")));
-                let system_id = dt.system_id.as_ref().map(|b| self.allocator.alloc_str(std::str::from_utf8(b).unwrap_or("")));
+            Some(Ok(Token::Doctype(dt))) => {
+                let name = Some(
+                    self.allocator
+                        .alloc_str(std::str::from_utf8(&dt.name).unwrap_or("")),
+                );
+                let public_id = dt.public_identifier.as_ref().map(|bytes| {
+                    self.allocator.alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
+                });
+                let system_id = dt.system_identifier.as_ref().map(|bytes| {
+                    self.allocator.alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
+                });
                 
                 Some(AceTokenKind::Doctype {
                     name,
