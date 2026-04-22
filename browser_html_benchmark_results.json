@@ -1,0 +1,70 @@
+{
+  "generatedAt": "2026-04-22T14:22:09Z",
+  "datasets": {
+    "requiredTreeCases": 14,
+    "html5libTreeSampleCases": 100,
+    "perfHtmlBytes": 1200010
+  },
+  "browsers": {
+    "chrome": {
+      "available": true,
+      "requiredTree": {
+        "total": 14,
+        "passed": 13,
+        "passRate": 92.85714285714286,
+        "avgCaseMs": 2.056964282279036,
+        "failures": [
+          {
+            "id": "doc_template_element",
+            "expected": "| <html>\n|   <head>\n|     <template>\n|       <template-content>\n|         <div>\n|           \"content\"\n|   <body>",
+            "actual": "| <html>\n|   <head>\n|     <template>\n|   <body>"
+          }
+        ]
+      },
+      "html5libTreeSample": {
+        "total": 100,
+        "passed": 99,
+        "passRate": 99.0,
+        "avgCaseMs": 2.037984002381563,
+        "failures": [
+          {
+            "id": "adoption01.dat#17",
+            "expected": "| <b>\n|   <em>\n|     <foo>\n|       <foob>\n|         <fooc>\n| <aside>\n|   <b>",
+            "actual": "| <b>\n|   <em>\n|     <foo>\n|       <foob>\n|         <fooc>\n| <aside>\n|   <em>\n|     <b>"
+          }
+        ]
+      },
+      "performance": {
+        "avgMs": 14.10999999642372,
+        "throughputMbps": 85.04677535819638
+      }
+    },
+    "firefox": {
+      "available": true,
+      "requiredTree": {
+        "total": 14,
+        "passed": 13,
+        "passRate": 92.85714285714286,
+        "avgCaseMs": 1.9938428470465754,
+        "failures": [
+          {
+            "id": "doc_template_element",
+            "expected": "| <html>\n|   <head>\n|     <template>\n|       <template-content>\n|         <div>\n|           \"content\"\n|   <body>",
+            "actual": "| <html>\n|   <head>\n|     <template>\n|   <body>"
+          }
+        ]
+      },
+      "html5libTreeSample": {
+        "total": 100,
+        "passed": 100,
+        "passRate": 100.0,
+        "avgCaseMs": 3.4656579955480993,
+        "failures": []
+      },
+      "performance": {
+        "avgMs": 12.6,
+        "throughputMbps": 95.2388888888889
+      }
+    }
+  }
+}

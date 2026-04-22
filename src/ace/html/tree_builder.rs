@@ -1,7 +1,5 @@
 use crate::ace::html::tokenizer_v2::{AceTokenizer, AceTokenKind};
 use crate::ace::util::allocator::AceAllocator;
-use crate::ace::html::Namespace;
-use std::collections::VecDeque;
 use fxhash::FxHashMap;
 use smol_str::SmolStr;
 

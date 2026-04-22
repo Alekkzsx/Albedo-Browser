@@ -75,7 +75,7 @@ impl URL {
 
     #[qjs(get)]
     pub fn hostname(&self) -> String {
-        self.url.host_str().unwrap_or_default()
+        self.url.host_str().unwrap_or_default().to_string()
     }
 
     #[qjs(get)]
