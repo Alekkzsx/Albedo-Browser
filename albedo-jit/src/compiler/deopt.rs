@@ -5,8 +5,8 @@
 use crate::parking_lot::RwLock;
 use std::sync::{Arc, OnceLock};
 
-use crate::compiler::air_interpreter::AirInterpreter;
 use crate::bytecode::AirFunction;
+use crate::compiler::air_interpreter::AirInterpreter;
 use crate::runtime::js_value::JsValue;
 
 #[derive(Debug, Clone)]

@@ -81,9 +81,10 @@ fn ace_html_required_conformance_passes_100() {
         match run_case(case) {
             Ok(result) => {
                 if let Err(detail) = assert_case(case, &result) {
-                    stats
-                        .failures
-                        .push(format!("{} [{}] -> {}", case.case_id, case.spec_ref, detail));
+                    stats.failures.push(format!(
+                        "{} [{}] -> {}",
+                        case.case_id, case.spec_ref, detail
+                    ));
                 } else {
                     stats.passed += 1;
                 }
@@ -152,10 +153,11 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
             let mut tokenizer = HtmlTokenizer::new(&case.input);
             let mut tokens = Vec::new();
             let mut guard = 0usize;
-            let include_eof = case
-                .expected_tokens
-                .as_ref()
-                .is_some_and(|tokens| tokens.iter().any(|token| matches!(token, ExpectedToken::Eof)));
+            let include_eof = case.expected_tokens.as_ref().is_some_and(|tokens| {
+                tokens
+                    .iter()
+                    .any(|token| matches!(token, ExpectedToken::Eof))
+            });
 
             loop {
                 guard += 1;
@@ -202,10 +204,8 @@ fn run_case(case: &ConformanceCase) -> Result<CaseResult, String> {
         }
         CaseMode::Document => {
             let output = build_document_with_errors(&case.input);
-            let tree = serialize_document(
-                output.document.doctype.as_ref(),
-                &output.document.children,
-            );
+            let tree =
+                serialize_document(output.document.doctype.as_ref(), &output.document.children);
             let errors = output
                 .errors
                 .iter()
@@ -249,7 +249,10 @@ fn assert_case(case: &ConformanceCase, result: &CaseResult) -> Result<(), String
                 .ok_or_else(|| format!("{}: tokenizer run produced no tokens", case.case_id))?;
 
             if actual != expected {
-                return Err(format!("tokens mismatch. expected {:?}, got {:?}", expected, actual));
+                return Err(format!(
+                    "tokens mismatch. expected {:?}, got {:?}",
+                    expected, actual
+                ));
             }
         }
         CaseMode::Document | CaseMode::Fragment => {
@@ -382,8 +385,8 @@ impl ExpectedToken {
 
 fn load_manifest(path: &str) -> Result<Vec<ConformanceCase>, String> {
     let raw = fs::read_to_string(path).map_err(|err| format!("cannot read {path}: {err}"))?;
-    let json: Value = serde_json::from_str(&raw)
-        .map_err(|err| format!("invalid JSON in {path}: {err}"))?;
+    let json: Value =
+        serde_json::from_str(&raw).map_err(|err| format!("invalid JSON in {path}: {err}"))?;
 
     let root = json
         .as_object()
@@ -578,7 +581,10 @@ fn optional_str(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn serialize_document(doctype: Option<&albedo::ace::html::DoctypeToken>, nodes: &[HtmlNode]) -> String {
+fn serialize_document(
+    doctype: Option<&albedo::ace::html::DoctypeToken>,
+    nodes: &[HtmlNode],
+) -> String {
     let mut out = String::new();
 
     if let Some(dt) = doctype {

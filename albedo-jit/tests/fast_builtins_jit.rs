@@ -1,10 +1,10 @@
-use albedo_jit::runtime::builtins::BuiltinId;
 use albedo_jit::bytecode::{
     AirBlock, AirBlockId, AirConstantPool, AirFunction, AirOpcode, AirReg, AirTerminator,
 };
-use albedo_jit::engine::jit_engine::AlbedoJitEngine;
-use albedo_jit::runtime::js_value::JsValue;
 use albedo_jit::compiler::tier2_compiler::Tier2Compiler;
+use albedo_jit::engine::jit_engine::AlbedoJitEngine;
+use albedo_jit::runtime::builtins::BuiltinId;
+use albedo_jit::runtime::js_value::JsValue;
 use albedo_jit::runtime::type_feedback::{IcKind, TypeFeedbackRegistry};
 
 #[test]
@@ -259,7 +259,7 @@ fn test_fast_math_sin_jit() {
         dst: AirReg(4),
         value: JsValue::undefined().0 as i64,
     });
-    
+
     TypeFeedbackRegistry::record_call(s_sin, sin_builtin);
 
     b0.insts.push(AirOpcode::Call {
@@ -284,7 +284,7 @@ fn test_fast_math_sin_jit() {
     let res = JsValue(func(x));
 
     assert_eq!(res.as_float64(), 0.0);
-    
+
     let x_pi_2 = JsValue::float64(std::f64::consts::PI / 2.0).0;
     let res_pi_2 = JsValue(func(x_pi_2));
     assert!((res_pi_2.as_float64() - 1.0).abs() < 1e-10);

@@ -5,7 +5,10 @@ use albedo_jit::runtime::js_value::JsValue;
 use albedo_jit::runtime::type_feedback::TypeFeedbackRegistry;
 use std::time::Instant;
 
-fn run_benchmark<F>(name: &str, mut func: F) where F: FnMut() -> JsValue {
+fn run_benchmark<F>(name: &str, mut func: F)
+where
+    F: FnMut() -> JsValue,
+{
     // Warmup
     for _ in 0..100 {
         func();
@@ -18,7 +21,12 @@ fn run_benchmark<F>(name: &str, mut func: F) where F: FnMut() -> JsValue {
         last_res = func();
     }
     let duration = start.elapsed();
-    println!("BENCHMARK {}: avg {} us | Result: {:?}", name, duration.as_micros() / iter as u128, last_res);
+    println!(
+        "BENCHMARK {}: avg {} us | Result: {:?}",
+        name,
+        duration.as_micros() / iter as u128,
+        last_res
+    );
 }
 
 #[test]
@@ -49,23 +57,19 @@ fn benchmark_fibonacci_iterative() {
             QjsOpcode::IfFalse(3), // pula pro let a = 0
             QjsOpcode::GetArg(0),
             QjsOpcode::Return,
-
             // let a = 0, b = 1;
             QjsOpcode::PushI32(0),
             QjsOpcode::PutLoc(0),
             QjsOpcode::PushI32(1),
             QjsOpcode::PutLoc(1),
-
             // for (let i = 0; i < n; i++)
             QjsOpcode::PushI32(0),
             QjsOpcode::PutLoc(2),
-            
             // Loop Header (Offset 14)
             QjsOpcode::GetLoc(2), // i
             QjsOpcode::GetArg(0), // n
             QjsOpcode::Lt,
             QjsOpcode::IfFalse(15), // Sai do loop (pula pro return a)
-
             // let tmp = a;
             QjsOpcode::GetLoc(0),
             QjsOpcode::PutLoc(3),
@@ -82,10 +86,9 @@ fn benchmark_fibonacci_iterative() {
             QjsOpcode::PushI32(1),
             QjsOpcode::Add,
             QjsOpcode::PutLoc(2),
-            
             QjsOpcode::Goto(-17), // Volta pro Loop Header (14 opcodes atras + os que pulamos?)
             // Na vdd Goto offset eh relativo ao proximo opcode.
-            // Se estamos no index 31, e queremos voltar pro 14. 
+            // Se estamos no index 31, e queremos voltar pro 14.
             // 14 - 32 = -18.
 
             // return a; (Offset 32)
@@ -134,11 +137,14 @@ fn benchmark_fibonacci_iterative() {
     // Corrigindo opcodes baseados no trace analítico (v2):
     // Fórmula: absolute = current + offset
     let mut opcodes = qjs_func.opcodes.clone();
-    opcodes[3] = QjsOpcode::IfFalse(3);  // 3 + 3 = 6 (PushI32(0))
+    opcodes[3] = QjsOpcode::IfFalse(3); // 3 + 3 = 6 (PushI32(0))
     opcodes[15] = QjsOpcode::IfFalse(14); // 15 + 14 = 29 (GetLoc(0) final)
-    opcodes[28] = QjsOpcode::Goto(-16);   // 28 - 16 = 12 (Loop Header)
-    
-    let qjs_func = QjsBytecodeFunction { opcodes, ..qjs_func };
+    opcodes[28] = QjsOpcode::Goto(-16); // 28 - 16 = 12 (Loop Header)
+
+    let qjs_func = QjsBytecodeFunction {
+        opcodes,
+        ..qjs_func
+    };
 
     let translator = StackToRegisterTranslator::new(&qjs_func);
     let (air_func, _map) = translator.translate(qjs_func.clone());
@@ -151,7 +157,11 @@ fn benchmark_fibonacci_iterative() {
         for inst in &block.insts {
             if let albedo_jit::bytecode::AirOpcode::Add { ic_slot, .. } = inst {
                 for _ in 0..100 {
-                    TypeFeedbackRegistry::record_add(*ic_slot, JsValue::int32(1), JsValue::int32(1));
+                    TypeFeedbackRegistry::record_add(
+                        *ic_slot,
+                        JsValue::int32(1),
+                        JsValue::int32(1),
+                    );
                 }
             }
             if let albedo_jit::bytecode::AirOpcode::Lt { .. } = inst {
@@ -169,9 +179,13 @@ fn benchmark_fibonacci_iterative() {
     let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
     println!("\n--- FIBONACCI ITERATIVE BENCHMARK ---");
-    
-    run_benchmark("Fib(10) - JIT Tier 2", || JsValue(native_func(JsValue::undefined().0, JsValue::int32(10).0)));
-    run_benchmark("Fib(40) - JIT Tier 2", || JsValue(native_func(JsValue::undefined().0, JsValue::int32(40).0)));
+
+    run_benchmark("Fib(10) - JIT Tier 2", || {
+        JsValue(native_func(JsValue::undefined().0, JsValue::int32(10).0))
+    });
+    run_benchmark("Fib(40) - JIT Tier 2", || {
+        JsValue(native_func(JsValue::undefined().0, JsValue::int32(40).0))
+    });
 }
 
 #[test]
@@ -199,46 +213,71 @@ fn benchmark_nbody_simplified() {
         num_locals: 5, // dx=0, dy=1, dz=2, distSq=3, mag=4
         opcodes: vec![
             // dx = b1.x - b2.x
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(0), // b1.x
-            QjsOpcode::GetArg(1), QjsOpcode::GetField(0), // b2.x
-            QjsOpcode::Sub, QjsOpcode::PutLoc(0),
-            
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(0), // b1.x
+            QjsOpcode::GetArg(1),
+            QjsOpcode::GetField(0), // b2.x
+            QjsOpcode::Sub,
+            QjsOpcode::PutLoc(0),
             // dy = b1.y - b2.y
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(1), // b1.y
-            QjsOpcode::GetArg(1), QjsOpcode::GetField(1), // b2.y
-            QjsOpcode::Sub, QjsOpcode::PutLoc(1),
-
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(1), // b1.y
+            QjsOpcode::GetArg(1),
+            QjsOpcode::GetField(1), // b2.y
+            QjsOpcode::Sub,
+            QjsOpcode::PutLoc(1),
             // dz = b1.z - b2.z
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(2), // b1.z
-            QjsOpcode::GetArg(1), QjsOpcode::GetField(2), // b2.z
-            QjsOpcode::Sub, QjsOpcode::PutLoc(2),
-
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(2), // b1.z
+            QjsOpcode::GetArg(1),
+            QjsOpcode::GetField(2), // b2.z
+            QjsOpcode::Sub,
+            QjsOpcode::PutLoc(2),
             // distSq = dx*dx + dy*dy + dz*dz
-            QjsOpcode::GetLoc(0), QjsOpcode::GetLoc(0), QjsOpcode::Mul,
-            QjsOpcode::GetLoc(1), QjsOpcode::GetLoc(1), QjsOpcode::Mul,
+            QjsOpcode::GetLoc(0),
+            QjsOpcode::GetLoc(0),
+            QjsOpcode::Mul,
+            QjsOpcode::GetLoc(1),
+            QjsOpcode::GetLoc(1),
+            QjsOpcode::Mul,
             QjsOpcode::Add,
-            QjsOpcode::GetLoc(2), QjsOpcode::GetLoc(2), QjsOpcode::Mul,
-            QjsOpcode::Add, QjsOpcode::PutLoc(3),
-
+            QjsOpcode::GetLoc(2),
+            QjsOpcode::GetLoc(2),
+            QjsOpcode::Mul,
+            QjsOpcode::Add,
+            QjsOpcode::PutLoc(3),
             // mag = dt / (distSq * distSq)
             QjsOpcode::GetArg(2), // dt
-            QjsOpcode::GetLoc(3), QjsOpcode::GetLoc(3), QjsOpcode::Mul,
-            QjsOpcode::Div, QjsOpcode::PutLoc(4),
-
+            QjsOpcode::GetLoc(3),
+            QjsOpcode::GetLoc(3),
+            QjsOpcode::Mul,
+            QjsOpcode::Div,
+            QjsOpcode::PutLoc(4),
             // b1.vx -= dx * b2.mass * mag
-            QjsOpcode::GetArg(0), QjsOpcode::GetArg(0), QjsOpcode::GetField(3), // b1.vx
-            QjsOpcode::GetLoc(0), QjsOpcode::GetArg(1), QjsOpcode::GetField(6), QjsOpcode::Mul, // dx * b2.mass
-            QjsOpcode::GetLoc(4), QjsOpcode::Mul, // ... * mag
-            QjsOpcode::Sub, QjsOpcode::PutField(3),
-
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(3), // b1.vx
+            QjsOpcode::GetLoc(0),
+            QjsOpcode::GetArg(1),
+            QjsOpcode::GetField(6),
+            QjsOpcode::Mul, // dx * b2.mass
+            QjsOpcode::GetLoc(4),
+            QjsOpcode::Mul, // ... * mag
+            QjsOpcode::Sub,
+            QjsOpcode::PutField(3),
             // Omitiremos os outros eixos por brevidade no teste de bytecode manual,
             // fatiando o benchmark no "miolo" mais denso.
-
             QjsOpcode::PushUndefined,
             QjsOpcode::Return,
         ],
         constant_pool_strings: vec![
-            "x".into(), "y".into(), "z".into(), "vx".into(), "vy".into(), "vz".into(), "mass".into()
+            "x".into(),
+            "y".into(),
+            "z".into(),
+            "vx".into(),
+            "vy".into(),
+            "vz".into(),
+            "mass".into(),
         ],
     };
 
@@ -248,23 +287,59 @@ fn benchmark_nbody_simplified() {
     // Setup Objects (Bodies)
     let b1 = albedo_jit::runtime::object_model::alloc_object();
     let b2 = albedo_jit::runtime::object_model::alloc_object();
-    
+
     let x_id = albedo_jit::runtime::object_model::intern_string("x".into());
     let y_id = albedo_jit::runtime::object_model::intern_string("y".into());
     let z_id = albedo_jit::runtime::object_model::intern_string("z".into());
     let vx_id = albedo_jit::runtime::object_model::intern_string("vx".into());
     let mass_id = albedo_jit::runtime::object_model::intern_string("mass".into());
 
-    albedo_jit::runtime::object_model::set_prop(b1, JsValue::string(x_id as u64), JsValue::float64(1.0));
-    albedo_jit::runtime::object_model::set_prop(b1, JsValue::string(y_id as u64), JsValue::float64(2.0));
-    albedo_jit::runtime::object_model::set_prop(b1, JsValue::string(z_id as u64), JsValue::float64(3.0));
-    albedo_jit::runtime::object_model::set_prop(b1, JsValue::string(vx_id as u64), JsValue::float64(0.0));
-    albedo_jit::runtime::object_model::set_prop(b1, JsValue::string(mass_id as u64), JsValue::float64(10.0));
+    albedo_jit::runtime::object_model::set_prop(
+        b1,
+        JsValue::string(x_id as u64),
+        JsValue::float64(1.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b1,
+        JsValue::string(y_id as u64),
+        JsValue::float64(2.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b1,
+        JsValue::string(z_id as u64),
+        JsValue::float64(3.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b1,
+        JsValue::string(vx_id as u64),
+        JsValue::float64(0.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b1,
+        JsValue::string(mass_id as u64),
+        JsValue::float64(10.0),
+    );
 
-    albedo_jit::runtime::object_model::set_prop(b2, JsValue::string(x_id as u64), JsValue::float64(5.0));
-    albedo_jit::runtime::object_model::set_prop(b2, JsValue::string(y_id as u64), JsValue::float64(6.0));
-    albedo_jit::runtime::object_model::set_prop(b2, JsValue::string(z_id as u64), JsValue::float64(7.0));
-    albedo_jit::runtime::object_model::set_prop(b2, JsValue::string(mass_id as u64), JsValue::float64(20.0));
+    albedo_jit::runtime::object_model::set_prop(
+        b2,
+        JsValue::string(x_id as u64),
+        JsValue::float64(5.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b2,
+        JsValue::string(y_id as u64),
+        JsValue::float64(6.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b2,
+        JsValue::string(z_id as u64),
+        JsValue::float64(7.0),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        b2,
+        JsValue::string(mass_id as u64),
+        JsValue::float64(20.0),
+    );
 
     let dt = JsValue::float64(0.01);
 
@@ -281,7 +356,9 @@ fn benchmark_nbody_simplified() {
     let native_func: extern "C" fn(u64, u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
     println!("\n--- N-BODY SIMPLIFIED BENCHMARK ---");
-    run_benchmark("N-Body Advance - JIT Tier 2", || JsValue(native_func(JsValue::undefined().0, b1.0, b2.0, dt.0)));
+    run_benchmark("N-Body Advance - JIT Tier 2", || {
+        JsValue(native_func(JsValue::undefined().0, b1.0, b2.0, dt.0))
+    });
 }
 
 #[test]
@@ -301,19 +378,21 @@ fn benchmark_deltablue_simplified() {
         num_args: 1,
         num_locals: 3, // v1=0, v2=1, val=2
         opcodes: vec![
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(0), // c.v1
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(0), // c.v1
             QjsOpcode::PutLoc(0),
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(1), // c.v2
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(1), // c.v2
             QjsOpcode::PutLoc(1),
-            
-            QjsOpcode::GetLoc(0), QjsOpcode::GetField(2), // v1.value
+            QjsOpcode::GetLoc(0),
+            QjsOpcode::GetField(2), // v1.value
             QjsOpcode::PutLoc(2),
-            
-            QjsOpcode::GetLoc(2), QjsOpcode::PushI32(1),
-            QjsOpcode::Add,        // val + 1
-            QjsOpcode::GetLoc(1), QjsOpcode::Swap,
+            QjsOpcode::GetLoc(2),
+            QjsOpcode::PushI32(1),
+            QjsOpcode::Add, // val + 1
+            QjsOpcode::GetLoc(1),
+            QjsOpcode::Swap,
             QjsOpcode::PutField(2), // v2.value = ...
-            
             QjsOpcode::PushUndefined,
             QjsOpcode::Return,
         ],
@@ -327,15 +406,23 @@ fn benchmark_deltablue_simplified() {
     let c = albedo_jit::runtime::object_model::alloc_object();
     let v1 = albedo_jit::runtime::object_model::alloc_object();
     let v2 = albedo_jit::runtime::object_model::alloc_object();
-    
+
     let v1_id = albedo_jit::runtime::object_model::intern_string("v1".into());
     let v2_id = albedo_jit::runtime::object_model::intern_string("v2".into());
     let val_id = albedo_jit::runtime::object_model::intern_string("value".into());
 
     albedo_jit::runtime::object_model::set_prop(c, JsValue::string(v1_id as u64), v1);
     albedo_jit::runtime::object_model::set_prop(c, JsValue::string(v2_id as u64), v2);
-    albedo_jit::runtime::object_model::set_prop(v1, JsValue::string(val_id as u64), JsValue::int32(100));
-    albedo_jit::runtime::object_model::set_prop(v2, JsValue::string(val_id as u64), JsValue::int32(0));
+    albedo_jit::runtime::object_model::set_prop(
+        v1,
+        JsValue::string(val_id as u64),
+        JsValue::int32(100),
+    );
+    albedo_jit::runtime::object_model::set_prop(
+        v2,
+        JsValue::string(val_id as u64),
+        JsValue::int32(0),
+    );
 
     let dummy_registry = albedo_jit::engine::jit_bridge::BytecodeRegistry::new();
     let mut compiler = Tier2Compiler::new(&mut engine, &dummy_registry);
@@ -345,7 +432,9 @@ fn benchmark_deltablue_simplified() {
     let native_func: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
     println!("\n--- DELTABLUE SIMPLIFIED BENCHMARK ---");
-    run_benchmark("DeltaBlue Satisfy - JIT Tier 2", || JsValue(native_func(JsValue::undefined().0, c.0)));
+    run_benchmark("DeltaBlue Satisfy - JIT Tier 2", || {
+        JsValue(native_func(JsValue::undefined().0, c.0))
+    });
 }
 
 #[test]
@@ -364,17 +453,17 @@ fn benchmark_richards_simplified() {
         num_locals: 1,
         opcodes: vec![
             // t1.run()
-            QjsOpcode::GetArg(0), QjsOpcode::GetField(0), // t1.run
-            QjsOpcode::GetArg(0), // this/arg0 (dependendo da convenção do Call)
+            QjsOpcode::GetArg(0),
+            QjsOpcode::GetField(0), // t1.run
+            QjsOpcode::GetArg(0),   // this/arg0 (dependendo da convenção do Call)
             QjsOpcode::Call(0),
             QjsOpcode::Drop,
-
             // t2.run()
-            QjsOpcode::GetArg(1), QjsOpcode::GetField(0), // t2.run
-            QjsOpcode::GetArg(1), 
+            QjsOpcode::GetArg(1),
+            QjsOpcode::GetField(0), // t2.run
+            QjsOpcode::GetArg(1),
             QjsOpcode::Call(0),
             QjsOpcode::Drop,
-            
             QjsOpcode::PushUndefined,
             QjsOpcode::Return,
         ],
@@ -387,15 +476,15 @@ fn benchmark_richards_simplified() {
     // Setup Objects
     let t1 = albedo_jit::runtime::object_model::alloc_object();
     let t2 = albedo_jit::runtime::object_model::alloc_object();
-    
+
     let run_id = albedo_jit::runtime::object_model::intern_string("run".into());
 
     // Funções dummy (builtins para teste)
     // No AlbedoJIT, Call em Tier 2 usa js_call_ic.
     // Vamos usar o que temos de builtins.
     let f1 = JsValue::int32(42); // Dummy value, o Call vai falhar se nao for callable no runtime
-    // Mas para o benchmark de JIT DISPATCH (GetField + Call), o importante eh o overhead do engine.
-    
+                                 // Mas para o benchmark de JIT DISPATCH (GetField + Call), o importante eh o overhead do engine.
+
     albedo_jit::runtime::object_model::set_prop(t1, JsValue::string(run_id as u64), f1);
     albedo_jit::runtime::object_model::set_prop(t2, JsValue::string(run_id as u64), f1);
 
@@ -407,12 +496,14 @@ fn benchmark_richards_simplified() {
     let native_func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
     println!("\n--- RICHARDS SIMPLIFIED BENCHMARK ---");
-    // Nota: Vai printar erros de "Not a function" se f1 nao for callable, 
+    // Nota: Vai printar erros de "Not a function" se f1 nao for callable,
     // mas o objetivo aqui eh medir o JIT Path do switch/dispatch.
-    run_benchmark("Richards Dispatch - JIT Tier 2", || JsValue(native_func(JsValue::undefined().0, t1.0, t2.0)));
+    run_benchmark("Richards Dispatch - JIT Tier 2", || {
+        JsValue(native_func(JsValue::undefined().0, t1.0, t2.0))
+    });
 }
-    // Verificar se v2.value virou 101 + iterations*1...
-    // Na verdade, cada run_benchmark iteracao somara 1 ao valor atual.
-    // 100 (warmup) + 1000 (bench) = 1100 + 100 original = 1200?
-    // Nao, o v2.value sempre eh lido do v1.value. v1.value eh constante 100.
-    // Entao v2.value sempre fica 101.
+// Verificar se v2.value virou 101 + iterations*1...
+// Na verdade, cada run_benchmark iteracao somara 1 ao valor atual.
+// 100 (warmup) + 1000 (bench) = 1100 + 100 original = 1200?
+// Nao, o v2.value sempre eh lido do v1.value. v1.value eh constante 100.
+// Entao v2.value sempre fica 101.

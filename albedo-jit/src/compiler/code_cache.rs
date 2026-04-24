@@ -190,7 +190,9 @@ pub fn set_global_code_cache(cache: Arc<CodeCache>) {
 }
 
 pub fn get_global_code_cache() -> Arc<CodeCache> {
-    GLOBAL_CODE_CACHE.get_or_init(|| Arc::new(CodeCache::new())).clone()
+    GLOBAL_CODE_CACHE
+        .get_or_init(|| Arc::new(CodeCache::new()))
+        .clone()
 }
 
 fn current_timestamp_ms() -> u64 {

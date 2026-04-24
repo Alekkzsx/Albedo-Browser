@@ -5,7 +5,6 @@ use albedo_jit::{
     AirBuilder, AirOpcode, AlbedoJitEngine, JsValue, Tier2Compiler,
 };
 
-
 #[test]
 fn test_deopt_type_change() {
     let mut engine = AlbedoJitEngine::new().unwrap();
@@ -35,7 +34,11 @@ fn test_deopt_type_change() {
     let ptr = engine.get_finalized_function(func_id);
     let func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
 
-    let res = JsValue(func(JsValue::undefined().0, JsValue::float64(1.5).0, JsValue::float64(2.25).0));
+    let res = JsValue(func(
+        JsValue::undefined().0,
+        JsValue::float64(1.5).0,
+        JsValue::float64(2.25).0,
+    ));
     assert!(res.is_float64());
     assert_eq!(res.as_float64(), 3.75);
 }

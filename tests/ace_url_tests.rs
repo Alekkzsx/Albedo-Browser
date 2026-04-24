@@ -24,10 +24,10 @@ fn test_search_params() {
     assert_eq!(params.get("a"), Some("1".to_string()));
     assert_eq!(params.get_all("a"), vec!["1".to_string(), "3".to_string()]);
     assert!(params.has("b"));
-    
+
     params.set("b", "4");
     assert_eq!(params.get("b"), Some("4".to_string()));
-    
+
     params.append("c", "5");
     params.delete("a");
     assert!(!params.has("a"));
@@ -48,7 +48,7 @@ fn test_search_params_complex() {
     params.set("a", "4");
     assert_eq!(params.get_all("a"), vec!["4".to_string()]);
     assert_eq!(params.to_string(), "a=4&b=2");
-    
+
     params.append("a", "5");
     assert_eq!(params.get_all("a"), vec!["4".to_string(), "5".to_string()]);
     assert_eq!(params.to_string(), "a=4&b=2&a=5");

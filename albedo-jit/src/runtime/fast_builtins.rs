@@ -208,8 +208,16 @@ pub extern "C" fn fast_math_hypot(x: u64, y: u64) -> u64 {
 pub extern "C" fn fast_math_imul(x: u64, y: u64) -> u64 {
     let vx = JsValue(x);
     let vy = JsValue(y);
-    let ix = if vx.is_int32() { vx.as_int32() } else { to_number(vx) as i32 };
-    let iy = if vy.is_int32() { vy.as_int32() } else { to_number(vy) as i32 };
+    let ix = if vx.is_int32() {
+        vx.as_int32()
+    } else {
+        to_number(vx) as i32
+    };
+    let iy = if vy.is_int32() {
+        vy.as_int32()
+    } else {
+        to_number(vy) as i32
+    };
     JsValue::int32(ix.wrapping_mul(iy)).0
 }
 
@@ -278,16 +286,12 @@ pub extern "C" fn fast_math_min(x: u64, y: u64) -> u64 {
     JsValue::float64(if nx < ny { nx } else { ny }).0
 }
 
-
-
-
 #[no_mangle]
 pub extern "C" fn fast_array_push(arr: u64, val: u64) -> u64 {
     let arr_v = JsValue(arr);
     let val_v = JsValue(val);
     object_model::array_push(arr_v, &[val_v]).0
 }
-
 
 #[no_mangle]
 pub extern "C" fn fast_array_pop(arr: u64) -> u64 {
@@ -353,16 +357,34 @@ mod tests {
 
     #[test]
     fn test_fast_log_exp() {
-        assert_eq!(JsValue(fast_math_exp(JsValue::float64(0.0).0)).as_float64(), 1.0);
-        assert_eq!(JsValue(fast_math_log(JsValue::float64(1.0).0)).as_float64(), 0.0);
+        assert_eq!(
+            JsValue(fast_math_exp(JsValue::float64(0.0).0)).as_float64(),
+            1.0
+        );
+        assert_eq!(
+            JsValue(fast_math_log(JsValue::float64(1.0).0)).as_float64(),
+            0.0
+        );
     }
-
 
     #[test]
     fn test_fast_utility() {
-        assert_eq!(JsValue(fast_math_imul(JsValue::int32(2).0, JsValue::int32(3).0)).as_int32(), 6);
-        assert_eq!(JsValue(fast_math_pow(JsValue::float64(2.0).0, JsValue::float64(3.0).0)).as_float64(), 8.0);
-        assert_eq!(JsValue(fast_math_max(JsValue::int32(10).0, JsValue::int32(20).0)).as_float64(), 20.0);
+        assert_eq!(
+            JsValue(fast_math_imul(JsValue::int32(2).0, JsValue::int32(3).0)).as_int32(),
+            6
+        );
+        assert_eq!(
+            JsValue(fast_math_pow(
+                JsValue::float64(2.0).0,
+                JsValue::float64(3.0).0
+            ))
+            .as_float64(),
+            8.0
+        );
+        assert_eq!(
+            JsValue(fast_math_max(JsValue::int32(10).0, JsValue::int32(20).0)).as_float64(),
+            20.0
+        );
     }
 
     #[test]
@@ -375,4 +397,3 @@ mod tests {
         assert_eq!(JsValue(popped).as_int32(), 123);
     }
 }
-

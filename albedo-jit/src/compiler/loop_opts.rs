@@ -93,11 +93,19 @@ impl LoopAnalysis {
                         succs.push(*target);
                         self.predecessors.entry(*target).or_default().push(block.id);
                     }
-                    AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                    AirTerminator::JumpIf {
+                        then_blk, else_blk, ..
+                    } => {
                         succs.push(*then_blk);
                         succs.push(*else_blk);
-                        self.predecessors.entry(*then_blk).or_default().push(block.id);
-                        self.predecessors.entry(*else_blk).or_default().push(block.id);
+                        self.predecessors
+                            .entry(*then_blk)
+                            .or_default()
+                            .push(block.id);
+                        self.predecessors
+                            .entry(*else_blk)
+                            .or_default()
+                            .push(block.id);
                     }
                     AirTerminator::Return(_) => {}
                 }
@@ -117,7 +125,9 @@ impl LoopAnalysis {
     }
 
     fn compute_dominators(&mut self, air: &AirFunction) {
-        if air.blocks.is_empty() { return; }
+        if air.blocks.is_empty() {
+            return;
+        }
         let all_blocks: HashSet<AirBlockId> = air.blocks.iter().map(|b| b.id).collect();
         let entry_node = air.blocks[0].id;
 
@@ -135,7 +145,9 @@ impl LoopAnalysis {
         while changed {
             changed = false;
             for block in &air.blocks {
-                if block.id == entry_node { continue; }
+                if block.id == entry_node {
+                    continue;
+                }
 
                 let preds = match self.predecessors.get(&block.id) {
                     Some(p) => p,
@@ -188,15 +200,22 @@ impl LoopAnalysis {
         self.loops.sort_by_key(|lp| (lp.header.0, lp.latch.0));
     }
 
-    fn find_loop_body(&self, header: AirBlockId, back_edge_src: AirBlockId, predecessors: &HashMap<AirBlockId, Vec<AirBlockId>>) -> HashSet<AirBlockId> {
+    fn find_loop_body(
+        &self,
+        header: AirBlockId,
+        back_edge_src: AirBlockId,
+        predecessors: &HashMap<AirBlockId, Vec<AirBlockId>>,
+    ) -> HashSet<AirBlockId> {
         let mut body = HashSet::new();
         body.insert(header);
         body.insert(back_edge_src);
 
         let mut stack = vec![back_edge_src];
-        
+
         while let Some(node) = stack.pop() {
-            if node == header { continue; }
+            if node == header {
+                continue;
+            }
             if let Some(preds) = predecessors.get(&node) {
                 for &pred in preds {
                     if !body.contains(&pred) {
@@ -370,7 +389,12 @@ impl<'a> LoopOptimizer<'a> {
         }
     }
 
-    fn apply_licm(&mut self, lp: &NaturalLoop, analysis: &LoopAnalysis, report: &mut LoopOptReport) {
+    fn apply_licm(
+        &mut self,
+        lp: &NaturalLoop,
+        analysis: &LoopAnalysis,
+        report: &mut LoopOptReport,
+    ) {
         let mut defs_in_loop: HashMap<AirReg, usize> = HashMap::new();
         for &block_id in &lp.body {
             if let Some(block) = self.find_block(block_id) {
@@ -542,7 +566,9 @@ impl<'a> LoopOptimizer<'a> {
             if let Some(term) = &mut pred_block.terminator {
                 match term {
                     AirTerminator::Jump(target) if *target == from => *target = to,
-                    AirTerminator::JumpIf { then_blk, else_blk, .. } => {
+                    AirTerminator::JumpIf {
+                        then_blk, else_blk, ..
+                    } => {
                         if *then_blk == from {
                             *then_blk = to;
                         }
@@ -651,7 +677,10 @@ impl<'a> LoopOptimizer<'a> {
             }
             let def_block = self.find_def_block(cur)?;
             let block = self.find_block(def_block)?;
-            let def_inst = block.insts.iter().find(|inst| inst.dst_reg() == Some(cur))?;
+            let def_inst = block
+                .insts
+                .iter()
+                .find(|inst| inst.dst_reg() == Some(cur))?;
             match *def_inst {
                 AirOpcode::Move { src, .. } => cur = src,
                 _ => return None,
@@ -710,14 +739,22 @@ impl<'a> LoopOptimizer<'a> {
         None
     }
 
-    fn detect_counted_loop(&self, lp: &NaturalLoop, analysis: &LoopAnalysis) -> Option<CountedLoop> {
+    fn detect_counted_loop(
+        &self,
+        lp: &NaturalLoop,
+        analysis: &LoopAnalysis,
+    ) -> Option<CountedLoop> {
         if lp.body.len() != 2 || !lp.body.contains(&lp.header) || !lp.body.contains(&lp.latch) {
             return None;
         }
         let header = self.find_block(lp.header)?;
         let latch = self.find_block(lp.latch)?;
         let (cond_reg, exit_blk) = match header.terminator {
-            Some(AirTerminator::JumpIf { cond, then_blk, else_blk }) => {
+            Some(AirTerminator::JumpIf {
+                cond,
+                then_blk,
+                else_blk,
+            }) => {
                 if then_blk == lp.latch {
                     (cond, else_blk)
                 } else if else_blk == lp.latch {
@@ -777,7 +814,11 @@ fn is_licm_safe_opcode(inst: &AirOpcode) -> bool {
     )
 }
 
-fn extract_pow2_mul(lhs: AirReg, rhs: AirReg, constants: &HashMap<AirReg, i32>) -> Option<(AirReg, i32)> {
+fn extract_pow2_mul(
+    lhs: AirReg,
+    rhs: AirReg,
+    constants: &HashMap<AirReg, i32>,
+) -> Option<(AirReg, i32)> {
     let lhs_const = constants.get(&lhs).copied();
     let rhs_const = constants.get(&rhs).copied();
     if let Some(v) = lhs_const {
@@ -993,7 +1034,12 @@ mod tests {
         let add_count: usize = air
             .blocks
             .iter()
-            .map(|b| b.insts.iter().filter(|i| matches!(i, AirOpcode::Add { .. })).count())
+            .map(|b| {
+                b.insts
+                    .iter()
+                    .filter(|i| matches!(i, AirOpcode::Add { .. }))
+                    .count()
+            })
             .sum();
         assert!(add_count >= 1, "Add should remain in loop");
     }
@@ -1010,7 +1056,10 @@ mod tests {
         let report = run_default(&mut air);
 
         let block = &air.blocks[0];
-        let has_shl = block.insts.iter().any(|inst| matches!(inst, AirOpcode::Shl { .. }));
+        let has_shl = block
+            .insts
+            .iter()
+            .any(|inst| matches!(inst, AirOpcode::Shl { .. }));
         assert!(!has_shl);
         assert_eq!(report.strength_reduced, 0);
     }
@@ -1027,7 +1076,10 @@ mod tests {
         let report = run_default(&mut air);
 
         let block = &air.blocks[0];
-        let has_shl = block.insts.iter().any(|inst| matches!(inst, AirOpcode::Shl { .. }));
+        let has_shl = block
+            .insts
+            .iter()
+            .any(|inst| matches!(inst, AirOpcode::Shl { .. }));
         assert!(has_shl);
         assert!(report.strength_reduced >= 1);
     }

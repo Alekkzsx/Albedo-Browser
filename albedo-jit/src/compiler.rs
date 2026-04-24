@@ -1,9 +1,9 @@
 pub mod air_interpreter;
 pub mod baseline_compiler;
-pub mod tier2_compiler;
-pub mod deopt;
 pub mod code_cache;
-pub mod loop_opts;
+pub mod deopt;
 pub mod escape_analysis;
-pub mod stack_allocator;
+pub mod loop_opts;
 pub mod scalar_replacement;
+pub mod stack_allocator;
+pub mod tier2_compiler;

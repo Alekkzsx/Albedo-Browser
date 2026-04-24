@@ -1,6 +1,4 @@
-use std::sync::{
-    LockResult, MutexGuard, RwLockReadGuard, RwLockWriteGuard,
-};
+use std::sync::{LockResult, MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct Mutex<T>(std::sync::Mutex<T>);
 pub struct RwLock<T>(std::sync::RwLock<T>);

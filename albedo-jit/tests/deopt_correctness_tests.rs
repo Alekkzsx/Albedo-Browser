@@ -45,7 +45,9 @@ fn test_deopt_arithmetic_overflow() {
     // 4. Compilar via Tier 2 (Turbo)
     let dummy_registry = albedo_jit::engine::jit_bridge::BytecodeRegistry::new();
     let mut compiler = Tier2Compiler::new(&mut engine, &dummy_registry);
-    let func_id = compiler.compile(&air_func).expect("Falha na compilação Tier 2");
+    let func_id = compiler
+        .compile(&air_func)
+        .expect("Falha na compilação Tier 2");
     engine.finalize_definitions().unwrap();
     let ptr = engine.get_finalized_function(func_id);
 
@@ -53,14 +55,17 @@ fn test_deopt_arithmetic_overflow() {
     // i32::MAX = 2147483647
     let a = JsValue::int32(2147483647);
     let b = JsValue::int32(1);
-    
+
     let native_func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
     let result = JsValue(native_func(JsValue::undefined().0, a.0, b.0));
 
     // O resultado deve ser 2147483648.0 (Float64) após o deopt
     assert!(result.is_float64());
     assert_eq!(result.as_float64(), 2147483648.0);
-    println!("SUCCESS: i32 + i32 overflow deopted correctly to f64 result {}", result.as_float64());
+    println!(
+        "SUCCESS: i32 + i32 overflow deopted correctly to f64 result {}",
+        result.as_float64()
+    );
 }
 
 #[test]
@@ -211,14 +216,18 @@ fn test_deopt_type_change_string() {
     let a = JsValue::int32(42);
     let s_id = albedo_jit::runtime::object_model::intern_string(" items".to_string());
     let b = JsValue::string(s_id as u64);
-    
+
     let native_func: extern "C" fn(u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
     let result = JsValue(native_func(JsValue::undefined().0, a.0, b.0));
 
     assert!(result.is_string());
-    let res_str = albedo_jit::runtime::object_model::get_string(result.as_string_id() as u32).unwrap();
+    let res_str =
+        albedo_jit::runtime::object_model::get_string(result.as_string_id() as u32).unwrap();
     assert_eq!(res_str, "42 items");
-    println!("SUCCESS: type change (int -> string) deopted and concatenated correctly: '{}'", res_str);
+    println!(
+        "SUCCESS: type change (int -> string) deopted and concatenated correctly: '{}'",
+        res_str
+    );
 }
 
 #[test]
@@ -231,13 +240,13 @@ fn test_deopt_stack_reconstruction() {
         num_args: 3,
         num_locals: 1, // x
         opcodes: vec![
-            QjsOpcode::GetArg(0),   // a
-            QjsOpcode::GetArg(1),   // b
-            QjsOpcode::Add,         // a + b
-            QjsOpcode::PutLoc(0),   // x = a + b
-            QjsOpcode::GetLoc(0),   // x
-            QjsOpcode::GetArg(2),   // c
-            QjsOpcode::Add,         // x + c  <-- DEOPT HERE if c is string
+            QjsOpcode::GetArg(0), // a
+            QjsOpcode::GetArg(1), // b
+            QjsOpcode::Add,       // a + b
+            QjsOpcode::PutLoc(0), // x = a + b
+            QjsOpcode::GetLoc(0), // x
+            QjsOpcode::GetArg(2), // c
+            QjsOpcode::Add,       // x + c  <-- DEOPT HERE if c is string
             QjsOpcode::Return,
         ],
         constant_pool_strings: vec![],
@@ -277,12 +286,16 @@ fn test_deopt_stack_reconstruction() {
     let b = JsValue::int32(20);
     let s_id = albedo_jit::runtime::object_model::intern_string(" apples".to_string());
     let c = JsValue::string(s_id as u64);
-    
+
     let native_func: extern "C" fn(u64, u64, u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
     let result = JsValue(native_func(JsValue::undefined().0, a.0, b.0, c.0));
 
     assert!(result.is_string());
-    let res_str = albedo_jit::runtime::object_model::get_string(result.as_string_id() as u32).unwrap();
+    let res_str =
+        albedo_jit::runtime::object_model::get_string(result.as_string_id() as u32).unwrap();
     assert_eq!(res_str, "30 apples");
-    println!("SUCCESS: stack reconstruction verified. Result after bailout: '{}'", res_str);
+    println!(
+        "SUCCESS: stack reconstruction verified. Result after bailout: '{}'",
+        res_str
+    );
 }

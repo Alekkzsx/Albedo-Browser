@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
-use html5gum::{Tokenizer, Token};
+use html5gum::{DefaultEmitter, Error as Html5Error, Token, Tokenizer};
+use memchr::memchr;
 
+mod html5ever_parser;
 pub mod tokenizer_v2;
 pub mod tree_builder;
 
@@ -94,6 +96,16 @@ pub enum ParseErrorKind {
     HtmlSyntax,
     InvalidDoctype,
     DecodeError,
+    FosterParenting,
+    UnexpectedEof,
+    MissingSemicolonAfterCharacterReference,
+    LexerParseError,
+    CdataSectionOutsideForeignContent,
+    NullCharacter,
+    NestedComment,
+    EofInComment,
+    EofInDoctype,
+    EofInTag,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,7 +223,7 @@ impl ParseResult {
 }
 
 pub struct HtmlTokenizer<'a> {
-    tokenizer: Tokenizer<html5gum::StringReader<'a>>,
+    tokenizer: Tokenizer<html5gum::StringReader<'a>, DefaultEmitter>,
     errors: Vec<ParseError>,
     emitted_eof: bool,
     input: &'a str,
@@ -219,8 +231,10 @@ pub struct HtmlTokenizer<'a> {
 
 impl<'a> HtmlTokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
+        let mut emitter = DefaultEmitter::default();
+        emitter.switch_states(true);
         Self {
-            tokenizer: Tokenizer::new(input),
+            tokenizer: Tokenizer::new_with_emitter(input, emitter),
             errors: detect_initial_errors(input),
             emitted_eof: false,
             input,
@@ -234,9 +248,14 @@ impl<'a> HtmlTokenizer<'a> {
 
         loop {
             match self.tokenizer.next() {
-                Some(Ok(token)) => match map_html5gum_token(token) {
-                    Some(kind) => return Some(HtmlToken { kind }),
-                    None => continue,
+                Some(Ok(token)) => match token {
+                    Token::Error(error) => {
+                        self.errors.push(map_html5gum_error(self.input, error));
+                    }
+                    other => match map_html5gum_token(other) {
+                        Some(kind) => return Some(HtmlToken { kind }),
+                        None => continue,
+                    },
                 },
                 Some(Err(_)) => {
                     self.errors.push(rough_error(
@@ -279,18 +298,7 @@ pub fn build_document_with_errors(html: &str) -> ParseResult {
 
 pub fn build_fragment_with_errors(html: &str, context: Option<&str>) -> ParseResult {
     let context = context.map(FragmentContext::new);
-    let options = ParserOptions::default();
-    let nodes = parse_fragment_with_context(html, context.as_ref(), &options);
-    ParseResult {
-        document: HtmlDocument {
-            doctype: None,
-            children: nodes,
-        },
-        errors: Vec::new(),
-        parse_errors: Vec::new(),
-        preload_requests: Vec::new(),
-        stats: ParseStats::default(),
-    }
+    html5ever_parser::parse_fragment_html5ever(html, context.as_ref(), &ParserOptions::default())
 }
 
 pub fn parse_fragment(html: &str, context: Option<&str>) -> Vec<HtmlNode> {
@@ -303,72 +311,20 @@ pub fn parse_fragment_with_context(
     context: Option<&FragmentContext>,
     options: &ParserOptions,
 ) -> Vec<HtmlNode> {
-    let wrapped = if let Some(context) = context {
-        format!(
-            "<{tag}>{html}</{tag}>",
-            tag = context.tag_name,
-            html = html
-        )
-    } else {
-        html.to_string()
-    };
-
-    let parsed = parse_document_with_errors_and_options(&wrapped, options);
-    if context.is_none() {
-        return parsed.document.children;
-    }
-
-    parsed
+    html5ever_parser::parse_fragment_html5ever(html, context, options)
         .document
         .children
-        .into_iter()
-        .find_map(|node| match node {
-            HtmlNode::Element(element) => Some(element.children),
-            _ => None,
-        })
-        .unwrap_or_default()
 }
 
-pub fn parse_document_with_errors_and_options(
-    html: &str,
-    options: &ParserOptions,
-) -> ParseResult {
-    let mut tokenizer = HtmlTokenizer::new(html);
-    let mut tokens = Vec::new();
-
-    while let Some(token) = tokenizer.next_token() {
-        let eof = matches!(token.kind, HtmlTokenKind::Eof);
-        tokens.push(token);
-        if eof {
-            break;
-        }
+pub fn parse_document_with_errors_and_options(html: &str, options: &ParserOptions) -> ParseResult {
+    if let Some(result) = try_fast_parse_document(html, options) {
+        return result;
     }
 
-    let mut errors = tokenizer.errors().to_vec();
-    let mut document = HtmlDocument {
-        doctype: None,
-        children: Vec::new(),
-    };
-    build_document_from_tokens(&tokens, &mut document, &mut errors, options);
-    let preload_requests = extract_preloads(&document, options);
-    let stats = ParseStats {
-        total_errors: errors.len(),
-        total_preloads: preload_requests.len(),
-    };
-
-    ParseResult {
-        document,
-        errors: errors.clone(),
-        parse_errors: errors,
-        preload_requests,
-        stats,
-    }
+    html5ever_parser::parse_document_html5ever(html, options)
 }
 
-pub fn parse_html_integrated_with_options(
-    html: &str,
-    options: &ParserOptions,
-) -> ParseResult {
+pub fn parse_html_integrated_with_options(html: &str, options: &ParserOptions) -> ParseResult {
     parse_document_with_errors_and_options(html, options)
 }
 
@@ -392,7 +348,10 @@ pub fn parse_document_from_bytes_with_errors_and_options(
     options: &ParserOptions,
 ) -> Result<ParseResult, ParseError> {
     let decoded = decode_html_bytes(bytes, bom, options.encoding_hint.clone())?;
-    Ok(parse_document_with_errors_and_options(&decoded.content, options))
+    Ok(parse_document_with_errors_and_options(
+        &decoded.content,
+        options,
+    ))
 }
 
 pub fn parse_html_integrated_from_bytes_with_options(
@@ -500,11 +459,16 @@ fn map_html5gum_token(token: Token) -> Option<HtmlTokenKind> {
             name: String::from_utf8_lossy(&tag.name).to_ascii_lowercase(),
         })),
         Token::String(text) => Some(HtmlTokenKind::Character(CharacterToken {
-            data: String::from_utf8_lossy(&text).to_string(),
+            data: decode_text_token(&text),
         })),
-        Token::Comment(comment) => Some(HtmlTokenKind::Comment(CommentToken {
-            data: String::from_utf8_lossy(&comment).to_string(),
-        })),
+        Token::Comment(comment) => {
+            let data = String::from_utf8_lossy(&comment).to_string();
+            if let Some(cdata) = decode_legacy_cdata_comment(&data) {
+                Some(HtmlTokenKind::Character(CharacterToken { data: cdata }))
+            } else {
+                Some(HtmlTokenKind::Comment(CommentToken { data }))
+            }
+        }
         Token::Doctype(dt) => Some(HtmlTokenKind::Doctype(DoctypeToken {
             name: Some(String::from_utf8_lossy(&dt.name).to_ascii_lowercase()),
             public_id: dt
@@ -516,6 +480,341 @@ fn map_html5gum_token(token: Token) -> Option<HtmlTokenKind> {
             force_quirks: dt.force_quirks,
         })),
         Token::Error(_) => None,
+    }
+}
+
+fn decode_text_token(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).replace('\0', "\u{FFFD}")
+}
+
+fn decode_legacy_cdata_comment(data: &str) -> Option<String> {
+    data.strip_prefix("[CDATA[")
+        .and_then(|inner| inner.strip_suffix("]]"))
+        .map(str::to_string)
+}
+
+fn map_html5gum_error(input: &str, error: Html5Error) -> ParseError {
+    let (code, kind) = match error {
+        Html5Error::MissingSemicolonAfterCharacterReference => (
+            "LEX001",
+            ParseErrorKind::MissingSemicolonAfterCharacterReference,
+        ),
+        Html5Error::UnexpectedNullCharacter | Html5Error::NullCharacterReference => {
+            ("TOK004", ParseErrorKind::NullCharacter)
+        }
+        Html5Error::CdataInHtmlContent => {
+            ("LEX001", ParseErrorKind::CdataSectionOutsideForeignContent)
+        }
+        Html5Error::NestedComment => ("LEX001", ParseErrorKind::NestedComment),
+        Html5Error::EofInComment => ("LEX001", ParseErrorKind::EofInComment),
+        Html5Error::EofInDoctype => ("LEX001", ParseErrorKind::EofInDoctype),
+        Html5Error::EofInTag | Html5Error::EofBeforeTagName => ("LEX001", ParseErrorKind::EofInTag),
+        Html5Error::UnexpectedQuestionMarkInsteadOfTagName
+        | Html5Error::IncorrectlyOpenedComment
+        | Html5Error::InvalidFirstCharacterOfTagName => ("LEX001", ParseErrorKind::LexerParseError),
+        _ => ("LEX001", ParseErrorKind::HtmlSyntax),
+    };
+
+    let (line, column) = line_column_for_offset(input, 0);
+    ParseError {
+        code: code.to_string(),
+        source: ParseErrorSource::Tokenizer,
+        kind,
+        line,
+        column,
+        message: error.as_str().to_string(),
+    }
+}
+
+const FAST_PATH_MIN_BYTES: usize = 64 * 1024;
+
+fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<ParseResult> {
+    if !is_fast_path_candidate(html) {
+        return None;
+    }
+
+    let bytes = html.as_bytes();
+    let mut cursor = 0usize;
+    let mut document = HtmlDocument {
+        doctype: None,
+        children: Vec::new(),
+    };
+    let mut root = Vec::<HtmlNode>::new();
+    let mut stack = Vec::<HtmlElement>::new();
+
+    while cursor < bytes.len() {
+        let Some(relative) = memchr(b'<', &bytes[cursor..]) else {
+            append_fast_text(&mut root, &mut stack, &html[cursor..]);
+            break;
+        };
+
+        let tag_start = cursor + relative;
+        append_fast_text(&mut root, &mut stack, &html[cursor..tag_start]);
+
+        if tag_start + 1 >= bytes.len() {
+            return None;
+        }
+
+        match bytes[tag_start + 1] {
+            b'!' => {
+                let after_bang = &html[tag_start + 2..];
+                if after_bang.len() < 7 {
+                    return None;
+                }
+                if !after_bang[..7].eq_ignore_ascii_case("doctype") {
+                    return None;
+                }
+
+                let Some(tag_end_rel) = memchr(b'>', &bytes[tag_start..]) else {
+                    return None;
+                };
+                let tag_end = tag_start + tag_end_rel;
+                let inner = html[tag_start + 2..tag_end].trim();
+                let mut parts = inner.split_whitespace();
+                let keyword = parts.next()?;
+                if !keyword.eq_ignore_ascii_case("doctype") {
+                    return None;
+                }
+                let name = parts.next().unwrap_or("html").to_ascii_lowercase();
+                document.doctype = Some(DoctypeToken {
+                    name: Some(name),
+                    public_id: None,
+                    system_id: None,
+                    force_quirks: false,
+                });
+                cursor = tag_end + 1;
+            }
+            b'/' => {
+                let (tag_name, tag_end) = parse_fast_end_tag(html, tag_start)?;
+                let current = stack.pop()?;
+                if !current.tag.eq_ignore_ascii_case(&tag_name) {
+                    return None;
+                }
+                push_node(&mut root, &mut stack, HtmlNode::Element(current));
+                cursor = tag_end + 1;
+            }
+            _ => {
+                let (element, self_closing, tag_end) = parse_fast_start_tag(html, tag_start)?;
+                if self_closing || is_void_element(&element.tag) {
+                    push_node(&mut root, &mut stack, HtmlNode::Element(element));
+                } else {
+                    stack.push(element);
+                }
+                cursor = tag_end + 1;
+            }
+        }
+    }
+
+    while let Some(element) = stack.pop() {
+        push_node(&mut root, &mut stack, HtmlNode::Element(element));
+    }
+
+    document.children = if options.scripting_enabled {
+        root
+    } else {
+        transform_noscript(root)
+    };
+
+    let preload_requests = if fast_path_has_link_tag(bytes) {
+        extract_preloads(&document, options)
+    } else {
+        Vec::new()
+    };
+    Some(ParseResult {
+        document,
+        errors: Vec::new(),
+        parse_errors: Vec::new(),
+        preload_requests: preload_requests.clone(),
+        stats: ParseStats {
+            total_errors: 0,
+            total_preloads: preload_requests.len(),
+        },
+    })
+}
+
+fn is_fast_path_candidate(html: &str) -> bool {
+    if html.len() < FAST_PATH_MIN_BYTES {
+        return false;
+    }
+
+    let lowercase = html.to_ascii_lowercase();
+    !lowercase.contains('&')
+        && !lowercase.contains('\0')
+        && !lowercase.contains("<!--")
+        && !lowercase.contains("<?")
+        && !lowercase.contains("<![cdata[")
+        && !lowercase.contains("<script")
+        && !lowercase.contains("<style")
+        && !lowercase.contains("<textarea")
+        && !lowercase.contains("<noscript")
+        && !lowercase.contains("<svg")
+        && !lowercase.contains("<math")
+        && !lowercase.contains("<table")
+        && !lowercase.contains("<select")
+        && !lowercase.contains("<template")
+        && !lowercase.contains("<frameset")
+}
+
+fn fast_path_has_link_tag(bytes: &[u8]) -> bool {
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let Some(relative) = memchr(b'<', &bytes[cursor..]) else {
+            return false;
+        };
+        let tag_open = cursor + relative + 1;
+        if tag_open >= bytes.len() {
+            return false;
+        }
+        if ascii_starts_with(bytes.get(tag_open..).unwrap_or_default(), b"link") {
+            let boundary = bytes.get(tag_open + 4).map_or(true, |next| {
+                next.is_ascii_whitespace() || matches!(*next, b'>' | b'/')
+            });
+            if boundary {
+                return true;
+            }
+        }
+        cursor = tag_open;
+    }
+    false
+}
+
+fn ascii_starts_with(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.len() >= needle.len()
+        && haystack
+            .iter()
+            .zip(needle.iter())
+            .all(|(actual, expected)| actual.to_ascii_lowercase() == *expected)
+}
+
+fn append_fast_text(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], text: &str) {
+    if !text.is_empty() {
+        push_node(root, stack, HtmlNode::Text(text.to_string()));
+    }
+}
+
+fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
+    let bytes = html.as_bytes();
+    let mut idx = tag_start + 2;
+    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    let name_start = idx;
+    while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'-') {
+        idx += 1;
+    }
+    if idx == name_start {
+        return None;
+    }
+    let name = html[name_start..idx].to_ascii_lowercase();
+    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    if bytes.get(idx) != Some(&b'>') {
+        return None;
+    }
+    Some((name, idx))
+}
+
+fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bool, usize)> {
+    let bytes = html.as_bytes();
+    let mut idx = tag_start + 1;
+    let name_start = idx;
+    while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'-') {
+        idx += 1;
+    }
+    if idx == name_start {
+        return None;
+    }
+
+    let tag = html[name_start..idx].to_ascii_lowercase();
+    let namespace = Namespace::Html;
+    let mut attributes = HashMap::new();
+    let mut self_closing = false;
+
+    loop {
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+
+        match bytes.get(idx).copied() {
+            Some(b'>') => {
+                return Some((
+                    HtmlElement {
+                        tag,
+                        namespace,
+                        attributes,
+                        children: Vec::new(),
+                    },
+                    self_closing,
+                    idx,
+                ));
+            }
+            Some(b'/') if bytes.get(idx + 1) == Some(&b'>') => {
+                self_closing = true;
+                idx += 1;
+            }
+            Some(_) => {
+                let attr_start = idx;
+                while idx < bytes.len()
+                    && !bytes[idx].is_ascii_whitespace()
+                    && bytes[idx] != b'='
+                    && bytes[idx] != b'>'
+                    && bytes[idx] != b'/'
+                {
+                    idx += 1;
+                }
+                if idx == attr_start {
+                    return None;
+                }
+                let attr_name = html[attr_start..idx].to_ascii_lowercase();
+                while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                    idx += 1;
+                }
+
+                let value = if bytes.get(idx) == Some(&b'=') {
+                    idx += 1;
+                    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                        idx += 1;
+                    }
+                    parse_fast_attr_value(html, &mut idx)?
+                } else {
+                    String::new()
+                };
+                attributes.entry(attr_name).or_insert(value);
+            }
+            None => return None,
+        }
+    }
+}
+
+fn parse_fast_attr_value(html: &str, idx: &mut usize) -> Option<String> {
+    let bytes = html.as_bytes();
+    match bytes.get(*idx).copied() {
+        Some(b'"') | Some(b'\'') => {
+            let quote = bytes[*idx];
+            *idx += 1;
+            let start = *idx;
+            while *idx < bytes.len() && bytes[*idx] != quote {
+                *idx += 1;
+            }
+            let value = html[start..*idx].to_string();
+            if *idx < bytes.len() {
+                *idx += 1;
+            }
+            Some(value)
+        }
+        Some(_) => {
+            let start = *idx;
+            while *idx < bytes.len()
+                && !bytes[*idx].is_ascii_whitespace()
+                && bytes[*idx] != b'>'
+                && bytes[*idx] != b'/'
+            {
+                *idx += 1;
+            }
+            Some(html[start..*idx].to_string())
+        }
+        None => Some(String::new()),
     }
 }
 
@@ -584,7 +883,11 @@ fn build_document_from_tokens(
                 }
             }
             HtmlTokenKind::Comment(comment) => {
-                push_node(&mut root, &mut stack, HtmlNode::Comment(comment.data.clone()));
+                push_node(
+                    &mut root,
+                    &mut stack,
+                    HtmlNode::Comment(comment.data.clone()),
+                );
             }
             HtmlTokenKind::Eof => break,
         }
@@ -613,10 +916,14 @@ fn infer_namespace(stack: &[HtmlElement], tag: &str) -> Namespace {
     if tag.eq_ignore_ascii_case("svg") {
         Namespace::Svg
     } else if tag.eq_ignore_ascii_case("math")
-        || stack.last().is_some_and(|element| element.namespace == Namespace::MathMl)
+        || stack
+            .last()
+            .is_some_and(|element| element.namespace == Namespace::MathMl)
     {
         Namespace::MathMl
-    } else if stack.last().is_some_and(|element| element.namespace == Namespace::Svg)
+    } else if stack
+        .last()
+        .is_some_and(|element| element.namespace == Namespace::Svg)
         && !tag.eq_ignore_ascii_case("foreignobject")
     {
         Namespace::Svg
@@ -697,13 +1004,11 @@ fn collect_preloads(node: &HtmlNode, options: &ParserOptions, out: &mut Vec<Prel
 
     if element.tag == "link" {
         if let Some(rel) = element.attributes.get("rel") {
-            if rel.contains("stylesheet") || rel.contains("preload") || rel.contains("modulepreload")
+            if rel.contains("stylesheet")
+                || rel.contains("preload")
+                || rel.contains("modulepreload")
             {
-                let href = element
-                    .attributes
-                    .get("href")
-                    .cloned()
-                    .unwrap_or_default();
+                let href = element.attributes.get("href").cloned().unwrap_or_default();
                 out.push(PreloadRequest {
                     url: absolutize_url(&href, options.base_url.as_deref()),
                     resource_type: if rel.contains("modulepreload") {
@@ -736,7 +1041,10 @@ fn collect_preloads(node: &HtmlNode, options: &ParserOptions, out: &mut Vec<Prel
                 as_attribute: None,
                 fetchpriority: element.attributes.get("fetchpriority").cloned(),
                 loading: None,
-                is_module: element.attributes.get("type").is_some_and(|value| value == "module"),
+                is_module: element
+                    .attributes
+                    .get("type")
+                    .is_some_and(|value| value == "module"),
                 is_async: element.attributes.contains_key("async"),
                 is_defer: element.attributes.contains_key("defer"),
             });

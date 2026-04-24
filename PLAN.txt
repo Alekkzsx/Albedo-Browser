@@ -22,12 +22,14 @@
 
   O ACE (Albedo Core Engine) é o motor do Albedo. Ele não é um fork do Chromium,
   não é baseado no Gecko, não usa o WebKit. É uma engine independente, construída
-  do zero pelo projeto Albedo.
+  pelo projeto Albedo.
 
   Assim como o Blink internamente usa Skia, BoringSSL, zlib e ICU como ferramentas,
-  o ACE internamente usa crates Rust (cssparser, taffy, tiny-skia, QuickJS, rustls)
-  como ferramentas. A engine — a arquitetura, o pipeline, a orquestração de tudo —
-  é do Albedo.
+  o ACE internamente usa as melhores crates Rust como ferramentas:
+  html5ever, cssparser, taffy, tiny-skia, wgpu, QuickJS, rustls, e mais.
+
+  O valor do ACE está na ARQUITETURA — no pipeline, na orquestração,
+  na integração eficiente de componentes — não em reinventar cada peça.
 
   O objetivo: ser um browser tão capaz quanto Chrome/Firefox, mas
   BIZARRAMENTE mais leve.
@@ -79,23 +81,23 @@
 
   ─── 1.1 HTML Parser ─────────────────────────────────────────────────────────
   Chrome usa: parser HTML integrado ao Blink
-  ACE usa: ACE-HTML (parser 100% próprio)
+  ACE usa: ACE-HTML (html5ever tree builder + html5gum tokenizer + otimizações)
 
-  ✅  Lexer com state machine (~80 estados do HTML5 spec)
-  ✅  Tokenizer (StartTag, EndTag, Character, Comment, DOCTYPE)
-  ✅  Tree Builder com insertion modes completos
-  ✅  Adoption Agency Algorithm
-  ✅  Foster parenting
+  ✅  Tokenizer WHATWG via html5gum (~80 estados do HTML5 spec)
+  ✅  Tokens tipados (StartTag, EndTag, Character, Comment, DOCTYPE)
+  ✅  Tree Builder WHATWG via html5ever (insertion modes, spec compliant)
+  ✅  Adoption Agency Algorithm (via html5ever)
+  ✅  Foster parenting (via html5ever)
   ✅  Streaming parser (parse incremental de chunks)
-  ✅  SIMD acceleration para scanning
+  ✅  SIMD scanning via memchr (AVX2/SSE2/NEON)
   ✅  Preload scanner (pré-carregamento especulativo de recursos)
-  ✅  Speculative parser (parsing paralelo)
-  ✅  String interner + Arena allocator
+  ✅  Arena allocator (bumpalo) + SmolStr (zero-heap para strings curtas)
   ✅  Character references (~2200 named entities)
+  🔧  Speculative parser (parsing paralelo) — planejado
 
   ─── 1.2 DOM (Document Object Model) ─────────────────────────────────────────
   Chrome usa: Blink DOM (C++)
-  ACE usa: AceDOM (Rust nativo, arena-allocated)
+  ACE usa: AceDOM (Rust, arena-allocated via bumpalo)
 
   ✅  AceNode: Element, Text, Comment, Document, DocumentFragment, DocumentType
   ✅  Navegação: parent, children, siblings, firstChild, lastChild
@@ -794,7 +796,7 @@
                           ALBEDOJIT — PLANO DE LONGO PRAZO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  O AlbedoJIT é o motor JavaScript JIT 100% próprio do Albedo, planejado para
+  O AlbedoJIT é o motor JavaScript JIT do Albedo, planejado para
   o longo prazo. Só será priorizado quando:
   1. O browser estiver funcional e renderizando sites reais (Fase 2+ completa)
   2. Benchmarks mostrarem que o QuickJS é gargalo real de performance
@@ -831,7 +833,7 @@
   ├── main.rs                         Entry point + event loop
   │
   ├── ace/                            ACE Engine — Subsistemas Core
-  │   ├── html/                       ACE-HTML parser (100% próprio)
+  │   ├── html/                       ACE-HTML parser (html5ever + html5gum)
   │   │   ├── lexer.rs                State machine HTML5
   │   │   ├── tokenizer.rs            Tokens tipados
   │   │   ├── tree_builder.rs         Insertion modes, Adoption Agency

@@ -8,8 +8,8 @@ use std::collections::HashMap;
 /// Alocação de um objeto no stack
 #[derive(Debug, Clone)]
 pub struct StackAllocation {
-    pub offset: i32,      // Offset relativo ao frame pointer (rbp)
-    pub size: i32,        // Tamanho em bytes
+    pub offset: i32, // Offset relativo ao frame pointer (rbp)
+    pub size: i32,   // Tamanho em bytes
     pub num_properties: usize,
 }
 
@@ -71,9 +71,9 @@ impl StackAllocator {
 
     /// Calcular offset de uma propriedade
     pub fn get_property_offset(&self, obj_reg: AirReg, prop_index: usize) -> Option<i32> {
-        self.allocations.get(&obj_reg).map(|alloc| {
-            alloc.offset + (prop_index as i32 * std::mem::size_of::<u64>() as i32)
-        })
+        self.allocations
+            .get(&obj_reg)
+            .map(|alloc| alloc.offset + (prop_index as i32 * std::mem::size_of::<u64>() as i32))
     }
 
     /// Limpar todas as alocações

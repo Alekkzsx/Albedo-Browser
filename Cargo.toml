@@ -25,7 +25,11 @@ raw-window-handle = "0.6.2"
 html5gum = "0.5.7"
 bumpalo = "3.16"
 string-interner = "0.17"
-# kuchiki REMOVIDO - usando ACE-HTML parser proprietário (FASE 1 AceDOM)
+html5ever = "0.39"          # WHATWG HTML5 tree builder (Adoption Agency, Foster Parenting, etc.)
+markup5ever = "0.39"         # Infraestrutura compartilhada do html5ever
+memchr = "2.7"               # SIMD-accelerated byte scanning (AVX2/SSE2/NEON)
+lasso = "0.7"                # High-performance string interning
+phf = { version = "0.11", features = ["macros"] }  # Perfect hash functions (compile-time)
 reqwest = { version = "0.13.2", features = ["blocking", "json", "http2"] }
 image = "0.25.9"
 rquickjs = { version = "0.6", features = ["full-async", "loader"] }

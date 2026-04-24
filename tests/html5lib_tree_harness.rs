@@ -10,8 +10,8 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use albedo::ace::html::{
-    FragmentContext, HtmlNode, Namespace, ParserOptions, parse_document_with_options,
-    parse_fragment_with_context,
+    parse_document_with_options, parse_fragment_with_context, FragmentContext, HtmlNode, Namespace,
+    ParserOptions,
 };
 
 // ─── .dat parser ──────────────────────────────────────────────────────────────
@@ -27,7 +27,11 @@ struct TestCase {
 
 fn parse_dat(path: &Path) -> Vec<TestCase> {
     let content = std::fs::read_to_string(path).unwrap_or_default();
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let file_name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
     let mut cases = Vec::new();
     let mut data = String::new();
@@ -176,8 +180,7 @@ fn case_limit() -> Option<usize> {
 }
 
 fn run_all_cases() -> RunResult {
-    let dat_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/html5lib/tree-construction");
+    let dat_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/html5lib/tree-construction");
 
     let filter = file_filter();
     let limit = case_limit();
@@ -186,12 +189,9 @@ fn run_all_cases() -> RunResult {
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |x| x == "dat"))
         .filter(|entry| {
-            filter.as_ref().is_none_or(|needle| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .contains(needle)
-            })
+            filter
+                .as_ref()
+                .is_none_or(|needle| entry.file_name().to_string_lossy().contains(needle))
         })
         .collect();
     entries.sort_by_key(|e| e.file_name());
@@ -205,7 +205,11 @@ fn run_all_cases() -> RunResult {
         let cases = parse_dat(&path);
         for case in cases {
             if limit.is_some_and(|max_cases| total >= max_cases) {
-                return RunResult { total, passed, failures };
+                return RunResult {
+                    total,
+                    passed,
+                    failures,
+                };
             }
             total += 1;
             let options = ParserOptions {
@@ -234,7 +238,7 @@ fn run_all_cases() -> RunResult {
                 out
             };
 
-            let actual_trimmed   = actual.trim_end();
+            let actual_trimmed = actual.trim_end();
             let expected_trimmed = case.expected_tree.trim_end();
 
             if actual_trimmed == expected_trimmed {
@@ -253,16 +257,22 @@ fn run_all_cases() -> RunResult {
         }
     }
 
-    RunResult { total, passed, failures }
+    RunResult {
+        total,
+        passed,
+        failures,
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[test]
 fn tree_construction_manifest_exists() {
-    let dat_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/html5lib/tree-construction");
-    assert!(dat_dir.exists(), "html5lib/tree-construction directory not found");
+    let dat_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/html5lib/tree-construction");
+    assert!(
+        dat_dir.exists(),
+        "html5lib/tree-construction directory not found"
+    );
     let count = std::fs::read_dir(&dat_dir)
         .unwrap()
         .filter_map(|e| e.ok())

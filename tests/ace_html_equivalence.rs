@@ -54,19 +54,30 @@ fn byte_paths_match_string_path_with_encoding_hint() {
     options.encoding_hint = Some(Encoding::Windows1252);
 
     let bytes = [b'<', b'p', b'>', 0x80, b'<', b'/', b'p', b'>'];
-    let decoded = decode_html_bytes(&bytes, None, options.encoding_hint).expect("bytes should decode");
+    let decoded =
+        decode_html_bytes(&bytes, None, options.encoding_hint).expect("bytes should decode");
     let batch_from_string = parse_document_with_errors_and_options(&decoded.content, &options);
-    let batch_from_bytes = parse_document_from_bytes_with_errors_and_options(&bytes, None, &options)
-        .expect("batch bytes should decode");
+    let batch_from_bytes =
+        parse_document_from_bytes_with_errors_and_options(&bytes, None, &options)
+            .expect("batch bytes should decode");
     let integrated_from_bytes =
         parse_html_integrated_from_bytes_with_options(&bytes, None, &options)
             .expect("integrated bytes should decode");
 
     assert_eq!(batch_from_string.document, batch_from_bytes.document);
-    assert_eq!(batch_from_string.parse_errors(), batch_from_bytes.parse_errors());
+    assert_eq!(
+        batch_from_string.parse_errors(),
+        batch_from_bytes.parse_errors()
+    );
     assert_eq!(batch_from_bytes.document, integrated_from_bytes.document);
-    assert_eq!(batch_from_bytes.parse_errors(), integrated_from_bytes.parse_errors);
-    assert_eq!(integrated_from_bytes.stats.total_errors, integrated_from_bytes.parse_errors.len());
+    assert_eq!(
+        batch_from_bytes.parse_errors(),
+        integrated_from_bytes.parse_errors
+    );
+    assert_eq!(
+        integrated_from_bytes.stats.total_errors,
+        integrated_from_bytes.parse_errors.len()
+    );
 }
 
 #[test]
@@ -142,10 +153,12 @@ fn malformed_doctype_keeps_error_positions_across_string_and_byte_paths() {
     let options = ParserOptions::default();
 
     let string_result = parse_document_with_errors_and_options(input, &options);
-    let byte_result = parse_document_from_bytes_with_errors_and_options(input.as_bytes(), None, &options)
-        .expect("byte parsing should succeed");
-    let integrated = parse_html_integrated_from_bytes_with_options(input.as_bytes(), None, &options)
-        .expect("integrated byte parsing should succeed");
+    let byte_result =
+        parse_document_from_bytes_with_errors_and_options(input.as_bytes(), None, &options)
+            .expect("byte parsing should succeed");
+    let integrated =
+        parse_html_integrated_from_bytes_with_options(input.as_bytes(), None, &options)
+            .expect("integrated byte parsing should succeed");
 
     let string_errors = string_result.parse_errors();
     let byte_errors = byte_result.parse_errors();
@@ -172,7 +185,11 @@ fn noscript_scripting_flag_matches_between_batch_and_streaming() {
     let mut streaming_on = StreamingHtmlParser::with_options(scripting_on);
     let mut streaming_off = StreamingHtmlParser::with_options(scripting_off);
 
-    for chunk in ["<noscript><style>", ".x{}", "</style></noscript><div>ok</div>"] {
+    for chunk in [
+        "<noscript><style>",
+        ".x{}",
+        "</style></noscript><div>ok</div>",
+    ] {
         assert!(!matches!(
             streaming_on.feed(chunk),
             albedo::ace::html::streaming::ChunkResult::Error(_)
