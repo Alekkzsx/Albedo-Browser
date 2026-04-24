@@ -74,7 +74,8 @@ impl ScalarReplacer {
         for block in &air.blocks {
             for inst in &block.insts {
                 match *inst {
-                    AirOpcode::CreateObj { dst } | AirOpcode::CreateArray { dst } if dst == obj_reg => {}
+                    AirOpcode::CreateObj { dst } | AirOpcode::CreateArray { dst }
+                        if dst == obj_reg => {}
                     AirOpcode::SetProp { obj, prop, .. } if obj == obj_reg => {
                         let Some(prop_id) = prop_literal_map.get(&prop).copied() else {
                             return false;
@@ -173,4 +174,3 @@ impl ScalarReplacer {
         self.next_reg
     }
 }
-

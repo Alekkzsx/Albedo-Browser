@@ -1,4 +1,4 @@
-use crate::ace::html::tokenizer_v2::{AceTokenizer, AceTokenKind};
+use crate::ace::html::tokenizer_v2::{AceTokenKind, AceTokenizer};
 use crate::ace::util::allocator::AceAllocator;
 use fxhash::FxHashMap;
 use smol_str::SmolStr;
@@ -33,7 +33,7 @@ pub enum InsertionMode {
 #[derive(Debug, Clone)]
 pub struct AceNodeV2<'a> {
     pub kind: AceNodeKind<'a>,
-    pub children: Vec<usize>, 
+    pub children: Vec<usize>,
     pub parent: Option<usize>,
 }
 
@@ -52,13 +52,13 @@ pub struct HtmlTreeBuilder<'a> {
     tokenizer: AceTokenizer<'a>,
     allocator: &'a AceAllocator,
     insertion_mode: InsertionMode,
-    
+
     // Stack of open elements (WHATWG §13.2.4.2)
     open_elements: Vec<usize>,
-    
+
     // Armazenamento temporário dos nós durante o parsing deste chunk
     nodes: Vec<AceNodeV2<'a>>,
-    
+
     // Estado adicional da spec
     head_element: Option<usize>,
     form_element: Option<usize>,
@@ -77,7 +77,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             form_element: None,
             frameset_ok: true,
         };
-        
+
         // Criar o nó Document raiz (índice 0)
         builder.nodes.push(AceNodeV2 {
             kind: AceNodeKind::Document,
@@ -85,7 +85,7 @@ impl<'a> HtmlTreeBuilder<'a> {
             parent: None,
         });
         builder.open_elements.push(0);
-        
+
         builder
     }
 
@@ -101,7 +101,10 @@ impl<'a> HtmlTreeBuilder<'a> {
     }
 
     fn current_node_idx(&self) -> usize {
-        *self.open_elements.last().expect("Stack of open elements was empty")
+        *self
+            .open_elements
+            .last()
+            .expect("Stack of open elements was empty")
     }
 
     fn insert_element(&mut self, name: &str, attrs: Vec<(&'a str, &'a str)>) -> usize {
@@ -162,7 +165,9 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_before_html(&mut self, token: AceTokenKind<'a>) {
         match token {
-            AceTokenKind::StartTag { name, attributes, .. } if name == "html" => {
+            AceTokenKind::StartTag {
+                name, attributes, ..
+            } if name == "html" => {
                 self.insert_element("html", attributes);
                 self.insertion_mode = InsertionMode::BeforeHead;
             }
@@ -176,7 +181,9 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_before_head(&mut self, token: AceTokenKind<'a>) {
         match token {
-            AceTokenKind::StartTag { name, attributes, .. } if name == "head" => {
+            AceTokenKind::StartTag {
+                name, attributes, ..
+            } if name == "head" => {
                 let idx = self.insert_element("head", attributes);
                 self.head_element = Some(idx);
                 self.insertion_mode = InsertionMode::InHead;
@@ -192,7 +199,9 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_in_head(&mut self, token: AceTokenKind<'a>) {
         match token {
-            AceTokenKind::StartTag { name, attributes, .. } if matches!(name, "meta" | "link" | "title" | "style") => {
+            AceTokenKind::StartTag {
+                name, attributes, ..
+            } if matches!(name, "meta" | "link" | "title" | "style") => {
                 self.insert_element(name, attributes);
                 self.open_elements.pop();
             }
@@ -210,7 +219,9 @@ impl<'a> HtmlTreeBuilder<'a> {
 
     fn handle_after_head(&mut self, token: AceTokenKind<'a>) {
         match token {
-            AceTokenKind::StartTag { name, attributes, .. } if name == "body" => {
+            AceTokenKind::StartTag {
+                name, attributes, ..
+            } if name == "body" => {
                 self.insert_element("body", attributes);
                 self.frameset_ok = false;
                 self.insertion_mode = InsertionMode::InBody;
@@ -226,7 +237,9 @@ impl<'a> HtmlTreeBuilder<'a> {
     fn handle_in_body(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::Text { data } => self.insert_text(data),
-            AceTokenKind::StartTag { name, attributes, .. } => {
+            AceTokenKind::StartTag {
+                name, attributes, ..
+            } => {
                 self.insert_element(name, attributes);
                 if matches!(name, "img" | "br" | "hr" | "input" | "meta" | "link") {
                     self.open_elements.pop();

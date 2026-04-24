@@ -332,14 +332,26 @@ impl AirOpcode {
             AirOpcode::SetProp { obj, prop, value } => vec![*obj, *prop, *value],
             AirOpcode::DeleteProp { obj, prop, .. } => vec![*obj, *prop],
             AirOpcode::HasProp { obj, prop, .. } => vec![*obj, *prop],
-            AirOpcode::Call { func, this, arg_start, num_args, .. } => {
+            AirOpcode::Call {
+                func,
+                this,
+                arg_start,
+                num_args,
+                ..
+            } => {
                 let mut ops = vec![*func, *this];
                 for i in 0..*num_args {
                     ops.push(AirReg(arg_start.0 + i));
                 }
                 ops
             }
-            AirOpcode::NewCall { func, this, arg_start, num_args, .. } => {
+            AirOpcode::NewCall {
+                func,
+                this,
+                arg_start,
+                num_args,
+                ..
+            } => {
                 let mut ops = vec![*func, *this];
                 for i in 0..*num_args {
                     ops.push(AirReg(arg_start.0 + i));

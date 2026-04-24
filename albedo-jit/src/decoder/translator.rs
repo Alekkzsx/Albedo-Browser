@@ -103,7 +103,9 @@ impl StackToRegisterTranslator {
             // Se a instrução que acabou de ser processada for um Return, a próxima DEVE começar um novo bloco
             // mesmo que não seja um Jump Target (para evitar pânico de bloco terminado).
             let next_offset = offset + 1;
-            if matches!(op, QjsOpcode::Return | QjsOpcode::ReturnUndef) && (next_offset as usize) < func.opcodes.len() {
+            if matches!(op, QjsOpcode::Return | QjsOpcode::ReturnUndef)
+                && (next_offset as usize) < func.opcodes.len()
+            {
                 if !self.jump_targets.contains_key(&next_offset) {
                     let new_blk = self.builder.create_block();
                     self.jump_targets.insert(next_offset, new_blk);
@@ -250,7 +252,9 @@ impl StackToRegisterTranslator {
                 };
 
                 let this_reg = self.builder.emit_load_undefined();
-                let dst = self.builder.emit_call(func_reg, this_reg, arg_start, *num_args);
+                let dst = self
+                    .builder
+                    .emit_call(func_reg, this_reg, arg_start, *num_args);
                 self.vstack.push(dst);
                 self.source_map.map_reg(dst, qjs_offset);
             }

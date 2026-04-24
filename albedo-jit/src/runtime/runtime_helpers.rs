@@ -7,12 +7,12 @@
 //! Apenas quando formos para o Tier 2 substituiremos as chamadas CALL
 //! por instruções CPU nativas (FADD, IADD) via Type Specialization.
 
-use crate::runtime::builtins::{call_builtin, BuiltinId};
-use crate::runtime::js_value::{JsValue, TAG_MASK};
-use crate::runtime::object_model::{self, ObjectKind, JsObject};
-use crate::runtime::type_feedback::TypeFeedbackRegistry;
 use crate::compiler::code_cache::get_global_code_cache;
 use crate::engine::profiler::FunctionId;
+use crate::runtime::builtins::{call_builtin, BuiltinId};
+use crate::runtime::js_value::{JsValue, TAG_MASK};
+use crate::runtime::object_model::{self, JsObject, ObjectKind};
+use crate::runtime::type_feedback::TypeFeedbackRegistry;
 
 // ---------------------------------------------------------------------------
 // Helpers Aritméticos
@@ -242,7 +242,7 @@ pub extern "C" fn js_call_ic(func: u64, this: u64, args_ptr: u64, num_args: u64,
                 if let Some(func_id_name) = object_model::get_string(obj.func_id_idx) {
                     let fid = FunctionId(func_id_name);
                     let cache = get_global_code_cache();
-                    
+
                     if let Some(entry) = cache.lookup(&fid) {
                         // Incrementar contador de execução do cache
                         let _ = entry.increment_execution();
@@ -253,29 +253,33 @@ pub extern "C" fn js_call_ic(func: u64, this: u64, args_ptr: u64, num_args: u64,
                         // mas como o baseline compiler no V1 empilha no stack via ptr se forCall,
                         // precisamos de um "trampoline" ou tratar conforme num_args.
                         // Para o V1 simplificado, se num_args for baixo, fazemos o match.
-                        
+
                         let native_ptr = entry.native_ptr;
-                        
+
                         // NOTA: No Tier 1 usamos um calling convention onde os argumentos
                         // são passados via registradores/stack conforme a ABI do sistema.
                         // Para simplificar o despacho dinâmico V1:
                         match num_args {
                             0 => {
-                                let func_ptr: extern "C" fn(u64) -> u64 = std::mem::transmute(native_ptr);
+                                let func_ptr: extern "C" fn(u64) -> u64 =
+                                    std::mem::transmute(native_ptr);
                                 return func_ptr(t.0);
                             }
                             1 => {
-                                let func_ptr: extern "C" fn(u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let func_ptr: extern "C" fn(u64, u64) -> u64 =
+                                    std::mem::transmute(native_ptr);
                                 let args = std::slice::from_raw_parts(args_ptr as *const u64, 1);
                                 return func_ptr(t.0, args[0]);
                             }
                             2 => {
-                                let func_ptr: extern "C" fn(u64, u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let func_ptr: extern "C" fn(u64, u64, u64) -> u64 =
+                                    std::mem::transmute(native_ptr);
                                 let args = std::slice::from_raw_parts(args_ptr as *const u64, 2);
                                 return func_ptr(t.0, args[0], args[1]);
                             }
                             3 => {
-                                let func_ptr: extern "C" fn(u64, u64, u64, u64) -> u64 = std::mem::transmute(native_ptr);
+                                let func_ptr: extern "C" fn(u64, u64, u64, u64) -> u64 =
+                                    std::mem::transmute(native_ptr);
                                 let args = std::slice::from_raw_parts(args_ptr as *const u64, 3);
                                 return func_ptr(t.0, args[0], args[1], args[2]);
                             }

@@ -1,8 +1,8 @@
 #![allow(warnings)]
 
+use albedo::ace::util::sysinfo::AceSysInfo;
 use albedo::browser;
 use albedo::ui;
-use albedo::ace::util::sysinfo::AceSysInfo;
 
 use albedo::browser::tabs::manager::TabManager;
 use slint::ComponentHandle;

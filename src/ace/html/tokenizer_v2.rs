@@ -1,5 +1,7 @@
-use html5gum::{Tokenizer, Token, State as TokenizerState};
 use crate::ace::util::allocator::AceAllocator;
+#[cfg(debug_assertions)]
+use html5gum::State as TokenizerState;
+use html5gum::{Token, Tokenizer};
 
 /// O `AceTokenizer` é um wrapper de alta performance sobre o `html5gum`.
 /// Ele transforma bytes/strings em tokens WHATWG usando otimizações SIMD
@@ -50,12 +52,18 @@ impl<'a> AceTokenizer<'a> {
         // html5gum retorna Option<Token>
         match self.inner.next() {
             Some(Ok(Token::StartTag(tag))) => {
-                let name = self.allocator.alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
+                let name = self
+                    .allocator
+                    .alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
                 let mut attributes = Vec::with_capacity(tag.attributes.len());
-                
+
                 for (name_bytes, value_bytes) in tag.attributes {
-                    let attr_name = self.allocator.alloc_str(std::str::from_utf8(&name_bytes).unwrap_or(""));
-                    let attr_value = self.allocator.alloc_str(std::str::from_utf8(&value_bytes).unwrap_or(""));
+                    let attr_name = self
+                        .allocator
+                        .alloc_str(std::str::from_utf8(&name_bytes).unwrap_or(""));
+                    let attr_value = self
+                        .allocator
+                        .alloc_str(std::str::from_utf8(&value_bytes).unwrap_or(""));
                     attributes.push((attr_name, attr_value));
                 }
 
@@ -66,15 +74,21 @@ impl<'a> AceTokenizer<'a> {
                 })
             }
             Some(Ok(Token::EndTag(tag))) => {
-                let name = self.allocator.alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
+                let name = self
+                    .allocator
+                    .alloc_str(std::str::from_utf8(&tag.name).unwrap_or(""));
                 Some(AceTokenKind::EndTag { name })
             }
             Some(Ok(Token::Comment(data))) => {
-                let comment_text = self.allocator.alloc_str(std::str::from_utf8(&data).unwrap_or(""));
+                let comment_text = self
+                    .allocator
+                    .alloc_str(std::str::from_utf8(&data).unwrap_or(""));
                 Some(AceTokenKind::Comment { data: comment_text })
             }
             Some(Ok(Token::String(data))) => {
-                let text = self.allocator.alloc_str(std::str::from_utf8(&data).unwrap_or(""));
+                let text = self
+                    .allocator
+                    .alloc_str(std::str::from_utf8(&data).unwrap_or(""));
                 Some(AceTokenKind::Text { data: text })
             }
             Some(Ok(Token::Doctype(dt))) => {
@@ -83,12 +97,14 @@ impl<'a> AceTokenizer<'a> {
                         .alloc_str(std::str::from_utf8(&dt.name).unwrap_or("")),
                 );
                 let public_id = dt.public_identifier.as_ref().map(|bytes| {
-                    self.allocator.alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
+                    self.allocator
+                        .alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
                 });
                 let system_id = dt.system_identifier.as_ref().map(|bytes| {
-                    self.allocator.alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
+                    self.allocator
+                        .alloc_str(std::str::from_utf8(bytes).unwrap_or(""))
                 });
-                
+
                 Some(AceTokenKind::Doctype {
                     name,
                     public_id,
@@ -101,7 +117,8 @@ impl<'a> AceTokenizer<'a> {
         }
     }
 
-    /// Ajusta o estado do tokenizer (ex: para entrar em RCDATA/RawText para tags <script>/<style>)
+    /// Ajusta o estado do tokenizer durante testes/debug quando o backend expõe essa API.
+    #[cfg(debug_assertions)]
     pub fn set_state(&mut self, state: TokenizerState) {
         self.inner.set_state(state);
     }

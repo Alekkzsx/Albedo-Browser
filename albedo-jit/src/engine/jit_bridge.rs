@@ -2,8 +2,8 @@
 //!
 //! Orquestra o fluxo: Profiler → Decoder → Compiler → CodeCache.
 
-use hashbrown::HashMap;
 use crate::parking_lot::RwLock;
+use hashbrown::HashMap;
 use std::sync::Arc;
 
 use crate::compiler::baseline_compiler::BaselineCompiler;
@@ -135,10 +135,12 @@ impl JitBridge {
 
     /// Tenta obter um ponteiro para a versão nativa de uma função.
     pub fn try_native(&self, id: &FunctionId) -> Option<*const u8> {
-        self.engine.read().code_cache.lookup(id).map(|entry: Arc<crate::compiler::code_cache::CachedCode>| {
-            entry.increment_execution();
-            entry.native_ptr.0
-        })
+        self.engine.read().code_cache.lookup(id).map(
+            |entry: Arc<crate::compiler::code_cache::CachedCode>| {
+                entry.increment_execution();
+                entry.native_ptr.0
+            },
+        )
     }
 
     /// Tenta obter ou compilar um entry point OSR para um loop.
@@ -193,16 +195,16 @@ impl JitBridge {
                         crate::bytecode::AirOpcode::Mul { dst, .. } => Some(dst.0),
                         crate::bytecode::AirOpcode::Div { dst, .. } => Some(dst.0),
                         crate::bytecode::AirOpcode::GetProp { dst, .. } => Some(dst.0),
-                        crate::bytecode::AirOpcode::LoadFloat64 { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::LoadBool { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::LoadString { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Move { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Eq { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::StrictEq { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Lt { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Gt { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Lte { dst, ..} => Some(dst.0),
-                        crate::bytecode::AirOpcode::Gte { dst, ..} => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadFloat64 { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadBool { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::LoadString { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Move { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Eq { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::StrictEq { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Lt { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Gt { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Lte { dst, .. } => Some(dst.0),
+                        crate::bytecode::AirOpcode::Gte { dst, .. } => Some(dst.0),
                         _ => None,
                     };
 
@@ -222,7 +224,8 @@ impl JitBridge {
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
+            let mut compiler =
+                crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
 
             // Compilação OSR (Tier 2)
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
@@ -250,13 +253,14 @@ impl JitBridge {
             );
             let target_block = 0;
             let entry_inst = 0;
-            
+
             let mut engine = self.engine.write();
             let mut sig = engine.module.make_signature();
             sig.params.push(AbiParam::new(I64));
             sig.returns.push(AbiParam::new(I64));
 
-            let mut compiler = crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
+            let mut compiler =
+                crate::compiler::tier2_compiler::Tier2Compiler::new(&mut engine, registry);
             match compiler.compile_osr(&air_func, target_block, entry_inst) {
                 Ok(ptr) => {
                     let func_id = engine.module.declare_anonymous_function(&sig).unwrap();
@@ -301,8 +305,8 @@ mod tests {
     use super::*;
     use crate::bytecode::{AirBuilder, AirReg};
     use crate::decoder::QjsOpcode;
-    use crate::runtime::js_value::JsValue;
     use crate::engine::profiler::ProfilerConfig;
+    use crate::runtime::js_value::JsValue;
 
     #[test]
     fn test_bridge_e2e_flow() {

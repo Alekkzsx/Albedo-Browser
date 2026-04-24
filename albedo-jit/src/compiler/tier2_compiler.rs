@@ -14,17 +14,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::escape_analysis::{run_field_sensitive, EscapeAnalysisResult};
+use super::loop_opts::{validate_air_cfg, LoopOptimizer};
 use super::scalar_replacement::{ScalarReplacer, ScalarTransformResult};
 use super::stack_allocator::{StackAllocation, StackAllocator};
-use super::loop_opts::{validate_air_cfg, LoopOptimizer};
-use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirTerminator, AirReg};
+use crate::bytecode::{AirBlockId, AirFunction, AirOpcode, AirReg, AirTerminator};
 use crate::compiler::deopt::{register_meta, DeoptMeta, DeoptPoint};
-use crate::engine::jit_bridge::{BytecodeRegistry};
+use crate::engine::jit_bridge::BytecodeRegistry;
 use crate::engine::jit_engine::{AlbedoJitEngine, JitError};
-use crate::runtime::js_value::{JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN, TAG_OBJECT, TAG_UNDEFINED};
+use crate::runtime::js_value::{
+    JsValue, FLOAT_NAN, PAYLOAD_MASK, TAG_INT32, TAG_MASK, TAG_MIN, TAG_OBJECT, TAG_UNDEFINED,
+};
 use crate::runtime::object_model::{
-    get_string, JSOBJ_KIND_OFFSET, JSOBJ_PROPS_CAP_OFFSET, JSOBJ_PROPS_LEN_OFFSET,
-    JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET, JsObject, ObjectKind,
+    get_string, JsObject, ObjectKind, JSOBJ_KIND_OFFSET, JSOBJ_PROPS_CAP_OFFSET,
+    JSOBJ_PROPS_LEN_OFFSET, JSOBJ_PROPS_OFFSET, JSOBJ_SHAPE_OFFSET,
 };
 use crate::runtime::type_feedback::{
     AddFeedbackSnapshot, GetPropFeedbackSnapshot, IcState, TypeFeedbackRegistry, TypePair,
@@ -68,7 +70,7 @@ impl<'a> Tier2Compiler<'a> {
 
         // 3.3 Escape Analysis
         let escape_results = run_field_sensitive(&air);
-        
+
         // 3.4 Scalar Replacement (SROA)
         let mut replacer = ScalarReplacer::new(AirReg(air.registers_count));
         for (&obj_reg, candidate) in &escape_results.scalar_candidates {
@@ -98,7 +100,7 @@ impl<'a> Tier2Compiler<'a> {
                 "AIR CFG validation failed after scalar replacement: {err}"
             )));
         }
-        
+
         self.escape_results = Some(escape_results);
         let air = &air;
 
@@ -574,7 +576,6 @@ impl<'a> Tier2Compiler<'a> {
             &mut ext_funcs,
         )?;
 
-
         Self::declare_runtime_helper(
             &mut self.engine.module,
             &mut builder,
@@ -936,7 +937,11 @@ impl<'a> Tier2Compiler<'a> {
             let cl_block = block_map[&air_block.id];
             builder.switch_to_block(cl_block);
 
-            let _start = if air_block.id.0 == entry_block_id { entry_inst } else { 0 };
+            let _start = if air_block.id.0 == entry_block_id {
+                entry_inst
+            } else {
+                0
+            };
             for (inst_index, inst) in air_block.insts.iter().enumerate() {
                 if air_block.id.0 == entry_block_id && inst_index < entry_inst {
                     continue;
@@ -1244,77 +1249,84 @@ impl<'a> Tier2Compiler<'a> {
             callee.is_builtin()
         );
         if !callee.is_builtin() {
-             // Inlining de funções AIR
-             if depth < 3 && callee.is_object() {
-                 let ptr = callee.as_object_ptr();
-                 // Ler metadados do objeto (func_id_idx)
-                 let obj = unsafe { &*(ptr as *const JsObject) };
-                 if obj.kind == ObjectKind::Function as u32 {
-                     let func_id_str = get_string(obj.func_id_idx).expect("ID de função não encontrado");
-                     let func_id = crate::engine::profiler::FunctionId(func_id_str);
-                     
-                     if let Some(callee_air) = self.registry.get_air(&func_id) {
-                         if callee_air.instruction_count() <= 50 {
-                             println!("[TIER2-INLINE] Inlining {} (ops={})", callee_air.name, callee_air.instruction_count());
+            // Inlining de funções AIR
+            if depth < 3 && callee.is_object() {
+                let ptr = callee.as_object_ptr();
+                // Ler metadados do objeto (func_id_idx)
+                let obj = unsafe { &*(ptr as *const JsObject) };
+                if obj.kind == ObjectKind::Function as u32 {
+                    let func_id_str =
+                        get_string(obj.func_id_idx).expect("ID de função não encontrado");
+                    let func_id = crate::engine::profiler::FunctionId(func_id_str);
 
-                             // Guard
-                             let slow_block = builder.create_block();
-                             let fast_block = builder.create_block();
-                             let expected_f = builder.ins().iconst(I64, callee.0 as i64);
-                             let f_ok = builder.ins().icmp(IntCC::Equal, f, expected_f);
-                             builder.ins().brif(f_ok, fast_block, &[], slow_block, &[]);
+                    if let Some(callee_air) = self.registry.get_air(&func_id) {
+                        if callee_air.instruction_count() <= 50 {
+                            println!(
+                                "[TIER2-INLINE] Inlining {} (ops={})",
+                                callee_air.name,
+                                callee_air.instruction_count()
+                            );
 
-                             builder.switch_to_block(fast_block);
-                             
-                             // Mapear argumentos
-                             let mut args = Vec::with_capacity(num_args as usize + 1);
-                             args.push(_this);
-                             for i in 0..num_args {
-                                 let reg = AirReg(arg_start.0 + i);
-                                 args.push(builder.use_var(vars[reg.0 as usize]));
-                             }
+                            // Guard
+                            let slow_block = builder.create_block();
+                            let fast_block = builder.create_block();
+                            let expected_f = builder.ins().iconst(I64, callee.0 as i64);
+                            let f_ok = builder.ins().icmp(IntCC::Equal, f, expected_f);
+                            builder.ins().brif(f_ok, fast_block, &[], slow_block, &[]);
 
-                             let inline_res = self.inline_air_function(
-                                 &callee_air,
-                                 &args,
-                                 builder,
-                                 vars,
-                                 ext_funcs,
-                                 meta_id,
-                                 deopt_id, // Deopt p/ o callee call site em caso de erro no inline
-                                 spill_slot,
-                                 depth
-                             );
+                            builder.switch_to_block(fast_block);
 
-                             match inline_res {
-                                 Ok(res_val) => {
-                                     let cont_block = builder.create_block();
-                                     builder.append_block_param(cont_block, I64);
-                                     let cont_args = [res_val.into()];
-                                     builder.ins().jump(cont_block, &cont_args);
+                            // Mapear argumentos
+                            let mut args = Vec::with_capacity(num_args as usize + 1);
+                            args.push(_this);
+                            for i in 0..num_args {
+                                let reg = AirReg(arg_start.0 + i);
+                                args.push(builder.use_var(vars[reg.0 as usize]));
+                            }
 
-                                     builder.switch_to_block(slow_block);
-                                     let deopt_res = Self::emit_deopt_call(builder, ext_funcs, meta_id, deopt_id, spill_slot, vars);
-                                     builder.ins().return_(&[deopt_res]);
+                            let inline_res = self.inline_air_function(
+                                &callee_air,
+                                &args,
+                                builder,
+                                vars,
+                                ext_funcs,
+                                meta_id,
+                                deopt_id, // Deopt p/ o callee call site em caso de erro no inline
+                                spill_slot,
+                                depth,
+                            );
 
-                                     builder.switch_to_block(cont_block);
-                                     builder.seal_block(fast_block);
-                                     builder.seal_block(slow_block);
-                                     return Some(builder.block_params(cont_block)[0]);
-                                 }
-                                 Err(_) => {
-                                     // Se falhar, fallback para o slow path normal (não deveria acontecer pos-check de ops)
-                                     builder.switch_to_block(slow_block);
-                                     builder.seal_block(fast_block);
-                                     builder.seal_block(slow_block);
-                                     return None;
-                                 }
-                             }
-                         }
-                     }
-                 }
-             }
-             return None;
+                            match inline_res {
+                                Ok(res_val) => {
+                                    let cont_block = builder.create_block();
+                                    builder.append_block_param(cont_block, I64);
+                                    let cont_args = [res_val.into()];
+                                    builder.ins().jump(cont_block, &cont_args);
+
+                                    builder.switch_to_block(slow_block);
+                                    let deopt_res = Self::emit_deopt_call(
+                                        builder, ext_funcs, meta_id, deopt_id, spill_slot, vars,
+                                    );
+                                    builder.ins().return_(&[deopt_res]);
+
+                                    builder.switch_to_block(cont_block);
+                                    builder.seal_block(fast_block);
+                                    builder.seal_block(slow_block);
+                                    return Some(builder.block_params(cont_block)[0]);
+                                }
+                                Err(_) => {
+                                    // Se falhar, fallback para o slow path normal (não deveria acontecer pos-check de ops)
+                                    builder.switch_to_block(slow_block);
+                                    builder.seal_block(fast_block);
+                                    builder.seal_block(slow_block);
+                                    return None;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return None;
         }
 
         let bid = callee.as_builtin_id() as u32;
@@ -1608,7 +1620,6 @@ impl<'a> Tier2Compiler<'a> {
             _ => None,
         };
 
-
         if let Some(result) = res {
             let next_block = builder.create_block();
             builder.ins().jump(next_block, &[]);
@@ -1861,13 +1872,25 @@ impl<'a> Tier2Compiler<'a> {
                     AirTerminator::Jump(target) => {
                         builder.ins().jump(block_map[&target.0], &[]);
                     }
-                    AirTerminator::JumpIf { cond, then_blk, else_blk } => {
+                    AirTerminator::JumpIf {
+                        cond,
+                        then_blk,
+                        else_blk,
+                    } => {
                         let c_val = builder.use_var(callee_vars[cond.0 as usize]);
-                        let f_to_bool = *ext_funcs.get("js_to_bool").expect("js_to_bool not declared");
+                        let f_to_bool = *ext_funcs
+                            .get("js_to_bool")
+                            .expect("js_to_bool not declared");
                         let call = builder.ins().call(f_to_bool, &[c_val]);
                         let boxed_bool = builder.inst_results(call)[0];
                         let b_val = builder.ins().band_imm(boxed_bool, 1);
-                        builder.ins().brif(b_val, block_map[&then_blk.0], &[], block_map[&else_blk.0], &[]);
+                        builder.ins().brif(
+                            b_val,
+                            block_map[&then_blk.0],
+                            &[],
+                            block_map[&else_blk.0],
+                            &[],
+                        );
                     }
                     AirTerminator::Return(reg) => {
                         let res = builder.use_var(callee_vars[reg.0 as usize]);
@@ -1946,16 +1969,7 @@ impl<'a> Tier2Compiler<'a> {
                 let slot = *ic_slot;
                 if let Some(snap) = TypeFeedbackRegistry::add_snapshot(slot) {
                     if let Some(res) = Self::emit_specialized_add(
-                        builder,
-                        ext_funcs,
-                        a,
-                        b,
-                        slot,
-                        &snap,
-                        meta_id,
-                        deopt_id,
-                        spill_slot,
-                        vars,
+                        builder, ext_funcs, a, b, slot, &snap, meta_id, deopt_id, spill_slot, vars,
                     ) {
                         builder.def_var(vars[dst.0 as usize], res);
                         return true;
@@ -1971,14 +1985,7 @@ impl<'a> Tier2Compiler<'a> {
                 let a = builder.use_var(vars[lhs.0 as usize]);
                 let b = builder.use_var(vars[rhs.0 as usize]);
                 if let Some(res) = Self::emit_sub_int32(
-                    builder,
-                    ext_funcs,
-                    a,
-                    b,
-                    meta_id,
-                    deopt_id,
-                    spill_slot,
-                    vars,
+                    builder, ext_funcs, a, b, meta_id, deopt_id, spill_slot, vars,
                 ) {
                     builder.def_var(vars[dst.0 as usize], res);
                 } else {
@@ -1992,14 +1999,7 @@ impl<'a> Tier2Compiler<'a> {
                 let a = builder.use_var(vars[lhs.0 as usize]);
                 let b = builder.use_var(vars[rhs.0 as usize]);
                 if let Some(res) = Self::emit_mul_int32(
-                    builder,
-                    ext_funcs,
-                    a,
-                    b,
-                    meta_id,
-                    deopt_id,
-                    spill_slot,
-                    vars,
+                    builder, ext_funcs, a, b, meta_id, deopt_id, spill_slot, vars,
                 ) {
                     builder.def_var(vars[dst.0 as usize], res);
                 } else {
@@ -2132,16 +2132,7 @@ impl<'a> Tier2Compiler<'a> {
                 let slot = *ic_slot;
                 if let Some(snap) = TypeFeedbackRegistry::get_prop_snapshot(slot) {
                     if let Some(res) = Self::emit_specialized_get_prop(
-                        builder,
-                        ext_funcs,
-                        o,
-                        p,
-                        slot,
-                        &snap,
-                        meta_id,
-                        deopt_id,
-                        spill_slot,
-                        vars,
+                        builder, ext_funcs, o, p, slot, &snap, meta_id, deopt_id, spill_slot, vars,
                     ) {
                         builder.def_var(vars[dst.0 as usize], res);
                         return true;
@@ -2173,18 +2164,8 @@ impl<'a> Tier2Compiler<'a> {
                 let slot = *ic_slot;
                 if let Some(snap) = TypeFeedbackRegistry::call_snapshot(slot) {
                     if let Some(res) = self.emit_specialized_call(
-                        builder,
-                        ext_funcs,
-                        f,
-                        this_val,
-                        *arg_start,
-                        *num_args,
-                        &snap,
-                        meta_id,
-                        deopt_id,
-                        spill_slot,
-                        vars,
-                        depth,
+                        builder, ext_funcs, f, this_val, *arg_start, *num_args, &snap, meta_id,
+                        deopt_id, spill_slot, vars, depth,
                     ) {
                         builder.def_var(vars[dst.0 as usize], res);
                         return true;
@@ -2221,43 +2202,75 @@ impl<'a> Tier2Compiler<'a> {
 
                 if let Some(stack_alloc) = stack_alloc {
                     // Stack allocation planned by StackAllocator.
-                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
+                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        32,
+                        8,
+                    ));
                     let props_slot = builder.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
                         (stack_alloc.num_properties as u32 * 8).max(8),
                         8,
                     ));
-                    
+
                     let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
                     let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
 
                     // Inicializar JsObject
                     // shape_id = fnv1a_seed (0xcbf29ce484222325)
                     let empty_shape = builder.ins().iconst(I64, 0xcbf29ce484222325u64 as i64);
-                    builder.ins().store(MemFlags::trusted(), empty_shape, obj_addr, JSOBJ_SHAPE_OFFSET as i32);
-                    
-                    // kind = Object (0), func_id_idx = 0 -> combined into 64-bit store for speed? 
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        empty_shape,
+                        obj_addr,
+                        JSOBJ_SHAPE_OFFSET as i32,
+                    );
+
+                    // kind = Object (0), func_id_idx = 0 -> combined into 64-bit store for speed?
                     // No, let's follow offsets.
                     let kind = builder.ins().iconst(I32, ObjectKind::Object as i64);
-                    builder.ins().store(MemFlags::trusted(), kind, obj_addr, JSOBJ_KIND_OFFSET as i32);
-                    
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        kind,
+                        obj_addr,
+                        JSOBJ_KIND_OFFSET as i32,
+                    );
+
                     // props = props_addr
-                    builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
-                    
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        props_addr,
+                        obj_addr,
+                        JSOBJ_PROPS_OFFSET as i32,
+                    );
+
                     // props_len = 0, props_cap = planned num_properties
                     let zero32 = builder.ins().iconst(I32, 0);
                     let cap32 = builder.ins().iconst(I32, stack_alloc.num_properties as i64);
-                    builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
-                    builder.ins().store(MemFlags::trusted(), cap32, obj_addr, JSOBJ_PROPS_CAP_OFFSET as i32);
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        zero32,
+                        obj_addr,
+                        JSOBJ_PROPS_LEN_OFFSET as i32,
+                    );
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        cap32,
+                        obj_addr,
+                        JSOBJ_PROPS_CAP_OFFSET as i32,
+                    );
 
                     // Initialize props with undefined
                     let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
                     for i in 0..stack_alloc.num_properties {
-                        builder
-                            .ins()
-                            .store(MemFlags::trusted(), undefined, props_addr, (i as i32) * 8);
+                        builder.ins().store(
+                            MemFlags::trusted(),
+                            undefined,
+                            props_addr,
+                            (i as i32) * 8,
+                        );
                     }
-                    
+
                     // Pack into JsValue (Object tag)
                     let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
                     let packed = builder.ins().bor(obj_addr, tag);
@@ -2273,37 +2286,69 @@ impl<'a> Tier2Compiler<'a> {
                 let stack_alloc = self.stack_plan.get(dst).cloned();
 
                 if let Some(stack_alloc) = stack_alloc {
-                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 32, 8));
+                    let obj_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        32,
+                        8,
+                    ));
                     let props_slot = builder.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
                         (stack_alloc.num_properties as u32 * 8).max(8),
                         8,
                     ));
-                    
+
                     let obj_addr = builder.ins().stack_addr(I64, obj_slot, 0);
                     let props_addr = builder.ins().stack_addr(I64, props_slot, 0);
 
                     let empty_shape = builder.ins().iconst(I64, 0xcbf29ce484222325u64 as i64);
-                    builder.ins().store(MemFlags::trusted(), empty_shape, obj_addr, JSOBJ_SHAPE_OFFSET as i32);
-                    
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        empty_shape,
+                        obj_addr,
+                        JSOBJ_SHAPE_OFFSET as i32,
+                    );
+
                     let kind = builder.ins().iconst(I32, ObjectKind::Array as i64);
-                    builder.ins().store(MemFlags::trusted(), kind, obj_addr, JSOBJ_KIND_OFFSET as i32);
-                    
-                    builder.ins().store(MemFlags::trusted(), props_addr, obj_addr, JSOBJ_PROPS_OFFSET as i32);
-                    
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        kind,
+                        obj_addr,
+                        JSOBJ_KIND_OFFSET as i32,
+                    );
+
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        props_addr,
+                        obj_addr,
+                        JSOBJ_PROPS_OFFSET as i32,
+                    );
+
                     let zero32 = builder.ins().iconst(I32, 0);
                     let cap32 = builder.ins().iconst(I32, stack_alloc.num_properties as i64);
-                    builder.ins().store(MemFlags::trusted(), zero32, obj_addr, JSOBJ_PROPS_LEN_OFFSET as i32);
-                    builder.ins().store(MemFlags::trusted(), cap32, obj_addr, JSOBJ_PROPS_CAP_OFFSET as i32);
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        zero32,
+                        obj_addr,
+                        JSOBJ_PROPS_LEN_OFFSET as i32,
+                    );
+                    builder.ins().store(
+                        MemFlags::trusted(),
+                        cap32,
+                        obj_addr,
+                        JSOBJ_PROPS_CAP_OFFSET as i32,
+                    );
 
                     // Initialize props with undefined
                     let undefined = builder.ins().iconst(I64, TAG_UNDEFINED as i64);
                     for i in 0..stack_alloc.num_properties {
-                        builder
-                            .ins()
-                            .store(MemFlags::trusted(), undefined, props_addr, (i as i32) * 8);
+                        builder.ins().store(
+                            MemFlags::trusted(),
+                            undefined,
+                            props_addr,
+                            (i as i32) * 8,
+                        );
                     }
-                    
+
                     let tag = builder.ins().iconst(I64, TAG_OBJECT as i64);
                     let packed = builder.ins().bor(obj_addr, tag);
                     builder.def_var(vars[dst.0 as usize], packed);
@@ -2587,8 +2632,14 @@ mod tests {
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![
-                    AirOpcode::LoadInt32 { dst: AirReg(3), value: 0xDEADBEEFu32 as i32 }, // Placeholder p/ o callee JsValue
-                    AirOpcode::LoadInt32 { dst: AirReg(2), value: 5 },
+                    AirOpcode::LoadInt32 {
+                        dst: AirReg(3),
+                        value: 0xDEADBEEFu32 as i32,
+                    }, // Placeholder p/ o callee JsValue
+                    AirOpcode::LoadInt32 {
+                        dst: AirReg(2),
+                        value: 5,
+                    },
                     AirOpcode::Call {
                         dst: AirReg(4),
                         func: AirReg(3),
@@ -2606,7 +2657,7 @@ mod tests {
         // 3. Setup Engine e Registry
         let mut engine = AlbedoJitEngine::new().unwrap();
         let registry = BytecodeRegistry::new();
-        
+
         // Registrar callee
         let callee_name = "callee_add".to_string();
         let callee_id = crate::engine::profiler::FunctionId(callee_name.clone());
@@ -2621,16 +2672,19 @@ mod tests {
             props_len: 0,
             props_cap: 0,
         });
-        
+
         // No AlbedoJIT, JsValue de objeto é TAG_OBJECT | ptr
         let ptr = Box::into_raw(callee_obj) as u64;
         let callee_val = JsValue::object(ptr);
-        
+
         // Atualizar o LoadInt32 no caller para carregar o callee_val real
         // (Isso é um hack p/ o teste, normalmente o IC cuidaria disso)
         let mut final_caller = caller_air;
         // Melhor usar LoadInt64 para não perder a referência do Object na conversão para i32
-        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
+        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 {
+            dst: AirReg(3),
+            value: callee_val.0 as i64,
+        };
 
         // 4. Gravar feedback Monomorphic
         crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(
@@ -2640,15 +2694,17 @@ mod tests {
 
         // 5. Compilar Caller
         let mut compiler = Tier2Compiler::new(&mut engine, &registry);
-        let id = compiler.compile(&final_caller).expect("Inlining compile falhou");
+        let id = compiler
+            .compile(&final_caller)
+            .expect("Inlining compile falhou");
         engine.module.finalize_definitions().unwrap();
-        
+
         let ptr = engine.module.get_finalized_function(id);
         let f: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        
+
         // Executar: caller(37) -> callee(37, 5) -> 42
         let result = JsValue(f(JsValue::undefined().0, JsValue::int32(37).0));
-        
+
         assert_eq!(result.as_int32(), 42);
         println!("[TEST] Inlining bem sucedido: 37 + 5 = 42");
     }
@@ -2657,7 +2713,7 @@ mod tests {
     fn test_tier2_inlining_depth_limit() {
         let mut engine = AlbedoJitEngine::new().unwrap();
         let registry = BytecodeRegistry::new();
-        
+
         let rec_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
             crate::runtime::type_feedback::IcKind::Call,
         );
@@ -2672,9 +2728,15 @@ mod tests {
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![
-                    AirOpcode::LoadInt32 { dst: AirReg(2), value: 0 },
+                    AirOpcode::LoadInt32 {
+                        dst: AirReg(2),
+                        value: 0,
+                    },
                     // Placeholder da prórpia func p/ call recursive
-                    AirOpcode::LoadInt64 { dst: AirReg(3), value: 12345678 },  
+                    AirOpcode::LoadInt64 {
+                        dst: AirReg(3),
+                        value: 12345678,
+                    },
                     AirOpcode::Call {
                         dst: AirReg(4),
                         func: AirReg(3),
@@ -2698,23 +2760,28 @@ mod tests {
             props_len: 0,
             props_cap: 0,
         });
-        
+
         let ptr = Box::into_raw(rec_obj) as u64;
         let callee_val = JsValue::object(ptr);
 
         let mut final_air = recursive_air;
-        final_air.blocks[0].insts[1] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
-        
+        final_air.blocks[0].insts[1] = AirOpcode::LoadInt64 {
+            dst: AirReg(3),
+            value: callee_val.0 as i64,
+        };
+
         registry.register_air(rec_id, final_air.clone());
 
         // Snapshot com 1 Call pra ela mesma
         crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(rec_ic_slot, callee_val);
 
         let mut compiler = Tier2Compiler::new(&mut engine, &registry);
-        
+
         // Se a depth limit não existisse, a compilação desse método daria stack overflow no rust
         // compailando infinitamente si mesma.
-        let id = compiler.compile(&final_air).expect("Compile recursive inlining falhou!");
+        let id = compiler
+            .compile(&final_air)
+            .expect("Compile recursive inlining falhou!");
         engine.module.finalize_definitions().unwrap();
 
         let ptr = engine.module.get_finalized_function(id);
@@ -2748,12 +2815,14 @@ mod tests {
                 ],
                 terminator: Some(AirTerminator::Return(AirReg(3))),
             }],
-            const_pool: AirConstantPool {
-                strings: vec![],
-            },
+            const_pool: AirConstantPool { strings: vec![] },
         };
         // Gravar IC como Int32 + Int32 (Para que compile FastPath como Integer!)
-        crate::runtime::type_feedback::TypeFeedbackRegistry::record_add(callee_add_slot, JsValue::int32(1), JsValue::int32(2));
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_add(
+            callee_add_slot,
+            JsValue::int32(1),
+            JsValue::int32(2),
+        );
 
         // 2. Caller: foo(y) -> callee(y, Float)  <- Vai causar FLOAT DEOPT no callee!
         let caller_ic_slot = crate::runtime::type_feedback::TypeFeedbackRegistry::alloc_slot(
@@ -2766,8 +2835,14 @@ mod tests {
             blocks: vec![AirBlock {
                 id: AirBlockId(0),
                 insts: vec![
-                    AirOpcode::LoadInt64 { dst: AirReg(3), value: 0 }, // Func mock 
-                    AirOpcode::LoadFloat64 { dst: AirReg(2), value: 5.5 }, // O Fator FLUTUANTE DEOPT!
+                    AirOpcode::LoadInt64 {
+                        dst: AirReg(3),
+                        value: 0,
+                    }, // Func mock
+                    AirOpcode::LoadFloat64 {
+                        dst: AirReg(2),
+                        value: 5.5,
+                    }, // O Fator FLUTUANTE DEOPT!
                     AirOpcode::Call {
                         dst: AirReg(4),
                         func: AirReg(3),
@@ -2779,9 +2854,7 @@ mod tests {
                 ],
                 terminator: Some(AirTerminator::Return(AirReg(4))),
             }],
-            const_pool: AirConstantPool {
-                strings: vec![],
-            },
+            const_pool: AirConstantPool { strings: vec![] },
         };
 
         // Mocks globais
@@ -2797,30 +2870,36 @@ mod tests {
             props_len: 0,
             props_cap: 0,
         });
-        
+
         let ptr = Box::into_raw(callee_obj) as u64;
         let callee_val = JsValue::object(ptr);
 
         let mut final_caller = caller_air;
-        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 { dst: AirReg(3), value: callee_val.0 as i64 };
-        
-        crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(caller_ic_slot, callee_val);
+        final_caller.blocks[0].insts[0] = AirOpcode::LoadInt64 {
+            dst: AirReg(3),
+            value: callee_val.0 as i64,
+        };
+
+        crate::runtime::type_feedback::TypeFeedbackRegistry::record_call(
+            caller_ic_slot,
+            callee_val,
+        );
 
         let mut compiler = Tier2Compiler::new(&mut engine, &registry);
         let id = compiler.compile(&final_caller).unwrap();
         engine.module.finalize_definitions().unwrap();
-        
+
         let ptr = engine.module.get_finalized_function(id);
         let f: extern "C" fn(u64, u64) -> u64 = unsafe { std::mem::transmute(ptr) };
-        
+
         // Execta a função
         let result = f(JsValue::undefined().0, JsValue::int32(37).0); // 37 + 5.5
-        
+
         // O JIT bridge mock dos testes no `albedo-jit` pode retornar fallback id ou
-        // um valor de float por `js_add`/trap OSR genérica. Nosso interesse primário é checar 
+        // um valor de float por `js_add`/trap OSR genérica. Nosso interesse primário é checar
         // se ocorreu Inlining (impressão do TIER2-INLINE e não deu crash de OOB).
         // Se retornar F64 significa que invocou algum fallback. Se Int64, pode ser o MAGIC TRAP deopt.
-        
+
         println!("[TEST] inlining deopt value = {:?}", result);
     }
 }

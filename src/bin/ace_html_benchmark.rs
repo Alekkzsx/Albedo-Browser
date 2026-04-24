@@ -85,7 +85,11 @@ fn run_cases(cases: &[Case]) -> serde_json::Value {
             serialize_document(&doc)
         } else {
             let context = case.context.as_ref().map(|ctx| FragmentContext::new(ctx));
-            let nodes = parse_fragment_with_context(&case.input, context.as_ref(), &ParserOptions::default());
+            let nodes = parse_fragment_with_context(
+                &case.input,
+                context.as_ref(),
+                &ParserOptions::default(),
+            );
             serialize_nodes(&nodes)
         };
         total_case_ms += start.elapsed().as_secs_f64() * 1000.0;
@@ -120,9 +124,16 @@ fn load_required_tree_cases() -> Vec<Case> {
             out.push(Case {
                 id: case["case_id"].as_str().unwrap().to_string(),
                 mode: mode.to_string(),
-                context: case.get("context").and_then(|v| v.as_str()).map(str::to_string),
+                context: case
+                    .get("context")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 input: case["input"].as_str().unwrap().to_string(),
-                expected_tree: case["expected_tree"].as_str().unwrap().trim_end().to_string(),
+                expected_tree: case["expected_tree"]
+                    .as_str()
+                    .unwrap()
+                    .trim_end()
+                    .to_string(),
             });
         }
     }
@@ -154,7 +165,11 @@ fn load_html5lib_sample(limit: usize) -> Vec<Case> {
                     if !data.is_empty() || fragment_ctx.is_some() || !expected_tree.is_empty() {
                         out.push(Case {
                             id: format!("{file_name}#{index}"),
-                            mode: if fragment_ctx.is_some() { "fragment".into() } else { "document".into() },
+                            mode: if fragment_ctx.is_some() {
+                                "fragment".into()
+                            } else {
+                                "document".into()
+                            },
                             context: fragment_ctx.take(),
                             input: data.trim_end_matches('\n').to_string(),
                             expected_tree: expected_tree.trim_end().to_string(),
@@ -190,7 +205,11 @@ fn load_html5lib_sample(limit: usize) -> Vec<Case> {
         if !data.is_empty() || fragment_ctx.is_some() || !expected_tree.is_empty() {
             out.push(Case {
                 id: format!("{file_name}#{index}"),
-                mode: if fragment_ctx.is_some() { "fragment".into() } else { "document".into() },
+                mode: if fragment_ctx.is_some() {
+                    "fragment".into()
+                } else {
+                    "document".into()
+                },
                 context: fragment_ctx,
                 input: data.trim_end_matches('\n').to_string(),
                 expected_tree: expected_tree.trim_end().to_string(),
@@ -215,7 +234,7 @@ fn serialize_document(document: &albedo::ace::html::HtmlDocument) -> String {
         } else if let Some(system_id) = &dt.system_id {
             let _ = write!(out, " \"\" \"{}\"", system_id);
         }
-        out.push('\n');
+        out.push_str(">\n");
     }
     out.push_str(&serialize_nodes(&document.children));
     out

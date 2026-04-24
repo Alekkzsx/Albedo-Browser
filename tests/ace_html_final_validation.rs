@@ -1,9 +1,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::{Duration, Instant};
 
-use albedo::ace::html::{
-    parse_document, parse_document_with_errors, StreamingHtmlParser,
-};
+use albedo::ace::html::{parse_document, parse_document_with_errors, StreamingHtmlParser};
 
 fn generate_html(target_bytes: usize) -> String {
     let mut html = String::from("<!DOCTYPE html><html><head><title>v</title></head><body>");
@@ -68,7 +66,11 @@ fn validation_streaming_p99_latency_16kb() {
     println!("Streaming latency observed: p50={:?}, p99={:?}", p50, p99);
 
     // Task target: p99 < 1ms for 16KB chunks.
-    assert!(p99 < Duration::from_millis(1), "p99 latency exceeded 1ms: {:?}", p99);
+    assert!(
+        p99 < Duration::from_millis(1),
+        "p99 latency exceeded 1ms: {:?}",
+        p99
+    );
 }
 
 #[test]

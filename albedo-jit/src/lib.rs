@@ -11,14 +11,14 @@
 //! O QuickJS continua como interpretador base. O AlbedoJIT compila hot paths
 //! para código de máquina nativo, acelerando funções executadas repetidamente.
 
-pub mod contracts;
+pub mod bytecode;
 pub mod compiler;
-pub mod runtime;
+pub mod contracts;
+pub mod decoder;
 pub mod engine;
 pub mod infra;
-pub mod bytecode;
-pub mod decoder;
 pub mod parking_lot;
+pub mod runtime;
 
 // Re-exports públicos para manter compatibilidade
 pub use bytecode::{AirBuilder, AirFunction, AirOpcode};
@@ -26,21 +26,21 @@ pub use bytecode::{AirBuilder, AirFunction, AirOpcode};
 mod jit_equivalence_tests;
 
 pub use compiler::baseline_compiler::BaselineCompiler;
-pub use compiler::tier2_compiler::Tier2Compiler;
 pub use compiler::code_cache::{CacheStatsSnapshot, CachedCode, CodeCache, JitTier};
 pub use compiler::deopt::{DeoptMeta, DeoptPoint};
 pub use compiler::escape_analysis::{
     run_field_sensitive, AllocationKind, EscapeAnalysisResult, EscapeReason, EscapeStatus,
     ScalarCandidate, ScalarProperty, StackCandidate,
 };
-pub use compiler::stack_allocator::{StackAllocator, StackAllocation};
 pub use compiler::scalar_replacement::ScalarReplacer;
+pub use compiler::stack_allocator::{StackAllocation, StackAllocator};
+pub use compiler::tier2_compiler::Tier2Compiler;
 
-pub use runtime::js_value::JsValue;
 pub use runtime::builtins::BuiltinId;
+pub use runtime::js_value::JsValue;
 
-pub use engine::jit_engine::AlbedoJitEngine;
 pub use engine::jit_bridge::{BytecodeRegistry, JitBridge, JitBridgeStats};
+pub use engine::jit_engine::AlbedoJitEngine;
 pub use engine::profiler::{ExecutionStats, FunctionId, JitProfiler, ProfilerConfig};
 
 pub use infra::executable_memory::{CodePool, CodePoolStats, CodeRegion};

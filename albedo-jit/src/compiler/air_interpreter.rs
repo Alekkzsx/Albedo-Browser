@@ -2,13 +2,13 @@
 //!
 //! Interpreter simples para AirFunction. Usado em deopt/OSR.
 
-use crate::runtime::builtins::{call_builtin, BuiltinId};
 use crate::bytecode::{AirFunction, AirOpcode, AirTerminator};
+use crate::compiler::tier2_compiler::Tier2Compiler;
 use crate::engine::jit_engine::AlbedoJitEngine;
+use crate::runtime::builtins::{call_builtin, BuiltinId};
 use crate::runtime::js_value::JsValue;
 use crate::runtime::object_model;
 use crate::runtime::runtime_helpers;
-use crate::compiler::tier2_compiler::Tier2Compiler;
 use std::collections::{HashMap, HashSet};
 
 pub struct AirInterpreter;

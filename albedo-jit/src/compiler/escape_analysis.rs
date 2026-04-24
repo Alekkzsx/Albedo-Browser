@@ -119,13 +119,24 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
                         num_args,
                         ..
                     } => {
-                        if mark_escape(this, EscapeReason::CallArgument, &allocations, &mut escaping, &mut reasons) {
+                        if mark_escape(
+                            this,
+                            EscapeReason::CallArgument,
+                            &allocations,
+                            &mut escaping,
+                            &mut reasons,
+                        ) {
                             changed = true;
                         }
                         for i in 0..num_args {
                             let arg = AirReg(arg_start.0 + i);
-                            if mark_escape(arg, EscapeReason::CallArgument, &allocations, &mut escaping, &mut reasons)
-                            {
+                            if mark_escape(
+                                arg,
+                                EscapeReason::CallArgument,
+                                &allocations,
+                                &mut escaping,
+                                &mut reasons,
+                            ) {
                                 changed = true;
                             }
                         }
@@ -202,14 +213,24 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
                     }
                     AirOpcode::Move { dst, src } => {
                         if allocations.contains_key(&dst) && escaping.contains(&src) {
-                            if mark_escape(dst, EscapeReason::UnknownUse, &allocations, &mut escaping, &mut reasons)
-                            {
+                            if mark_escape(
+                                dst,
+                                EscapeReason::UnknownUse,
+                                &allocations,
+                                &mut escaping,
+                                &mut reasons,
+                            ) {
                                 changed = true;
                             }
                         }
                         if allocations.contains_key(&src) && escaping.contains(&dst) {
-                            if mark_escape(src, EscapeReason::UnknownUse, &allocations, &mut escaping, &mut reasons)
-                            {
+                            if mark_escape(
+                                src,
+                                EscapeReason::UnknownUse,
+                                &allocations,
+                                &mut escaping,
+                                &mut reasons,
+                            ) {
                                 changed = true;
                             }
                         }
@@ -225,7 +246,13 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
                             if let Some(obj_usage) = usage.get_mut(&op) {
                                 obj_usage.unknown_use = true;
                             }
-                            if mark_escape(op, EscapeReason::UnknownUse, &allocations, &mut escaping, &mut reasons) {
+                            if mark_escape(
+                                op,
+                                EscapeReason::UnknownUse,
+                                &allocations,
+                                &mut escaping,
+                                &mut reasons,
+                            ) {
                                 changed = true;
                             }
                         }
@@ -234,7 +261,13 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
             }
 
             if let Some(AirTerminator::Return(reg)) = block.terminator {
-                if mark_escape(reg, EscapeReason::Returned, &allocations, &mut escaping, &mut reasons) {
+                if mark_escape(
+                    reg,
+                    EscapeReason::Returned,
+                    &allocations,
+                    &mut escaping,
+                    &mut reasons,
+                ) {
                     changed = true;
                 }
             }
@@ -266,7 +299,9 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
                 })
                 .collect();
             properties.sort_by_key(|p| p.prop_id);
-            result.statuses.insert(obj_reg, EscapeStatus::ScalarReplaceable);
+            result
+                .statuses
+                .insert(obj_reg, EscapeStatus::ScalarReplaceable);
             result.scalar_replaceable.insert(obj_reg);
             result.scalar_properties.insert(obj_reg, properties.clone());
             result
@@ -274,7 +309,9 @@ pub fn run_field_sensitive(air: &AirFunction) -> EscapeAnalysisResult {
                 .insert(obj_reg, ScalarCandidate { properties });
         } else {
             if obj_usage.dynamic_property {
-                reasons.entry(obj_reg).or_insert(EscapeReason::DynamicProperty);
+                reasons
+                    .entry(obj_reg)
+                    .or_insert(EscapeReason::DynamicProperty);
             }
             result.statuses.insert(obj_reg, EscapeStatus::StackOnly);
             result.stack_allocatable.insert(obj_reg);
@@ -319,4 +356,3 @@ fn is_local_safe_use(inst: &AirOpcode, op: AirReg) -> bool {
         _ => false,
     }
 }
-

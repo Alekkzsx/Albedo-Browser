@@ -1,7 +1,7 @@
 //! Testes de Stack Allocator para AlbedoJIT
 
-use albedo_jit::compiler::stack_allocator::StackAllocator;
 use albedo_jit::bytecode::AirReg;
+use albedo_jit::compiler::stack_allocator::StackAllocator;
 
 #[test]
 fn test_allocate_object() {

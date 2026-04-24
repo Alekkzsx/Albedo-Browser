@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::mem::offset_of;
 use std::sync::OnceLock;
 
-use crate::runtime::js_value::JsValue;
 use crate::contracts::core::JsonValue;
+use crate::runtime::js_value::JsValue;
 
 // ---------------------------------------------------------------------------
 // Layout do Objeto (estável para geração de código)
@@ -301,7 +301,11 @@ pub fn get_prop(obj_val: JsValue, prop_val: JsValue) -> JsValue {
                 return array_get_index(obj, idx);
             }
         }
-        println!("[DEBUG-OBJ] Get other prop: id={} (length_id={})", prop_id, length_prop_id());
+        println!(
+            "[DEBUG-OBJ] Get other prop: id={} (length_id={})",
+            prop_id,
+            length_prop_id()
+        );
         let reg = shape_registry().read();
         if let Some(offset) = reg.get_offset(obj.shape_id, prop_id) {
             if (offset as u32) < obj.props_len {
