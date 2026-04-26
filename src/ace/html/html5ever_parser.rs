@@ -363,6 +363,7 @@ pub(crate) fn parse_document_html5ever(html: &str, options: &ParserOptions) -> P
     result.stats = ParseStats {
         total_errors: result.parse_errors.len(),
         total_preloads: result.preload_requests.len(),
+        ..ParseStats::default()
     };
     result
 }
@@ -382,6 +383,7 @@ pub(crate) fn parse_fragment_html5ever(
         result.stats = ParseStats {
             total_errors: result.parse_errors.len(),
             total_preloads: result.preload_requests.len(),
+            ..ParseStats::default()
         };
         return result;
     }
@@ -405,6 +407,7 @@ pub(crate) fn parse_fragment_html5ever(
     result.stats = ParseStats {
         total_errors: result.parse_errors.len(),
         total_preloads: result.preload_requests.len(),
+        ..ParseStats::default()
     };
     result
 }

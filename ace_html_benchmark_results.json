@@ -1,73 +1,21 @@
-﻿{
+{
   "ace_html": {
     "html5libTreeSample": {
-      "avgCaseMs": 0.012779999999999993,
-      "failures": [
-        {
-          "actual": "| <a>\n|   <p>",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <a>\n|     <p>\n|       <a>",
-          "id": "adoption01.dat#0"
-        },
-        {
-          "actual": "| <a>\n|   \"1\"\n|   <p>\n|     \"2\"\n| \"3\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <a>\n|       \"1\"\n|     <p>\n|       <a>\n|         \"2\"\n|       \"3\"",
-          "id": "adoption01.dat#1"
-        },
-        {
-          "actual": "| <a>\n|   \"1\"\n|   <button>\n|     \"2\"\n| \"3\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <a>\n|       \"1\"\n|     <button>\n|       <a>\n|         \"2\"\n|       \"3\"",
-          "id": "adoption01.dat#2"
-        },
-        {
-          "actual": "| <a>\n|   \"1\"\n|   <b>\n|     \"2\"\n| \"3\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <a>\n|       \"1\"\n|       <b>\n|         \"2\"\n|     <b>\n|       \"3\"",
-          "id": "adoption01.dat#3"
-        },
-        {
-          "actual": "| <a>\n|   \"1\"\n|   <div>\n|     \"2\"\n|     <div>\n|       \"3\"\n| \"4\"\n| \"5\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <a>\n|       \"1\"\n|     <div>\n|       <a>\n|         \"2\"\n|       <div>\n|         <a>\n|           \"3\"\n|         \"4\"\n|       \"5\"",
-          "id": "adoption01.dat#4"
-        }
-      ],
-      "passRate": 0.0,
-      "passed": 0,
+      "avgCaseMs": 0.040166390000000024,
+      "failures": [],
+      "passRate": 100.0,
+      "passed": 100,
       "total": 100
     },
     "performance": {
-      "avgMs": 329.531335,
-      "throughputMbps": 3.6415656799375387
+      "avgMs": 119.6621347,
+      "throughputMbps": 10.028318507007214
     },
     "requiredTree": {
-      "avgCaseMs": 0.02757857142857142,
-      "failures": [
-        {
-          "actual": "| <p>\n|   <b>\n|     <i>\n|       \"x\"\n|   \"y\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <p>\n|       <b>\n|         <i>\n|           \"x\"\n|       <i>\n|         \"y\"",
-          "id": "doc_adoption_agency"
-        },
-        {
-          "actual": "| <table>\n|   \"hello\"\n|   <tr>\n|     <td>\n|       \"cell\"",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     \"hello\"\n|     <table>\n|       <tbody>\n|         <tr>\n|           <td>\n|             \"cell\"",
-          "id": "doc_foster_parenting"
-        },
-        {
-          "actual": "| <div>\n|   <svg svg>\n|     <svg circle>",
-          "expected": "| <html>\n|   <head>\n|   <body>\n|     <div>\n|       <svg svg>\n|         <svg circle>",
-          "id": "doc_svg_namespace"
-        },
-        {
-          "actual": "| <tr>\n|   <td>\n|     \"x\"",
-          "expected": "| <tbody>\n|   <tr>\n|     <td>\n|       \"x\"",
-          "id": "frag_table_context"
-        },
-        {
-          "actual": "| <html>\n|   <frameset>\n|     <frame>\n|       src=\"a\"",
-          "expected": "| <html>\n|   <head>\n|   <frameset>\n|     <frame>\n|       src=\"a\"",
-          "id": "doc_frameset_mode"
-        }
-      ],
-      "passRate": 28.571428571428573,
-      "passed": 4,
+      "avgCaseMs": 0.04137299999999999,
+      "failures": [],
+      "passRate": 100.0,
+      "passed": 14,
       "total": 14
     }
   },

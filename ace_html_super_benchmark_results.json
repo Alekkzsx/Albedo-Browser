@@ -1,0 +1,179 @@
+{
+  "generatedAt": "SystemTime { tv_sec: 1777240924, tv_nsec: 66819948 }",
+  "ace_html": {
+    "html5libTreeFull": {
+      "avgCaseMs": 0.04254217423230972,
+      "failures": [],
+      "p50CaseMs": 0.032647,
+      "p95CaseMs": 0.10432799999999999,
+      "p99CaseMs": 0.205568,
+      "passRate": 100,
+      "passed": 1498,
+      "total": 1498
+    },
+    "performance": {
+      "avgMs": 135.35836922000004,
+      "iterationsPerSample": 20,
+      "maxMs": 159.8163695,
+      "minMs": 125.53219255000002,
+      "p50Ms": 131.8563096,
+      "p95Ms": 155.0007934,
+      "p99Ms": 159.8163695,
+      "sampleAvgMs": [
+        126.88464834999999,
+        131.8563096,
+        133.00948635,
+        134.3105218,
+        125.53219255000002,
+        129.658313,
+        140.65509724999998,
+        127.43231785,
+        128.3222063,
+        155.0007934,
+        159.8163695,
+        139.57356425,
+        143.00583310000002,
+        127.2321598,
+        128.0857252
+      ],
+      "sampleThroughputMbps": [
+        9.457487691417795,
+        9.10089174830053,
+        9.021988077168452,
+        8.934594132445698,
+        9.559380551104695,
+        9.255172092205148,
+        8.531578474309436,
+        9.416841977343033,
+        9.351538089943206,
+        7.741960371152526,
+        7.508680141804874,
+        8.597688297553095,
+        8.391336031453111,
+        9.431656287893967,
+        9.36880357374906
+      ],
+      "samples": 15,
+      "stddevMs": 10.130185935900219,
+      "throughputMaxMbps": 9.559380551104695,
+      "throughputMbps": 8.911306502522974,
+      "throughputMinMbps": 7.508680141804874,
+      "throughputP50Mbps": 9.10089174830053,
+      "throughputP95Mbps": 9.457487691417795,
+      "throughputP99Mbps": 9.559380551104695,
+      "warmupIterations": 5
+    },
+    "requiredTree": {
+      "avgCaseMs": 0.06316807142857142,
+      "failures": [],
+      "p50CaseMs": 0.038608,
+      "p95CaseMs": 0.15475999999999998,
+      "p99CaseMs": 0.166335,
+      "passRate": 100,
+      "passed": 14,
+      "total": 14
+    },
+    "tokenizerSubset": {
+      "avgCaseMs": 0.0167093,
+      "failures": [
+        {
+          "actual": [
+            {
+              "force_quirks": true,
+              "name": "",
+              "public_id": null,
+              "system_id": null,
+              "type": "Doctype"
+            }
+          ],
+          "category": "doctype",
+          "expected": [],
+          "id": "doctype_invalid_missing_name"
+        },
+        {
+          "actual": [
+            {
+              "force_quirks": true,
+              "name": "",
+              "public_id": null,
+              "system_id": null,
+              "type": "Doctype"
+            },
+            {
+              "attrs": {},
+              "name": "p",
+              "self_closing": false,
+              "type": "StartTag"
+            },
+            {
+              "data": "a",
+              "type": "Character"
+            },
+            {
+              "name": "p",
+              "type": "EndTag"
+            },
+            {
+              "attrs": {},
+              "name": "p",
+              "self_closing": false,
+              "type": "StartTag"
+            },
+            {
+              "data": "b",
+              "type": "Character"
+            },
+            {
+              "name": "p",
+              "type": "EndTag"
+            }
+          ],
+          "category": "errors",
+          "expected": [
+            {
+              "attrs": {},
+              "name": "p",
+              "self_closing": false,
+              "type": "StartTag"
+            },
+            {
+              "data": "a",
+              "type": "Character"
+            },
+            {
+              "name": "p",
+              "type": "EndTag"
+            },
+            {
+              "attrs": {},
+              "name": "p",
+              "self_closing": false,
+              "type": "StartTag"
+            },
+            {
+              "data": "b",
+              "type": "Character"
+            },
+            {
+              "name": "p",
+              "type": "EndTag"
+            }
+          ],
+          "id": "adjacent_tokens_after_error"
+        }
+      ],
+      "p50CaseMs": 0.011349,
+      "p95CaseMs": 0.046058,
+      "p99CaseMs": 0.103552,
+      "passRate": 90,
+      "passed": 18,
+      "total": 20
+    }
+  },
+  "datasets": {
+    "html5libTreeCases": 1498,
+    "perfHtmlBytes": 1200010,
+    "requiredTreeCases": 14,
+    "tokenizerSubsetCases": 20
+  }
+}
