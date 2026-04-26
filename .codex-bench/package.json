@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "benchmark": "node linux_browser_benchmark.js",
+    "verify": "node ace_html_verification_runner.js"
+  },
   "dependencies": {
     "playwright": "^1.55.0"
   }

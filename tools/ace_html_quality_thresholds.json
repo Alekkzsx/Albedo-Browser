@@ -1,0 +1,8 @@
+{
+  "min_required_tree_pass_rate": 99.0,
+  "min_html5lib_tree_pass_rate": 92.0,
+  "min_tokenizer_pass_rate": 90.0,
+  "min_throughput_mbps": 5.0,
+  "max_avg_ms": 500.0,
+  "max_allocated_bytes_per_case": 2500000.0
+}

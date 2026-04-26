@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
+use encoding_rs::{UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252};
 use html5gum::{DefaultEmitter, Error as Html5Error, Token, Tokenizer};
 use memchr::memchr;
+use tracing::{debug, trace_span};
 
 mod html5ever_parser;
 pub mod tokenizer_v2;
@@ -122,6 +124,8 @@ pub struct ParseError {
 pub enum Encoding {
     Utf8,
     Windows1252,
+    Utf16Le,
+    Utf16Be,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -205,6 +209,9 @@ pub struct PreloadRequest {
 pub struct ParseStats {
     pub total_errors: usize,
     pub total_preloads: usize,
+    pub parse_time_us: u128,
+    pub input_bytes: usize,
+    pub fast_path_used: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -311,17 +318,62 @@ pub fn parse_fragment_with_context(
     context: Option<&FragmentContext>,
     options: &ParserOptions,
 ) -> Vec<HtmlNode> {
-    html5ever_parser::parse_fragment_html5ever(html, context, options)
+    parse_fragment_with_result(html, context, options)
         .document
         .children
 }
 
-pub fn parse_document_with_errors_and_options(html: &str, options: &ParserOptions) -> ParseResult {
-    if let Some(result) = try_fast_parse_document(html, options) {
-        return result;
-    }
+pub fn parse_fragment_with_result(
+    html: &str,
+    context: Option<&FragmentContext>,
+    options: &ParserOptions,
+) -> ParseResult {
+    let parse_span = trace_span!(
+        "ace_html.parse_fragment",
+        input_bytes = html.len(),
+        has_context = context.is_some(),
+        scripting_enabled = options.scripting_enabled
+    );
+    let _guard = parse_span.enter();
+    let started = Instant::now();
 
-    html5ever_parser::parse_document_html5ever(html, options)
+    let mut result = html5ever_parser::parse_fragment_html5ever(html, context, options);
+    apply_parse_telemetry(&mut result, started.elapsed(), false, html.len());
+    debug!(
+        parse_time_us = result.stats.parse_time_us as u64,
+        total_errors = result.stats.total_errors,
+        total_preloads = result.stats.total_preloads,
+        "ace-html fragment parse complete"
+    );
+    result
+}
+
+pub fn parse_document_with_errors_and_options(html: &str, options: &ParserOptions) -> ParseResult {
+    let parse_span = trace_span!(
+        "ace_html.parse_document",
+        input_bytes = html.len(),
+        scripting_enabled = options.scripting_enabled
+    );
+    let _guard = parse_span.enter();
+    let started = Instant::now();
+
+    let mut fast_path_used = false;
+    let mut result = if let Some(result) = try_fast_parse_document(html, options) {
+        fast_path_used = true;
+        result
+    } else {
+        html5ever_parser::parse_document_html5ever(html, options)
+    };
+
+    apply_parse_telemetry(&mut result, started.elapsed(), fast_path_used, html.len());
+    debug!(
+        parse_time_us = result.stats.parse_time_us as u64,
+        total_errors = result.stats.total_errors,
+        total_preloads = result.stats.total_preloads,
+        fast_path_used = result.stats.fast_path_used,
+        "ace-html document parse complete"
+    );
+    result
 }
 
 pub fn parse_html_integrated_with_options(html: &str, options: &ParserOptions) -> ParseResult {
@@ -330,13 +382,29 @@ pub fn parse_html_integrated_with_options(html: &str, options: &ParserOptions) -
 
 pub fn decode_html_bytes(
     bytes: &[u8],
-    _bom: Option<&[u8]>,
+    bom: Option<&[u8]>,
     hint: Option<Encoding>,
 ) -> Result<DecodedHtml, ParseError> {
-    let encoding = hint.unwrap_or(Encoding::Utf8);
+    let (encoding, bom_len) = sniff_document_encoding(bytes, bom, hint);
+    let payload = &bytes[bom_len.min(bytes.len())..];
+
     let content = match encoding {
-        Encoding::Utf8 => String::from_utf8_lossy(bytes).to_string(),
-        Encoding::Windows1252 => decode_windows_1252(bytes),
+        Encoding::Utf8 => match simdutf8::basic::from_utf8(payload) {
+            Ok(valid) => valid.to_string(),
+            Err(_) => UTF_8.decode_without_bom_handling(payload).0.into_owned(),
+        },
+        Encoding::Windows1252 => WINDOWS_1252
+            .decode_without_bom_handling(payload)
+            .0
+            .into_owned(),
+        Encoding::Utf16Le => UTF_16LE
+            .decode_without_bom_handling(payload)
+            .0
+            .into_owned(),
+        Encoding::Utf16Be => UTF_16BE
+            .decode_without_bom_handling(payload)
+            .0
+            .into_owned(),
     };
 
     Ok(DecodedHtml { content, encoding })
@@ -362,6 +430,218 @@ pub fn parse_html_integrated_from_bytes_with_options(
     parse_document_from_bytes_with_errors_and_options(bytes, bom, options)
 }
 
+fn apply_parse_telemetry(
+    result: &mut ParseResult,
+    elapsed: Duration,
+    fast_path_used: bool,
+    input_bytes: usize,
+) {
+    result.stats.total_errors = result.parse_errors.len();
+    result.stats.total_preloads = result.preload_requests.len();
+    result.stats.parse_time_us = elapsed.as_micros();
+    result.stats.fast_path_used = fast_path_used;
+    result.stats.input_bytes = input_bytes;
+}
+
+fn sniff_document_encoding(
+    bytes: &[u8],
+    bom: Option<&[u8]>,
+    hint: Option<Encoding>,
+) -> (Encoding, usize) {
+    if let Some(bom_bytes) = bom {
+        if let Some((encoding, len)) = detect_bom(bom_bytes) {
+            return (encoding, len);
+        }
+    }
+
+    if let Some((encoding, len)) = detect_bom(bytes) {
+        return (encoding, len);
+    }
+
+    if let Some(encoding) = hint {
+        return (encoding, 0);
+    }
+
+    if let Some(meta_encoding) = sniff_meta_charset(bytes) {
+        return (meta_encoding, 0);
+    }
+
+    if simdutf8::basic::from_utf8(bytes).is_ok() {
+        (Encoding::Utf8, 0)
+    } else {
+        (Encoding::Windows1252, 0)
+    }
+}
+
+fn detect_bom(bytes: &[u8]) -> Option<(Encoding, usize)> {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return Some((Encoding::Utf8, 3));
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return Some((Encoding::Utf16Le, 2));
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return Some((Encoding::Utf16Be, 2));
+    }
+    None
+}
+
+fn sniff_meta_charset(bytes: &[u8]) -> Option<Encoding> {
+    let head = &bytes[..bytes.len().min(4096)];
+    let head_str = String::from_utf8_lossy(head);
+    let lower = head_str.to_ascii_lowercase();
+    let lower_bytes = lower.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor < lower_bytes.len() {
+        let Some(open_rel) = memchr(b'<', &lower_bytes[cursor..]) else {
+            break;
+        };
+        let tag_start = cursor + open_rel;
+        if !lower_bytes[tag_start..].starts_with(b"<meta") {
+            cursor = tag_start + 1;
+            continue;
+        }
+
+        let tag_tail = &lower_bytes[tag_start..];
+        let tag_end_rel = memchr(b'>', tag_tail).unwrap_or(tag_tail.len().saturating_sub(1));
+        let end = (tag_start + tag_end_rel + 1).min(lower.len());
+        if end <= tag_start {
+            break;
+        }
+        let tag = &lower[tag_start..end];
+
+        if let Some(charset) = extract_meta_charset(tag) {
+            if let Some(enc) = encoding_from_label(&charset) {
+                return Some(enc);
+            }
+        }
+
+        cursor = end;
+    }
+    None
+}
+
+fn extract_meta_charset(tag: &str) -> Option<String> {
+    let attrs = parse_meta_attributes(tag);
+    if let Some(charset) = attrs.get("charset").filter(|value| !value.is_empty()) {
+        return Some(charset.clone());
+    }
+
+    let content = attrs.get("content")?;
+    let lower = content.to_ascii_lowercase();
+    let charset_idx = lower.find("charset=")?;
+    let raw = &content[charset_idx + "charset=".len()..];
+    let trimmed = raw.trim_start();
+    let charset = if let Some(rest) = trimmed.strip_prefix('"') {
+        rest.split('"').next().unwrap_or("").trim()
+    } else if let Some(rest) = trimmed.strip_prefix('\'') {
+        rest.split('\'').next().unwrap_or("").trim()
+    } else {
+        trimmed
+            .split(|ch: char| ch == ';' || ch.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .trim()
+    };
+
+    if charset.is_empty() {
+        None
+    } else {
+        Some(charset.to_string())
+    }
+}
+
+fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
+    let bytes = tag.as_bytes();
+    let mut idx = 0usize;
+    let mut attrs = HashMap::new();
+
+    while idx < bytes.len() && bytes[idx] != b' ' && bytes[idx] != b'>' {
+        idx += 1;
+    }
+
+    while idx < bytes.len() {
+        while idx < bytes.len()
+            && (bytes[idx].is_ascii_whitespace() || bytes[idx] == b'/' || bytes[idx] == b'>')
+        {
+            idx += 1;
+        }
+        if idx >= bytes.len() {
+            break;
+        }
+
+        let name_start = idx;
+        while idx < bytes.len()
+            && !bytes[idx].is_ascii_whitespace()
+            && bytes[idx] != b'='
+            && bytes[idx] != b'>'
+            && bytes[idx] != b'/'
+        {
+            idx += 1;
+        }
+
+        if idx == name_start {
+            break;
+        }
+
+        let name = tag[name_start..idx].trim().to_ascii_lowercase();
+        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+            idx += 1;
+        }
+
+        let value = if idx < bytes.len() && bytes[idx] == b'=' {
+            idx += 1;
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            if idx >= bytes.len() {
+                String::new()
+            } else if bytes[idx] == b'"' || bytes[idx] == b'\'' {
+                let quote = bytes[idx];
+                idx += 1;
+                let start = idx;
+                while idx < bytes.len() && bytes[idx] != quote {
+                    idx += 1;
+                }
+                let value = tag[start..idx].to_string();
+                if idx < bytes.len() {
+                    idx += 1;
+                }
+                value
+            } else {
+                let start = idx;
+                while idx < bytes.len()
+                    && !bytes[idx].is_ascii_whitespace()
+                    && bytes[idx] != b'>'
+                    && bytes[idx] != b'/'
+                {
+                    idx += 1;
+                }
+                tag[start..idx].to_string()
+            }
+        } else {
+            String::new()
+        };
+
+        attrs.entry(name).or_insert(value);
+    }
+
+    attrs
+}
+
+fn encoding_from_label(label: &str) -> Option<Encoding> {
+    let normalized = label.trim().trim_matches('"').trim_matches('\'');
+    let canonical = encoding_rs::Encoding::for_label(normalized.as_bytes())?;
+    match canonical.name().to_ascii_lowercase().as_str() {
+        "utf-8" => Some(Encoding::Utf8),
+        "windows-1252" => Some(Encoding::Windows1252),
+        "utf-16le" | "utf-16" => Some(Encoding::Utf16Le),
+        "utf-16be" => Some(Encoding::Utf16Be),
+        _ => None,
+    }
+}
+
 pub mod streaming {
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum ChunkResult {
@@ -372,13 +652,18 @@ pub mod streaming {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StreamingSnapshot {
+    raw_bytes: Vec<u8>,
     buffer: String,
+    decided_encoding: Option<Encoding>,
 }
 
 pub struct StreamingHtmlParser {
+    raw_bytes: Vec<u8>,
     buffer: String,
+    decided_encoding: Option<Encoding>,
     options: ParserOptions,
     chunk_latencies: Vec<Duration>,
+    last_parse_result: Option<ParseResult>,
 }
 
 impl StreamingHtmlParser {
@@ -388,15 +673,48 @@ impl StreamingHtmlParser {
 
     pub fn with_options(options: ParserOptions) -> Self {
         Self {
+            raw_bytes: Vec::new(),
             buffer: String::new(),
+            decided_encoding: options.encoding_hint,
             options,
             chunk_latencies: Vec::new(),
+            last_parse_result: None,
         }
     }
 
     pub fn feed(&mut self, chunk: &str) -> streaming::ChunkResult {
+        self.feed_bytes(chunk.as_bytes())
+    }
+
+    pub fn feed_bytes(&mut self, chunk: &[u8]) -> streaming::ChunkResult {
         let start = Instant::now();
-        self.buffer.push_str(chunk);
+        self.raw_bytes.extend_from_slice(chunk);
+
+        if self.decided_encoding.is_none() {
+            if let Some((encoding, _)) = detect_bom(&self.raw_bytes) {
+                self.decided_encoding = Some(encoding);
+            } else if let Some(meta_encoding) = sniff_meta_charset(&self.raw_bytes) {
+                self.decided_encoding = Some(meta_encoding);
+            } else if let Some(hint) = self.options.encoding_hint {
+                self.decided_encoding = Some(hint);
+            }
+        }
+
+        let decode_hint = self.decided_encoding.or(Some(Encoding::Utf8));
+        match decode_html_bytes(&self.raw_bytes, None, decode_hint) {
+            Ok(decoded) => {
+                self.buffer = decoded.content;
+                self.last_parse_result =
+                    Some(parse_document_with_errors_and_options(&self.buffer, &self.options));
+            }
+            Err(err) => {
+                return streaming::ChunkResult::Error(format!(
+                    "failed to decode stream chunk: {}",
+                    err.message
+                ));
+            }
+        }
+
         self.chunk_latencies.push(start.elapsed());
         streaming::ChunkResult::Ok
     }
@@ -406,17 +724,40 @@ impl StreamingHtmlParser {
     }
 
     pub fn end_with_parse_result(&mut self) -> ParseResult {
-        parse_document_with_errors_and_options(&self.buffer, &self.options)
+        if !self.raw_bytes.is_empty() {
+            if let Ok(decoded) = decode_html_bytes(
+                &self.raw_bytes,
+                None,
+                self.decided_encoding.or(self.options.encoding_hint),
+            ) {
+                self.decided_encoding = Some(decoded.encoding);
+                self.buffer = decoded.content;
+                self.last_parse_result =
+                    Some(parse_document_with_errors_and_options(&self.buffer, &self.options));
+            }
+        }
+
+        self.last_parse_result
+            .take()
+            .unwrap_or_else(|| parse_document_with_errors_and_options(&self.buffer, &self.options))
     }
 
     pub fn snapshot(&self) -> StreamingSnapshot {
         StreamingSnapshot {
+            raw_bytes: self.raw_bytes.clone(),
             buffer: self.buffer.clone(),
+            decided_encoding: self.decided_encoding,
         }
     }
 
     pub fn restore(&mut self, snapshot: StreamingSnapshot) {
+        self.raw_bytes = snapshot.raw_bytes;
         self.buffer = snapshot.buffer;
+        self.decided_encoding = snapshot.decided_encoding;
+        self.last_parse_result = Some(parse_document_with_errors_and_options(
+            &self.buffer,
+            &self.options,
+        ));
     }
 
     pub fn p50_latency(&self) -> Duration {
@@ -425,6 +766,14 @@ impl StreamingHtmlParser {
 
     pub fn p99_latency(&self) -> Duration {
         percentile_duration(&self.chunk_latencies, 99)
+    }
+
+    pub fn decided_encoding(&self) -> Option<Encoding> {
+        self.decided_encoding
+    }
+
+    pub fn bytes_seen(&self) -> usize {
+        self.raw_bytes.len()
     }
 }
 
@@ -628,6 +977,7 @@ fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<ParseR
         stats: ParseStats {
             total_errors: 0,
             total_preloads: preload_requests.len(),
+            ..ParseStats::default()
         },
     })
 }
@@ -1117,40 +1467,4 @@ fn line_column_for_offset(input: &str, offset: usize) -> (usize, usize) {
         }
     }
     (line, column)
-}
-
-fn decode_windows_1252(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| match byte {
-            0x80 => '\u{20AC}',
-            0x82 => '\u{201A}',
-            0x83 => '\u{0192}',
-            0x84 => '\u{201E}',
-            0x85 => '\u{2026}',
-            0x86 => '\u{2020}',
-            0x87 => '\u{2021}',
-            0x88 => '\u{02C6}',
-            0x89 => '\u{2030}',
-            0x8A => '\u{0160}',
-            0x8B => '\u{2039}',
-            0x8C => '\u{0152}',
-            0x8E => '\u{017D}',
-            0x91 => '\u{2018}',
-            0x92 => '\u{2019}',
-            0x93 => '\u{201C}',
-            0x94 => '\u{201D}',
-            0x95 => '\u{2022}',
-            0x96 => '\u{2013}',
-            0x97 => '\u{2014}',
-            0x98 => '\u{02DC}',
-            0x99 => '\u{2122}',
-            0x9A => '\u{0161}',
-            0x9B => '\u{203A}',
-            0x9C => '\u{0153}',
-            0x9E => '\u{017E}',
-            0x9F => '\u{0178}',
-            value => char::from(*value),
-        })
-        .collect()
 }

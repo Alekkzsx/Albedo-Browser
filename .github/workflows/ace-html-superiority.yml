@@ -1,0 +1,53 @@
+name: ACE-HTML Superiority Gate
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  CARGO_TERM_COLOR: always
+  PROPTEST_CASES: 64
+
+jobs:
+  ace-html-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --release --lib --features ace_html_parser
+
+      - name: Run Required Conformance
+        run: cargo test --test html5lib_tokenizer_harness ace_html_required_conformance_passes_100 -- --nocapture
+
+      - name: Run Hard Cases Guard
+        run: cargo test --test ace_html_hard_cases -- --nocapture
+
+      - name: Run Property-Based Guard
+        run: cargo test --test ace_html_proptests -- --nocapture
+
+      - name: Run Super Benchmark
+        run: cargo run --release --bin ace_html_super_benchmark > ace_html_super_benchmark_results.json
+
+      - name: Run Memory Profile
+        run: cargo run --release --bin ace_html_memory_profile > ace_html_memory_profile_results.json
+
+      - name: Regression Quality Gate
+        run: python3 tools/ace_html_regression_check.py
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-html-superiority-results
+          path: |
+            ace_html_super_benchmark_results.json
+            ace_html_memory_profile_results.json
