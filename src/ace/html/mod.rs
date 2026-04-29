@@ -875,7 +875,7 @@ fn map_html5gum_error(input: &str, error: Html5Error) -> ParseError {
     }
 }
 
-const FAST_PATH_MIN_BYTES: usize = 64 * 1024;
+const FAST_PATH_MIN_BYTES: usize = 16 * 1024;
 
 fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<ParseResult> {
     if !is_fast_path_candidate(html) {
@@ -995,14 +995,7 @@ fn is_fast_path_candidate(html: &str) -> bool {
         && !lowercase.contains("<![cdata[")
         && !lowercase.contains("<script")
         && !lowercase.contains("<style")
-        && !lowercase.contains("<textarea")
         && !lowercase.contains("<noscript")
-        && !lowercase.contains("<svg")
-        && !lowercase.contains("<math")
-        && !lowercase.contains("<table")
-        && !lowercase.contains("<select")
-        && !lowercase.contains("<template")
-        && !lowercase.contains("<frameset")
 }
 
 fn fast_path_has_link_tag(bytes: &[u8]) -> bool {
@@ -1168,6 +1161,7 @@ fn parse_fast_attr_value(html: &str, idx: &mut usize) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn build_document_from_tokens(
     tokens: &[HtmlToken],
     document: &mut HtmlDocument,
@@ -1262,6 +1256,7 @@ fn push_node(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], node: HtmlNode
     }
 }
 
+#[allow(dead_code)]
 fn infer_namespace(stack: &[HtmlElement], tag: &str) -> Namespace {
     if tag.eq_ignore_ascii_case("svg") {
         Namespace::Svg
