@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use crate::ace::html::tokenizer_v2::{AceTokenKind, AceTokenizer};
 use crate::ace::util::allocator::AceAllocator;
 use fxhash::FxHashMap;
