@@ -1,4 +1,5 @@
-pub mod bridge;
 pub mod events;
-pub mod setup;
 pub mod tabs;
+pub mod ui;
+
+pub use ui::{bridge, setup};
