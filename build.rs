@@ -3,10 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    println!("cargo:rerun-if-changed=ui/appwindow.slint");
+    println!("cargo:rerun-if-changed=src/ui/appwindow.slint");
     println!("cargo:rerun-if-changed=src/ace/html/entities.json");
 
-    slint_build::compile("ui/appwindow.slint").unwrap();
+    slint_build::compile("src/ui/appwindow.slint").unwrap();
     generate_html_entities().unwrap();
 }
 
