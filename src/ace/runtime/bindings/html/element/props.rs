@@ -198,37 +198,13 @@ pub fn remove_attribute(el: &Element, name: String) {
 }
 
 pub fn inner_html(el: &Element) -> String {
-    // Basic serialization stub
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {
-            // Serialize children
             let mut s = String::new();
             for &child_idx in &node.children {
-                s.push_str(&serialize_node(&dom, child_idx));
+                s.push_str(&dom.serialize_subtree_html(child_idx));
             }
             return s;
-        }
-    }
-    "".to_string()
-}
-
-fn serialize_node(dom: &AceDOM, node_idx: usize) -> String {
-    if let Some(node) = dom.get_node(node_idx) {
-        match &node.node_type {
-            AceNodeType::Text(t) => return t.to_string(),
-            AceNodeType::Element(el) => {
-                let mut s = format!("<{}", el.tag);
-                for (k, v) in &el.attributes {
-                    s.push_str(&format!(" {}=\"{}\"", k, v));
-                }
-                s.push_str(">");
-                for &child_idx in &node.children {
-                    s.push_str(&serialize_node(dom, child_idx));
-                }
-                s.push_str(&format!("</{}>", el.tag));
-                return s;
-            }
-            _ => return "".to_string(),
         }
     }
     "".to_string()

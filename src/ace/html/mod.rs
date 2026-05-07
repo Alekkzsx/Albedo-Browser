@@ -13,12 +13,14 @@ pub mod streaming;
 pub mod preloads;
 pub mod sink;
 pub mod fast_parse;
+pub mod serializer;
 
 pub use types::*;
 pub use tokenizer_v2::AceTokenizer;
 pub use tree_builder::{HtmlTreeBuilder, InsertionMode};
 pub use streaming::StreamingHtmlParser;
 pub use encoding::{decode_html_bytes, sniff_document_encoding, detect_bom};
+pub use serializer::{serialize_document, serialize_node, SerializeOptions};
 
 pub struct HtmlTokenizer<'a> {
     tokenizer: Tokenizer<html5gum::StringReader<'a>, DefaultEmitter>,
@@ -360,20 +362,13 @@ pub fn transform_noscript(nodes: Vec<HtmlNode>) -> Vec<HtmlNode> {
 }
 
 pub fn serialize_children_as_text(children: &[HtmlNode]) -> String {
+    let options = SerializeOptions {
+        indent: None,
+        escape_text: false,
+    };
     let mut out = String::new();
     for child in children {
-        match child {
-            HtmlNode::Element(element) => {
-                out.push('<');
-                out.push_str(&element.tag);
-                out.push('>');
-                out.push_str(&serialize_children_as_text(&element.children));
-                out.push_str("</");
-                out.push_str(&element.tag);
-                out.push('>');
-            }
-            HtmlNode::Text(text) | HtmlNode::Comment(text) => out.push_str(text),
-        }
+        out.push_str(&serialize_node(child, &options));
     }
     out
 }
