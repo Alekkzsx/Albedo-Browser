@@ -2,7 +2,7 @@ use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use tiny_skia::{BlendMode, Color, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
 
 pub fn paint_layout_tree(
-    tile: &crate::engine::layer_tree::Tile,
+    tile: &crate::ace::engine::layer_tree::Tile,
     width: u32,
     height: u32,
     scale_factor: f32,
@@ -91,20 +91,20 @@ pub fn paint_layout_tree(
 
         // 1.5 Draw Borders
         if prim.border_width > 0.0 {
-            if prim.border_style == crate::engine::types::BorderStyle::None {
+            if prim.border_style == crate::ace::engine::types::BorderStyle::None {
                 // Não desenhar borda se estilo for none
             } else if let Some(mut color) = prim.border_color {
                 let mut stroke = tiny_skia::Stroke::default();
                 stroke.width = prim.border_width;
                 // Aplicar estilo de traço (dashed, dotted, etc.)
                 match prim.border_style {
-                    crate::engine::types::BorderStyle::Dashed => {
+                    crate::ace::engine::types::BorderStyle::Dashed => {
                         stroke.dash = tiny_skia::StrokeDash::new(
                             vec![prim.border_width * 3.0, prim.border_width * 2.0],
                             0.0,
                         );
                     }
-                    crate::engine::types::BorderStyle::Dotted => {
+                    crate::ace::engine::types::BorderStyle::Dotted => {
                         stroke.dash = tiny_skia::StrokeDash::new(
                             vec![prim.border_width, prim.border_width],
                             0.0,
@@ -407,9 +407,9 @@ pub fn paint_layout_tree(
         }
 
         // 4. Draw Form Controls (Specialized)
-        if prim.element_type == crate::engine::types::ElementRenderType::Input {
+        if prim.element_type == crate::ace::engine::types::ElementRenderType::Input {
             match prim.input_type {
-                crate::engine::types::FormInputType::Color => {
+                crate::ace::engine::types::FormInputType::Color => {
                     // Premium Color Button: Rounded and with a "chip" look
                     if let Ok(color) = parse_hex_color(&prim.input_value) {
                         let mut paint = Paint::default();
@@ -468,7 +468,7 @@ pub fn paint_layout_tree(
                         }
                     }
                 }
-                crate::engine::types::FormInputType::Range => {
+                crate::ace::engine::types::FormInputType::Range => {
                     // Modern Slider: Gradient track and circular thumb
                     let track_h = 6.0;
                     let track_y = local_y + (prim.height - track_h) / 2.0;
@@ -574,10 +574,10 @@ pub fn paint_layout_tree(
                         );
                     }
                 }
-                crate::engine::types::FormInputType::Date
-                | crate::engine::types::FormInputType::Time => {
+                crate::ace::engine::types::FormInputType::Date
+                | crate::ace::engine::types::FormInputType::Time => {
                     // Date/Time with Icon and polished text
-                    let is_date = prim.input_type == crate::engine::types::FormInputType::Date;
+                    let is_date = prim.input_type == crate::ace::engine::types::FormInputType::Date;
 
                     // Draw Icon on the right
                     let icon_size = 14.0;

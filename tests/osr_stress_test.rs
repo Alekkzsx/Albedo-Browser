@@ -1,4 +1,4 @@
-use albedo::runtime::core::runtime::JsRuntime;
+use albedo::ace::runtime::core::runtime::JsRuntime;
 use albedo_jit::{
     AirBuilder, BytecodeRegistry, FunctionId, JitBridge, JitProfiler, ProfilerConfig,
 };

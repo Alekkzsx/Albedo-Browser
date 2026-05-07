@@ -8,7 +8,11 @@ Transformar requisições ambíguas ou complexas em um roteiro (roadmap) técnic
 ## 📋 Estrutura do Plano
 Sempre que esta skill for ativada, o plano gerado deve seguir rigorosamente esta estrutura:
 
-1.  **Contexto e Análise**:
+1.  **Fase de Brainstorming (Obrigatória)**:
+    *   Antes de desenhar o plano, proponha 2-3 perguntas para refinar a abordagem.
+    *   Ex: "Devemos focar em retrocompatibilidade total ou podemos quebrar a API para ganhar performance?"
+
+2.  **Contexto e Análise**:
     *   Breve resumo do estado atual do sistema relacionado à tarefa.
     *   Identificação de arquivos, módulos ou dependências que serão impactados.
 

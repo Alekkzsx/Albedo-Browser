@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod table_colspan_tests {
     // Testes de integração desabilitados: requerem lib compilada
-    // use albedo::engine::AceEngine;
+    // use albedo::ace::engine::AceEngine;
 
     #[test]
     fn test_placeholder() {

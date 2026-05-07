@@ -1,6 +1,6 @@
 use super::http3::Http3Client;
 use super::security::{AccessControl, CookieJar, Origin};
-use crate::runtime::core::service_worker::InterceptResult;
+use crate::ace::runtime::core::service_worker::InterceptResult;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -74,7 +74,7 @@ pub struct ResourceManager {
     pub cookie_jar: Arc<Mutex<CookieJar>>,
     pub access_control: Arc<Mutex<AccessControl>>,
     pub response_cache: Arc<Mutex<std::collections::HashMap<String, ResourceResponse>>>,
-    pub sw_manager: Arc<crate::runtime::core::service_worker::ServiceWorkerManager>,
+    pub sw_manager: Arc<crate::ace::runtime::core::service_worker::ServiceWorkerManager>,
 }
 
 impl ResourceManager {
@@ -108,13 +108,13 @@ impl ResourceManager {
         //   2. Se HTTP/3 falhar → Usa HTTP/2 (reqwest)
         //   3. Se HTTP/2 falhar → Usa HTTP/1.1 (reqwest fallback)
         let sw_db = Arc::new(
-            crate::runtime::core::sw_db::ServiceWorkerDatabase::new(std::path::PathBuf::from(
+            crate::ace::runtime::core::sw_db::ServiceWorkerDatabase::new(std::path::PathBuf::from(
                 "sw.db",
             ))
             .unwrap(),
         );
         let sw_manager =
-            Arc::new(crate::runtime::core::service_worker::ServiceWorkerManager::new(sw_db));
+            Arc::new(crate::ace::runtime::core::service_worker::ServiceWorkerManager::new(sw_db));
 
         Self {
             client: Client::builder()
@@ -182,15 +182,15 @@ impl ResourceManager {
                     // Dispatch fetch event to Service Worker
                     // This is a simplified version of dispatch_fetch_event that handles the
                     // interception logic as requested in the plan.
-                    let req_ctx = crate::runtime::core::service_worker::RequestContext {
+                    let req_ctx = crate::ace::runtime::core::service_worker::RequestContext {
                         method: "GET".to_string(), // ResourceManager mostly does GET
                         url: url_str.clone(),
                         headers: HashMap::new(),
                         body: None,
                         mode: "navigate".to_string(),
                         credentials: "omit".to_string(),
-                        cache_mode: crate::runtime::core::service_worker::CacheMode::Default,
-                        redirect: crate::runtime::core::service_worker::RedirectMode::Follow,
+                        cache_mode: crate::ace::runtime::core::service_worker::CacheMode::Default,
+                        redirect: crate::ace::runtime::core::service_worker::RedirectMode::Follow,
                     };
 
                     // Try to intercept

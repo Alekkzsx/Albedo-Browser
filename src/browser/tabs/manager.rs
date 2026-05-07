@@ -1,6 +1,6 @@
 use super::collection::TabCollection;
 use super::tab::TabMode;
-use crate::engine::AceEngine;
+use crate::ace::engine::AceEngine;
 use crate::network::resources::ResourceManager;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -243,7 +243,7 @@ impl TabManager {
                 if let Some(ref dom_arc) = tab.engine.dom {
                     let mut dom = dom_arc.lock().unwrap();
                     let is_summary = if let Some(n) = dom.get_node(idx) {
-                        matches!(&n.node_type, crate::engine::dom::AceNodeType::Element(el) if el.tag == "summary")
+                        matches!(&n.node_type, crate::ace::engine::dom::AceNodeType::Element(el) if el.tag == "summary")
                     } else {
                         false
                     };
@@ -252,7 +252,7 @@ impl TabManager {
                         let parent_idx = dom.get_node(idx).and_then(|n| n.parent);
                         if let Some(p_idx) = parent_idx {
                             let is_details = if let Some(p) = dom.get_node(p_idx) {
-                                matches!(&p.node_type, crate::engine::dom::AceNodeType::Element(el) if el.tag == "details")
+                                matches!(&p.node_type, crate::ace::engine::dom::AceNodeType::Element(el) if el.tag == "details")
                             } else {
                                 false
                             };
@@ -261,7 +261,7 @@ impl TabManager {
                                 let has_open = dom
                                     .get_node(p_idx)
                                     .and_then(|n| {
-                                        if let crate::engine::dom::AceNodeType::Element(el) =
+                                        if let crate::ace::engine::dom::AceNodeType::Element(el) =
                                             &n.node_type
                                         {
                                             Some(el.attributes.contains_key("open"))
@@ -284,7 +284,7 @@ impl TabManager {
                     // Quando um <button> ou <input type="submit"> dentro de um <form method="dialog">
                     // é clicado, o dialog ancestral é fechado com returnValue = button.value
                     let clicked_tag = if let Some(n) = dom.get_node(idx) {
-                        if let crate::engine::dom::AceNodeType::Element(el) = &n.node_type {
+                        if let crate::ace::engine::dom::AceNodeType::Element(el) = &n.node_type {
                             el.tag.clone()
                         } else {
                             String::new()
@@ -296,7 +296,7 @@ impl TabManager {
                     if clicked_tag == "button" || clicked_tag == "input" {
                         // Caminhar ancestrais procurando <form method="dialog"> → <dialog>
                         let button_value = if let Some(n) = dom.get_node(idx) {
-                            if let crate::engine::dom::AceNodeType::Element(el) = &n.node_type {
+                            if let crate::ace::engine::dom::AceNodeType::Element(el) = &n.node_type {
                                 el.attributes.get("value").cloned().unwrap_or_default()
                             } else {
                                 String::new()
@@ -309,7 +309,7 @@ impl TabManager {
                         let mut found_form_dialog = false;
                         while let Some(a_idx) = ancestor {
                             if let Some(a_node) = dom.get_node(a_idx) {
-                                if let crate::engine::dom::AceNodeType::Element(a_el) =
+                                if let crate::ace::engine::dom::AceNodeType::Element(a_el) =
                                     &a_node.node_type
                                 {
                                     if a_el.tag == "form"
@@ -531,7 +531,7 @@ impl TabManager {
                     // Procurar o último <dialog data-ace-modal open> (topmost)
                     let mut modal_idx = None;
                     for (i, node) in dom.nodes.iter().enumerate() {
-                        if let crate::engine::dom::AceNodeType::Element(el) = &node.node_type {
+                        if let crate::ace::engine::dom::AceNodeType::Element(el) = &node.node_type {
                             if el.tag == "dialog"
                                 && el.attributes.contains_key("open")
                                 && el.attributes.contains_key("data-ace-modal")
@@ -639,9 +639,9 @@ impl TabManager {
                     while let Some(current_idx) = current {
                         if let Some(geom) = geometry.get(&current_idx) {
                             if (geom.overflow_y
-                                == crate::engine::style::css_values::CssOverflow::Scroll
+                                == crate::ace::engine::style::css_values::CssOverflow::Scroll
                                 || geom.overflow_y
-                                    == crate::engine::style::css_values::CssOverflow::Auto)
+                                    == crate::ace::engine::style::css_values::CssOverflow::Auto)
                                 && geom.content_height > geom.height
                             {
                                 // Encontramos um container scrollável internamente

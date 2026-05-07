@@ -8,7 +8,10 @@ Analisar alterações propostas ou códigos existentes para identificar vulnerab
 ## 🔍 Checklist de Revisão
 Sempre que esta skill for ativada, a análise deve cobrir:
 
-1.  **Segurança**:
+1.  **Brainstorming de Critérios**:
+    *   Perguntar ao usuário: "Existe algum ponto crítico de segurança ou performance que te preocupa mais nesta revisão?"
+
+2.  **Segurança**:
     *   Validação de inputs e proteção contra injeção.
     *   Gerenciamento seguro de memória (especialmente em Rust/C++, se aplicável).
     *   Exposição acidental de chaves ou segredos.
