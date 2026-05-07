@@ -8,7 +8,10 @@ Proporcionar uma visão 360º do projeto, permitindo que qualquer desenvolvedor 
 ## 🗺️ Protocolo de Exploração
 Sempre que esta skill for ativada, a investigação deve seguir estas etapas:
 
-1.  **Varredura Estrutural**:
+1.  **Brainstorming de Foco**:
+    *   Perguntar ao usuário se há algum módulo ou tecnologia específica que ele deseja priorizar na investigação.
+
+2.  **Varredura Estrutural**:
     *   Listar diretórios raiz e identificar a finalidade de cada um.
     *   Mapear a "espinha dorsal" do projeto (pastas de código, testes, scripts e configs).
 

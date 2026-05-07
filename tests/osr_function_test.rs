@@ -1,4 +1,4 @@
-use albedo::runtime::core::runtime::JsRuntime;
+use albedo::ace::runtime::core::runtime::JsRuntime;
 use albedo_jit::decoder::qjs_opcodes::QjsOpcode;
 use albedo_jit::{
     BytecodeRegistry, FunctionId, JitBridge, JitProfiler, ProfilerConfig, QjsBytecodeFunction,
