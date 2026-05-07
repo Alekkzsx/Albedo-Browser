@@ -849,66 +849,94 @@ impl AceDOM {
     }
 
     pub fn serialize_subtree_text(&self, node_idx: usize) -> String {
+        let mut s = String::new();
         if let Some(node) = self.get_node(node_idx) {
             match &node.node_type {
-                AceNodeType::Text(t) => return t.to_string(),
+                AceNodeType::Text(t) => s.push_str(t),
                 _ => {
-                    let mut s = String::new();
                     for &child_idx in &node.children {
                         s.push_str(&self.serialize_subtree_text(child_idx));
                     }
-                    return s;
                 }
             }
         }
-        "".to_string()
+        s
     }
 
     pub fn serialize_subtree_html(&self, node_idx: usize) -> String {
+        let mut s = String::new();
         if let Some(node) = self.get_node(node_idx) {
             match &node.node_type {
                 AceNodeType::Element(el) => {
-                    let mut s = format!("<{}", el.tag);
+                    s.push('<');
+                    s.push_str(&el.tag);
 
-                    // Ordenar atributos para serialização estável (opcional mas bom para SVG)
                     let mut attrs: Vec<_> = el.attributes.iter().collect();
                     attrs.sort_by_key(|(k, _)| *k);
 
                     for (name, value) in attrs {
-                        s.push_str(&format!(" {}=\"{}\"", name, value.replace("\"", "&quot;")));
+                        write!(s, " {}=\"{}\"", name, self.escape_attr(value)).unwrap();
                     }
 
-                    if node.children.is_empty() {
-                        s.push_str(" />");
-                    } else {
+                    if self.is_void_element(&el.tag) {
                         s.push('>');
-                        for &child_idx in &node.children {
-                            s.push_str(&self.serialize_subtree_html(child_idx));
-                        }
-                        s.push_str(&format!("</{}>", el.tag));
+                        return s;
                     }
-                    return s;
-                }
-                AceNodeType::Text(t) => {
-                    return t
-                        .replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;");
-                }
-                AceNodeType::Comment(c) => {
-                    return format!("<!--{}-->", c);
-                }
-                AceNodeType::Document => {
-                    let mut s = String::new();
+
+                    s.push('>');
                     for &child_idx in &node.children {
                         s.push_str(&self.serialize_subtree_html(child_idx));
                     }
-                    return s;
+                    write!(s, "</{}>", el.tag).unwrap();
                 }
-                _ => return String::new(),
+                AceNodeType::Text(t) => {
+                    s.push_str(&self.escape_html(t));
+                }
+                AceNodeType::Comment(c) => {
+                    write!(s, "<!--{}-->", c).unwrap();
+                }
+                AceNodeType::Document | AceNodeType::DocumentFragment | AceNodeType::ShadowRoot => {
+                    for &child_idx in &node.children {
+                        s.push_str(&self.serialize_subtree_html(child_idx));
+                    }
+                }
             }
         }
-        "".to_string()
+        s
+    }
+
+    fn is_void_element(&self, tag: &str) -> bool {
+        matches!(
+            tag.to_lowercase().as_str(),
+            "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
+        )
+    }
+
+    fn escape_html(&self, s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '"' => out.push_str("&quot;"),
+                '\'' => out.push_str("&#39;"),
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    fn escape_attr(&self, s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '"' => out.push_str("&quot;"),
+                _ => out.push(c),
+            }
+        }
+        out
     }
 
     pub fn attach_shadow(&mut self, element_idx: usize) -> usize {
