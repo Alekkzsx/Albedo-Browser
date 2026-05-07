@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
 #[cfg(feature = "ace_html_parser")]
 use crate::ace::html::build_document_with_errors;

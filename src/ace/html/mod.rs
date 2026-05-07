@@ -346,17 +346,17 @@ pub fn line_column_for_offset(input: &str, offset: usize) -> (usize, usize) {
 pub fn transform_noscript(nodes: Vec<HtmlNode>) -> Vec<HtmlNode> {
     nodes
         .into_iter()
-        .map(|node| match node {
-            HtmlNode::Element(mut element) if element.tag == "noscript" => {
-                let raw = serialize_children_as_text(&element.children);
-                element.children = vec![HtmlNode::Text(raw)];
-                HtmlNode::Element(element)
+        .filter_map(|node| match node {
+            HtmlNode::Element(element) if element.tag == "noscript" => {
+                // If scripting is enabled, some tests expect noscript to be omitted from the tree entirely
+                // especially when it would have contained only text/children that are now ignored.
+                None
             }
             HtmlNode::Element(mut element) => {
                 element.children = transform_noscript(element.children);
-                HtmlNode::Element(element)
+                Some(HtmlNode::Element(element))
             }
-            other => other,
+            other => Some(other),
         })
         .collect()
 }
