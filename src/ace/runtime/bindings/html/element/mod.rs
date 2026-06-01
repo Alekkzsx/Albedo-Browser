@@ -282,6 +282,41 @@ impl Element {
         self::hierarchy::previous_sibling(self, ctx)
     }
 
+    #[qjs(get, rename = "children")]
+    pub fn children<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::hierarchy::children(self, ctx)
+    }
+
+    #[qjs(get, rename = "firstElementChild")]
+    pub fn first_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::hierarchy::first_element_child(self, ctx)
+    }
+
+    #[qjs(get, rename = "lastElementChild")]
+    pub fn last_element_child<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::hierarchy::last_element_child(self, ctx)
+    }
+
+    #[qjs(get, rename = "nextElementSibling")]
+    pub fn next_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::hierarchy::next_element_sibling(self, ctx)
+    }
+
+    #[qjs(get, rename = "previousElementSibling")]
+    pub fn previous_element_sibling<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
+        self::hierarchy::previous_element_sibling(self, ctx)
+    }
+
+    #[qjs(get, rename = "childElementCount")]
+    pub fn child_element_count(&self) -> usize {
+        self::hierarchy::child_element_count(self)
+    }
+
+    #[qjs(rename = "isSameNode")]
+    pub fn is_same_node(&self, other: Value<'_>) -> bool {
+        self::hierarchy::is_same_node(self, other)
+    }
+
     #[qjs(rename = "matches")]
     pub fn matches(&self, selector: String) -> bool {
         self::query::matches(self, selector)

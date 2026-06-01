@@ -348,9 +348,10 @@ pub fn transform_noscript(nodes: Vec<HtmlNode>) -> Vec<HtmlNode> {
         .into_iter()
         .filter_map(|node| match node {
             HtmlNode::Element(element) if element.tag == "noscript" => {
-                // If scripting is enabled, some tests expect noscript to be omitted from the tree entirely
-                // especially when it would have contained only text/children that are now ignored.
-                None
+                // With scripting enabled, html5ever keeps the noscript element
+                // and converts its children to text in the sink.
+                // We keep the element as-is (already processed by sink.rs).
+                Some(HtmlNode::Element(element))
             }
             HtmlNode::Element(mut element) => {
                 element.children = transform_noscript(element.children);

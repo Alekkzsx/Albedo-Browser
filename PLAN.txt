@@ -651,7 +651,12 @@
 │  Benchmark: Wikipedia, MDN, docs.rs, GitHub READMEs, blogs.                     │
 └──────────────────────────────────────────────────────────────────────────────────┘
 
-  Core Engine:
+  Infraestrutura de Testes e Correções Críticas:
+  [ ]  Corrigir caminhos quebrados de teste em ace_url_compliance_tests.rs e mod.rs (URL module)
+  [ ]  Restaurar os runtime_tests ausentes para validar JsRuntime e eventos
+  [ ]  Garantir que todos os testes unitários passem de forma limpa via 'cargo test'
+
+  Core Engine & Layout:
   [ ]  Corrigir rendering fidelity (text wrapping, overflow, box model TODOs)
   [ ]  Melhorar table rendering (border-collapse, border-spacing)
   [ ]  Melhorar image rendering (aspect-ratio, responsive)
@@ -659,6 +664,11 @@
   [ ]  Completar pseudo-elements rendering (::before, ::after conteúdo real)
   [ ]  Corrigir margin collapsing
   [ ]  Melhorar hit testing (z-index correto)
+
+  JavaScript & JIT Integration (AlbedoJIT):
+  [ ]  Ativar a integração híbrida do AlbedoJIT com o interpretador rquickjs
+  [ ]  Integrar e testar compiladores JIT Tier 0 (interpretador AIR) e Tier 1 (Baseline JIT) no fluxo de navegação
+  [ ]  Garantir que funções quentes em páginas reais rodem via compilação Cranelift com OSR e sem regressions
 
   DOM & JS Bindings:
   [ ]  document.cookie (leitura/escrita)
@@ -793,37 +803,32 @@
   [ ]  Acid 1/2/3 conformance
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                          ALBEDOJIT — PLANO DE LONGO PRAZO
+                          ALBEDOJIT — INTEGRAÇÃO ATIVA E CONTÍNUA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  O AlbedoJIT é o motor JavaScript JIT do Albedo, planejado para
-  o longo prazo. Só será priorizado quando:
-  1. O browser estiver funcional e renderizando sites reais (Fase 2+ completa)
-  2. Benchmarks mostrarem que o QuickJS é gargalo real de performance
-  3. Houver recursos (tempo/equipe) para um esforço de ~10.000-15.000 horas
+  O AlbedoJIT foi promovido a pilar central do Albedo Browser e está sendo
+  ativamente integrado a partir da Fase 1, operando como motor de execução principal
+  junto com o rquickjs em arquitetura híbrida.
 
-  O QuickJS já é o engine JS mais leve do mundo (~300KB). O AlbedoJIT só
-  justifica existir se for COMPROVADAMENTE melhor em alguma métrica concreta.
-
-  Arquitetura planejada:
+  Arquitetura de Compilação Híbrida Ativa:
   ┌─────────────────────────────────────────────────────────────────┐
   │  Tier 0: Interpretador AIR (cold code, startup rápido)         │
-  │  Tier 1: Baseline JIT (compilação rápida, ~50 invocações)     │
-  │  Tier 2: AlbedoTurbo (otimizações avançadas, ~5000 invocações)│
-  │  Bailout → Revert para Tier 0/1 se type guard falhar           │
+  │  Tier 1: Baseline JIT via Cranelift (compilação sem otim.)      │
+  │  Tier 2: AlbedoTurbo (otimizações avançadas, type feedback)     │
+  │  Bailout → Reversão para Tier 0/1 se type guard de deopt falhar │
   └─────────────────────────────────────────────────────────────────┘
 
-  Roadmap (quando ativado):
-  JIT-1: Pipeline mínimo (AIR, MIR SSA, assembler x86-64, register alloc)
-  JIT-2: Type specialization (IC slots, hidden classes, OSR, deopt)
-  JIT-3: Otimizações (inlining, loop opts, escape analysis, SIMD)
-  JIT-4: Garbage collector geracional (young/old, concurrent, write barriers)
-  JIT-5: DOM fast path (Rust→Rust sem FFI, zero-copy)
-  JIT-6: Conformance (Test262 ≥95%, fuzzing, ARM64)
-  JIT-7: Cutover (remover QuickJS do build)
+  Roadmap de Execução Ativo:
+  JIT-1 [Concluído]: Pipeline mínimo (AIR, assembler Cranelift nativo)
+  JIT-2 [Em Progresso]: Type specialization (IC slots, hidden classes, OSR, deopt)
+  JIT-3 [Em Progresso]: Otimizações Tier 2 (inlining, loop opts, escape analysis)
+  JIT-4 [Pendente]: Garbage collector geracional concorrente com write barriers
+  JIT-5 [Pendente]: DOM fast path (Rust->Rust bindings sem overhead de FFI)
+  JIT-6 [Pendente]: Conformance total (suíte Test262 >= 95%, fuzzing)
+  JIT-7 [Pendente]: Cutover (substituição completa de runtime quickjs se viável)
 
-  Metas: ≤1.5x mais lento que V8, 5-10x menos RAM, 2x mais rápido em startup.
-  Estimativa total: ~60.000-95.000 LOC | ~9.500-15.600h
+  Metas: Compilação nativa superando interpretadores puros, latência de inicialização
+  baixíssima e consumo de memória sob controle (< 10-15MB adicionais).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                           ARQUITETURA DE ARQUIVOS

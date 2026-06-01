@@ -17,10 +17,16 @@ pub struct ComputedCSSStyleDeclaration {
 impl ComputedCSSStyleDeclaration {
     #[qjs(rename = "getPropertyValue")]
     pub fn get_property_value(&self, property: String) -> String {
-        let _stylesheet = self.stylesheet.lock().unwrap();
-        let _dom = self.dom.lock().unwrap();
         let stylesheet_lock = self.stylesheet.lock().unwrap();
         let dom_lock = self.dom.lock().unwrap();
+        println!("[DEBUG-COMPUTED] get_property_value: node_idx = {}, property = {}", self.node_idx, property);
+        if let Some(node) = dom_lock.get_node(self.node_idx) {
+            println!("[DEBUG-COMPUTED] node = {:?}", node);
+        }
+        println!("[DEBUG-COMPUTED] author rules count = {}", stylesheet_lock.rules.len());
+        for (i, rule) in stylesheet_lock.rules.iter().enumerate() {
+            println!("[DEBUG-COMPUTED] rule {} = {:?}", i, rule);
+        }
         // stylesheet.calculate_style signature was updated in previous steps to accept &AceDOM and usize
         // For now, we don't have parent context easily available here without traversing up.
         // We'll pass None for parent_style for now (inheritance will be limited for JS query until we fix this loop).
