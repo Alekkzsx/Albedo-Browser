@@ -1010,15 +1010,29 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
     ) -> Result<Self::QualifiedRule, cssparser::ParseError<'i, Self::Error>> {
         let mut decls = Vec::new();
         while !input.is_exhausted() {
-            if let Ok(name) = input.expect_ident() {
+            let ident_res = input.expect_ident();
+            println!("[DEBUG-CSS-PARSE] expect_ident res: {:?}", ident_res);
+            if let Ok(name) = ident_res {
                 let name = name.to_string();
-                if input.expect_colon().is_ok() {
+                let colon_res = input.expect_colon();
+                println!("[DEBUG-CSS-PARSE] expect_colon res: {:?}", colon_res);
+                if colon_res.is_ok() {
                     let mut value_raw = String::new();
                     while !input.is_exhausted() {
                         match input.next() {
-                            Ok(cssparser::Token::Semicolon) => break,
-                            Ok(token) => value_raw.push_str(&token.to_css_string()),
-                            Err(_) => break,
+                            Ok(cssparser::Token::Semicolon) => {
+                                println!("[DEBUG-CSS-PARSE] Semicolon token hit in inner loop");
+                                break;
+                            }
+                            Ok(token) => {
+                                let tok_str = token.to_css_string();
+                                println!("[DEBUG-CSS-PARSE] Value token: {:?}", tok_str);
+                                value_raw.push_str(&tok_str);
+                            }
+                            Err(e) => {
+                                println!("[DEBUG-CSS-PARSE] Error token in inner loop: {:?}", e);
+                                break;
+                            }
                         }
                     }
 
@@ -1342,11 +1356,13 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
                             important: important,
                         }),
                     }
+                    continue;
                 }
             }
-            let _ = input.expect_semicolon();
+            let _ = input.next();
         }
 
+        println!("[DEBUG-CSS-PARSE] Returning QualifiedRule with {} decls", decls.len());
         Ok(AceRule {
             selectors: prelude,
             declarations: decls,
