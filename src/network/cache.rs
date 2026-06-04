@@ -1,4 +1,4 @@
-use crate::ace::util::hex::encode as hex_encode;
+use crate::utils::hex::encode as hex_encode;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -61,7 +61,7 @@ impl DiskCache {
     /// Initialize disk cache with database and directories
     pub fn new(max_size_bytes: u64) -> Result<Self, Box<dyn std::error::Error>> {
         // Determine cache directory: $HOME/.cache/albedo/http_cache/
-        let cache_dir = crate::ace::util::paths::cache_dir()
+        let cache_dir = crate::utils::paths::cache_dir()
             .join("albedo")
             .join("http_cache");
 

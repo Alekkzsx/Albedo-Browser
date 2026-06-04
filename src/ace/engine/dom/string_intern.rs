@@ -40,19 +40,16 @@ impl StringInterner {
     /// Interns uma string, retornando um Arc compartilhado
     pub fn intern(&mut self, s: &str) -> Arc<str> {
         self.stats.total_interns += 1;
-
         // Verificar se já existe
         if let Some(&id) = self.map.get(s) {
             self.stats.cache_hits += 1;
+            self.stats.memory_saved_bytes += s.len();
             return Arc::clone(&self.strings[id]);
         }
 
         // Nova string: alocar e registrar
         self.stats.cache_misses += 1;
         let arc = Arc::from(s);
-        let memory_saved = s.len() * self.map.len().max(1); // Estimativa conservadora
-        self.stats.memory_saved_bytes += memory_saved;
-
         let id = self.strings.len();
         self.map.insert(Arc::clone(&arc), id);
         self.strings.push(Arc::clone(&arc));

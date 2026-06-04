@@ -411,7 +411,7 @@ pub fn paint_layout_tree(
             match prim.input_type {
                 crate::ace::engine::types::FormInputType::Color => {
                     // Premium Color Button: Rounded and with a "chip" look
-                    if let Ok(color) = parse_hex_color(&prim.input_value) {
+                    if let Ok(color) = crate::utils::color::parse_hex_color(&prim.input_value) {
                         let mut paint = Paint::default();
                         paint.set_color(color);
                         paint.anti_alias = true;
@@ -707,29 +707,5 @@ pub fn paint_layout_tree(
                 _ => {}
             }
         }
-    }
-}
-
-fn parse_hex_color(hex: &str) -> Result<tiny_skia::Color, ()> {
-    if !hex.starts_with('#') || (hex.len() != 7 && hex.len() != 4) {
-        return Err(());
-    }
-
-    if hex.len() == 7 {
-        let r = u8::from_str_radix(&hex[1..3], 16).map_err(|_| ())?;
-        let g = u8::from_str_radix(&hex[3..5], 16).map_err(|_| ())?;
-        let b = u8::from_str_radix(&hex[5..7], 16).map_err(|_| ())?;
-        Ok(tiny_skia::Color::from_rgba8(r, g, b, 255))
-    } else {
-        let r_digit = u8::from_str_radix(&hex[1..2], 16).map_err(|_| ())?;
-        let g_digit = u8::from_str_radix(&hex[2..3], 16).map_err(|_| ())?;
-        let b_digit = u8::from_str_radix(&hex[3..4], 16).map_err(|_| ())?;
-        // Expandir dígito: 0xA => 0xAA == A * 17
-        Ok(tiny_skia::Color::from_rgba8(
-            r_digit * 17,
-            g_digit * 17,
-            b_digit * 17,
-            255,
-        ))
     }
 }

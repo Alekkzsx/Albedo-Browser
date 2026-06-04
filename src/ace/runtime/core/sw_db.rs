@@ -192,7 +192,7 @@ impl ServiceWorkerDatabase {
 
     pub fn save_cache(&self, name: String, origin: String) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap();
-        let id = crate::ace::util::uuid::Uuid::new_v4().to_string();
+        let id = crate::utils::uuid::Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

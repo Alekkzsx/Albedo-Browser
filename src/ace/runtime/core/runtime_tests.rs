@@ -359,7 +359,7 @@ async fn test_iframe_post_message() {
     // ---- Runtime filho ----
     let child_rt = JsRuntime::new().unwrap();
     *child_rt.origin.lock().unwrap() =
-        Some(crate::network::security::Origin::from_url("test://child").unwrap());
+        Some(crate::network::security::Origin::from_url("http://child").unwrap());
     crate::ace::runtime::core::init::register_events(&child_rt).unwrap();
     {
         let ctx = child_rt.context.lock().unwrap();
@@ -401,7 +401,7 @@ async fn test_iframe_post_message() {
     // ---- Runtime pai ----
     let parent_rt = JsRuntime::new().unwrap();
     *parent_rt.origin.lock().unwrap() =
-        Some(crate::network::security::Origin::from_url("test://parent").unwrap());
+        Some(crate::network::security::Origin::from_url("http://parent").unwrap());
     crate::ace::runtime::core::registry::register_runtime(
         parent_rt.id,
         Arc::new(Mutex::new(parent_rt.clone())),
@@ -415,7 +415,7 @@ async fn test_iframe_post_message() {
         engine.stylesheet.clone(),
         primitives,
         canvas_contexts,
-        "test://parent".to_string(),
+        "http://parent".to_string(),
         "".to_string(),
         None,
     )

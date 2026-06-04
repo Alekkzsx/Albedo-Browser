@@ -88,13 +88,13 @@ impl Canvas2D {
     // --- CONFIGURAÇÃO DE ESTILO ---
 
     pub fn set_fill_style(&mut self, hex: &str) {
-        if let Some(c) = parse_hex_color(hex) {
+        if let Some(c) = crate::utils::color::parse_hex_color(hex).ok() {
             self.state.fill_color = c;
         }
     }
 
     pub fn set_stroke_style(&mut self, hex: &str) {
-        if let Some(c) = parse_hex_color(hex) {
+        if let Some(c) = crate::utils::color::parse_hex_color(hex).ok() {
             self.state.stroke_color = c;
         }
     }
@@ -213,39 +213,4 @@ impl Canvas2D {
     }
 }
 
-// --- AUXILIAR: PARSER DE CORES LEVE ---
 
-fn parse_hex_color(hex: &str) -> Option<Color> {
-    if !hex.starts_with('#') {
-        return None;
-    }
-
-    let hex = hex.trim_start_matches('#');
-    let (r, g, b, a) = match hex.len() {
-        3 => {
-            // #RGB
-            let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
-            let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
-            let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
-            (r * 17, g * 17, b * 17, 255)
-        }
-        6 => {
-            // #RRGGBB
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            (r, g, b, 255)
-        }
-        8 => {
-            // #RRGGBBAA
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
-            (r, g, b, a)
-        }
-        _ => return None,
-    };
-
-    Some(Color::from_rgba8(r, g, b, a))
-}

@@ -470,6 +470,36 @@ pub fn parse(input: &str, base: Option<&Url>) -> Result<Url, UrlError> {
                 url.host = Some(parse_host(&buffer));
             }
         }
+        State::Authority => {
+            if !buffer.is_empty() {
+                let auth_str = buffer.clone();
+                if auth_str.starts_with('[') {
+                    if let Some(bracket_end) = auth_str.find(']') {
+                        let ipv6_part = &auth_str[1..bracket_end];
+                        if let Ok(addr) = ipv6_part.parse::<std::net::Ipv6Addr>() {
+                            url.host = Some(super::types::Host::Ipv6(addr));
+                        } else {
+                            url.host = Some(parse_host(&auth_str[..=bracket_end]));
+                        }
+                        let after_bracket = &auth_str[bracket_end + 1..];
+                        if let Some(port_str) = after_bracket.strip_prefix(':') {
+                            url.port = port_str.parse().ok();
+                        }
+                    } else {
+                        url.host = Some(parse_host(&auth_str));
+                    }
+                } else if let Some(colon_idx) = auth_str.find(':') {
+                    let host_part = &auth_str[..colon_idx];
+                    let port_part = &auth_str[colon_idx + 1..];
+                    url.host = Some(parse_host(host_part));
+                    if !port_part.is_empty() {
+                        url.port = port_part.parse().ok();
+                    }
+                } else {
+                    url.host = Some(parse_host(&auth_str));
+                }
+            }
+        }
         State::Path => {
             if !buffer.is_empty() {
                 let decoded = percent_encoding::decode(&buffer);

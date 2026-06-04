@@ -142,7 +142,7 @@ fn fetch_module_source(url: &str) -> Option<String> {
             // Check if base64 encoded
             let prefix = &url[..comma_pos];
             if prefix.contains(";base64") {
-                if let Ok(decoded) = crate::ace::util::base64::decode(data) {
+                if let Ok(decoded) = crate::utils::base64::decode(data) {
                     return String::from_utf8(decoded).ok();
                 }
             } else {

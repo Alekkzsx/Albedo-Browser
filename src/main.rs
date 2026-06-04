@@ -1,6 +1,6 @@
 #![allow(warnings)]
 
-use albedo::ace::util::sysinfo::AceSysInfo;
+use albedo::utils::sysinfo::AceSysInfo;
 use albedo::browser;
 use albedo::ui;
 

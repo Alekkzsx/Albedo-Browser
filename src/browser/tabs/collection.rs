@@ -1,5 +1,5 @@
 use super::tab::Tab;
-use crate::ace::util::uuid::Uuid;
+use crate::utils::uuid::Uuid;
 
 pub struct TabCollection {
     pub tabs: Vec<Tab>,

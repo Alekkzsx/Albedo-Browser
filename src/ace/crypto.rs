@@ -6,7 +6,7 @@ pub mod sha1 {
 
 pub mod sha2 {
     pub fn sha256(_data: &[u8]) -> [u8; 32] {
-        [0; 32]
+        crate::utils::crypto::sha256(_data)
     }
     pub fn sha384(_data: &[u8]) -> [u8; 48] {
         [0; 48]
@@ -72,8 +72,6 @@ pub mod hmac {
 
 pub mod random {
     pub fn get_random_bytes(buf: &mut [u8]) {
-        for b in buf.iter_mut() {
-            *b = 0;
-        }
+        crate::utils::crypto::get_random_bytes(buf);
     }
 }

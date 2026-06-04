@@ -268,7 +268,7 @@ impl ResourceManager {
                     };
 
                     let data = if is_base64 {
-                        crate::ace::util::base64::decode(data_part).unwrap_or_default()
+                        crate::utils::base64::decode(data_part).unwrap_or_default()
                     } else {
                         crate::ace::url::percent_encoding::decode(data_part).into_bytes()
                     };

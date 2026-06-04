@@ -142,6 +142,7 @@ version = "0.1.0"
 dependencies = [
  "albedo-jit",
  "arboard",
+ "base64",
  "brotli",
  "bstr",
  "bumpalo",
@@ -171,6 +172,7 @@ dependencies = [
  "precomputed-hash",
  "proptest",
  "quinn",
+ "rand 0.8.5",
  "raw-window-handle",
  "rayon",
  "reqwest",
@@ -183,12 +185,14 @@ dependencies = [
  "rustls-native-certs",
  "selectors",
  "serde_json",
+ "sha2",
  "simdutf8",
  "slint",
  "slint-build",
  "smallvec",
  "smol_str 0.2.2",
  "string-interner",
+ "sysinfo",
  "taffy",
  "tiny-skia",
  "tokio",
@@ -196,6 +200,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "usvg",
+ "uuid",
  "wgpu",
  "zstd",
 ]
@@ -4282,6 +4287,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ntapi"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6264,6 +6278,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6783,6 +6808,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+ "memchr",
+ "ntapi",
+ "rayon",
+ "windows 0.54.0",
 ]
 
 [[package]]
@@ -7550,6 +7589,7 @@ version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
 dependencies = [
+ "getrandom 0.3.4",
  "js-sys",
  "serde_core",
  "wasm-bindgen",

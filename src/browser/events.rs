@@ -1,4 +1,4 @@
-use crate::ace::util::sysinfo::AceSysInfo;
+use crate::utils::sysinfo::AceSysInfo;
 use crate::browser::bridge::sync_ace_visuals;
 use crate::browser::tabs::manager::TabManager;
 use crate::ui::{AppWindow, TabData};

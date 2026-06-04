@@ -62,6 +62,9 @@ impl Http3Client {
     /// O client é leve (~1KB de estado base) e compartilhável via `Clone` (usa `Arc` internamente).
     /// O endpoint QUIC usa um único socket UDP bound a uma porta efêmera.
     pub fn new() -> Result<Self, Box<dyn Error>> {
+        // Instalar o CryptoProvider padrão (ring) para rustls
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         // 1. Carregar certificados raiz nativos do sistema operacional
         let mut roots = rustls::RootCertStore::empty();
         let native_result = rustls_native_certs::load_native_certs();
