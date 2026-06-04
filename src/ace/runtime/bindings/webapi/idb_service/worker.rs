@@ -91,7 +91,7 @@ impl IDBServiceWorker {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<IDBWorkerCommand>();
         let el_tx = event_loop_tx.clone();
 
-        tokio::task::spawn_blocking(move || {
+        std::thread::spawn(move || {
             let mut connections: HashMap<String, Connection> = HashMap::new();
             let mut active_transactions: HashMap<usize, (String, String)> = HashMap::new();
 

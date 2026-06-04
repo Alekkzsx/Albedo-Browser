@@ -134,14 +134,14 @@ pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     globals.set(
         "btoa",
         rquickjs::Function::new(ctx.clone(), move |s: String| -> String {
-            crate::ace::util::base64::encode(s.as_bytes())
+            crate::utils::base64::encode(s.as_bytes())
         }),
     )?;
 
     globals.set(
         "atob",
         rquickjs::Function::new(ctx.clone(), move |s: String| -> Result<String> {
-            crate::ace::util::base64::decode(&s)
+            crate::utils::base64::decode(&s)
                 .map(|b| String::from_utf8_lossy(&b).to_string())
                 .map_err(|_| rquickjs::Error::new_from_js("Invalid base64", "Error"))
         }),

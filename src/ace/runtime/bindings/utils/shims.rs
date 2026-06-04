@@ -2,31 +2,7 @@ use crate::ace::runtime::core::runtime::JsRuntime;
 use rquickjs::{Class, Result};
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, rquickjs::class::Trace)]
-#[rquickjs::class]
-pub struct History {}
 
-#[rquickjs::methods]
-impl History {
-    #[qjs(get)]
-    pub fn length(&self) -> i32 {
-        1
-    }
-
-    #[qjs(rename = "pushState")]
-    pub fn push_state(&self) {
-        // Stub
-    }
-
-    #[qjs(rename = "replaceState")]
-    pub fn replace_state(&self) {
-        // Stub
-    }
-
-    pub fn back(&self) {}
-    pub fn forward(&self) {}
-    pub fn go(&self) {}
-}
 
 #[derive(Clone, rquickjs::class::Trace)]
 #[rquickjs::class]
@@ -70,11 +46,7 @@ pub struct Performance {}
 #[rquickjs::methods]
 impl Performance {
     pub fn now(&self) -> f64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64()
-            * 1000.0
+        crate::utils::time::monotonic_now()
     }
 }
 
@@ -82,9 +54,6 @@ pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
             let global = ctx.globals();
-
-            let history = Class::instance(ctx.clone(), History {})?;
-            global.set("history", history)?;
 
             let screen = Class::instance(
                 ctx.clone(),

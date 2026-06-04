@@ -128,7 +128,7 @@ impl IndexedDB {
         };
         let req = IDBOpenDBRequest { request: req_base };
 
-        let path = crate::ace::util::paths::config_dir()
+        let path = crate::utils::paths::config_dir()
             .join("albedo")
             .join("indexeddb")
             .join(format!(

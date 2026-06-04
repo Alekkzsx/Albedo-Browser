@@ -136,8 +136,10 @@ mod tests {
 
     #[test]
     fn test_storage_persistence() {
-        let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("albedo_test_storage.json");
+        let path = std::env::current_dir()
+            .unwrap()
+            .join("target")
+            .join("albedo_test_storage.json");
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
         }

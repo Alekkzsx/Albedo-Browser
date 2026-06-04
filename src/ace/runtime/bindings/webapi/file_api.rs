@@ -125,7 +125,7 @@ impl File {
         options: Option<Object<'_>>,
     ) -> Result<Self> {
         let blob = Blob::new(ctx, parts, options.clone())?;
-        let mut last_modified = crate::ace::util::time::now().unix_timestamp_millis();
+        let mut last_modified = crate::utils::time::unix_timestamp_millis();
         if let Some(opts) = options {
             last_modified = opts.get("lastModified").unwrap_or(last_modified);
         }
@@ -241,7 +241,7 @@ impl FileReader {
         let mime_type = blob.mime_type.clone();
 
         // Perform conversion synchronously (data in memory)
-        let base64_str = crate::ace::util::base64::encode(&blob_data);
+        let base64_str = crate::utils::base64::encode(&blob_data);
         let result_str = format!("data:{};base64,{}", mime_type, base64_str);
         rt.with_context(|ctx| {
             ctx.with(|ctx| {

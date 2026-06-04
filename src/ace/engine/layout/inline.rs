@@ -602,7 +602,7 @@ mod tests {
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let measurer = crate::ace::engine::text::TextMeasurer::new(font_system);
         let mut ifc = InlineFormattingContext::new(
-            120.0,
+            50.0,
             measurer,
             crate::ace::engine::style::css_values::CssTextOverflow::Ellipsis,
         );

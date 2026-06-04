@@ -402,7 +402,7 @@ mod tests {
         "#);
         
         // Pega o primeiro div
-        let root_idx = 0;
+        let root_idx = dom.query_selector("div").unwrap();
         let children = ChildrenCollection::new(root_idx);
         
         // Deve retornar apenas elements (3: span, p, div)

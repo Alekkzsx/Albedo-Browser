@@ -205,15 +205,29 @@ impl Range {
         let start_node = self.start_container;
         let end_node = self.end_container;
         
-        // Se start e end são o mesmo nó (text node geralmente)
+        // Se start e end são o mesmo nó (text node ou element)
         if start_node == end_node {
-            if let Some(node) = dom.get_node_mut(start_node) {
-                if node.node_type() == NodeType::Text {
+            let is_text = dom.get_node(start_node).map_or(false, |n| n.node_type() == NodeType::Text);
+            if is_text {
+                if let Some(node) = dom.get_node_mut(start_node) {
                     let text = node.text_content().unwrap_or_default();
                     let before = &text[..self.start_offset.min(text.len())];
                     let after = &text[self.end_offset.min(text.len())..];
                     let new_text = format!("{}{}", before, after);
                     node.set_text_content(&new_text);
+                }
+            } else {
+                // Remove children between start_offset and end_offset
+                let mut to_remove = Vec::new();
+                if let Some(node) = dom.get_node(start_node) {
+                    let start = self.start_offset.min(node.children.len());
+                    let end = self.end_offset.min(node.children.len());
+                    for i in start..end {
+                        to_remove.push(node.children[i]);
+                    }
+                }
+                for child_idx in to_remove {
+                    dom.remove_node_from_parent(child_idx);
                 }
             }
         }
@@ -269,7 +283,24 @@ impl Range {
             self.set_end(node, child_count);
         }
     }
-    
+}
+
+fn get_all_text_content(node_idx: NodeId, dom: &AceDOM) -> String {
+    let mut text = String::new();
+    if let Some(node) = dom.get_node(node_idx) {
+        match &node.node_type {
+            crate::ace::engine::dom::AceNodeType::Text(t) => text.push_str(t),
+            _ => {
+                for &child in &node.children {
+                    text.push_str(&get_all_text_content(child, dom));
+                }
+            }
+        }
+    }
+    text
+}
+
+impl Range {
     /// Retorna o texto contido no range
     pub fn to_string(&self, dom: &AceDOM) -> String {
         if self.collapsed {
@@ -288,6 +319,13 @@ impl Range {
                     if start < end {
                         result.push_str(&text[start..end]);
                     }
+                } else {
+                    let start = self.start_offset.min(node.children.len());
+                    let end = self.end_offset.min(node.children.len());
+                    for i in start..end {
+                        let child_idx = node.children[i];
+                        result.push_str(&get_all_text_content(child_idx, dom));
+                    }
                 }
             }
             return result;
@@ -300,6 +338,12 @@ impl Range {
                 let text = node.text_content().unwrap_or_default();
                 let start = self.start_offset.min(text.len());
                 result.push_str(&text[start..]);
+            } else {
+                let start = self.start_offset.min(node.children.len());
+                for i in start..node.children.len() {
+                    let child_idx = node.children[i];
+                    result.push_str(&get_all_text_content(child_idx, dom));
+                }
             }
         }
         
@@ -309,6 +353,12 @@ impl Range {
                 let end = self.end_offset.min(text.len());
                 if end > 0 {
                     result.push_str(&text[..end]);
+                }
+            } else {
+                let end = self.end_offset.min(node.children.len());
+                for i in 0..end {
+                    let child_idx = node.children[i];
+                    result.push_str(&get_all_text_content(child_idx, dom));
                 }
             }
         }
