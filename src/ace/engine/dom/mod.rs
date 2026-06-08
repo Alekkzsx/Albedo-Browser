@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
+use crate::ace::utils::{escape_html, escape_attr, is_void_element};
 #[cfg(feature = "ace_html_parser")]
 use crate::ace::html::build_document_with_errors;
 // kuchiki removido - usando ACE-HTML parser proprietário
@@ -876,10 +877,10 @@ impl AceDOM {
                     attrs.sort_by_key(|(k, _)| *k);
 
                     for (name, value) in attrs {
-                        write!(s, " {}=\"{}\"", name, self.escape_attr(value)).unwrap();
+                        write!(s, " {}=\"{}\"", name, escape_attr(value)).unwrap();
                     }
 
-                    if self.is_void_element(&el.tag) {
+                    if is_void_element(&el.tag) {
                         s.push('>');
                         return s;
                     }
@@ -891,7 +892,7 @@ impl AceDOM {
                     write!(s, "</{}>", el.tag).unwrap();
                 }
                 AceNodeType::Text(t) => {
-                    s.push_str(&self.escape_html(t));
+                    s.push_str(&escape_html(t));
                 }
                 AceNodeType::Comment(c) => {
                     write!(s, "<!--{}-->", c).unwrap();
@@ -904,40 +905,6 @@ impl AceDOM {
             }
         }
         s
-    }
-
-    fn is_void_element(&self, tag: &str) -> bool {
-        matches!(
-            tag.to_lowercase().as_str(),
-            "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
-        )
-    }
-
-    fn escape_html(&self, s: &str) -> String {
-        let mut out = String::with_capacity(s.len());
-        for c in s.chars() {
-            match c {
-                '&' => out.push_str("&amp;"),
-                '<' => out.push_str("&lt;"),
-                '>' => out.push_str("&gt;"),
-                '"' => out.push_str("&quot;"),
-                '\'' => out.push_str("&#39;"),
-                _ => out.push(c),
-            }
-        }
-        out
-    }
-
-    fn escape_attr(&self, s: &str) -> String {
-        let mut out = String::with_capacity(s.len());
-        for c in s.chars() {
-            match c {
-                '&' => out.push_str("&amp;"),
-                '"' => out.push_str("&quot;"),
-                _ => out.push(c),
-            }
-        }
-        out
     }
 
     pub fn attach_shadow(&mut self, element_idx: usize) -> usize {

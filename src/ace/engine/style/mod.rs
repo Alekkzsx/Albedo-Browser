@@ -1,11 +1,14 @@
 use crate::ace::engine::dom::{AceDOM, AceNodeType};
 use cssparser::{CowRcStr, ParseError, Parser, ParserInput, SourceLocation, ToCss};
-use precomputed_hash::PrecomputedHash;
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::matching::{ElementSelectorFlags, MatchingContext, MatchingMode};
 use selectors::OpaqueElement;
 use std::collections::HashMap;
+
 pub mod css_values;
+pub mod selector;
+pub mod animation;
+
 use self::css_values::{
     BackgroundImage, BoxShadow, ComputedStyle, CssAlignContent, CssAlignItems, CssBlendMode,
     CssBoxSizing, CssClear, CssColor, CssContent, CssCursor, CssDisplay, CssFlexDirection,
@@ -15,8 +18,7 @@ use self::css_values::{
 };
 use crate::ace::engine::CssFilter;
 use crate::ace::engine::TransformFunction;
-
-pub mod animation;
+use self::selector::{AceIdent, AceSelectorImpl, AceElement, AcePseudoElement, AceNonTSPseudoClass};
 
 pub struct Stylesheet {
     pub user_agent_rules: Vec<AceRule>,
@@ -179,163 +181,8 @@ pub struct Declaration {
     pub important: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub struct AceIdent(pub String);
-
-impl AceIdent {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-}
-
-impl ToCss for AceIdent {
-    fn to_css<W>(&self, dest: &mut W) -> std::fmt::Result
-    where
-        W: std::fmt::Write,
-    {
-        dest.write_str(&self.0)
-    }
-}
-
-impl From<String> for AceIdent {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl<'a> From<&'a str> for AceIdent {
-    fn from(s: &'a str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-impl PrecomputedHash for AceIdent {
-    fn precomputed_hash(&self) -> u32 {
-        0 // Simplificado para ACE Engine
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AceSelectorImpl;
-
-impl selectors::parser::SelectorImpl for AceSelectorImpl {
-    type ExtraMatchingData<'a> = ();
-    type AttrValue = AceIdent;
-    type Identifier = AceIdent;
-    type LocalName = AceIdent;
-    type NamespaceUrl = AceIdent;
-    type NamespacePrefix = AceIdent;
-    type BorrowedNamespaceUrl = AceIdent;
-    type BorrowedLocalName = AceIdent;
-
-    type PseudoElement = AcePseudoElement;
-    type NonTSPseudoClass = AceNonTSPseudoClass;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AcePseudoElement {
-    Before,
-    After,
-    Placeholder,
-    Selection,
-    Marker,
-}
-
-impl AcePseudoElement {
-    pub fn name(&self) -> &str {
-        match self {
-            AcePseudoElement::Before => "before",
-            AcePseudoElement::After => "after",
-            AcePseudoElement::Placeholder => "placeholder",
-            AcePseudoElement::Selection => "selection",
-            AcePseudoElement::Marker => "marker",
-        }
-    }
-}
-
-impl selectors::parser::PseudoElement for AcePseudoElement {
-    type Impl = AceSelectorImpl;
-}
-
-impl ToCss for AcePseudoElement {
-    fn to_css<W>(&self, dest: &mut W) -> std::fmt::Result
-    where
-        W: std::fmt::Write,
-    {
-        write!(dest, "::{}", self.name())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AceNonTSPseudoClass {
-    Hover,
-    Focus,
-    Active,
-    FirstChild,
-    LastChild,
-    NthChild(i32, i32), // a, b
-    FirstOfType,
-    LastOfType,
-    OnlyChild,
-    Link,
-    Visited,
-    Empty,
-}
-
-impl AceNonTSPseudoClass {
-    pub fn name(&self) -> &str {
-        match self {
-            AceNonTSPseudoClass::Hover => "hover",
-            AceNonTSPseudoClass::Focus => "focus",
-            AceNonTSPseudoClass::Active => "active",
-            AceNonTSPseudoClass::FirstChild => "first-child",
-            AceNonTSPseudoClass::LastChild => "last-child",
-            AceNonTSPseudoClass::NthChild(_, _) => "nth-child",
-            AceNonTSPseudoClass::FirstOfType => "first-of-type",
-            AceNonTSPseudoClass::LastOfType => "last-of-type",
-            AceNonTSPseudoClass::OnlyChild => "only-child",
-            AceNonTSPseudoClass::Link => "link",
-            AceNonTSPseudoClass::Visited => "visited",
-            AceNonTSPseudoClass::Empty => "empty",
-        }
-    }
-}
-
-impl selectors::parser::NonTSPseudoClass for AceNonTSPseudoClass {
-    type Impl = AceSelectorImpl;
-    fn is_active_or_hover(&self) -> bool {
-        matches!(
-            self,
-            AceNonTSPseudoClass::Hover | AceNonTSPseudoClass::Active
-        )
-    }
-    fn is_user_action_state(&self) -> bool {
-        matches!(
-            self,
-            AceNonTSPseudoClass::Hover | AceNonTSPseudoClass::Focus | AceNonTSPseudoClass::Active
-        )
-    }
-}
-impl ToCss for AceNonTSPseudoClass {
-    fn to_css<W>(&self, dest: &mut W) -> std::fmt::Result
-    where
-        W: std::fmt::Write,
-    {
-        dest.write_str(self.name())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct AceElement<'a> {
-    pub dom: &'a AceDOM,
-    pub index: usize,
-    pub hovered_element: Option<usize>,
-    pub focused_element: Option<usize>,
-    pub active_element: Option<usize>,
-}
+// Re-export types from selector module for backward compatibility
+pub use self::selector::{AceIdent, AceSelectorImpl, AcePseudoElement, AceNonTSPseudoClass, AceElement};
 
 impl<'a> selectors::Element for AceElement<'a> {
     type Impl = AceSelectorImpl;

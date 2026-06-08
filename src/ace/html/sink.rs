@@ -348,20 +348,13 @@ pub fn attribute_name_to_string(name: &QualName) -> String {
 }
 
 pub fn serialize_children_as_text(children: &[HtmlNode]) -> String {
+    let options = crate::ace::html::serializer::SerializeOptions {
+        indent: None,
+        escape_text: false,
+    };
     let mut out = String::new();
     for child in children {
-        match child {
-            HtmlNode::Element(element) => {
-                out.push('<');
-                out.push_str(&element.tag);
-                out.push('>');
-                out.push_str(&serialize_children_as_text(&element.children));
-                out.push_str("</");
-                out.push_str(&element.tag);
-                out.push('>');
-            }
-            HtmlNode::Text(text) | HtmlNode::Comment(text) => out.push_str(text),
-        }
+        out.push_str(&crate::ace::html::serializer::serialize_node(child, &options));
     }
     out
 }

@@ -5,6 +5,7 @@ use super::types::{
     Namespace
 };
 use super::preloads::extract_preloads;
+use crate::ace::utils::is_void_element;
 
 const FAST_PATH_MIN_BYTES: usize = 16 * 1024;
 
@@ -300,22 +301,12 @@ fn parse_fast_attr_value(html: &str, idx: &mut usize) -> Option<String> {
     }
 }
 
-fn is_void_element(tag: &str) -> bool {
-    matches!(
-        tag,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fast_parse() {
+        // testes existentes se houverem
+    }
 }

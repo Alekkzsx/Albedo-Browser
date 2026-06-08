@@ -2,7 +2,11 @@ use crate::parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+// Importa a função utilitária comum em vez de duplicar
+fn current_timestamp_ms() -> u64 {
+    albedo_browser::ace::utils::current_timestamp_ms()
+}
 
 /// Identificador único para uma função JavaScript.
 /// Composto pelo nome do script/função e um hash do código/posição.
@@ -163,14 +167,6 @@ impl JitProfiler {
         self.counters.write().clear();
         self.hot_queue.lock().clear();
     }
-}
-
-// Helper para obter MS exatos da epoch pra metadata.
-fn current_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 #[cfg(test)]

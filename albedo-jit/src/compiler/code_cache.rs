@@ -7,10 +7,14 @@ use crate::parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::engine::profiler::FunctionId;
 use cranelift_module::FuncId;
+
+// Wrapper para usar a função utilitária comum
+fn current_timestamp_ms() -> u64 {
+    albedo_browser::ace::utils::current_timestamp_ms()
+}
 
 /// Wrapper thread-safe para o ponteiro de código nativo.
 /// SAFETY: O código JIT-compilado é imutável após a geração e reside em memória executável.
@@ -193,13 +197,6 @@ pub fn get_global_code_cache() -> Arc<CodeCache> {
     GLOBAL_CODE_CACHE
         .get_or_init(|| Arc::new(CodeCache::new()))
         .clone()
-}
-
-fn current_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 #[cfg(test)]

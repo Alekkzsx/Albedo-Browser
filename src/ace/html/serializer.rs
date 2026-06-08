@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use super::types::{HtmlDocument, HtmlNode, HtmlElement, DoctypeToken};
+use crate::ace::utils::{escape_html, escape_attr, is_void_element};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SerializeOptions {
@@ -126,36 +127,12 @@ fn serialize_element(
     write!(out, "</{}>", el.tag).unwrap();
 }
 
-fn is_void_element(tag: &str) -> bool {
-    matches!(
-        tag.to_lowercase().as_str(),
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
-    )
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
-        }
+    #[test]
+    fn test_serialize_document() {
+        // testes existentes se houverem
     }
-    out
-}
-
-fn escape_attr(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
 }
