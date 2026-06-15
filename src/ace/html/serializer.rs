@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use super::types::{HtmlDocument, HtmlNode, HtmlElement, DoctypeToken};
+use super::types::{HtmlDocument, HtmlNode, HtmlElement, DoctypeToken, is_void_element};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SerializeOptions {
@@ -126,12 +126,7 @@ fn serialize_element(
     write!(out, "</{}>", el.tag).unwrap();
 }
 
-fn is_void_element(tag: &str) -> bool {
-    matches!(
-        tag.to_lowercase().as_str(),
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
-    )
-}
+
 
 fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

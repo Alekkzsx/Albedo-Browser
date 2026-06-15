@@ -1,5 +1,5 @@
 use std::fmt::Write;
-use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode};
+use crate::ace::html::{parse_fragment, HtmlDocument, HtmlNode, is_void_element};
 #[cfg(feature = "ace_html_parser")]
 use crate::ace::html::build_document_with_errors;
 // kuchiki removido - usando ACE-HTML parser proprietário
@@ -879,7 +879,7 @@ impl AceDOM {
                         write!(s, " {}=\"{}\"", name, self.escape_attr(value)).unwrap();
                     }
 
-                    if self.is_void_element(&el.tag) {
+                    if is_void_element(&el.tag) {
                         s.push('>');
                         return s;
                     }
@@ -906,12 +906,7 @@ impl AceDOM {
         s
     }
 
-    fn is_void_element(&self, tag: &str) -> bool {
-        matches!(
-            tag.to_lowercase().as_str(),
-            "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
-        )
-    }
+
 
     fn escape_html(&self, s: &str) -> String {
         let mut out = String::with_capacity(s.len());

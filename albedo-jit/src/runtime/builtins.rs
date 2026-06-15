@@ -101,56 +101,102 @@ impl BuiltinId {
             _ => return None,
         })
     }
+
+    pub fn from_u32(id: u32) -> Option<Self> {
+        use BuiltinId::*;
+        Some(match id {
+            x if x == MathAbs as u32 => MathAbs,
+            x if x == MathAcos as u32 => MathAcos,
+            x if x == MathAcosh as u32 => MathAcosh,
+            x if x == MathAsin as u32 => MathAsin,
+            x if x == MathAsinh as u32 => MathAsinh,
+            x if x == MathAtan as u32 => MathAtan,
+            x if x == MathAtan2 as u32 => MathAtan2,
+            x if x == MathAtanh as u32 => MathAtanh,
+            x if x == MathCbrt as u32 => MathCbrt,
+            x if x == MathCeil as u32 => MathCeil,
+            x if x == MathClz32 as u32 => MathClz32,
+            x if x == MathCos as u32 => MathCos,
+            x if x == MathCosh as u32 => MathCosh,
+            x if x == MathExp as u32 => MathExp,
+            x if x == MathExpm1 as u32 => MathExpm1,
+            x if x == MathFloor as u32 => MathFloor,
+            x if x == MathFround as u32 => MathFround,
+            x if x == MathHypot as u32 => MathHypot,
+            x if x == MathImul as u32 => MathImul,
+            x if x == MathLog as u32 => MathLog,
+            x if x == MathLog1p as u32 => MathLog1p,
+            x if x == MathLog10 as u32 => MathLog10,
+            x if x == MathLog2 as u32 => MathLog2,
+            x if x == MathMax as u32 => MathMax,
+            x if x == MathMin as u32 => MathMin,
+            x if x == MathPow as u32 => MathPow,
+            x if x == MathRandom as u32 => MathRandom,
+            x if x == MathRound as u32 => MathRound,
+            x if x == MathSign as u32 => MathSign,
+            x if x == MathSin as u32 => MathSin,
+            x if x == MathSinh as u32 => MathSinh,
+            x if x == MathSqrt as u32 => MathSqrt,
+            x if x == MathTan as u32 => MathTan,
+            x if x == MathTanh as u32 => MathTanh,
+            x if x == MathTrunc as u32 => MathTrunc,
+            x if x == ArrayPush as u32 => ArrayPush,
+            x if x == ArrayPop as u32 => ArrayPop,
+            x if x == StringCharAt as u32 => StringCharAt,
+            x if x == JsonParse as u32 => JsonParse,
+            _ => return None,
+        })
+    }
 }
 
 pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
     match id {
-        BuiltinId::MathAbs => JsValue::float64(to_number(arg(args, 0)).abs()),
-        BuiltinId::MathAcos => JsValue::float64(to_number(arg(args, 0)).acos()),
-        BuiltinId::MathAcosh => JsValue::float64(to_number(arg(args, 0)).acosh()),
-        BuiltinId::MathAsin => JsValue::float64(to_number(arg(args, 0)).asin()),
-        BuiltinId::MathAsinh => JsValue::float64(to_number(arg(args, 0)).asinh()),
-        BuiltinId::MathAtan => JsValue::float64(to_number(arg(args, 0)).atan()),
+        BuiltinId::MathAbs => JsValue::float64(arg(args, 0).to_number().abs()),
+        BuiltinId::MathAcos => JsValue::float64(arg(args, 0).to_number().acos()),
+        BuiltinId::MathAcosh => JsValue::float64(arg(args, 0).to_number().acosh()),
+        BuiltinId::MathAsin => JsValue::float64(arg(args, 0).to_number().asin()),
+        BuiltinId::MathAsinh => JsValue::float64(arg(args, 0).to_number().asinh()),
+        BuiltinId::MathAtan => JsValue::float64(arg(args, 0).to_number().atan()),
         BuiltinId::MathAtan2 => {
-            JsValue::float64(to_number(arg(args, 0)).atan2(to_number(arg(args, 1))))
+            JsValue::float64(arg(args, 0).to_number().atan2(arg(args, 1).to_number()))
         }
-        BuiltinId::MathAtanh => JsValue::float64(to_number(arg(args, 0)).atanh()),
-        BuiltinId::MathCbrt => JsValue::float64(to_number(arg(args, 0)).cbrt()),
-        BuiltinId::MathCeil => JsValue::float64(to_number(arg(args, 0)).ceil()),
+        BuiltinId::MathAtanh => JsValue::float64(arg(args, 0).to_number().atanh()),
+        BuiltinId::MathCbrt => JsValue::float64(arg(args, 0).to_number().cbrt()),
+        BuiltinId::MathCeil => JsValue::float64(arg(args, 0).to_number().ceil()),
         BuiltinId::MathClz32 => {
-            let v = to_int32(arg(args, 0)) as u32;
+            let v = arg(args, 0).to_int32() as u32;
             JsValue::int32(v.leading_zeros() as i32)
         }
-        BuiltinId::MathCos => JsValue::float64(to_number(arg(args, 0)).cos()),
-        BuiltinId::MathCosh => JsValue::float64(to_number(arg(args, 0)).cosh()),
-        BuiltinId::MathExp => JsValue::float64(to_number(arg(args, 0)).exp()),
-        BuiltinId::MathExpm1 => JsValue::float64(to_number(arg(args, 0)).exp_m1()),
-        BuiltinId::MathFloor => JsValue::float64(to_number(arg(args, 0)).floor()),
-        BuiltinId::MathFround => JsValue::float64((to_number(arg(args, 0)) as f32) as f64),
+        BuiltinId::MathCos => JsValue::float64(arg(args, 0).to_number().cos()),
+        BuiltinId::MathCosh => JsValue::float64(arg(args, 0).to_number().cosh()),
+        BuiltinId::MathExp => JsValue::float64(arg(args, 0).to_number().exp()),
+        BuiltinId::MathExpm1 => JsValue::float64(arg(args, 0).to_number().exp_m1()),
+        BuiltinId::MathFloor => JsValue::float64(arg(args, 0).to_number().floor()),
+        BuiltinId::MathFround => JsValue::float64((arg(args, 0).to_number() as f32) as f64),
         BuiltinId::MathHypot => {
             let mut sum = 0.0;
             for v in args {
-                let n = to_number(*v);
+                let n = v.to_number();
                 sum += n * n;
             }
             JsValue::float64(sum.sqrt())
         }
         BuiltinId::MathImul => {
-            let a = to_int32(arg(args, 0)) as i32;
-            let b = to_int32(arg(args, 1)) as i32;
+            let a = arg(args, 0).to_int32() as i32;
+            let b = arg(args, 1).to_int32() as i32;
             JsValue::int32(a.wrapping_mul(b))
         }
-        BuiltinId::MathLog => JsValue::float64(to_number(arg(args, 0)).ln()),
-        BuiltinId::MathLog1p => JsValue::float64(to_number(arg(args, 0)).ln_1p()),
-        BuiltinId::MathLog10 => JsValue::float64(to_number(arg(args, 0)).log10()),
-        BuiltinId::MathLog2 => JsValue::float64(to_number(arg(args, 0)).log2()),
+        BuiltinId::MathLog => JsValue::float64(arg(args, 0).to_number().ln()),
+        BuiltinId::MathLog1p => JsValue::float64(arg(args, 0).to_number().ln_1p()),
+        BuiltinId::MathLog10 => JsValue::float64(arg(args, 0).to_number().log10()),
+        BuiltinId::MathLog2 => JsValue::float64(arg(args, 0).to_number().log2()),
         BuiltinId::MathMax => {
             if args.is_empty() {
                 JsValue::float64(f64::NEG_INFINITY)
             } else {
                 let mut m = f64::NEG_INFINITY;
                 for v in args {
-                    let n = to_number(*v);
+                    let n = v.to_number();
                     if n > m {
                         m = n;
                     }
@@ -164,7 +210,7 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
             } else {
                 let mut m = f64::INFINITY;
                 for v in args {
-                    let n = to_number(*v);
+                    let n = v.to_number();
                     if n < m {
                         m = n;
                     }
@@ -173,11 +219,11 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
             }
         }
         BuiltinId::MathPow => {
-            JsValue::float64(to_number(arg(args, 0)).powf(to_number(arg(args, 1))))
+            JsValue::float64(arg(args, 0).to_number().powf(arg(args, 1).to_number()))
         }
         BuiltinId::MathRandom => JsValue::float64(crate::runtime::random::next_f64()),
         BuiltinId::MathRound => {
-            let x = to_number(arg(args, 0));
+            let x = arg(args, 0).to_number();
             let r = if x >= 0.0 {
                 (x + 0.5).floor()
             } else {
@@ -186,7 +232,7 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
             JsValue::float64(r)
         }
         BuiltinId::MathSign => {
-            let x = to_number(arg(args, 0));
+            let x = arg(args, 0).to_number();
             if x.is_nan() {
                 JsValue::float64(f64::NAN)
             } else if x == 0.0 {
@@ -197,13 +243,13 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
                 JsValue::float64(-1.0)
             }
         }
-        BuiltinId::MathSin => JsValue::float64(to_number(arg(args, 0)).sin()),
-        BuiltinId::MathSinh => JsValue::float64(to_number(arg(args, 0)).sinh()),
-        BuiltinId::MathSqrt => JsValue::float64(to_number(arg(args, 0)).sqrt()),
-        BuiltinId::MathTan => JsValue::float64(to_number(arg(args, 0)).tan()),
-        BuiltinId::MathTanh => JsValue::float64(to_number(arg(args, 0)).tanh()),
+        BuiltinId::MathSin => JsValue::float64(arg(args, 0).to_number().sin()),
+        BuiltinId::MathSinh => JsValue::float64(arg(args, 0).to_number().sinh()),
+        BuiltinId::MathSqrt => JsValue::float64(arg(args, 0).to_number().sqrt()),
+        BuiltinId::MathTan => JsValue::float64(arg(args, 0).to_number().tan()),
+        BuiltinId::MathTanh => JsValue::float64(arg(args, 0).to_number().tanh()),
         BuiltinId::MathTrunc => {
-            let x = to_number(arg(args, 0));
+            let x = arg(args, 0).to_number();
             let r = if x >= 0.0 { x.floor() } else { x.ceil() };
             JsValue::float64(r)
         }
@@ -224,7 +270,7 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
         }
         BuiltinId::StringCharAt => {
             let s = arg(args, 0);
-            let idx = to_int32(arg(args, 1)) as usize;
+            let idx = arg(args, 1).to_int32() as usize;
             object_model::string_char_at(s, idx)
         }
         BuiltinId::JsonParse => {
@@ -236,30 +282,4 @@ pub fn call_builtin(id: BuiltinId, args: &[JsValue]) -> JsValue {
 
 fn arg(args: &[JsValue], idx: usize) -> JsValue {
     args.get(idx).copied().unwrap_or_else(JsValue::undefined)
-}
-
-fn to_number(v: JsValue) -> f64 {
-    if v.is_int32() {
-        v.as_int32() as f64
-    } else if v.is_float64() {
-        v.as_float64()
-    } else if v.is_bool() {
-        if v.as_bool() {
-            1.0
-        } else {
-            0.0
-        }
-    } else if v.is_null() {
-        0.0
-    } else {
-        f64::NAN
-    }
-}
-
-fn to_int32(v: JsValue) -> i32 {
-    if v.is_int32() {
-        v.as_int32()
-    } else {
-        to_number(v) as i32
-    }
 }

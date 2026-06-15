@@ -285,7 +285,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::utils::time::unix_timestamp_nanos;
 
     struct TestTempDir {
         path: PathBuf,
@@ -293,10 +293,7 @@ mod tests {
 
     impl TestTempDir {
         fn new() -> Self {
-            let unique = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
+            let unique = unix_timestamp_nanos();
             let path = std::env::temp_dir().join(format!("albedo-wpt-{unique}"));
             fs::create_dir_all(&path).unwrap();
             Self { path }
