@@ -17,6 +17,7 @@ use self::style::css_values::{ComputedStyle, CssFilter, TransformFunction};
 use self::style::Stylesheet;
 use self::text::TextMeasurer;
 use crate::ace::engine::dom::AceDOM;
+use crate::utils::time::unix_timestamp_secs_f64;
 use std::sync::{Arc, Mutex};
 use taffy::geometry::MinMax;
 pub struct AceEngine {
@@ -357,10 +358,7 @@ impl AceEngine {
             let dom = dom_arc.lock().unwrap();
             let stylesheet = self.stylesheet.lock().unwrap();
 
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs_f64();
+            let now = unix_timestamp_secs_f64();
             let mut am = self.animation_manager.lock().unwrap();
 
             // Map index -> ComputedStyle for inheritance
@@ -816,10 +814,7 @@ impl AceEngine {
             let node = dom.get_node(node_idx).unwrap();
             (node.node_type.clone(), node.children.clone())
         };
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64();
+        let now = unix_timestamp_secs_f64();
 
         let style = {
             let engine_styles = self.element_styles.lock().unwrap();

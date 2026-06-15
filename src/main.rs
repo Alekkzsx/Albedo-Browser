@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[Main] Starting Albedo Browser...");
     let ui = browser::setup::create_window()?;
+    albedo_jit::contracts::core::register_json_parser(albedo::ace::json::parse);
     let ui_handle = ui.as_weak();
 
     let tab_manager = TabManager::new();

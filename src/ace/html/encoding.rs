@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use encoding_rs::{UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252};
 use memchr::memchr;
-use super::types::{Encoding, DecodedHtml, ParseError, ParseErrorSource, ParseErrorKind};
+use super::types::{Encoding, DecodedHtml, ParseError, ParseErrorSource, ParseErrorKind, parse_next_attribute};
 
 pub fn decode_html_bytes(
     bytes: &[u8],
@@ -161,60 +161,11 @@ pub fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
             break;
         }
 
-        let name_start = idx;
-        while idx < bytes.len()
-            && !bytes[idx].is_ascii_whitespace()
-            && bytes[idx] != b'='
-            && bytes[idx] != b'>'
-            && bytes[idx] != b'/'
-        {
-            idx += 1;
-        }
-
-        if idx == name_start {
+        if let Some((name, value)) = parse_next_attribute(tag, &mut idx) {
+            attrs.entry(name).or_insert(value);
+        } else {
             break;
         }
-
-        let name = tag[name_start..idx].trim().to_ascii_lowercase();
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            idx += 1;
-        }
-
-        let value = if idx < bytes.len() && bytes[idx] == b'=' {
-            idx += 1;
-            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                idx += 1;
-            }
-            if idx >= bytes.len() {
-                String::new()
-            } else if bytes[idx] == b'"' || bytes[idx] == b'\'' {
-                let quote = bytes[idx];
-                idx += 1;
-                let start = idx;
-                while idx < bytes.len() && bytes[idx] != quote {
-                    idx += 1;
-                }
-                let value = tag[start..idx].to_string();
-                if idx < bytes.len() {
-                    idx += 1;
-                }
-                value
-            } else {
-                let start = idx;
-                while idx < bytes.len()
-                    && !bytes[idx].is_ascii_whitespace()
-                    && bytes[idx] != b'>'
-                    && bytes[idx] != b'/'
-                {
-                    idx += 1;
-                }
-                tag[start..idx].to_string()
-            }
-        } else {
-            String::new()
-        };
-
-        attrs.entry(name).or_insert(value);
     }
 
     attrs

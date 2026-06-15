@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use memchr::memchr;
 use super::types::{
     HtmlDocument, HtmlElement, HtmlNode, DoctypeToken, ParseResult, ParseStats, ParserOptions,
-    Namespace
+    Namespace, is_void_element, parse_next_attribute
 };
 use super::preloads::extract_preloads;
 
@@ -236,32 +236,7 @@ fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bo
                 idx += 1;
             }
             Some(_) => {
-                let attr_start = idx;
-                while idx < bytes.len()
-                    && !bytes[idx].is_ascii_whitespace()
-                    && bytes[idx] != b'='
-                    && bytes[idx] != b'>'
-                    && bytes[idx] != b'/'
-                {
-                    idx += 1;
-                }
-                if idx == attr_start {
-                    return None;
-                }
-                let attr_name = html[attr_start..idx].to_ascii_lowercase();
-                while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                    idx += 1;
-                }
-
-                let value = if bytes.get(idx) == Some(&b'=') {
-                    idx += 1;
-                    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-                        idx += 1;
-                    }
-                    parse_fast_attr_value(html, &mut idx)?
-                } else {
-                    String::new()
-                };
+                let (attr_name, value) = parse_next_attribute(html, &mut idx)?;
                 attributes.entry(attr_name).or_insert(value);
             }
             None => return None,
@@ -269,53 +244,4 @@ fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bo
     }
 }
 
-fn parse_fast_attr_value(html: &str, idx: &mut usize) -> Option<String> {
-    let bytes = html.as_bytes();
-    match bytes.get(*idx).copied() {
-        Some(b'"') | Some(b'\'') => {
-            let quote = bytes[*idx];
-            *idx += 1;
-            let start = *idx;
-            while *idx < bytes.len() && bytes[*idx] != quote {
-                *idx += 1;
-            }
-            let value = html[start..*idx].to_string();
-            if *idx < bytes.len() {
-                *idx += 1;
-            }
-            Some(value)
-        }
-        Some(_) => {
-            let start = *idx;
-            while *idx < bytes.len()
-                && !bytes[*idx].is_ascii_whitespace()
-                && bytes[*idx] != b'>'
-                && bytes[*idx] != b'/'
-            {
-                *idx += 1;
-            }
-            Some(html[start..*idx].to_string())
-        }
-        None => Some(String::new()),
-    }
-}
 
-fn is_void_element(tag: &str) -> bool {
-    matches!(
-        tag,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
-}

@@ -163,6 +163,32 @@ impl JsValue {
     pub fn is_builtin(&self) -> bool {
         (self.0 & TAG_MASK) == TAG_BUILTIN
     }
+
+    pub fn to_number(&self) -> f64 {
+        if self.is_int32() {
+            self.as_int32() as f64
+        } else if self.is_float64() {
+            self.as_float64()
+        } else if self.is_bool() {
+            if self.as_bool() {
+                1.0
+            } else {
+                0.0
+            }
+        } else if self.is_null() {
+            0.0
+        } else {
+            f64::NAN
+        }
+    }
+
+    pub fn to_int32(&self) -> i32 {
+        if self.is_int32() {
+            self.as_int32()
+        } else {
+            self.to_number() as i32
+        }
+    }
 }
 
 // Para debug facilitado no console

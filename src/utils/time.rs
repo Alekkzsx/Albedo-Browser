@@ -16,3 +16,17 @@ pub fn unix_timestamp_millis() -> i64 {
         .unwrap_or_default()
         .as_millis() as i64
 }
+
+pub fn unix_timestamp_secs_f64() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+}
+
+pub fn unix_timestamp_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+}

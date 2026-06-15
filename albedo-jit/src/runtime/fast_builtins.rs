@@ -28,7 +28,7 @@ pub extern "C" fn fast_math_abs(val: u64) -> u64 {
 #[no_mangle]
 pub extern "C" fn fast_math_sqrt(val: u64) -> u64 {
     let v = JsValue(val);
-    let n = to_number(v);
+    let n = v.to_number();
     JsValue::float64(n.sqrt()).0
 }
 
@@ -39,7 +39,7 @@ pub extern "C" fn fast_math_floor(val: u64) -> u64 {
     if v.is_int32() {
         return val;
     }
-    let n = to_number(v);
+    let n = v.to_number();
     JsValue::float64(n.floor()).0
 }
 
@@ -59,121 +59,121 @@ pub extern "C" fn fast_math_ceil(v: u64) -> u64 {
 /// Math.acos(x)
 #[no_mangle]
 pub extern "C" fn fast_math_acos(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).acos()).0
+    JsValue::float64(JsValue(val).to_number().acos()).0
 }
 
 /// Math.acosh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_acosh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).acosh()).0
+    JsValue::float64(JsValue(val).to_number().acosh()).0
 }
 
 /// Math.asin(x)
 #[no_mangle]
 pub extern "C" fn fast_math_asin(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).asin()).0
+    JsValue::float64(JsValue(val).to_number().asin()).0
 }
 
 /// Math.asinh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_asinh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).asinh()).0
+    JsValue::float64(JsValue(val).to_number().asinh()).0
 }
 
 /// Math.atan(x)
 #[no_mangle]
 pub extern "C" fn fast_math_atan(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).atan()).0
+    JsValue::float64(JsValue(val).to_number().atan()).0
 }
 
 /// Math.atan2(y, x)
 #[no_mangle]
 pub extern "C" fn fast_math_atan2(y: u64, x: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(y)).atan2(to_number(JsValue(x)))).0
+    JsValue::float64(JsValue(y).to_number().atan2(JsValue(x).to_number())).0
 }
 
 /// Math.atanh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_atanh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).atanh()).0
+    JsValue::float64(JsValue(val).to_number().atanh()).0
 }
 
 /// Math.cos(x)
 #[no_mangle]
 pub extern "C" fn fast_math_cos(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).cos()).0
+    JsValue::float64(JsValue(val).to_number().cos()).0
 }
 
 /// Math.cosh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_cosh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).cosh()).0
+    JsValue::float64(JsValue(val).to_number().cosh()).0
 }
 
 /// Math.sin(x)
 #[no_mangle]
 pub extern "C" fn fast_math_sin(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).sin()).0
+    JsValue::float64(JsValue(val).to_number().sin()).0
 }
 
 /// Math.sinh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_sinh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).sinh()).0
+    JsValue::float64(JsValue(val).to_number().sinh()).0
 }
 
 /// Math.tan(x)
 #[no_mangle]
 pub extern "C" fn fast_math_tan(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).tan()).0
+    JsValue::float64(JsValue(val).to_number().tan()).0
 }
 
 /// Math.tanh(x)
 #[no_mangle]
 pub extern "C" fn fast_math_tanh(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).tanh()).0
+    JsValue::float64(JsValue(val).to_number().tanh()).0
 }
 
 /// Math.exp(x)
 #[no_mangle]
 pub extern "C" fn fast_math_exp(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).exp()).0
+    JsValue::float64(JsValue(val).to_number().exp()).0
 }
 
 /// Math.expm1(x)
 #[no_mangle]
 pub extern "C" fn fast_math_expm1(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).exp_m1()).0
+    JsValue::float64(JsValue(val).to_number().exp_m1()).0
 }
 
 /// Math.log(x)
 #[no_mangle]
 pub extern "C" fn fast_math_log(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).ln()).0
+    JsValue::float64(JsValue(val).to_number().ln()).0
 }
 
 /// Math.log1p(x)
 #[no_mangle]
 pub extern "C" fn fast_math_log1p(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).ln_1p()).0
+    JsValue::float64(JsValue(val).to_number().ln_1p()).0
 }
 
 /// Math.log10(x)
 #[no_mangle]
 pub extern "C" fn fast_math_log10(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).log10()).0
+    JsValue::float64(JsValue(val).to_number().log10()).0
 }
 
 /// Math.log2(x)
 #[no_mangle]
 pub extern "C" fn fast_math_log2(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).log2()).0
+    JsValue::float64(JsValue(val).to_number().log2()).0
 }
 
 /// Math.cbrt(x)
 #[no_mangle]
 pub extern "C" fn fast_math_cbrt(val: u64) -> u64 {
-    JsValue::float64(to_number(JsValue(val)).cbrt()).0
+    JsValue::float64(JsValue(val).to_number().cbrt()).0
 }
 
 /// Math.clz32(x)
@@ -183,7 +183,7 @@ pub extern "C" fn fast_math_clz32(val: u64) -> u64 {
     let n = if v.is_int32() {
         v.as_int32() as u32
     } else {
-        to_number(v) as u32
+        v.to_number() as u32
     };
     JsValue::int32(n.leading_zeros() as i32).0
 }
@@ -191,15 +191,15 @@ pub extern "C" fn fast_math_clz32(val: u64) -> u64 {
 /// Math.fround(x)
 #[no_mangle]
 pub extern "C" fn fast_math_fround(val: u64) -> u64 {
-    let n = to_number(JsValue(val));
+    let n = JsValue(val).to_number();
     JsValue::float64((n as f32) as f64).0
 }
 
 /// Math.hypot(x, y) - Versão bivariada para JIT
 #[no_mangle]
 pub extern "C" fn fast_math_hypot(x: u64, y: u64) -> u64 {
-    let nx = to_number(JsValue(x));
-    let ny = to_number(JsValue(y));
+    let nx = JsValue(x).to_number();
+    let ny = JsValue(y).to_number();
     JsValue::float64((nx * nx + ny * ny).sqrt()).0
 }
 
@@ -211,12 +211,12 @@ pub extern "C" fn fast_math_imul(x: u64, y: u64) -> u64 {
     let ix = if vx.is_int32() {
         vx.as_int32()
     } else {
-        to_number(vx) as i32
+        vx.to_number() as i32
     };
     let iy = if vy.is_int32() {
         vy.as_int32()
     } else {
-        to_number(vy) as i32
+        vy.to_number() as i32
     };
     JsValue::int32(ix.wrapping_mul(iy)).0
 }
@@ -224,8 +224,8 @@ pub extern "C" fn fast_math_imul(x: u64, y: u64) -> u64 {
 /// Math.pow(x, y)
 #[no_mangle]
 pub extern "C" fn fast_math_pow(x: u64, y: u64) -> u64 {
-    let nx = to_number(JsValue(x));
-    let ny = to_number(JsValue(y));
+    let nx = JsValue(x).to_number();
+    let ny = JsValue(y).to_number();
     JsValue::float64(nx.powf(ny)).0
 }
 
@@ -238,7 +238,7 @@ pub extern "C" fn fast_math_random() -> u64 {
 /// Math.round(x)
 #[no_mangle]
 pub extern "C" fn fast_math_round(val: u64) -> u64 {
-    let x = to_number(JsValue(val));
+    let x = JsValue(val).to_number();
     let r = if x >= 0.0 {
         (x + 0.5).floor()
     } else {
@@ -250,7 +250,7 @@ pub extern "C" fn fast_math_round(val: u64) -> u64 {
 /// Math.sign(x)
 #[no_mangle]
 pub extern "C" fn fast_math_sign(val: u64) -> u64 {
-    let x = to_number(JsValue(val));
+    let x = JsValue(val).to_number();
     if x.is_nan() {
         JsValue::float64(f64::NAN).0
     } else if x == 0.0 {
@@ -265,7 +265,7 @@ pub extern "C" fn fast_math_sign(val: u64) -> u64 {
 /// Math.trunc(x)
 #[no_mangle]
 pub extern "C" fn fast_math_trunc(val: u64) -> u64 {
-    let x = to_number(JsValue(val));
+    let x = JsValue(val).to_number();
     let r = if x >= 0.0 { x.floor() } else { x.ceil() };
     JsValue::float64(r).0
 }
@@ -273,16 +273,16 @@ pub extern "C" fn fast_math_trunc(val: u64) -> u64 {
 /// Math.max(x, y) - Versão bivariada para JIT
 #[no_mangle]
 pub extern "C" fn fast_math_max(x: u64, y: u64) -> u64 {
-    let nx = to_number(JsValue(x));
-    let ny = to_number(JsValue(y));
+    let nx = JsValue(x).to_number();
+    let ny = JsValue(y).to_number();
     JsValue::float64(if nx > ny { nx } else { ny }).0
 }
 
 /// Math.min(x, y) - Versão bivariada para JIT
 #[no_mangle]
 pub extern "C" fn fast_math_min(x: u64, y: u64) -> u64 {
-    let nx = to_number(JsValue(x));
-    let ny = to_number(JsValue(y));
+    let nx = JsValue(x).to_number();
+    let ny = JsValue(y).to_number();
     JsValue::float64(if nx < ny { nx } else { ny }).0
 }
 
@@ -313,17 +313,6 @@ pub extern "C" fn fast_string_char_at(s: u64, idx: u64) -> u64 {
 #[no_mangle]
 pub extern "C" fn fast_json_parse(s: u64) -> u64 {
     object_model::json_parse(JsValue(s)).0
-}
-
-#[inline(always)]
-fn to_number(v: JsValue) -> f64 {
-    if v.is_int32() {
-        v.as_int32() as f64
-    } else if v.is_float64() {
-        v.as_float64()
-    } else {
-        f64::NAN
-    }
 }
 
 #[cfg(test)]

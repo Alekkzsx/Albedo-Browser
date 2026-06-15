@@ -225,3 +225,89 @@ impl ParseResult {
         &self.parse_errors
     }
 }
+
+pub fn is_void_element(tag: &str) -> bool {
+    tag.eq_ignore_ascii_case("area")
+        || tag.eq_ignore_ascii_case("base")
+        || tag.eq_ignore_ascii_case("br")
+        || tag.eq_ignore_ascii_case("col")
+        || tag.eq_ignore_ascii_case("embed")
+        || tag.eq_ignore_ascii_case("hr")
+        || tag.eq_ignore_ascii_case("img")
+        || tag.eq_ignore_ascii_case("input")
+        || tag.eq_ignore_ascii_case("link")
+        || tag.eq_ignore_ascii_case("meta")
+        || tag.eq_ignore_ascii_case("param")
+        || tag.eq_ignore_ascii_case("source")
+        || tag.eq_ignore_ascii_case("track")
+        || tag.eq_ignore_ascii_case("wbr")
+}
+
+pub fn parse_next_attribute(html: &str, idx: &mut usize) -> Option<(String, String)> {
+    let bytes = html.as_bytes();
+    while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
+        *idx += 1;
+    }
+    if *idx >= bytes.len() {
+        return None;
+    }
+    if bytes[*idx] == b'>' || bytes[*idx] == b'/' {
+        return None;
+    }
+
+    let name_start = *idx;
+    while *idx < bytes.len()
+        && !bytes[*idx].is_ascii_whitespace()
+        && bytes[*idx] != b'='
+        && bytes[*idx] != b'>'
+        && bytes[*idx] != b'/'
+    {
+        *idx += 1;
+    }
+
+    if *idx == name_start {
+        return None;
+    }
+
+    let name = html[name_start..*idx].to_ascii_lowercase();
+
+    while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
+        *idx += 1;
+    }
+
+    let value = if *idx < bytes.len() && bytes[*idx] == b'=' {
+        *idx += 1;
+        while *idx < bytes.len() && bytes[*idx].is_ascii_whitespace() {
+            *idx += 1;
+        }
+        if *idx >= bytes.len() {
+            String::new()
+        } else if bytes[*idx] == b'"' || bytes[*idx] == b'\'' {
+            let quote = bytes[*idx];
+            *idx += 1;
+            let start = *idx;
+            while *idx < bytes.len() && bytes[*idx] != quote {
+                *idx += 1;
+            }
+            let val = html[start..*idx].to_string();
+            if *idx < bytes.len() {
+                *idx += 1;
+            }
+            val
+        } else {
+            let start = *idx;
+            while *idx < bytes.len()
+                && !bytes[*idx].is_ascii_whitespace()
+                && bytes[*idx] != b'>'
+                && bytes[*idx] != b'/'
+            {
+                *idx += 1;
+            }
+            html[start..*idx].to_string()
+        }
+    } else {
+        String::new()
+    };
+
+    Some((name, value))
+}
