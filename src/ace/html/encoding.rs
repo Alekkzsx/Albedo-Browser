@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use encoding_rs::{UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252};
 use memchr::memchr;
-use super::types::{Encoding, DecodedHtml, ParseError, ParseErrorSource, ParseErrorKind, parse_next_attribute};
+use super::types::{Encoding, DecodedHtml, ParseError, parse_next_attribute};
 
 pub fn decode_html_bytes(
     bytes: &[u8],

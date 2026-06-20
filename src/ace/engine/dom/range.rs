@@ -2,9 +2,7 @@
 // FASE 2: Range API completa (W3C DOM Range spec)
 // Status: 100% implementado e documentado
 
-use crate::ace::engine::dom::{AceDOM, AceNode, NodeId, NodeType};
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::ace::engine::dom::{AceDOM, NodeId, NodeType};
 
 /// Ponto de limite (boundary point) no Range
 #[derive(Debug, Clone)]

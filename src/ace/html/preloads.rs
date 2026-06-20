@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use fxhash::FxHashMap;
 use memchr::memchr;
 use phf::{phf_map, phf_set};
