@@ -17,6 +17,7 @@ pub mod contracts;
 pub mod decoder;
 pub mod engine;
 pub mod infra;
+pub mod json_parser;
 pub mod parking_lot;
 pub mod runtime;
 
