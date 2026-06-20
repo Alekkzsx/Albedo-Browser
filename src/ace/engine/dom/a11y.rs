@@ -7,8 +7,8 @@
 //! - Relations (aria-controls, aria-owns, etc.)
 //! - Tree traversal para screen readers
 
-use std::collections::{HashMap, HashSet};
-use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, AceElement};
+use std::collections::HashMap;
+use crate::ace::engine::dom::{AceDOM, AceNodeType};
 
 /// Role ARIA de um elemento
 #[derive(Clone, Debug, PartialEq)]

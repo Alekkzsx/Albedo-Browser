@@ -1,14 +1,14 @@
-//! Custom Elements v1 Implementation - WHATWG Spec
-//! 
-//! Este módulo implementa:
-//! - customElements.define()
-//! - Lifecycle callbacks (connected, disconnected, adopted, attributeChanged)
-//! - Upgrade algorithm
-//! - Built-in element extension
+// Custom Elements v1 Implementation - WHATWG Spec
+//
+// Este módulo implementa:
+// - customElements.define()
+// - Lifecycle callbacks (connected, disconnected, adopted, attributeChanged)
+// - Upgrade algorithm
+// - Built-in element extension
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, AceElement, NodeDirtyFlags};
+use crate::ace::engine::dom::{AceDOM, AceNodeType, AceNode, AceElement, NodeDirtyFlags};
 
 /// Registry global de Custom Elements
 pub struct CustomElementsRegistry {
@@ -29,7 +29,7 @@ impl CustomElementsRegistry {
         &mut self,
         name: String,
         constructor: Arc<dyn Fn() -> usize + Send + Sync>,
-        options: Option<ElementDefinitionOptions>,
+        _options: Option<ElementDefinitionOptions>,
     ) -> Result<(), CustomElementError> {
         // Valida o nome (deve conter '-')
         if !name.contains('-') {
@@ -117,7 +117,7 @@ impl CustomElementsRegistry {
         self.upgrading.insert(element_idx, definition.name.clone());
         
         // Chama o constructor (que deve retornar o índice do elemento)
-        let constructed_idx = (definition.constructor)();
+        let _constructed_idx = (definition.constructor)();
         
         // Se o constructor retornou um elemento diferente, precisamos fazer o swap
         // (implementação simplificada aqui)
@@ -162,10 +162,10 @@ impl CustomElementsRegistry {
     
     pub fn call_attribute_changed_callback(
         &self,
-        element_idx: usize,
-        name: &str,
-        old_value: Option<&str>,
-        new_value: Option<&str>,
+        _element_idx: usize,
+        _name: &str,
+        _old_value: Option<&str>,
+        _new_value: Option<&str>,
     ) {
         // Verifica se este atributo é observado
         // Em produção, verificaria no definition.observedAttributes
@@ -273,6 +273,7 @@ impl AceDOM {
 
 #[cfg(test)]
 mod tests {
+    use crate::ace::engine::dom::{AceElement, AceNode, NodeDirtyFlags};
     use super::*;
     use crate::ace::engine::dom::AceDOM;
     

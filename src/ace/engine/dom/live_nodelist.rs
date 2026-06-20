@@ -5,8 +5,7 @@
 //! sem necessidade de re-query.
 
 use std::cell::RefCell;
-use std::rc::Rc;
-use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, AceElement};
+use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType};
 
 /// Trait para tipos de queries suportados por LiveNodeList
 pub trait NodeQuery {
@@ -230,7 +229,7 @@ impl NodeList {
     }
     
     /// Cria NodeList snapshot (não atualiza)
-    pub fn new_snapshot(nodes: Vec<usize>) -> Self {
+    pub fn new_snapshot(_nodes: Vec<usize>) -> Self {
         // Implementação simplificada - em produção usaria enum
         Self {
             inner: LiveNodeList::new(TagNameQuery("*".to_string()), 0),

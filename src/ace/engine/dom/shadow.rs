@@ -8,7 +8,7 @@
 //! - Host integration
 
 use std::collections::{HashMap, HashSet};
-use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, AceElement, NodeDirtyFlags};
+use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, NodeDirtyFlags};
 
 /// Configuração para attachShadow()
 #[derive(Clone, Debug)]
@@ -218,7 +218,7 @@ impl EventPath {
 /// Extensões para AceDOM suportar Shadow DOM
 impl AceDOM {
     /// attachShadow() - cria um shadow root para um elemento host
-    pub fn attach_shadow_with_init(&mut self, host_idx: usize, init: ShadowRootInit) -> Option<usize> {
+    pub fn attach_shadow_with_init(&mut self, host_idx: usize, _init: ShadowRootInit) -> Option<usize> {
         // Verifica se já tem shadow root
         if let Some(host_node) = self.get_node(host_idx) {
             if host_node.shadow_root.is_some() {
@@ -251,13 +251,13 @@ impl AceDOM {
     }
     
     /// Obtém o shadow root de um elemento (se mode for open)
-    pub fn get_shadow_root(&self, host_idx: usize) -> Option<&ShadowRoot> {
+    pub fn get_shadow_root(&self, _host_idx: usize) -> Option<&ShadowRoot> {
         // Implementação simplificada - em produção usaria um HashMap dedicado
         None
     }
     
     /// Obtém o shadow root mutável
-    pub fn get_shadow_root_mut(&mut self, shadow_root_idx: usize) -> Option<&mut ShadowRoot> {
+    pub fn get_shadow_root_mut(&mut self, _shadow_root_idx: usize) -> Option<&mut ShadowRoot> {
         // Implementação simplificada
         None
     }
@@ -305,6 +305,7 @@ impl AceDOM {
 
 #[cfg(test)]
 mod tests {
+    use crate::ace::engine::dom::{AceElement, AceNode, NodeDirtyFlags};
     use super::*;
     use crate::ace::engine::dom::AceDOM;
     

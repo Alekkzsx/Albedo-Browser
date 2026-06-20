@@ -1,4 +1,4 @@
-use sysinfo::{System, CpuRefreshKind, MemoryRefreshKind};
+use sysinfo::System;
 
 pub struct AceSysInfo {
     sys: System,

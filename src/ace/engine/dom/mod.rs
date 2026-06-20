@@ -584,7 +584,7 @@ impl AceDOM {
     }
     
     /// Marca todas as LiveNodeLists afetadas por uma mutation como dirty
-    fn mark_live_collections_dirty(&mut self, mutated_node_idx: usize) {
+    fn mark_live_collections_dirty(&mut self, _mutated_node_idx: usize) {
         // Em produção, isso iteraria sobre um registro de LiveNodeLists ativas
         // e marcaria como dirty aquelas cujo root é ancestor do nó mutado
         // Implementação simplificada - em produção usaria um WeakMap para evitar memory leaks
