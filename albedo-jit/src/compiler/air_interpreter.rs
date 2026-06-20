@@ -239,7 +239,6 @@ fn compute_loop_headers(air: &AirFunction) -> HashSet<u32> {
     headers
 }
 
-
 pub struct OsrManager {
     engine: AlbedoJitEngine,
     threshold: u32,
