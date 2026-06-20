@@ -77,7 +77,8 @@ pub mod core {
             parser(text).map_err(|e| AlbedoError::Json(e))
         } else {
             Err(AlbedoError::Internal(
-                "json_parse do supervisor JIT ainda nao foi conectado ao parser oficial".to_string(),
+                "json_parse do supervisor JIT ainda nao foi conectado ao parser oficial"
+                    .to_string(),
             ))
         }
     }

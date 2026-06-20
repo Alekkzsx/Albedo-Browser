@@ -89,6 +89,7 @@ fn test_osr_loop_tier_up() {
 
 #[test]
 fn test_builtins_math_array_string_json() {
+    albedo_jit::contracts::core::register_json_parser(albedo_jit::json_parser::parse_json);
     // Math.sqrt
     let func = JsValue::builtin(BuiltinId::MathSqrt as u64);
     let args = [JsValue::float64(9.0).0];
