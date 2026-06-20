@@ -6,9 +6,9 @@
 ║                                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════════╝
 
-  📅 Última Atualização  →  2026-04-10
+  📅 Última Atualização  →  2026-06-20
   🔧 Versão Atual        →  0.1.0-alpha
-  📊 Codebase            →  ~15.700 LOC Rust  |  ~103 arquivos
+  📊 Codebase            →  ~53.500 LOC Rust  |  ~177 arquivos (163 em src/ + 14 em albedo-jit/)
   🏛️ Engine              →  ACE (Albedo Core Engine)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -631,7 +631,15 @@
   ✅  tests/table_colspan_tests.rs — 5/5 passando
   ✅  engine/inline.rs (unit tests) — 4/4 IFC passando
   ✅  engine/style/grid_tests.rs — testes Grid
-  ⚠️  tests/white_space_tests.rs.bak — desativado, precisa restaurar
+  ✅  tests/html5lib_tokenizer_harness.rs — Testes WPT de tokenizer HTML5
+  ✅  tests/html5lib_tree_harness.rs — Testes WPT de construção da árvore (Tree Builder)
+  ✅  tests/ace_html_equivalence.rs — Testes de equivalência para ACE-HTML
+  ✅  tests/ace_html_hard_cases.rs — Testes de edge-cases e cenários complexos de HTML
+  ✅  tests/ace_html_proptests.rs — Property-based testing para o parser HTML
+  ✅  albedo-jit/src/jit_equivalence_tests.rs — Equivalência do interpretador e JIT nativo
+  ✅  tests/osr_function_test.rs — Testes de On-Stack Replacement do AlbedoJIT
+  ✅  tests/osr_stress_test.rs — Testes de stress do OSR no AlbedoJIT
+  ❌  tests/white_space_tests.rs.bak — removido
 
   Testes a criar:
   ❌  Snapshot rendering tests (render page → compare pixels)
@@ -820,8 +828,8 @@
 
   Roadmap de Execução Ativo:
   JIT-1 [Concluído]: Pipeline mínimo (AIR, assembler Cranelift nativo)
-  JIT-2 [Em Progresso]: Type specialization (IC slots, hidden classes, OSR, deopt)
-  JIT-3 [Em Progresso]: Otimizações Tier 2 (inlining, loop opts, escape analysis)
+  JIT-2 [Concluído]: Type specialization (IC Slots, OSR e Deopt implementados)
+  JIT-3 [Concluído]: Otimizações Tier 2 (Escape Analysis, Scalar Replacement, Loop Opts como LICM, Unrolling, Peeling, Versioning implementados no Tier2Compiler)
   JIT-4 [Pendente]: Garbage collector geracional concorrente com write barriers
   JIT-5 [Pendente]: DOM fast path (Rust->Rust bindings sem overhead de FFI)
   JIT-6 [Pendente]: Conformance total (suíte Test262 >= 95%, fuzzing)
@@ -855,82 +863,85 @@
   │   ├── json/                       ACE-JSON (parser/serializer)
   │   ├── crypto/                     ACE-Crypto (SHA, HMAC, AES, ECDH, CSPRNG)
   │   ├── contracts/                  Interfaces e contratos
-  │   └── util/                       SysInfo, Random, Base64, UUID, Time
-  │
-  ├── engine/                         Motor de Renderização
-  │   ├── mod.rs                      AceEngine principal (pipeline completo)
-  │   ├── dom/                        AceDOM
-  │   │   ├── mod.rs                  Árvore DOM (arena-allocated nodes)
-  │   │   ├── arena.rs                Arena allocator para nós
-  │   │   ├── shadow.rs               Shadow DOM v1
-  │   │   ├── custom_elements.rs      Web Components
-  │   │   ├── live_nodelist.rs         Live NodeList
-  │   │   ├── range.rs                Range API
-  │   │   ├── selection.rs            Selection API
-  │   │   ├── virtual_dom.rs          Virtual DOM diffing
-  │   │   ├── string_intern.rs        String interning
-  │   │   ├── a11y.rs                 Accessibility tree
-  │   │   └── wpt_harness.rs          WPT test harness
-  │   ├── style/                      CSS Engine
-  │   │   ├── mod.rs                  Cascade, matching, computed styles
-  │   │   ├── css_values.rs           Tipos de valor CSS
-  │   │   ├── animation.rs            Animations + transitions
-  │   │   └── grid_tests.rs           Grid tests
-  │   ├── inline.rs                   Inline Formatting Context
-  │   ├── compositor.rs               GPU Compositor (wgpu)
-  │   ├── layer_tree.rs               Layer management
-  │   ├── text.rs                     Text rendering (cosmic-text)
-  │   ├── svg.rs                      SVG rendering (resvg)
-  │   ├── types.rs                    Tipos compartilhados
-  │   ├── shaders.wgsl                GPU shaders
-  │   └── graphics/
-  │       └── canvas2d.rs             Canvas 2D
-  │
-  ├── runtime/                        JavaScript Runtime
-  │   ├── core/                       QuickJS runtime, event loop, module loader
-  │   ├── bindings/
-  │   │   ├── html/                   DOM bindings (document, element, events)
-  │   │   │   ├── document/           document.* APIs
-  │   │   │   ├── element/            element.* APIs
-  │   │   │   ├── event.rs            Event, EventTarget
-  │   │   │   ├── event_subclasses.rs MouseEvent, KeyboardEvent, etc.
-  │   │   │   ├── mutation_observer   MutationObserver
-  │   │   │   ├── intersection_observer
-  │   │   │   ├── resize_observer
-  │   │   │   ├── computed_style.rs   getComputedStyle
-  │   │   │   ├── style_declaration   CSSStyleDeclaration
-  │   │   │   ├── token_list.rs       classList
-  │   │   │   ├── form_data.rs        FormData
-  │   │   │   ├── range.rs            Range (JS binding)
-  │   │   │   └── selection.rs        Selection (JS binding)
-  │   │   ├── webapi/                 Web API bindings
-  │   │   │   ├── fetch.rs            Fetch API
-  │   │   │   ├── websocket.rs        WebSocket
-  │   │   │   ├── storage.rs          localStorage/sessionStorage
-  │   │   │   ├── indexeddb.rs        IndexedDB
-  │   │   │   ├── cache.rs            Cache API
-  │   │   │   ├── timers.rs           setTimeout/setInterval/rAF
-  │   │   │   ├── crypto.rs           SubtleCrypto
-  │   │   │   ├── location.rs         window.location
-  │   │   │   ├── history.rs          window.history
-  │   │   │   ├── navigator.rs        window.navigator
-  │   │   │   ├── worker.rs           Web Workers
-  │   │   │   ├── service_worker.rs   Service Workers
-  │   │   │   ├── url.rs              URL
-  │   │   │   ├── url_search_params   URLSearchParams
-  │   │   │   ├── text_encoding.rs    TextEncoder/TextDecoder
-  │   │   │   ├── structured_clone    structuredClone
-  │   │   │   ├── clipboard.rs        Clipboard API
-  │   │   │   ├── notification.rs     Notification API
-  │   │   │   ├── geolocation.rs      Geolocation
-  │   │   │   ├── file_api.rs         File/FileReader
-  │   │   │   ├── match_media.rs      matchMedia
-  │   │   │   ├── iframe.rs           iframe handling
-  │   │   │   ├── post_message.rs     postMessage
-  │   │   │   ├── sync.rs             Background Sync
-  │   │   │   └── window_proxy.rs     Window proxy
-  │   │   └── utils/                  Binding utilities
-  │   └── bridge/                     JS ↔ DOM bridge
+  │   ├── util/                       SysInfo, Random, Base64, UUID, Time
+  │   │
+  │   ├── engine/                     Motor de Renderização
+  │   │   ├── mod.rs                  AceEngine principal (pipeline completo)
+  │   │   ├── dom/                    AceDOM
+  │   │   │   ├── mod.rs              Árvore DOM (arena-allocated nodes)
+  │   │   │   ├── arena.rs            Arena allocator para nós
+  │   │   │   ├── shadow.rs           Shadow DOM v1
+  │   │   │   ├── custom_elements.rs  Web Components
+  │   │   │   ├── live_nodelist.rs    Live NodeList
+  │   │   │   ├── range.rs            Range API
+  │   │   │   ├── selection.rs        Selection API
+  │   │   │   ├── virtual_dom.rs      Virtual DOM diffing
+  │   │   │   ├── string_intern.rs    String interning
+  │   │   │   ├── a11y.rs             Accessibility tree
+  │   │   │   └── wpt_harness.rs      WPT test harness
+  │   │   ├── style/                  CSS Engine
+  │   │   │   ├── mod.rs              Cascade, matching, computed styles
+  │   │   │   ├── css_values.rs       Tipos de valor CSS
+  │   │   │   ├── animation.rs        Animations + transitions
+  │   │   │   └── grid_tests.rs       Grid tests
+  │   │   ├── layout/                 Layout Engine
+  │   │   │   ├── geometry.rs         Tipos de geometria
+  │   │   │   └── inline.rs           Inline Formatting Context
+  │   │   └── graphics/               Graphics Layer
+  │   │       ├── compositor.rs       GPU Compositor (wgpu)
+  │   │       ├── gpu.rs              GPU abstractions
+  │   │       ├── layer_tree.rs       Layer management
+  │   │       ├── canvas2d.rs         Canvas 2D
+  │   │       ├── text.rs             Text rendering (cosmic-text)
+  │   │       ├── svg.rs              SVG rendering (resvg)
+  │   │       ├── types.rs            Tipos compartilhados
+  │   │       └── shaders.wgsl        GPU shaders
+  │   │
+  │   └── runtime/                    JavaScript Runtime
+  │       ├── core/                   QuickJS runtime, event loop, module loader
+  │       ├── bindings/
+  │       │   ├── html/               DOM bindings (document, element, events)
+  │       │   │   ├── document/       document.* APIs
+  │       │   │   ├── element/        element.* APIs
+  │       │   │   ├── event.rs        Event, EventTarget
+  │       │   │   ├── event_subclasses.rs MouseEvent, KeyboardEvent, etc.
+  │       │   │   ├── mutation_observer   MutationObserver
+  │       │   │   ├── intersection_observer
+  │       │   │   ├── resize_observer
+  │       │   │   ├── computed_style.rs   getComputedStyle
+  │       │   │   ├── style_declaration   CSSStyleDeclaration
+  │       │   │   ├── token_list.rs   classList
+  │       │   │   ├── form_data.rs    FormData
+  │       │   │   ├── range.rs        Range (JS binding)
+  │       │   │   └── selection.rs    Selection (JS binding)
+  │       │   ├── webapi/             Web API bindings
+  │       │   │   ├── fetch.rs        Fetch API
+  │       │   │   ├── websocket.rs    WebSocket
+  │       │   │   ├── storage.rs      localStorage/sessionStorage
+  │       │   │   ├── indexeddb.rs    IndexedDB
+  │       │   │   ├── cache.rs        Cache API
+  │       │   │   ├── timers.rs       setTimeout/setInterval/rAF
+  │       │   │   ├── crypto.rs       SubtleCrypto
+  │       │   │   ├── location.rs     window.location
+  │       │   │   ├── history.rs      window.history
+  │       │   │   ├── navigator.rs    window.navigator
+  │       │   │   ├── worker.rs       Web Workers
+  │       │   │   ├── service_worker.rs   Service Workers
+  │       │   │   ├── url.rs          URL
+  │       │   │   ├── url_search_params   URLSearchParams
+  │       │   │   ├── text_encoding.rs    TextEncoder/TextDecoder
+  │       │   │   ├── structured_clone    structuredClone
+  │       │   │   ├── clipboard.rs    Clipboard API
+  │       │   │   ├── notification.rs Notification API
+  │       │   │   ├── geolocation.rs  Geolocation
+  │       │   │   ├── file_api.rs     File/FileReader
+  │       │   │   ├── match_media.rs  matchMedia
+  │       │   │   ├── iframe.rs       iframe handling
+  │       │   │   ├── post_message.rs postMessage
+  │       │   │   ├── sync.rs         Background Sync
+  │       │   │   └── window_proxy.rs Window proxy
+  │       │   └── utils/              Binding utilities
+  │       └── bridge/                 JS ↔ DOM bridge
   │
   ├── network/                        Networking
   │   ├── resources.rs                Resource Manager (priorização, fetch)
@@ -958,7 +969,30 @@
   ├── appwindow.slint                 Main window definition
   └── components/                     UI components
 
-  albedo-jit/                         AlbedoJIT (futuro, longo prazo)
+  albedo-jit/                         AlbedoJIT (ativo, ~11.700 LOC, pipeline funcional)
+  ├── src/
+  │   ├── lib.rs                    Entrypoint e re-exports
+  │   ├── contracts.rs              Contratos supervisor (JsonValue, Url, AlbedoError)
+  │   ├── parking_lot.rs            Wrapper de RwLock
+  │   ├── bytecode/                 AIR (Albedo IR): AirOpcode, AirFunction, AirBuilder
+  │   ├── compiler/
+  │   │   ├── air_interpreter.rs    Tier 0: Interpretador AIR
+  │   │   ├── baseline_compiler.rs  Tier 1: Baseline JIT (Cranelift)
+  │   │   ├── tier2_compiler.rs     Tier 2: AlbedoTurbo (OSR, inlining, type specialization)
+  │   │   ├── code_cache.rs         Cache de código nativo
+  │   │   ├── deopt.rs              Deoptimização (bailout para Tier 0/1)
+  │   │   ├── escape_analysis.rs    Análise de escape field-sensitive
+  │   │   ├── scalar_replacement.rs Substituição escalar de alocações
+  │   │   ├── stack_allocator.rs    Alocação em stack para objetos não-escapados
+  │   │   └── loop_opts.rs          Loop optimizations (LICM, Unroll, Peel, Version)
+  │   ├── decoder/                  Decodificação QuickJS Bytecode → AIR
+  │   ├── engine/
+  │   │   ├── jit_engine.rs         Motor JIT principal (Cranelift backend)
+  │   │   ├── jit_bridge.rs         Ponte QuickJS ↔ AlbedoJIT
+  │   │   └── profiler.rs           Profiler de funções quentes
+  │   ├── runtime/                  Helpers de runtime JIT (builtins, js_value, object_model)
+  │   └── infra/                    Memória executável (CodePool, CodeRegion)
+  └── tests/                        Testes de equivalência, OSR e stress
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                           DEPENDÊNCIAS DO ACE ENGINE
@@ -1018,14 +1052,14 @@
   │ Pilar                    │ Atual    │ Fase 1  │ Fase 2  │ Fase 3+ │
   ├──────────────────────────┼──────────┼─────────┼─────────┼─────────┤
   │ 1. Rendering Engine      │  6/10 🔧 │  8/10   │  9/10   │ 10/10   │
-  │ 2. JavaScript & Web APIs │  5/10 🔧 │  6/10   │  8/10   │  9/10   │
+  │ 2. JavaScript & Web APIs │  6/10 🔧 │  6/10   │  8/10   │  9/10   │
   │ 3. Networking            │  7/10 ✅ │  8/10   │  9/10   │  9/10   │
   │ 4. Security              │  3/10 ⚠️ │  5/10   │  7/10   │  8/10   │
   │ 5. Browser UI            │  3/10 ⚠️ │  6/10   │  7/10   │  9/10   │
   │ 6. Media                 │  1/10 ❌ │  1/10   │  3/10   │  7/10   │
   │ 7. DevTools              │  0/10 ❌ │  0/10   │  2/10   │  6/10   │
   ├──────────────────────────┼──────────┼─────────┼─────────┼─────────┤
-  │ GERAL                    │  3.6/10  │  4.9/10 │  6.4/10 │  8.3/10 │
+  │ GERAL                    │  3.7/10  │  4.9/10 │  6.4/10 │  8.3/10 │
   └──────────────────────────┴──────────┴─────────┴─────────┴─────────┘
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
