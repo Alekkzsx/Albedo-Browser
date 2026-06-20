@@ -3,7 +3,6 @@
 //! Reduz uso de memória em 60-80% para strings frequentes
 
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
 

@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Namespace {

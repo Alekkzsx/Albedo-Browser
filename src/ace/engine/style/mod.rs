@@ -13,8 +13,8 @@ use self::css_values::{
     CssObjectPosition, CssOverflow, CssPointerEvents, CssPosition, CssTextAlign, CssTextOverflow,
     CssTextTransform, CssVisibility, CssWhiteSpace, Gradient, GradientStop, TextShadow,
 };
-use crate::ace::engine::CssFilter;
-use crate::ace::engine::TransformFunction;
+use crate::ace::engine::style::css_values::CssFilter;
+use crate::ace::engine::style::css_values::TransformFunction;
 
 pub mod animation;
 

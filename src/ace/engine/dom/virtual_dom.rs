@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, NodeId};
+use crate::ace::engine::dom::{AceDOM, NodeId};
 
 /// Representação leve de um nó no Virtual DOM
 #[derive(Debug, Clone, PartialEq)]
@@ -170,7 +170,7 @@ impl VirtualDom {
     fn diff_children(
         old_children: &[VNode],
         new_children: &[VNode],
-        parent_index: usize,
+        _parent_index: usize,
         patches: &mut Vec<PatchOp>
     ) {
         // Algoritmo simplificado de reconciliação
@@ -203,7 +203,7 @@ impl VirtualDom {
                         node: new.clone() 
                     });
                 }
-                (Some(old), None) => {
+                (Some(_old), None) => {
                     // Nó removido
                     patches.push(PatchOp::Remove { index: i });
                 }
@@ -213,34 +213,34 @@ impl VirtualDom {
     }
 
     /// Aplica patches no DOM real
-    pub fn apply_patches(dom: &mut AceDOM, root_id: NodeId, patches: &[PatchOp]) {
+    pub fn apply_patches(dom: &mut AceDOM, _root_id: NodeId, patches: &[PatchOp]) {
         for patch in patches {
             match patch {
-                PatchOp::Insert { index, node } => {
+                PatchOp::Insert { index: _, node } => {
                     // Converter VNode para AceNode e inserir
-                    let new_node = Self::vnode_to_ace_node(node, dom);
+                    let _new_node = Self::vnode_to_ace_node(node, dom);
                     // dom.insert_child(root_id, index, new_node); // Implementar conforme API real
                 }
-                PatchOp::Remove { index } => {
+                PatchOp::Remove { index: _ } => {
                     // dom.remove_child_by_index(root_id, *index);
                 }
-                PatchOp::Replace { index, node } => {
-                    let new_node = Self::vnode_to_ace_node(node, dom);
+                PatchOp::Replace { index: _, node } => {
+                    let _new_node = Self::vnode_to_ace_node(node, dom);
                     // dom.replace_child_by_index(root_id, *index, new_node);
                 }
-                PatchOp::SetAttribute { index, key, value } => {
+                PatchOp::SetAttribute { index: _, key: _, value: _ } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
                     // dom.set_attribute(node_id, key.to_string(), value.to_string());
                 }
-                PatchOp::RemoveAttribute { index, key } => {
+                PatchOp::RemoveAttribute { index: _, key: _ } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
                     // dom.remove_attribute(node_id, key.to_string());
                 }
-                PatchOp::SetText { index, text } => {
+                PatchOp::SetText { index: _, text: _ } => {
                     // let node_id = dom.get_child_by_index(root_id, *index);
                     // dom.set_text_content(node_id, text);
                 }
-                PatchOp::Move { from, to } => {
+                PatchOp::Move { from: _, to: _ } => {
                     // dom.move_child(root_id, *from, *to);
                 }
             }
