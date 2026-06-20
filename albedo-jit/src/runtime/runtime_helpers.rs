@@ -298,7 +298,6 @@ pub extern "C" fn js_call_ic(func: u64, this: u64, args_ptr: u64, num_args: u64,
     JsValue::undefined().0
 }
 
-
 // ---------------------------------------------------------------------------
 // Helpers de Objetos (Hidden Classes)
 // ---------------------------------------------------------------------------
