@@ -10,7 +10,7 @@ use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText, QuirksMode,
 use smallvec::SmallVec;
 
 use super::types::{
-    DoctypeToken, FragmentContext, HtmlDocument, HtmlElement, HtmlNode, Namespace, ParseError,
+    DoctypeToken, HtmlDocument, HtmlElement, HtmlNode, Namespace, ParseError,
     ParseErrorKind, ParseErrorSource, ParseResult, ParseStats, ParserOptions,
 };
 

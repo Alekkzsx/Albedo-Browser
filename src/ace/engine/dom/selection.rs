@@ -4,7 +4,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::ace::engine::dom::{AceNode, NodeId, NodeType, Range};
+use crate::ace::engine::dom::{NodeId, Range};
 
 /// Direção da seleção
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,7 +231,7 @@ impl Selection {
     }
     
     /// Estende a seleção até um nó e offset
-    pub fn extend(&mut self, node: NodeId, offset: usize, dom: &crate::ace::engine::dom::AceDOM) {
+    pub fn extend(&mut self, node: NodeId, offset: usize, _dom: &crate::ace::engine::dom::AceDOM) {
         if self.ranges.is_empty() {
             // Se não há seleção, cria uma nova a partir do ponto
             self.collapse(node, offset);

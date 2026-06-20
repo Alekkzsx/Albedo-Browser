@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::mem;
 
 use html5ever::tendril::TendrilSink;
@@ -7,10 +6,9 @@ use html5ever::{
     ns, parse_document as parse_document_driver, parse_fragment as parse_fragment_driver,
     LocalName, ParseOpts, QualName,
 };
-use markup5ever::interface::tree_builder::{QuirksMode};
 
 use super::types::{
-    FragmentContext, HtmlDocument, HtmlNode, HtmlElement, Namespace, ParseResult,
+    FragmentContext, HtmlDocument, HtmlNode, Namespace, ParseResult,
     ParseStats, ParserOptions,
 };
 use super::sink::{AceTreeSink};

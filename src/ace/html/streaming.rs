@@ -1,5 +1,5 @@
 use std::time::{Duration, Instant};
-use super::types::{ParserOptions, ParseResult, Encoding, DecodedHtml, HtmlDocument, StreamingSnapshot};
+use super::types::{ParserOptions, ParseResult, Encoding, HtmlDocument, StreamingSnapshot};
 use super::encoding::{decode_html_bytes, detect_bom, sniff_meta_charset};
 use super::{parse_document_with_errors_and_options};
 

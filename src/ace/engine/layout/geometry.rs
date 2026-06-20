@@ -91,16 +91,6 @@ impl Default for ElementGeometry {
     }
 }
 
-/// Grid layout context
-#[derive(Clone, Debug, Default)]
-pub struct GridContext {
-    pub column_names: std::collections::HashMap<String, Vec<i16>>,
-    pub row_names: std::collections::HashMap<String, Vec<i16>>,
-    pub areas: std::collections::HashMap<String, (usize, usize, usize, usize)>,
-    pub col_offset: i16,
-    pub row_offset: i16,
-}
-
 /// Primitive ACE element for rendering
 #[derive(Clone, Debug)]
 pub struct ACEPrimitive {
