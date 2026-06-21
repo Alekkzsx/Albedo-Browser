@@ -109,6 +109,10 @@ pub struct JsRuntime {
     pub bytecode_registry: Arc<albedo_jit::BytecodeRegistry>,
     #[qjs(skip_trace)]
     pub interceptor: Arc<crate::ace::runtime::bridge::quickjs_intercept::QuickJsInterceptor>,
+    #[qjs(skip_trace)]
+    pub ready_state: Arc<Mutex<String>>,
+    #[qjs(skip_trace)]
+    pub page_start_time: std::time::Instant,
 }
 
 use super::event_loop::EventLoop;
@@ -183,6 +187,8 @@ impl JsRuntime {
             jit_bridge,
             bytecode_registry,
             interceptor,
+            ready_state: Arc::new(Mutex::new("loading".to_string())),
+            page_start_time: std::time::Instant::now(),
         };
 
         // Configure OSR Interrupt Handler
@@ -195,6 +201,22 @@ impl JsRuntime {
         }
 
         Ok(rt)
+    }
+
+    pub fn set_ready_state(&self, state: &str) {
+        if let Ok(mut rs) = self.ready_state.lock() {
+            if *rs == state {
+                return;
+            }
+            *rs = state.to_string();
+        }
+
+        // Dispatch events based on state transition
+        if state == "interactive" {
+            let _ = self.execute_script("globalThis.document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true, cancelable: true }));");
+        } else if state == "complete" {
+            let _ = self.execute_script("globalThis.dispatchEvent(new Event('load', { bubbles: true, cancelable: true }));");
+        }
     }
 
     pub fn new() -> JsResult<Self> {

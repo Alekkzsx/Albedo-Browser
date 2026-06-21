@@ -193,6 +193,16 @@ impl Element {
         self::hierarchy::insert_adjacent_html(self, ctx, position, html)
     }
 
+    #[qjs(rename = "insertAdjacentElement")]
+    pub fn insert_adjacent_element<'js>(
+        &self,
+        ctx: Ctx<'js>,
+        position: String,
+        element: Class<'js, Element>,
+    ) -> Result<Class<'js, Element>> {
+        self::hierarchy::insert_adjacent_element(self, ctx, position, element)
+    }
+
     #[qjs(get, rename = "style")]
     pub fn style<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         self::style::style(self, ctx)

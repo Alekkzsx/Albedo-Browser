@@ -46,6 +46,7 @@ impl DOMParser {
             pending_scroll: doc_borrow.pending_scroll.clone(),
             element_geometry: doc_borrow.element_geometry.clone(),
             element_scroll: doc_borrow.element_scroll.clone(),
+            ready_state_ptr: doc_borrow.ready_state_ptr.clone(),
             url: "about:blank".into(),
             referrer: "".into(),
         };
