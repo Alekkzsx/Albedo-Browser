@@ -74,6 +74,14 @@ impl AceEngine {
                         needs_layout = true;
                     }
                 }
+
+                // After processing, check if all pending subresources are resolved
+                let is_empty = self.pending_resources.lock().unwrap().is_empty();
+                if is_empty {
+                    if let Some(ref rt) = self.js_runtime {
+                        rt.set_ready_state("complete"); // fires window.load
+                    }
+                }
             }
         }
 
