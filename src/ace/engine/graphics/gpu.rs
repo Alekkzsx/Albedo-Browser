@@ -58,7 +58,8 @@ impl GpuContext {
                 force_fallback_adapter: false,
                 compatible_surface: None,
             })
-            .await?;
+            .await
+            .ok()?;
 
         let (device, queue) = adapter
             .request_device(
@@ -67,8 +68,10 @@ impl GpuContext {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_defaults(),
                     memory_hints: Default::default(),
+                    experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                    trace: wgpu::Trace::Off,
+
                 },
-                None,
             )
             .await
             .ok()?;
@@ -194,7 +197,7 @@ impl GpuContext {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -274,10 +277,12 @@ impl GpuContext {
                         }), // Fundo Branco Page
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
             // Ligações: instâncias + quantidade a desenhar
@@ -288,15 +293,15 @@ impl GpuContext {
 
         // Texture To CPU RAM Buffer
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &output_buffer,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(4 * self.texture_width), // 4 bytes (RGBA8) por pixel
                     rows_per_image: Some(self.texture_height),
@@ -315,7 +320,7 @@ impl GpuContext {
             tx.send(v).unwrap();
         });
 
-        self.device.poll(wgpu::Maintain::Wait);
+
 
         if let Ok(Ok(())) = rx.recv() {
             let data = buffer_slice.get_mapped_range();
