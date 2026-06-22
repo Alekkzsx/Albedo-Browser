@@ -67,6 +67,11 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         if let Err(e) = init_stdlib(&rt, &url) {
             eprintln!("Failed to init stdlib: {}", e);
         }
+
+        // DOM is already fully parsed and available on the engine.
+        // This mirrors the real browser: JS runtime is ready + DOM is interactive.
+        rt.set_ready_state("interactive"); // fires DOMContentLoaded
+
         return Some(rt);
     }
     None
@@ -165,6 +170,8 @@ pub fn init_stdlib(rt: &JsRuntime, url: &str) -> JsResult<()> {
     crate::ace::runtime::bindings::webapi::crypto::register(rt)?;
     crate::ace::runtime::bindings::webapi::text_encoding::register(rt)?;
     crate::ace::runtime::bindings::webapi::structured_clone::register(rt)?;
+    crate::ace::runtime::bindings::webapi::performance::register(rt)?;
+    crate::ace::runtime::bindings::webapi::abort_controller::register(rt)?;
 
     // Service Worker, Cache, and Background Sync APIs (NEW)
     crate::ace::runtime::bindings::webapi::cache::register_cache_storage(rt)?;

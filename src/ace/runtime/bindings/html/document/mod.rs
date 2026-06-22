@@ -39,6 +39,8 @@ pub struct Document {
         Arc<Mutex<std::collections::HashMap<usize, crate::ace::engine::ElementGeometry>>>,
     #[qjs(skip_trace)]
     pub element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
+    #[qjs(skip_trace)]
+    pub ready_state_ptr: Arc<Mutex<String>>,
 }
 
 #[rquickjs::methods]
@@ -376,7 +378,7 @@ impl Document {
 
     #[qjs(get, rename = "readyState")]
     pub fn ready_state(&self) -> String {
-        "complete".to_string()
+        self.ready_state_ptr.lock().unwrap().clone()
     }
 
     #[qjs(get, rename = "URL")]
@@ -452,6 +454,7 @@ pub fn register(
                     pending_scroll: rt.pending_scroll.clone(),
                     element_geometry: rt.element_geometry.clone(), // Add
                     element_scroll: rt.element_scroll.clone(),     // Add
+                    ready_state_ptr: rt.ready_state.clone(),
                     url,
                     referrer,
                 },
