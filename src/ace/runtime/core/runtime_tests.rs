@@ -223,17 +223,17 @@ async fn test_computed_style() {
     )
     .unwrap();
 
-    // let result = rt
-    //     .execute_script(
-    //         r#"
-    //     var el = document.getElementById("target");
-    //     var style = getComputedStyle(el);
-    //     style.getPropertyValue('color') + '|' + style.getPropertyValue('font-size')
-    // "#,
-    //     )
-    //     .unwrap();
+    let result = rt
+        .execute_script(
+            r#"
+        var el = document.getElementById("target");
+        var style = getComputedStyle(el);
+        style.getPropertyValue('color') + '|' + style.getPropertyValue('font-size')
+    "#,
+        )
+        .unwrap();
 
-    // assert_eq!(result, "red|20px");
+    assert_eq!(result, "red|20px");
 }
 
 #[tokio::test]
@@ -477,8 +477,6 @@ async fn test_iframe_post_message() {
         .unwrap();
 
     println!("[test] postMessage result: {}", result);
-    // Ignore test failure for now as the iframe structure isn't properly initialized for postMessage
-    /*
     assert!(
         result.contains("sent"),
         "postMessage nao enviado, resultado: {}",
@@ -490,15 +488,14 @@ async fn test_iframe_post_message() {
     let received = child_rt.execute_script("globalThis.received").unwrap();
     println!("[test] received: {}", received);
     assert_eq!(received, "true", "Mensagem nao recebida pelo iframe filho");
-    */
 
-    // let data = child_rt.execute_script("globalThis.dataReceived").unwrap();
-    // println!("[test] dataReceived: {}", data);
-    // assert_eq!(
-    //     data, "\"Hello from parent\"",
-    //     "Dado da mensagem incorreto: {}",
-    //     data
-    // );
+    let data = child_rt.execute_script("globalThis.dataReceived").unwrap();
+    println!("[test] dataReceived: {}", data);
+    assert_eq!(
+        data, "\"Hello from parent\"",
+        "Dado da mensagem incorreto: {}",
+        data
+    );
 }
 
 #[tokio::test]
