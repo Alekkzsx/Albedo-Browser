@@ -319,8 +319,7 @@ impl GpuContext {
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
             tx.send(v).unwrap();
         });
-
-
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).unwrap(); // Block until done
 
         if let Ok(Ok(())) = rx.recv() {
             let data = buffer_slice.get_mapped_range();
