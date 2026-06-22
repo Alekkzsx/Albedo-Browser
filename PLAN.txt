@@ -703,6 +703,8 @@
   Networking:
   [ ]  Redirect completo (301/302/307/308 + loop detection)
   [ ]  Preconnect, preload (<link rel=...>)
+  [ ]  Process Isolation & Sandboxing básico (isolar Aba da UI)
+  [ ]  DevTools v0: Inspect básico da árvore DOM da Engine
 
   GATE: Abrir Wikipedia, MDN, docs.rs → texto legível, layout correto,
   imagens carregadas, links clicáveis, scroll funcional.
@@ -748,6 +750,8 @@
   [ ]  XSS protection
   [ ]  Third-party cookie controls
   [ ]  Safe Browsing básico
+  [ ]  bfcache (Back/Forward Cache) para navegação instantânea
+  [ ]  WebTransport (substituto ao WebSockets em QUIC)
 
   GATE: GitHub funcional (login, navegação, issues), Medium legível,
   SPAs React/Vue básicas renderizando.
@@ -784,6 +788,8 @@
   [ ]  Multi-column layout completo
   [ ]  Subgrid
   [ ]  Complex script shaping (ligaduras, kerning)
+  [ ]  Integração FFMPEG/GStreamer para suporte nativo de decoders AV1/VP9
+  [ ]  Isolamento por Origin (Site Isolation Real)
 
   GATE: YouTube reproduzindo vídeo. Gmail carregando inbox. Twitter/X
   renderizando feed com scroll infinito.
@@ -1052,7 +1058,7 @@
   │ Pilar                    │ Atual    │ Fase 1  │ Fase 2  │ Fase 3+ │
   ├──────────────────────────┼──────────┼─────────┼─────────┼─────────┤
   │ 1. Rendering Engine      │  6/10 🔧 │  8/10   │  9/10   │ 10/10   │
-  │ 2. JavaScript & Web APIs │  6/10 🔧 │  6/10   │  8/10   │  9/10   │
+  │ 2. JavaScript & Web APIs │  7/10 🔧 │  6/10   │  8/10   │  9/10   │
   │ 3. Networking            │  7/10 ✅ │  8/10   │  9/10   │  9/10   │
   │ 4. Security              │  3/10 ⚠️ │  5/10   │  7/10   │  8/10   │
   │ 5. Browser UI            │  3/10 ⚠️ │  6/10   │  7/10   │  9/10   │
