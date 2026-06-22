@@ -17,6 +17,8 @@ pub mod url_search_params;
 pub mod websocket;
 pub mod window_proxy;
 pub mod worker;
+pub mod performance;
+pub mod abort_controller;
 
 // Service Worker APIs (NEW)
 pub mod cache;

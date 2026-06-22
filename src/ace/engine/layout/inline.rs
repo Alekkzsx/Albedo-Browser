@@ -615,7 +615,7 @@ mod tests {
 
         ifc.layout(boxes);
 
-        if ifc.lines.len() != 1 { return; }
+        if ifc.lines.is_empty() { return; }
         let (box_0, _, _) = &ifc.lines[0].boxes[0];
         if let InlineBox::Text { content, .. } = box_0 {
             assert!(content.contains("…"));
