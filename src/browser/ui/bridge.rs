@@ -2,28 +2,6 @@ use crate::browser::tabs::manager::TabManager;
 use crate::ui::AppWindow;
 use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer};
 
-pub fn bytes_to_slint_buffer(
-    data: &[u8],
-    width: u32,
-    height: u32,
-) -> SharedPixelBuffer<Rgba8Pixel> {
-    let mut pixel_buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
-    let slint_pixels = pixel_buffer.make_mut_slice();
-
-    if data.len() == slint_pixels.len() * 4 {
-        for (i, pixel) in data.chunks_exact(4).enumerate() {
-            slint_pixels[i] = Rgba8Pixel {
-                r: pixel[0],
-                g: pixel[1],
-                b: pixel[2],
-                a: pixel[3],
-            };
-        }
-    }
-
-    pixel_buffer
-}
-
 pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
     if let Some((_, engine, _)) = tm.get_active_tab_native_data() {
         let scale_factor = ui.window().scale_factor();
@@ -143,7 +121,8 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
             }
 
             if let Some(pixels) = final_pixels {
-                let pixel_buffer = bytes_to_slint_buffer(&pixels, physical_w, physical_h);
+                let pixel_buffer =
+                    SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&pixels, physical_w, physical_h);
 
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_clone.upgrade() {
