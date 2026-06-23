@@ -1,6 +1,79 @@
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
 use tiny_skia::{BlendMode, Color, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
 
+fn blend_mask_pixel(
+    data: &mut [u8],
+    pixel_idx: usize,
+    alpha_byte: u8,
+    opacity: f32,
+    color: (f32, f32, f32),
+) {
+    let src_a = (alpha_byte as f32 / 255.0) * opacity;
+    if src_a > 0.0 {
+        let dst_a = 1.0 - src_a;
+        data[pixel_idx] = (color.0 * src_a + data[pixel_idx] as f32 * dst_a) as u8;
+        data[pixel_idx + 1] = (color.1 * src_a + data[pixel_idx + 1] as f32 * dst_a) as u8;
+        data[pixel_idx + 2] = (color.2 * src_a + data[pixel_idx + 2] as f32 * dst_a) as u8;
+        data[pixel_idx + 3] = 255;
+    }
+}
+
+fn blend_color_pixel(data: &mut [u8], pixel_idx: usize, src_pixel: &[u8], opacity: f32) {
+    let src_a = (src_pixel[3] as f32 / 255.0) * opacity;
+    if src_a > 0.0 {
+        let dst_a = 1.0 - src_a;
+        data[pixel_idx] = (src_pixel[0] as f32 * src_a + data[pixel_idx] as f32 * dst_a) as u8;
+        data[pixel_idx + 1] =
+            (src_pixel[1] as f32 * src_a + data[pixel_idx + 1] as f32 * dst_a) as u8;
+        data[pixel_idx + 2] =
+            (src_pixel[2] as f32 * src_a + data[pixel_idx + 2] as f32 * dst_a) as u8;
+        data[pixel_idx + 3] = 255;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blend_mask_pixel_basic() {
+        let mut data = vec![128u8; 8]; // 2 pixels, RGBA
+        blend_mask_pixel(&mut data, 0, 128, 1.0, (255.0, 0.0, 0.0));
+        // src_a = 128/255 * 1.0 ≈ 0.502
+        assert!(data[0] > 128); // red channel should increase
+        assert_eq!(data[1], 128); // green unchanged (0.0 * src_a = 0)
+        assert_eq!(data[2], 128); // blue unchanged
+        assert_eq!(data[3], 255); // alpha always 255
+    }
+
+    #[test]
+    fn blend_mask_pixel_zero_alpha() {
+        let mut data = vec![128u8; 4];
+        blend_mask_pixel(&mut data, 0, 0, 1.0, (255.0, 0.0, 0.0));
+        assert_eq!(data, vec![128, 128, 128, 128]); // no change
+    }
+
+    #[test]
+    fn blend_color_pixel_basic() {
+        let mut data = vec![0u8; 8]; // 2 pixels RGBA
+        let src = vec![255u8, 128, 64, 255]; // fully opaque source pixel
+        blend_color_pixel(&mut data, 0, &src, 1.0);
+        assert_eq!(data[0], 255); // red
+        assert_eq!(data[1], 128); // green
+        assert_eq!(data[2], 64); // blue
+        assert_eq!(data[3], 255); // alpha
+    }
+
+    #[test]
+    fn blend_color_pixel_semi_transparent() {
+        let mut data = vec![200u8; 4];
+        let src = vec![100u8, 100, 100, 128]; // ~50% alpha
+        blend_color_pixel(&mut data, 0, &src, 1.0);
+        // src_a = 128/255 ≈ 0.502
+        assert!(data[0] > 100 && data[0] < 200);
+    }
+}
+
 pub fn paint_layout_tree(
     tile: &crate::ace::engine::layer_tree::Tile,
     width: u32,
@@ -182,6 +255,8 @@ pub fn paint_layout_tree(
                     let left = (physical_glyph.x as i32) + image.placement.left;
                     match image.content {
                         cosmic_text::SwashContent::Mask => {
+                            let text_opacity = text_color.alpha() * prim.opacity;
+                            let color = (r_base as f32, g_base as f32, b_base as f32);
                             for (y, row) in image
                                 .data
                                 .chunks(image.placement.width as usize)
@@ -195,25 +270,15 @@ pub fn paint_layout_tree(
                                         && p_y >= clip_min_y
                                         && p_y < clip_max_y
                                     {
-                                        if *alpha_byte > 0 {
-                                            let pixel_idx =
-                                                ((p_y as u32 * width) + p_x as u32) as usize * 4;
-                                            let data = pixmap.data_mut();
-                                            let src_a = (*alpha_byte as f32 / 255.0)
-                                                * text_color.alpha()
-                                                * prim.opacity;
-                                            let dst_a = 1.0 - src_a;
-                                            data[pixel_idx] = ((r_base as f32 * src_a)
-                                                + (data[pixel_idx] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 1] = ((g_base as f32 * src_a)
-                                                + (data[pixel_idx + 1] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 2] = ((b_base as f32 * src_a)
-                                                + (data[pixel_idx + 2] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 3] = 255;
-                                        }
+                                        let pixel_idx =
+                                            ((p_y as u32 * width) + p_x as u32) as usize * 4;
+                                        blend_mask_pixel(
+                                            pixmap.data_mut(),
+                                            pixel_idx,
+                                            *alpha_byte,
+                                            text_opacity,
+                                            color,
+                                        );
                                     }
                                 }
                             }
@@ -232,23 +297,14 @@ pub fn paint_layout_tree(
                                         && p_y >= clip_min_y
                                         && p_y < clip_max_y
                                     {
-                                        let src_a = (pixel[3] as f32 / 255.0) * prim.opacity;
-                                        if src_a > 0.0 {
-                                            let pixel_idx =
-                                                ((p_y as u32 * width) + p_x as u32) as usize * 4;
-                                            let data = pixmap.data_mut();
-                                            let dst_a = 1.0 - src_a;
-                                            data[pixel_idx] = ((pixel[0] as f32 * src_a)
-                                                + (data[pixel_idx] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 1] = ((pixel[1] as f32 * src_a)
-                                                + (data[pixel_idx + 1] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 2] = ((pixel[2] as f32 * src_a)
-                                                + (data[pixel_idx + 2] as f32 * dst_a))
-                                                as u8;
-                                            data[pixel_idx + 3] = 255;
-                                        }
+                                        let pixel_idx =
+                                            ((p_y as u32 * width) + p_x as u32) as usize * 4;
+                                        blend_color_pixel(
+                                            pixmap.data_mut(),
+                                            pixel_idx,
+                                            pixel,
+                                            prim.opacity,
+                                        );
                                     }
                                 }
                             }
@@ -626,6 +682,12 @@ pub fn paint_layout_tree(
 
                     // Value Text
                     if !prim.input_value.is_empty() {
+                        let value_color = prim.text_color;
+                        let vr_base = (value_color.red() * 255.0) as f32;
+                        let vg_base = (value_color.green() * 255.0) as f32;
+                        let vb_base = (value_color.blue() * 255.0) as f32;
+                        let value_opacity = value_color.alpha() * prim.opacity;
+
                         let mut buffer = Buffer::new(
                             font_system,
                             Metrics::new(
@@ -681,20 +743,13 @@ pub fn paint_layout_tree(
                                                         + p_x as u32)
                                                         as usize
                                                         * 4;
-                                                    let data = pixmap.data_mut();
-                                                    let src_a =
-                                                        (*alpha_byte as f32 / 255.0) * prim.opacity;
-                                                    let dst_a = 1.0 - src_a;
-                                                    data[pixel_idx] = (0.0 * src_a
-                                                        + data[pixel_idx] as f32 * dst_a)
-                                                        as u8;
-                                                    data[pixel_idx + 1] = (0.0 * src_a
-                                                        + data[pixel_idx + 1] as f32 * dst_a)
-                                                        as u8;
-                                                    data[pixel_idx + 2] = (0.0 * src_a
-                                                        + data[pixel_idx + 2] as f32 * dst_a)
-                                                        as u8;
-                                                    data[pixel_idx + 3] = 255;
+                                                    blend_mask_pixel(
+                                                        pixmap.data_mut(),
+                                                        pixel_idx,
+                                                        *alpha_byte,
+                                                        value_opacity,
+                                                        (vr_base, vg_base, vb_base),
+                                                    );
                                                 }
                                             }
                                         }
