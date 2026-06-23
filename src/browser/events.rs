@@ -200,7 +200,7 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
             sync_ace_visuals(&ui, tm);
         }
 
-        if let Some((_, Some(mut engine), progress)) = tm.get_active_tab_native_data() {
+        if let Some((_, mut engine, progress)) = tm.get_active_tab_native_data() {
             ui.set_loading_progress(progress);
 
             // Recompilar estilos se hover/focus mudou

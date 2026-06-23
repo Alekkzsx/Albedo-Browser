@@ -18,6 +18,20 @@ impl TabManager {
         }
     }
 
+    fn with_collection<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&TabCollection) -> R,
+    {
+        f(&self.collection.borrow())
+    }
+
+    fn with_collection_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut TabCollection) -> R,
+    {
+        f(&mut *self.collection.borrow_mut())
+    }
+
     pub fn create_tab(&self, _window: &slint::Window, url: &str) {
         println!("[TabManager] Creating new tab for URL: {}", url);
 
@@ -84,40 +98,39 @@ impl TabManager {
         None
     }
 
-    pub fn get_active_tab_native_data(&self) -> Option<(String, Option<AceEngine>, f32)> {
-        let col = self.collection.borrow();
-        if let Some(tab) = col.get_active() {
-            return Some((
-                tab.url.clone(),
-                Some(tab.engine.clone()),
-                tab.loading_progress,
-            ));
-        }
-        None
+    pub fn get_active_tab_native_data(&self) -> Option<(String, AceEngine, f32)> {
+        self.with_collection(|col| {
+            col.get_active().map(|tab| {
+                (
+                    tab.url.clone(),
+                    tab.engine.clone(),
+                    tab.loading_progress,
+                )
+            })
+        })
     }
 
     pub fn get_tabs_info(&self) -> Vec<(String, bool, bool, slint::Image)> {
-        let col = self.collection.borrow();
-        let active_idx = col.active_index;
-
-        let default_image = slint::Image::default();
-
-        col.tabs
-            .iter()
-            .enumerate()
-            .map(|(i, tab)| {
-                let img = match &tab.favicon_data {
-                    Some(buf) => slint::Image::from_rgba8(buf.clone()),
-                    None => default_image.clone(),
-                };
-                (
-                    tab.title.clone(),
-                    Some(i) == active_idx,
-                    tab.is_loading,
-                    img,
-                )
-            })
-            .collect()
+        self.with_collection(|col| {
+            let active_idx = col.active_index;
+            let default_image = slint::Image::default();
+            col.tabs
+                .iter()
+                .enumerate()
+                .map(|(i, tab)| {
+                    let img = match &tab.favicon_data {
+                        Some(buf) => slint::Image::from_rgba8(buf.clone()),
+                        None => default_image.clone(),
+                    };
+                    (
+                        tab.title.clone(),
+                        Some(i) == active_idx,
+                        tab.is_loading,
+                        img,
+                    )
+                })
+                .collect()
+        })
     }
 
     pub fn switch_to_tab(&self, index: usize) -> Option<(String, bool, String, TabMode)> {
@@ -221,17 +234,18 @@ impl TabManager {
     }
 
     pub fn dispatch_click_to_active_tab(&self, node_idx: usize) -> bool {
-        let col = self.collection.borrow();
-        if let Some(tab) = col.get_active() {
-            if let Some(ref rt) = tab.engine.js_runtime {
-                if let Some(ref dom) = tab.engine.dom {
-                    println!("[TabManager] Dispatching click to node index: {}", node_idx);
-                    rt.dispatch_event(dom.clone(), node_idx, "click");
-                    return true;
+        self.with_collection(|col| {
+            if let Some(tab) = col.get_active() {
+                if let Some(ref rt) = tab.engine.js_runtime {
+                    if let Some(ref dom) = tab.engine.dom {
+                        println!("[TabManager] Dispatching click to node index: {}", node_idx);
+                        rt.dispatch_event(dom.clone(), node_idx, "click");
+                        return true;
+                    }
                 }
             }
-        }
-        false
+            false
+        })
     }
 
     pub fn handle_click(&self, x: f32, y: f32) -> bool {
@@ -242,34 +256,22 @@ impl TabManager {
                 // Comportamento nativo: toggle de <details> via <summary>
                 if let Some(ref dom_arc) = tab.engine.dom {
                     let mut dom = dom_arc.lock().unwrap();
-                    let is_summary = if let Some(n) = dom.get_node(idx) {
-                        matches!(&n.node_type, crate::ace::engine::dom::AceNodeType::Element(el) if el.tag == "summary")
-                    } else {
-                        false
-                    };
+
+                    let is_summary = dom
+                        .get_element(idx)
+                        .map_or(false, |el| el.tag == "summary");
 
                     if is_summary {
                         let parent_idx = dom.get_node(idx).and_then(|n| n.parent);
                         if let Some(p_idx) = parent_idx {
-                            let is_details = if let Some(p) = dom.get_node(p_idx) {
-                                matches!(&p.node_type, crate::ace::engine::dom::AceNodeType::Element(el) if el.tag == "details")
-                            } else {
-                                false
-                            };
+                            let is_details = dom
+                                .get_element(p_idx)
+                                .map_or(false, |el| el.tag == "details");
 
                             if is_details {
                                 let has_open = dom
-                                    .get_node(p_idx)
-                                    .and_then(|n| {
-                                        if let crate::ace::engine::dom::AceNodeType::Element(el) =
-                                            &n.node_type
-                                        {
-                                            Some(el.attributes.contains_key("open"))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .unwrap_or(false);
+                                    .get_element(p_idx)
+                                    .map_or(false, |el| el.attributes.contains_key("open"));
 
                                 if has_open {
                                     dom.remove_attribute_notify(p_idx, "open".into());
@@ -281,63 +283,44 @@ impl TabManager {
                     }
 
                     // Comportamento nativo: <form method="dialog"> fecha <dialog> pai
-                    // Quando um <button> ou <input type="submit"> dentro de um <form method="dialog">
-                    // é clicado, o dialog ancestral é fechado com returnValue = button.value
-                    let clicked_tag = if let Some(n) = dom.get_node(idx) {
-                        if let crate::ace::engine::dom::AceNodeType::Element(el) = &n.node_type {
-                            el.tag.clone()
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        String::new()
-                    };
+                    let clicked_tag = dom
+                        .get_element(idx)
+                        .map_or_else(String::new, |el| el.tag.clone());
 
                     if clicked_tag == "button" || clicked_tag == "input" {
-                        // Caminhar ancestrais procurando <form method="dialog"> → <dialog>
-                        let button_value = if let Some(n) = dom.get_node(idx) {
-                            if let crate::ace::engine::dom::AceNodeType::Element(el) = &n.node_type {
-                                el.attributes.get("value").cloned().unwrap_or_default()
-                            } else {
-                                String::new()
-                            }
-                        } else {
-                            String::new()
-                        };
+                        let button_value = dom
+                            .get_element(idx)
+                            .and_then(|el| el.attributes.get("value").cloned())
+                            .unwrap_or_default();
 
                         let mut ancestor = dom.get_node(idx).and_then(|n| n.parent);
                         let mut found_form_dialog = false;
                         while let Some(a_idx) = ancestor {
-                            if let Some(a_node) = dom.get_node(a_idx) {
-                                if let crate::ace::engine::dom::AceNodeType::Element(a_el) =
-                                    &a_node.node_type
+                            if let Some(a_el) = dom.get_element(a_idx) {
+                                if a_el.tag == "form"
+                                    && a_el
+                                        .attributes
+                                        .get("method")
+                                        .map_or(false, |m| m.eq_ignore_ascii_case("dialog"))
                                 {
-                                    if a_el.tag == "form"
-                                        && a_el
-                                            .attributes
-                                            .get("method")
-                                            .map_or(false, |m| m.eq_ignore_ascii_case("dialog"))
-                                    {
-                                        found_form_dialog = true;
-                                    }
-                                    if found_form_dialog
-                                        && a_el.tag == "dialog"
-                                        && a_el.attributes.contains_key("open")
-                                    {
-                                        // Fechar este dialog
-                                        if !button_value.is_empty() {
-                                            dom.set_attribute_notify(
-                                                a_idx,
-                                                "data-return-value".into(),
-                                                button_value.clone(),
-                                            );
-                                        }
-                                        dom.remove_attribute_notify(a_idx, "open".into());
-                                        dom.remove_attribute_notify(a_idx, "data-ace-modal".into());
-                                        break;
-                                    }
+                                    found_form_dialog = true;
                                 }
-                                ancestor = a_node.parent;
+                                if found_form_dialog
+                                    && a_el.tag == "dialog"
+                                    && a_el.attributes.contains_key("open")
+                                {
+                                    if !button_value.is_empty() {
+                                        dom.set_attribute_notify(
+                                            a_idx,
+                                            "data-return-value".into(),
+                                            button_value.clone(),
+                                        );
+                                    }
+                                    dom.remove_attribute_notify(a_idx, "open".into());
+                                    dom.remove_attribute_notify(a_idx, "data-ace-modal".into());
+                                    break;
+                                }
+                                ancestor = dom.get_node(a_idx).and_then(|n| n.parent);
                             } else {
                                 break;
                             }
@@ -528,7 +511,6 @@ impl TabManager {
             if key == "Escape" {
                 if let Some(ref dom_arc) = tab.engine.dom {
                     let mut dom = dom_arc.lock().unwrap();
-                    // Procurar o último <dialog data-ace-modal open> (topmost)
                     let mut modal_idx = None;
                     for (i, node) in dom.nodes.iter().enumerate() {
                         if let crate::ace::engine::dom::AceNodeType::Element(el) = &node.node_type {
@@ -536,7 +518,7 @@ impl TabManager {
                                 && el.attributes.contains_key("open")
                                 && el.attributes.contains_key("data-ace-modal")
                             {
-                                modal_idx = Some(i); // Último encontrado = topmost
+                                modal_idx = Some(i);
                             }
                         }
                     }
@@ -602,25 +584,26 @@ impl TabManager {
         alt: bool,
         meta: bool,
     ) -> bool {
-        let col = self.collection.borrow();
-        if let Some(tab) = col.get_active() {
-            if let Some(ref rt) = tab.engine.js_runtime {
-                if let Some(focused_idx) = tab.engine.focused_element {
-                    rt.dispatch_keyboard_event(
-                        focused_idx,
-                        "keyup",
-                        key,
-                        code,
-                        ctrl,
-                        shift,
-                        alt,
-                        meta,
-                    );
-                    return true;
+        self.with_collection(|col| {
+            if let Some(tab) = col.get_active() {
+                if let Some(ref rt) = tab.engine.js_runtime {
+                    if let Some(focused_idx) = tab.engine.focused_element {
+                        rt.dispatch_keyboard_event(
+                            focused_idx,
+                            "keyup",
+                            key,
+                            code,
+                            ctrl,
+                            shift,
+                            alt,
+                            meta,
+                        );
+                        return true;
+                    }
                 }
             }
-        }
-        false
+            false
+        })
     }
 
     pub fn handle_scroll(&self, x: f32, y: f32, delta: f32) -> bool {

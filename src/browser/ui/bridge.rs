@@ -25,7 +25,7 @@ pub fn bytes_to_slint_buffer(
 }
 
 pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
-    if let Some((_, Some(engine), _)) = tm.get_active_tab_native_data() {
+    if let Some((_, engine, _)) = tm.get_active_tab_native_data() {
         let scale_factor = ui.window().scale_factor();
         let physical_size = ui.window().size();
 
