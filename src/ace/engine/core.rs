@@ -101,6 +101,16 @@ impl AceEngine {
         self.resource_manager = Some(rm);
     }
 
+    pub fn with_js_context<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&crate::ace::runtime::core::runtime::JsRuntime, &AceDOM) -> R,
+    {
+        let rt = self.js_runtime.as_ref()?;
+        let dom_arc = self.dom.as_ref()?;
+        let dom = dom_arc.lock().unwrap();
+        Some(f(rt, &dom))
+    }
+
     pub fn set_hover(&mut self, node_id: Option<usize>) {
         self.hovered_element = node_id;
         self.mark_styles_dirty();
@@ -271,5 +281,23 @@ impl std::fmt::Debug for AceEngine {
             .field("current_url", &self.current_url)
             .field("styles_dirty", &self.styles_dirty)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_js_context_returns_none_when_no_runtime() {
+        let engine = AceEngine::new();
+        assert!(engine.with_js_context(|_, _| true).is_none());
+    }
+
+    #[test]
+    fn with_js_context_returns_none_when_no_dom() {
+        let mut engine = AceEngine::new();
+        engine.dom = None;
+        assert!(engine.with_js_context(|_, _| true).is_none());
     }
 }
