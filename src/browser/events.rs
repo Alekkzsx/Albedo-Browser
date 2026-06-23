@@ -109,36 +109,28 @@ pub fn handle_close_tab(tm: &TabManager, index: i32, tabs_model: &Rc<VecModel<Ta
     sync_tabs(tm, tabs_model);
 }
 
-pub fn handle_pointer_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
-    if let Some(ui) = ui_handle.upgrade() {
-        if tm.handle_click(x, y) {
+fn dispatch_and_sync(ui_handle: &Weak<AppWindow>, tm: &TabManager, changed: bool) {
+    if changed {
+        if let Some(ui) = ui_handle.upgrade() {
             sync_ace_visuals(&ui, tm);
         }
     }
+}
+
+pub fn handle_pointer_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
+    dispatch_and_sync(ui_handle, tm, tm.handle_click(x, y));
 }
 
 pub fn handle_hover(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
-    if let Some(ui) = ui_handle.upgrade() {
-        if tm.handle_hover(x, y) {
-            sync_ace_visuals(&ui, tm);
-        }
-    }
+    dispatch_and_sync(ui_handle, tm, tm.handle_hover(x, y));
 }
 
 pub fn handle_pointer_down(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
-    if let Some(ui) = ui_handle.upgrade() {
-        if tm.handle_pointer_down(x, y) {
-            sync_ace_visuals(&ui, tm);
-        }
-    }
+    dispatch_and_sync(ui_handle, tm, tm.handle_pointer_down(x, y));
 }
 
 pub fn handle_pointer_up(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
-    if let Some(ui) = ui_handle.upgrade() {
-        if tm.handle_pointer_up(x, y) {
-            sync_ace_visuals(&ui, tm);
-        }
-    }
+    dispatch_and_sync(ui_handle, tm, tm.handle_pointer_up(x, y));
 }
 
 pub fn handle_key_down(
@@ -170,11 +162,7 @@ pub fn handle_key_up(
 }
 
 pub fn handle_scroll(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32, delta: f32) {
-    if let Some(ui) = ui_handle.upgrade() {
-        if tm.handle_scroll(x, y, delta) {
-            sync_ace_visuals(&ui, tm);
-        }
-    }
+    dispatch_and_sync(ui_handle, tm, tm.handle_scroll(x, y, delta));
 }
 
 pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
