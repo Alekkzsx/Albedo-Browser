@@ -1,4 +1,12 @@
-#![allow(warnings)]
+#![warn(
+    clippy::all,
+    clippy::pedantic,
+    clippy::unwrap_used,
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::dbg_macro,
+    clippy::panic
+)]
 
 use albedo::utils::sysinfo::AceSysInfo;
 use albedo::browser;

@@ -1,0 +1,32 @@
+# Clippy configuration for Albedo Browser
+# https://doc.rust-lang.org/clippy/configuration.html
+
+# Maximum lines in a function body before warning
+too-many-lines-threshold = 150
+
+# Maximum number of function arguments
+too-many-arguments-threshold = 7
+
+# Maximum number of lines in a struct definition
+too-many-lines-in-struct-threshold = 50
+
+# Maximum number of fields in a struct
+too-many-fields-threshold = 15
+
+# Maximum number of variants in an enum
+too-many-variants-threshold = 20
+
+# Maximum number of nested blocks
+type-complexity-threshold = 300
+
+# Maximum number of arms in a match
+too-many-arms-threshold = 15
+
+# Maximum cognitive complexity
+cognitive-complexity-threshold = 25
+
+# Maximum struct field count for is_valid_raw_pointer_handling
+trivial-copy-size-limit = 8
+
+# Maximum number of function lines for single_call_fn
+single-call_fn-threshold = 5
