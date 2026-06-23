@@ -1,13 +1,45 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=src/ui/appwindow.slint");
     println!("cargo:rerun-if-changed=src/ace/html/entities.json");
+    println!("cargo:rerun-if-changed=scripts/lint.sh");
+    println!("cargo:rerun-if-changed=scripts/lint.ps1");
+
+    run_lint_checks();
 
     slint_build::compile("src/ui/appwindow.slint").unwrap();
     generate_html_entities().unwrap();
+}
+
+fn run_lint_checks() {
+    let status = if cfg!(target_os = "windows") {
+        Command::new("powershell")
+            .args(["-ExecutionPolicy", "Bypass", "-File", "scripts/lint.ps1"])
+            .status()
+    } else {
+        Command::new("bash")
+            .args(["scripts/lint.sh"])
+            .status()
+    };
+
+    match status {
+        Ok(s) if !s.success() => {
+            panic!(
+                "\n\nLint checks failed!\n\
+                 Run './scripts/lint.sh --all' for details.\n\
+                 Fix the errors above before building.\n\n"
+            );
+        }
+        Err(e) => {
+            eprintln!("warning: could not run lint script: {}", e);
+            eprintln!("warning: skipping lint checks");
+        }
+        _ => {}
+    }
 }
 
 fn generate_html_entities() -> Result<(), Box<dyn std::error::Error>> {
