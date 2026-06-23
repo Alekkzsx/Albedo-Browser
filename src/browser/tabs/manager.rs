@@ -82,18 +82,18 @@ impl TabManager {
         _window: &slint::Window,
         url: &str,
     ) -> Option<(String, bool, bool, String)> {
-        let tab_id = {
-            let col = self.collection.borrow();
-            col.get_active().map(|t| t.id.clone())
-        };
+        let tab_id = self.with_collection(|col| col.get_active().map(|t| t.id.clone()));
 
         if let Some(id) = tab_id {
             self.load_url(id, url.to_string());
 
-            let col = self.collection.borrow();
-            if let Some(_tab) = col.get_active() {
-                return Some((url.to_string(), false, false, "EFFICIENT".into()));
-            }
+            return self.with_collection(|col| {
+                if col.get_active().is_some() {
+                    Some((url.to_string(), false, false, "EFFICIENT".into()))
+                } else {
+                    None
+                }
+            });
         }
         None
     }
@@ -135,22 +135,22 @@ impl TabManager {
 
     pub fn switch_to_tab(&self, index: usize) -> Option<(String, bool, String, TabMode)> {
         println!("[TabManager] Switching to tab index: {}", index);
-        let mut col = self.collection.borrow_mut();
-
-        if let Some(tab) = col.switch_to(index) {
-            println!("[TabManager] Tab switched successfully to: {}", tab.url);
-            return Some((
-                tab.url.clone(),
-                tab.show_start_page,
-                "".to_string(),
-                tab.mode,
-            ));
-        }
-        None
+        self.with_collection_mut(|col| {
+            if let Some(tab) = col.switch_to(index) {
+                println!("[TabManager] Tab switched successfully to: {}", tab.url);
+                return Some((
+                    tab.url.clone(),
+                    tab.show_start_page,
+                    "".to_string(),
+                    tab.mode,
+                ));
+            }
+            None
+        })
     }
 
     pub fn close_tab(&self, index: usize) {
-        self.collection.borrow_mut().close(index);
+        self.with_collection_mut(|col| col.close(index));
     }
 
     pub fn process_active_tab_resources(&self) -> bool {
@@ -673,12 +673,10 @@ impl TabManager {
     }
 
     pub fn request_navigate(&self, url: String) {
-        let mut col = self.collection.borrow_mut();
-        col.pending_nav = Some(url);
+        self.with_collection_mut(|col| col.pending_nav = Some(url));
     }
 
     pub fn take_pending_nav(&self) -> Option<String> {
-        let mut col = self.collection.borrow_mut();
-        col.pending_nav.take()
+        self.with_collection_mut(|col| col.pending_nav.take())
     }
 }
