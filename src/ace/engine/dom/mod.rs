@@ -351,6 +351,22 @@ impl AceDOM {
         self.nodes.get_mut(id)
     }
 
+    pub fn get_element(&self, idx: usize) -> Option<&AceElement> {
+        let node = self.get_node(idx)?;
+        match &node.node_type {
+            AceNodeType::Element(el) => Some(el),
+            _ => None,
+        }
+    }
+
+    pub fn get_element_mut(&mut self, idx: usize) -> Option<&mut AceElement> {
+        let node = self.get_node_mut(idx)?;
+        match &mut node.node_type {
+            AceNodeType::Element(el) => Some(el),
+            _ => None,
+        }
+    }
+
     pub fn create_text_node(&mut self, text: impl AsRef<str>) -> usize {
         let id = self.nodes.len();
         self.nodes.push(AceNode {
@@ -1195,5 +1211,45 @@ impl AceDOM {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_element_dom() -> AceDOM {
+        let mut dom = AceDOM::new();
+        let elem_id = dom.create_element("div", vec![]);
+        let _text_id = dom.create_text_node("hello");
+        dom.append_child(elem_id, 1);
+        dom
+    }
+
+    #[test]
+    fn get_element_returns_some_for_element_node() {
+        let dom = make_element_dom();
+        assert!(dom.get_element(0).is_some());
+    }
+
+    #[test]
+    fn get_element_returns_none_for_text_node() {
+        let dom = make_element_dom();
+        assert!(dom.get_element(1).is_none());
+    }
+
+    #[test]
+    fn get_element_returns_none_for_out_of_bounds() {
+        let dom = make_element_dom();
+        assert!(dom.get_element(999).is_none());
+    }
+
+    #[test]
+    fn get_element_mut_allows_modification() {
+        let mut dom = make_element_dom();
+        if let Some(el) = dom.get_element_mut(0) {
+            el.tag = "span".to_string();
+        }
+        assert_eq!(dom.get_element(0).unwrap().tag, "span");
     }
 }
