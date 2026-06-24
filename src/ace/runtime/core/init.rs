@@ -10,11 +10,11 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         // Actually I should provide the full block as per rules.
         // Wait, I'm using replace_file_content, so I need to match the block.
         // I'll use a smaller range.
-        println!("[init_js_for_url] START for url={}", url);
+        tracing::info!(url = %url, "Initializing JS runtime");
         rt.context.lock().unwrap().with(|ctx| {
             let _ = ctx.globals().set("__albedo_rt__", rt.clone());
         });
-        println!("[init_js_for_url] __albedo_rt__ set");
+        tracing::debug!("__albedo_rt__ set");
         *rt.resource_manager.lock().unwrap() = engine.resource_manager.clone();
         rt.element_geometry = engine.element_geometry.clone();
         rt.element_scroll = engine.element_scroll.clone();
@@ -41,7 +41,7 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
         }
 
         if let Err(e) = init_storage(&rt, origin_str) {
-            eprintln!("Failed to initialize storage for {}: {}", origin_str, e);
+            tracing::error!(?e, origin = origin_str, "Failed to initialize storage");
         }
         crate::ace::runtime::core::registry::register_runtime(rt.id, Arc::new(Mutex::new(rt.clone())));
         if let Some(dom) = &engine.dom {
@@ -55,17 +55,17 @@ pub fn init_js_for_url(url: &str, engine: &AceEngine) -> Option<JsRuntime> {
                 "".to_string(),
                 engine.resource_manager.clone(),
             ) {
-                eprintln!("Failed to register document API: {}", e);
+                tracing::error!(?e, "Failed to register document API");
             }
         }
         if let Err(e) = crate::ace::runtime::bindings::utils::console::Console::register(&rt) {
-            eprintln!("Failed to register console: {}", e);
+            tracing::error!(?e, "Failed to register console");
         }
         if let Err(e) = register_events(&rt) {
-            eprintln!("Failed to register events: {}", e);
+            tracing::error!(?e, "Failed to register events");
         }
         if let Err(e) = init_stdlib(&rt, &url) {
-            eprintln!("Failed to init stdlib: {}", e);
+            tracing::error!(?e, "Failed to init stdlib");
         }
 
         // DOM is already fully parsed and available on the engine.
