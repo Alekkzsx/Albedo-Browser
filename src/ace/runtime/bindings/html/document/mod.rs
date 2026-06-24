@@ -116,8 +116,8 @@ impl Document {
 
     #[qjs(rename = "createElement")]
     pub fn create_element<'js>(&self, ctx: Ctx<'js>, tag: String) -> Result<Value<'js>> {
-        let idx = if let Ok(mut dom) = self.dom.lock() {
-            let idx = dom.nodes.len();
+        let node_index = if let Ok(mut dom) = self.dom.lock() {
+            let node_index = dom.nodes.len();
             dom.nodes.push(AceNode {
                 node_type: AceNodeType::Element(crate::ace::engine::dom::AceElement {
                     tag,
@@ -132,14 +132,14 @@ impl Document {
                 dirty: crate::ace::engine::dom::NodeDirtyFlags::LAYOUT
                     | crate::ace::engine::dom::NodeDirtyFlags::STYLE,
             });
-            idx
+            node_index
         } else {
             return Ok(Value::new_null(ctx));
         };
 
         let element = Element {
             dom: self.dom.clone(),
-            index: idx,
+            index: node_index,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
@@ -155,8 +155,8 @@ impl Document {
 
     #[qjs(rename = "createDocumentFragment")]
     pub fn create_document_fragment<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        let idx = if let Ok(mut dom) = self.dom.lock() {
-            let idx = dom.nodes.len();
+        let node_index = if let Ok(mut dom) = self.dom.lock() {
+            let node_index = dom.nodes.len();
             dom.nodes.push(AceNode {
                 node_type: AceNodeType::DocumentFragment,
                 parent: None,
@@ -167,14 +167,14 @@ impl Document {
                 dirty: crate::ace::engine::dom::NodeDirtyFlags::LAYOUT
                     | crate::ace::engine::dom::NodeDirtyFlags::STYLE,
             });
-            idx
+            node_index
         } else {
             return Ok(Value::new_null(ctx));
         };
 
         let frag = crate::ace::runtime::bindings::html::document::fragment::DocumentFragment {
             dom: self.dom.clone(),
-            index: idx,
+            index: node_index,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
@@ -190,8 +190,8 @@ impl Document {
 
     #[qjs(rename = "createTextNode")]
     pub fn create_text_node<'js>(&self, ctx: Ctx<'js>, text: String) -> Result<Value<'js>> {
-        let idx = if let Ok(mut dom) = self.dom.lock() {
-            let idx = dom.nodes.len();
+        let node_index = if let Ok(mut dom) = self.dom.lock() {
+            let node_index = dom.nodes.len();
             dom.nodes.push(AceNode {
                 node_type: AceNodeType::Text(std::sync::Arc::from(text)),
                 parent: None,
@@ -202,14 +202,14 @@ impl Document {
                 dirty: crate::ace::engine::dom::NodeDirtyFlags::LAYOUT
                     | crate::ace::engine::dom::NodeDirtyFlags::STYLE,
             });
-            idx
+            node_index
         } else {
             return Ok(Value::new_null(ctx));
         };
 
         let element = Element {
             dom: self.dom.clone(),
-            index: idx,
+            index: node_index,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
@@ -225,8 +225,8 @@ impl Document {
 
     #[qjs(rename = "createComment")]
     pub fn create_comment<'js>(&self, ctx: Ctx<'js>, data: String) -> Result<Value<'js>> {
-        let idx = if let Ok(mut dom) = self.dom.lock() {
-            let idx = dom.nodes.len();
+        let node_index = if let Ok(mut dom) = self.dom.lock() {
+            let node_index = dom.nodes.len();
             dom.nodes.push(AceNode {
                 node_type: AceNodeType::Comment(std::sync::Arc::from(data)),
                 parent: None,
@@ -237,14 +237,14 @@ impl Document {
                 dirty: crate::ace::engine::dom::NodeDirtyFlags::LAYOUT
                     | crate::ace::engine::dom::NodeDirtyFlags::STYLE,
             });
-            idx
+            node_index
         } else {
             return Ok(Value::new_null(ctx));
         };
 
         let element = Element {
             dom: self.dom.clone(),
-            index: idx,
+            index: node_index,
             mutations: self.mutations.clone(),
             stylesheet_dirty: self.stylesheet_dirty.clone(),
             primitives: self.primitives.clone(),
@@ -311,12 +311,12 @@ impl Document {
     pub fn body<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
         if let Some(body_idx) = dom.body {
-            let idx = body_idx;
+            let node_index = body_idx;
             drop(dom);
 
             let element = Element {
                 dom: self.dom.clone(),
-                index: idx,
+                index: node_index,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
@@ -335,12 +335,12 @@ impl Document {
     pub fn head<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
         if let Some(head_idx) = dom.head {
-            let idx = head_idx;
+            let node_index = head_idx;
             drop(dom);
 
             let element = Element {
                 dom: self.dom.clone(),
-                index: idx,
+                index: node_index,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
@@ -394,11 +394,11 @@ impl Document {
     #[qjs(get, rename = "activeElement")]
     pub fn active_element<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let dom = self.dom.lock().unwrap();
-        if let Some(idx) = dom.active_element {
+        if let Some(node_index) = dom.active_element {
             drop(dom);
             let element = Element {
                 dom: self.dom.clone(),
-                index: idx,
+                index: node_index,
                 mutations: self.mutations.clone(),
                 stylesheet_dirty: self.stylesheet_dirty.clone(),
                 primitives: self.primitives.clone(),
