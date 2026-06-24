@@ -29,6 +29,8 @@ impl MutationObserver {
         {
             let mut registry = rt.observer_registry.lock().unwrap();
             let cb_persist = Persistent::save(&ctx, callback);
+            // SAFETY: The Persistent reference is valid for the lifetime of the observer.
+            // QuickJS guarantees persistent references remain valid until explicitly dropped.
             let cb_static: Persistent<rquickjs::Function<'static>> =
                 unsafe { std::mem::transmute(cb_persist) };
             registry.insert(id, cb_static);

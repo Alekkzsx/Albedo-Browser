@@ -59,6 +59,8 @@ impl IntersectionObserver {
         };
 
         let callback_persistent = Persistent::save(&ctx, callback);
+        // SAFETY: The Persistent reference is valid for the lifetime of the observer.
+        // QuickJS guarantees persistent references remain valid until explicitly dropped.
         let callback_stored: Persistent<Function<'static>> =
             unsafe { std::mem::transmute(callback_persistent) };
 

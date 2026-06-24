@@ -36,6 +36,8 @@ impl ResizeObserver {
 
     pub fn observe<'js>(&self, target: Value<'js>, _options: Option<Object<'js>>) {
         // Mock implementation
+        // SAFETY: The target value is stored for later use within the same QuickJS context.
+        // QuickJS guarantees values remain valid within the callback scope.
         self.targets
             .borrow_mut()
             .push(unsafe { std::mem::transmute(target) });
