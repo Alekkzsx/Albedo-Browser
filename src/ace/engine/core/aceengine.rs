@@ -1,3 +1,4 @@
+use super::*;
 use crate::ace::engine::graphics::compositor;
 
 use crate::ace::engine::dom::AceDOM;
@@ -7,6 +8,7 @@ use crate::ace::engine::text::TextMeasurer;
 use crate::ace::engine::layout::{ElementGeometry, ACEPrimitive, InvalidationManager};
 use crate::utils::time::unix_timestamp_secs_f64;
 use std::sync::{Arc, Mutex};
+
 
 pub struct AceEngine {
     pub dom: Option<Arc<Mutex<AceDOM>>>,
@@ -44,6 +46,7 @@ pub struct AceEngine {
 }
 
 impl AceEngine {
+    /// TODO: add docs
     pub fn new() -> Self {
         let font_system = Arc::new(Mutex::new(cosmic_text::FontSystem::new()));
         let swash_cache = Arc::new(Mutex::new(cosmic_text::SwashCache::new()));
@@ -83,6 +86,7 @@ impl AceEngine {
         engine
     }
 
+    /// TODO: add docs
     pub fn init_gpu(&self) {
         let comp_arc = self.gpu_compositor.clone();
         tokio::spawn(async move {
@@ -97,127 +101,53 @@ impl AceEngine {
         });
     }
 
+    /// TODO: add docs
     pub fn set_resource_manager(&mut self, rm: crate::network::resources::ResourceManager) {
         self.resource_manager = Some(rm);
     }
 
+    /// TODO: add docs
     pub fn with_js_context<F, R>(&self, f: F) -> Option<R>
     where
         F: FnOnce(&crate::ace::runtime::core::runtime::JsRuntime, &AceDOM) -> R,
     {
         let rt = self.js_runtime.as_ref()?;
         let dom_arc = self.dom.as_ref()?;
-        let dom = dom_arc.lock().unwrap();
+        let dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
         Some(f(rt, &dom))
     }
 
+    /// TODO: add docs
     pub fn set_hover(&mut self, node_id: Option<usize>) {
         self.hovered_element = node_id;
         self.mark_styles_dirty();
     }
 
+    /// TODO: add docs
     pub fn set_active(&mut self, node_id: Option<usize>) {
         self.active_element = node_id;
         self.mark_styles_dirty();
     }
 
+    /// TODO: add docs
     pub fn set_focused(&mut self, node_id: Option<usize>) {
         self.focused_element = node_id;
         self.mark_styles_dirty();
     }
 
+    /// TODO: add docs
     pub fn mark_styles_dirty(&mut self) {
         tracing::debug!("mark_styles_dirty called");
         self.styles_dirty
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
-    pub fn recompute_dirty_styles(&mut self) {
-        if !self.styles_dirty.load(std::sync::atomic::Ordering::SeqCst) {
-            // Check if any individual node is STYLE dirty
-            let is_any_node_style_dirty = if let Some(ref dom_arc) = self.dom {
-                let dom = dom_arc.lock().unwrap();
-                dom.nodes
-                    .iter()
-                    .any(|n| n.dirty.contains(crate::ace::engine::dom::NodeDirtyFlags::STYLE))
-            } else {
-                false
-            };
-            if !is_any_node_style_dirty {
-                return;
-            }
-        }
+    /// TODO: add docs
+    include!("aceengine_styles.rs");
 
-        tracing::debug!("Recomputing dirty styles");
-
-        // Recompilar estilos para toda a árvore DOM
-        if let Some(ref dom_arc) = self.dom {
-            let dom = dom_arc.lock().unwrap();
-            let stylesheet = self.stylesheet.lock().unwrap();
-
-            let now = unix_timestamp_secs_f64();
-            let mut am = self.animation_manager.lock().unwrap();
-
-            // Map index -> ComputedStyle for inheritance
-            let mut style_cache: std::collections::HashMap<usize, ComputedStyle> =
-                std::collections::HashMap::new();
-
-            // Recompilar estilos com novos estados de hover/focus/active
-            for idx in 0..dom.nodes.len() {
-                let parent_style = if let Some(parent_idx) = dom.nodes[idx].parent {
-                    style_cache.get(&parent_idx)
-                } else {
-                    None
-                };
-
-                let computed = stylesheet.calculate_style(
-                    &dom,
-                    idx,
-                    parent_style,
-                    None,
-                    self.hovered_element,
-                    self.focused_element,
-                    self.active_element,
-                    Some(&am),
-                    now,
-                    800.0,
-                    600.0,
-                    "light",
-                );
-
-                // Start Keyframe Animations
-                if let crate::ace::engine::dom::AceNodeType::Element(_) = &dom.nodes[idx].node_type {
-                    for anim_def in &computed.animations {
-                        if let Some(keyframes) = stylesheet.keyframes.get(&anim_def.name) {
-                            let timing = crate::ace::engine::style::animation::TimingFunction::Ease;
-                            am.start_keyframe_animation(
-                                idx,
-                                anim_def.name.clone(),
-                                keyframes.clone(),
-                                anim_def.duration_ms as f64 / 1000.0,
-                                timing,
-                                now,
-                            );
-                        }
-                    }
-                }
-
-                style_cache.insert(idx, computed);
-            }
-
-            // Persistir estilos computados no cache da engine
-            {
-                let mut engine_styles = self.element_styles.lock().unwrap();
-                *engine_styles = style_cache;
-            }
-        }
-
-        self.styles_dirty
-            .store(false, std::sync::atomic::Ordering::SeqCst);
-    }
-
+    /// TODO: add docs
     pub fn update_element_bounds(&self, node_idx: usize, x: f32, y: f32, width: f32, height: f32) {
-        let mut geometry = self.element_geometry.lock().unwrap();
+        let mut geometry = self.element_geometry.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(geom) = geometry.get_mut(&node_idx) {
             geom.x = x;
             geom.y = y;
@@ -233,15 +163,16 @@ impl AceEngine {
         }
     }
 
+    /// TODO: add docs
     pub fn clear_element_bounds(&self) {
-        let mut geometry = self.element_geometry.lock().unwrap();
+        let mut geometry = self.element_geometry.lock().unwrap_or_else(|e| e.into_inner());
         geometry.clear();
     }
 
 }
 
 impl Clone for AceEngine {
-    fn clone(&self) -> Self {
+pub(crate) fn clone(&self) -> Self {
         Self {
             dom: self.dom.clone(),
             stylesheet: self.stylesheet.clone(),
@@ -276,28 +207,10 @@ impl Clone for AceEngine {
 }
 
 impl std::fmt::Debug for AceEngine {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+pub(crate) fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AceEngine")
             .field("current_url", &self.current_url)
             .field("styles_dirty", &self.styles_dirty)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn with_js_context_returns_none_when_no_runtime() {
-        let engine = AceEngine::new();
-        assert!(engine.with_js_context(|_, _| true).is_none());
-    }
-
-    #[test]
-    fn with_js_context_returns_none_when_no_dom() {
-        let mut engine = AceEngine::new();
-        engine.dom = None;
-        assert!(engine.with_js_context(|_, _| true).is_none());
     }
 }

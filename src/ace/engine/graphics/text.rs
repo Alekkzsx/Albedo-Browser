@@ -17,6 +17,7 @@ pub struct TextMeasurer {
 }
 
 impl TextMeasurer {
+    /// TODO: add docs
     pub fn new(font_system: Arc<Mutex<FontSystem>>) -> Self {
         Self {
             font_system,
@@ -24,6 +25,7 @@ impl TextMeasurer {
         }
     }
 
+    /// TODO: add docs
     pub fn measure_text(
         &self,
         text: &str,
@@ -45,13 +47,13 @@ impl TextMeasurer {
         );
 
         {
-            let cache = self.measure_cache.lock().unwrap();
+            let cache = self.measure_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(&metrics) = cache.get(&cache_key) {
                 return metrics;
             }
         }
 
-        let mut font_system = self.font_system.lock().unwrap();
+        let mut font_system = self.font_system.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut attrs = Attrs::new().weight(weight);
         if let Some(f) = family {
@@ -75,7 +77,7 @@ impl TextMeasurer {
                 height += run.line_height;
             }
             let result = (width, height);
-            self.measure_cache.lock().unwrap().insert(cache_key, result);
+            self.measure_cache.lock().unwrap_or_else(|e| e.into_inner()).insert(cache_key, result);
             return result;
         }
 
@@ -100,7 +102,7 @@ impl TextMeasurer {
         for word in text.split_inclusive(|c: char| c.is_whitespace()) {
             let is_space_ended = word.ends_with(|c: char| c.is_whitespace());
             let (word_trim, trailing) = if is_space_ended {
-                let bytes = word.len() - word.chars().last().unwrap().len_utf8();
+                let bytes = word.len() - word.chars().last().expect("Albedo Engine: internal invariant violated").len_utf8();
                 (&word[..bytes], &word[bytes..])
             } else {
                 (word, "")
@@ -134,7 +136,7 @@ impl TextMeasurer {
             if is_space_ended {
                 let spc_adv = if letter_spacing != 0.0 {
                     let mut b = [0; 4];
-                    let c = trailing.chars().next().unwrap();
+                    let c = trailing.chars().next().expect("Albedo Engine: internal invariant violated");
                     let char_str = c.encode_utf8(&mut b);
                     buffer.set_text(&mut font_system, char_str, attrs, Shaping::Advanced);
                     buffer.shape_until_scroll(&mut font_system, false);
@@ -150,7 +152,7 @@ impl TextMeasurer {
         }
 
         let result = (max_x, current_y);
-        self.measure_cache.lock().unwrap().insert(cache_key, result);
+        self.measure_cache.lock().unwrap_or_else(|e| e.into_inner()).insert(cache_key, result);
         result
     }
 }

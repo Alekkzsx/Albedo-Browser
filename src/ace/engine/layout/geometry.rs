@@ -39,6 +39,7 @@ pub struct ElementGeometry {
 }
 
 impl ElementGeometry {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             x: 0.0,
@@ -86,6 +87,7 @@ impl ElementGeometry {
 }
 
 impl Default for ElementGeometry {
+    /// TODO: add docs
     fn default() -> Self {
         Self::new()
     }
@@ -114,12 +116,14 @@ pub struct InvalidationManager {
 }
 
 impl InvalidationManager {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             dirty_rects: Vec::new(),
         }
     }
 
+    /// TODO: add docs
     pub fn add_dirty_rect(&mut self, rect: tiny_skia::Rect) {
         let mut merged = false;
         for existing in &mut self.dirty_rects {
@@ -134,6 +138,7 @@ impl InvalidationManager {
         }
     }
 
+    /// TODO: add docs
     pub fn union_rect(a: tiny_skia::Rect, b: tiny_skia::Rect) -> Option<tiny_skia::Rect> {
         let left = a.left().min(b.left());
         let right = a.right().max(b.right());
@@ -143,6 +148,7 @@ impl InvalidationManager {
         tiny_skia::Rect::from_ltrb(left, top, right, bottom)
     }
 
+    /// TODO: add docs
     pub fn clear(&mut self) {
         self.dirty_rects.clear();
     }

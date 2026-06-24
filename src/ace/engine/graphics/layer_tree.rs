@@ -28,6 +28,7 @@ pub struct Tile {
 }
 
 impl Layer {
+    /// TODO: add docs
     pub fn new(id: usize, is_fixed: bool, z_index: i32) -> Self {
         Self {
             id,
@@ -41,6 +42,7 @@ impl Layer {
         }
     }
 
+    /// TODO: add docs
     pub fn add_item(&mut self, item: DisplayItem) {
         if self.display_items.is_empty() {
             self.x = item.x;
@@ -96,6 +98,7 @@ pub struct LayerTree {
 }
 
 impl LayerTree {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             base_layer: Layer::new(0, false, 0),
@@ -104,6 +107,7 @@ impl LayerTree {
         }
     }
 
+    /// TODO: add docs
     pub fn build(items: Vec<DisplayItem>, fixed_nodes: &[usize]) -> Self {
         let mut tree = Self::new();
 
@@ -126,6 +130,7 @@ impl LayerTree {
         tree
     }
 
+    /// TODO: add docs
     pub fn get_all_layers_sorted(&self) -> Vec<&Layer> {
         let mut sorted = vec![&self.base_layer];
         for layer in &self.promoted_layers {
