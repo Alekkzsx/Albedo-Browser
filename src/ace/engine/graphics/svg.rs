@@ -7,7 +7,7 @@ pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
     let rtree = match usvg::Tree::from_str(svg_data, &opt) {
         Ok(tree) => tree,
         Err(e) => {
-            println!("SVG ERROR: Fail to parse SVG: {}", e);
+            tracing::error!(?e, "Failed to parse SVG");
             return None;
         }
     };
@@ -38,7 +38,7 @@ pub fn rasterize_svg_to_pixels(svg_data: &str, width: f32, height: f32) -> Optio
     let rtree = match usvg::Tree::from_str(svg_data, &opt) {
         Ok(tree) => tree,
         Err(e) => {
-            println!("SVG ERROR: Fail to parse SVG: {}", e);
+            tracing::error!(?e, "Failed to parse SVG");
             return None;
         }
     };
