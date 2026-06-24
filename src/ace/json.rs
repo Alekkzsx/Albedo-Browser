@@ -1,6 +1,7 @@
 
 pub use albedo_jit::contracts::core::JsonValue;
 
+/// TODO: add docs
 fn from_serde(value: serde_json::Value) -> JsonValue {
     match value {
         serde_json::Value::Null => JsonValue::Null,
@@ -17,6 +18,7 @@ fn from_serde(value: serde_json::Value) -> JsonValue {
     }
 }
 
+/// TODO: add docs
 fn to_serde(value: &JsonValue) -> serde_json::Value {
     match value {
         JsonValue::Null => serde_json::Value::Null,
@@ -39,12 +41,14 @@ fn to_serde(value: &JsonValue) -> serde_json::Value {
     }
 }
 
+/// TODO: add docs
 pub fn parse(s: &str) -> Result<JsonValue, String> {
     let parsed: serde_json::Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
     Ok(from_serde(parsed))
 }
 
+/// TODO: add docs
 pub fn stringify(v: &JsonValue) -> String {
     let serde_value = to_serde(v);
-    serde_json::to_string(&val).unwrap_or_default()
+    serde_json::to_string(&value).unwrap_or_default()
 }

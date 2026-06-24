@@ -17,6 +17,7 @@ pub fn unix_timestamp_millis() -> i64 {
         .as_millis() as i64
 }
 
+/// TODO: add docs
 pub fn unix_timestamp_secs_f64() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -24,6 +25,7 @@ pub fn unix_timestamp_secs_f64() -> f64 {
         .as_secs_f64()
 }
 
+/// TODO: add docs
 pub fn unix_timestamp_nanos() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
