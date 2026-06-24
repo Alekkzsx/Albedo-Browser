@@ -408,27 +408,27 @@ impl GpuCompositor {
 
                     let vertices = [
                         Vertex {
-                            position: [x, y, 0.0],
+                            position: [pos_x, pos_y, 0.0],
                             uv: [0.0, 0.0],
                         },
                         Vertex {
-                            position: [x + w, y, 0.0],
+                            position: [pos_x + w, pos_y, 0.0],
                             uv: [1.0, 0.0],
                         },
                         Vertex {
-                            position: [x + w, y + h, 0.0],
+                            position: [pos_x + w, pos_y + h, 0.0],
                             uv: [1.0, 1.0],
                         },
                         Vertex {
-                            position: [x, y, 0.0],
+                            position: [pos_x, pos_y, 0.0],
                             uv: [0.0, 0.0],
                         },
                         Vertex {
-                            position: [x + w, y + h, 0.0],
+                            position: [pos_x + w, pos_y + h, 0.0],
                             uv: [1.0, 1.0],
                         },
                         Vertex {
-                            position: [x, y + h, 0.0],
+                            position: [pos_x, pos_y + h, 0.0],
                             uv: [0.0, 1.0],
                         },
                     ];
