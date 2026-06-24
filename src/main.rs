@@ -6,13 +6,19 @@ use albedo::browser::tabs::manager::TabManager;
 use slint::ComponentHandle;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_thread_ids(false)
+        .init();
+
     browser::setup::set_panic_hook();
 
     // Initialize Tokio Runtime
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
-    println!("[Main] Starting Albedo Browser...");
+    tracing::info!("Starting Albedo Browser");
     let ui = browser::setup::create_window()?;
     albedo_jit::contracts::core::register_json_parser(albedo::ace::json::parse);
     let ui_handle = ui.as_weak();
