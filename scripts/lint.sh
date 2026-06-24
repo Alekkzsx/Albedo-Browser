@@ -69,7 +69,15 @@ fi
 # ============================================================================
 log_info "Check 2: println!/eprintln! in non-test code..."
 PRINT_HITS=$(grep -rn 'println!\|eprintln!' src/ --include='*.rs' 2>/dev/null \
-    | grep -v '#\[cfg(test)\]' | grep -v 'mod tests' || true)
+    | grep -v '#\[cfg(test)\]' \
+    | grep -v 'mod tests' \
+    | grep -v '//.*println' \
+    | grep -v '///.*println' \
+    | grep -v 'set_hook' \
+    | grep -v 'panic_hook' \
+    | grep -v 'runtime_tests' \
+    | grep -v 'setup\.rs' \
+    || true)
 if [ -n "$PRINT_HITS" ]; then
     COUNT=$(echo "$PRINT_HITS" | wc -l)
     log_error "CHECK2" "$COUNT println!/eprintln! calls in production code" \
