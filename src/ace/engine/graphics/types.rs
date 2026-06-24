@@ -15,12 +15,14 @@ pub enum ElementRenderType {
 }
 
 impl Default for ElementRenderType {
+    /// TODO: add docs
     fn default() -> Self {
         Self::Other
     }
 }
 
 impl ElementRenderType {
+    /// TODO: add docs
     pub fn from_str(tag: &str) -> Self {
         match tag {
             "div" => Self::Div,
@@ -51,12 +53,14 @@ pub enum FormInputType {
 }
 
 impl Default for FormInputType {
+    /// TODO: add docs
     fn default() -> Self {
         Self::None
     }
 }
 
 impl FormInputType {
+    /// TODO: add docs
     pub fn from_str(input_type: &str) -> Self {
         match input_type {
             "color" => Self::Color,
@@ -83,12 +87,14 @@ pub enum BorderStyle {
 }
 
 impl Default for BorderStyle {
+    /// TODO: add docs
     fn default() -> Self {
         Self::None
     }
 }
 
 impl BorderStyle {
+    /// TODO: add docs
     pub fn from_str(style: &str) -> Self {
         match style {
             "solid" => Self::Solid,

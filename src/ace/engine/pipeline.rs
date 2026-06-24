@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use crate::ace::engine::core::AceEngine;
 
 impl AceEngine {
+    /// TODO: add docs
     pub fn load_url(&mut self, url: String) {
         tracing::info!(url = %url, "Initiating load");
         self.current_url = url.clone();
@@ -12,6 +13,7 @@ impl AceEngine {
             rm.fetch(url, crate::network::resources::ResourceType::Html, None);
         }
     }
+    /// TODO: add docs
     pub fn load_html(&mut self, html: &str) {
         tracing::info!("Parsing HTML");
         let ace_dom = AceDOM::from_html(html);
@@ -34,6 +36,7 @@ impl AceEngine {
         // uses tokio and may block).
         self.init_subframe_runtimes();
     }
+    /// TODO: add docs
     pub fn handle_resource_response(
         &mut self,
         res: crate::network::resources::ResourceResponse,
@@ -49,7 +52,7 @@ impl AceEngine {
             }
         } else {
             let (is_css, css_data) = {
-                let mut pending = self.pending_resources.lock().unwrap();
+                let mut pending = self.pending_resources.lock().unwrap_or_else(|e| e.into_inner());
                 if pending.contains(&res.url) {
                     pending.remove(&res.url);
                     (true, Some(res.data.clone()))
@@ -63,7 +66,7 @@ impl AceEngine {
                     if let Ok(css) = String::from_utf8(data) {
                         tracing::info!(url = %res.url, "External CSS downloaded");
                         {
-                            let mut external = self.external_css.lock().unwrap();
+                            let mut external = self.external_css.lock().unwrap_or_else(|e| e.into_inner());
                             external.insert(res.url.clone(), css);
                         }
                         // Trigger style recomputation after dropping lock
@@ -73,7 +76,7 @@ impl AceEngine {
                 }
 
                 // After processing, check if all pending subresources are resolved
-                let is_empty = self.pending_resources.lock().unwrap().is_empty();
+                let is_empty = self.pending_resources.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
                 if is_empty {
                     if let Some(ref rt) = self.js_runtime {
                         rt.set_ready_state("complete"); // fires window.load
@@ -84,11 +87,11 @@ impl AceEngine {
 
         // Push response down to subframes to check if it's theirs
         if let Some(ref dom_arc) = self.dom {
-            let dom = dom_arc.lock().unwrap();
+            let dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(ref subframes_arc) = dom.subframes {
-                let mut subframes = subframes_arc.lock().unwrap();
+                let mut subframes = subframes_arc.lock().unwrap_or_else(|e| e.into_inner());
                 for (_, sub_engine_arc) in subframes.iter_mut() {
-                    let mut sub_engine = sub_engine_arc.lock().unwrap();
+                    let mut sub_engine = sub_engine_arc.lock().unwrap_or_else(|e| e.into_inner());
                     if sub_engine.handle_resource_response(res.clone()) {
                         needs_layout = true;
                     }
@@ -98,10 +101,11 @@ impl AceEngine {
 
         needs_layout
     }
+    /// TODO: add docs
     pub fn update_stylesheet(&mut self) {
         let mut css_source = String::new();
         if let Some(ref dom_arc) = self.dom {
-            let dom = dom_arc.lock().unwrap();
+            let dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             for node in &dom.nodes {
                 if let crate::ace::engine::dom::AceNodeType::Element(el) = &node.node_type {
                     if el.tag == "style" {
@@ -125,13 +129,13 @@ impl AceEngine {
                                     let url_str = abs_url.to_string();
 
                                     // Check if we already have it
-                                    let external = self.external_css.lock().unwrap();
+                                    let external = self.external_css.lock().unwrap_or_else(|e| e.into_inner());
                                     if let Some(content) = external.get(&url_str) {
                                         css_source.push_str(content);
                                         css_source.push_str("\n");
                                     } else {
                                         // Trigger download if not pending
-                                        let mut pending = self.pending_resources.lock().unwrap();
+                                        let mut pending = self.pending_resources.lock().unwrap_or_else(|e| e.into_inner());
                                         if !pending.contains(&url_str) {
                                             tracing::debug!(url = %url_str, "Triggering download for external CSS");
                                             if let Some(ref rm) = self.resource_manager {
@@ -159,7 +163,7 @@ impl AceEngine {
             ua_rules = new_stylesheet.user_agent_rules.len(),
             "Parsed Author CSS"
         );
-        let mut current_style = self.stylesheet.lock().unwrap();
+        let mut current_style = self.stylesheet.lock().unwrap_or_else(|e| e.into_inner());
         // Copiar TODOS os campos da nova stylesheet (rules, rule_maps, media, supports, container, fonts, keyframes)
         current_style.rules = new_stylesheet.rules;
         current_style.author_rule_map = new_stylesheet.author_rule_map;
@@ -172,6 +176,7 @@ impl AceEngine {
         self.styles_dirty
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
+    /// TODO: add docs
     pub fn process_resource_responses(&mut self) -> bool {
         // Stub: processa respostas de recursos
         false
@@ -182,17 +187,17 @@ impl AceEngine {
         // Collect (node_idx, url, Arc<Mutex<AceEngine>>) for subframes that need a runtime
         let subframes_to_init: Vec<(usize, String, std::sync::Arc<std::sync::Mutex<AceEngine>>)> = {
             if let Some(ref dom_arc) = self.dom {
-                let dom = dom_arc.lock().unwrap();
+                let dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(ref subframes_arc) = dom.subframes {
-                    let subframes = subframes_arc.lock().unwrap();
+                    let subframes = subframes_arc.lock().unwrap_or_else(|e| e.into_inner());
                     subframes
                         .iter()
                         .filter(|(_, eng_arc)| {
-                            let eng = eng_arc.lock().unwrap();
+                            let eng = eng_arc.lock().unwrap_or_else(|e| e.into_inner());
                             eng.js_runtime.is_none() && !eng.current_url.is_empty()
                         })
                         .map(|(idx, eng_arc)| {
-                            let url = eng_arc.lock().unwrap().current_url.clone();
+                            let url = eng_arc.lock().unwrap_or_else(|e| e.into_inner()).current_url.clone();
                             (*idx, url, eng_arc.clone())
                         })
                         .collect()
@@ -206,10 +211,10 @@ impl AceEngine {
         // No DOM/subframes locks held from here on
         for (_, url, sub_engine_arc) in subframes_to_init {
             // Create a temporary snapshot of the engine for init_js_for_url (needs resource_manager etc.)
-            let snap = sub_engine_arc.lock().unwrap().clone();
+            let snap = sub_engine_arc.lock().unwrap_or_else(|e| e.into_inner()).clone();
             // init_js_for_url does NOT require any external locks - it creates a fresh JsRuntime
             if let Some(rt) = crate::ace::runtime::core::init::init_js_for_url(&url, &snap) {
-                sub_engine_arc.lock().unwrap().js_runtime = Some(rt);
+                sub_engine_arc.lock().unwrap_or_else(|e| e.into_inner()).js_runtime = Some(rt);
             }
         }
     }

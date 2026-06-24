@@ -1,6 +1,7 @@
 use resvg::{tiny_skia, usvg};
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
+/// TODO: add docs
 pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
     let opt = usvg::Options::default();
 
@@ -32,6 +33,7 @@ pub fn rasterize_svg(svg_data: &str, width: f32, height: f32) -> Option<Image> {
     Some(Image::from_rgba8_premultiplied(pixel_buffer))
 }
 
+/// TODO: add docs
 pub fn rasterize_svg_to_pixels(svg_data: &str, width: f32, height: f32) -> Option<Vec<u8>> {
     let opt = usvg::Options::default();
 

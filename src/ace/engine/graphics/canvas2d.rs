@@ -13,6 +13,7 @@ struct DrawState {
 }
 
 impl Default for DrawState {
+    /// TODO: add docs
     fn default() -> Self {
         Self {
             fill_color: Color::BLACK, // HTML5 default
@@ -61,6 +62,7 @@ impl Canvas2D {
         self.pixmap.data()
     }
 
+    /// TODO: add docs
     pub fn resize(&mut self, width: u32, height: u32) {
         if width != self.width || height != self.height {
             if let Some(new_pix) = Pixmap::new(width, height) {
@@ -75,10 +77,12 @@ impl Canvas2D {
 
     // --- GERENCIAMENTO DE ESTADO (Save/Restore) ---
 
+    /// TODO: add docs
     pub fn save(&mut self) {
         self.state_stack.push(self.state.clone());
     }
 
+    /// TODO: add docs
     pub fn restore(&mut self) {
         if let Some(saved_state) = self.state_stack.pop() {
             self.state = saved_state;
@@ -87,36 +91,43 @@ impl Canvas2D {
 
     // --- CONFIGURAÇÃO DE ESTILO ---
 
+    /// TODO: add docs
     pub fn set_fill_style(&mut self, hex: &str) {
         if let Some(c) = crate::utils::color::parse_hex_color(hex).ok() {
             self.state.fill_color = c;
         }
     }
 
+    /// TODO: add docs
     pub fn set_stroke_style(&mut self, hex: &str) {
         if let Some(c) = crate::utils::color::parse_hex_color(hex).ok() {
             self.state.stroke_color = c;
         }
     }
 
+    /// TODO: add docs
     pub fn set_line_width(&mut self, width: f32) {
         self.state.line_width = width;
     }
 
+    /// TODO: add docs
     pub fn set_global_alpha(&mut self, alpha: f32) {
         self.state.global_alpha = alpha.clamp(0.0, 1.0);
     }
 
     // --- MANIPULAÇÃO DE CAMINHOS (PATHS) ---
 
+    /// TODO: add docs
     pub fn begin_path(&mut self) {
         self.path_builder = PathBuilder::new();
     }
 
+    /// TODO: add docs
     pub fn move_to(&mut self, x: f32, y: f32) {
         self.path_builder.move_to(x, y);
     }
 
+    /// TODO: add docs
     pub fn line_to(&mut self, x: f32, y: f32) {
         self.path_builder.line_to(x, y);
     }
@@ -131,13 +142,14 @@ impl Canvas2D {
         self.path_builder.cubic_to(cx1, cy1, cx2, cy2, x, y);
     }
 
+    /// TODO: add docs
     pub fn close_path(&mut self) {
         self.path_builder.close();
     }
 
     /// Adiciona um retângulo ao path atual
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
-        let r = Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap());
+        let r = Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).expect("Albedo Engine: internal invariant violated"));
         self.path_builder.push_rect(r);
     }
 
@@ -146,7 +158,7 @@ impl Canvas2D {
     /// clearRect: Limpa uma área (deixa transparente)
     pub fn clear_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         let rect =
-            Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).unwrap());
+            Rect::from_xywh(x, y, w, h).unwrap_or(Rect::from_xywh(0.0, 0.0, 0.0, 0.0).expect("Albedo Engine: internal invariant violated"));
         // Modo Clear usa PorterDuff::Clear
         let mut paint = Paint::default();
         paint.blend_mode = tiny_skia::BlendMode::Clear;
@@ -155,6 +167,7 @@ impl Canvas2D {
             .fill_rect(rect, &paint, self.state.transform, None);
     }
 
+    /// TODO: add docs
     pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         if let Some(rect) = Rect::from_xywh(x, y, w, h) {
             let mut paint = Paint::default();

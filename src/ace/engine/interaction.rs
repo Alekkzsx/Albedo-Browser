@@ -2,10 +2,11 @@
 use crate::ace::engine::core::AceEngine;
 
 impl AceEngine {
+    /// TODO: add docs
     pub fn find_element_at_position(&self, x: f32, y: f32) -> Option<usize> {
         // Hit testing: encontra o elemento no topo na posição (x, y)
         // Busca em ordem reversa (z-index maior = renderizado por último = no topo)
-        let geometry = self.element_geometry.lock().unwrap();
+        let geometry = self.element_geometry.lock().unwrap_or_else(|e| e.into_inner());
         let mut topmost: Option<(usize, f32)> = None; // (node_idx, z_index)
 
         for (node_idx, geom) in geometry.iter() {
@@ -27,8 +28,9 @@ impl AceEngine {
 
         topmost.map(|(idx, _)| idx)
     }
+    /// TODO: add docs
     pub fn scroll_into_view(&mut self, node_idx: usize) {
-        let geometry = self.element_geometry.lock().unwrap();
+        let geometry = self.element_geometry.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(geom) = geometry.get(&node_idx) {
             // No Slint, viewport-y é 0 no topo e fica mais negativo à medida que descemos.
             // Para colocar o elemento no topo da visão: viewport_y = -y
@@ -37,13 +39,14 @@ impl AceEngine {
             tracing::debug!(node_idx, y = geom.y, "Scrolling to node");
         }
     }
+    /// TODO: add docs
     pub fn check_mutations(&mut self) -> (bool, bool) {
         let mut mutated = false;
         let style_dirty = false;
 
         // 1. Verificar pedidos de scroll vindos do JS
         let pending_scroll_idx = if let Some(ref rt) = self.js_runtime {
-            let mut ps = rt.pending_scroll.lock().unwrap();
+            let mut ps = rt.pending_scroll.lock().unwrap_or_else(|e| e.into_inner());
             ps.take()
         } else {
             None
@@ -56,7 +59,7 @@ impl AceEngine {
 
         // 2. Verificar mutações no DOM
         if let Some(ref dom_arc) = self.dom {
-            let _dom = dom_arc.lock().unwrap();
+            let _dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             // A implementação real do AceDOM pode ter flags para isso
             // mutated = dom.has_pending_mutations();
         }
