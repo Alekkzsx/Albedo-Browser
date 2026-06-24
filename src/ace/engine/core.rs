@@ -86,13 +86,13 @@ impl AceEngine {
     pub fn init_gpu(&self) {
         let comp_arc = self.gpu_compositor.clone();
         tokio::spawn(async move {
-            println!("[AceEngine] Initializing GPU Compositor (WGPU)...");
+            tracing::info!("Initializing GPU Compositor (WGPU)");
             if let Some(comp) = compositor::GpuCompositor::new().await {
                 let mut lock = comp_arc.lock().await;
                 *lock = Some(comp);
-                println!("[AceEngine] GPU Compositor initialized successfully!");
+                tracing::info!("GPU Compositor initialized successfully");
             } else {
-                println!("[AceEngine] WARNING: Failed to initialize GPU Compositor. Falling back to CPU bounds.");
+                tracing::warn!("Failed to initialize GPU Compositor, falling back to CPU");
             }
         });
     }
@@ -127,7 +127,7 @@ impl AceEngine {
     }
 
     pub fn mark_styles_dirty(&mut self) {
-        println!("[DEBUG] mark_styles_dirty called! Stack trace or origin unknown.");
+        tracing::debug!("mark_styles_dirty called");
         self.styles_dirty
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
@@ -148,7 +148,7 @@ impl AceEngine {
             }
         }
 
-        println!("[AceEngine] Actual Recompute of dirty styles starting...");
+        tracing::debug!("Recomputing dirty styles");
 
         // Recompilar estilos para toda a árvore DOM
         if let Some(ref dom_arc) = self.dom {
