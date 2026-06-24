@@ -197,24 +197,62 @@ fi
 # ============================================================================
 log_info "Check 7: functions exceeding 150 lines..."
 LONG_FUNCS=$(awk '
+    BEGIN { in_comment = 0 }
     /^(pub )?(async )?fn / {
-        if (in_func && NR - func_start > 150) {
-            printf "%s:%d (%d lines)\n", func_file, func_start, NR - func_start
+        if (in_func && FNR - func_start > 150) {
+            printf "%s:%d (%d lines)\n", func_file, func_start, FNR - func_start
         }
-        func_start = NR
+        func_start = FNR
         func_file = FILENAME
         in_func = 1
         depth = 0
     }
     in_func {
-        for (i = 1; i <= length($0); i++) {
-            c = substr($0, i, 1)
+        line = $0
+        clean = ""
+        i = 1
+        while (i <= length(line)) {
+            c = substr(line, i, 1)
+            if (in_comment) {
+                if (c == "*" && i < length(line) && substr(line, i+1, 1) == "/") {
+                    in_comment = 0
+                    i++
+                }
+            } else if (c == "/" && i < length(line) && substr(line, i+1, 1) == "/") {
+                break
+            } else if (c == "/" && i < length(line) && substr(line, i+1, 1) == "*") {
+                in_comment = 1
+                i++
+            } else if (c == "\"") {
+                i++
+                while (i <= length(line)) {
+                    c2 = substr(line, i, 1)
+                    if (c2 == "\\") { i++; }
+                    else if (c2 == "\"") { break; }
+                    i++
+                }
+            } else if (c == "\047") {
+                i++
+                while (i <= length(line)) {
+                    c2 = substr(line, i, 1)
+                    if (c2 == "\\") { i++; }
+                    else if (c2 == "\047") { break; }
+                    i++
+                }
+            } else {
+                clean = clean c
+            }
+            i++
+        }
+        n = length(clean)
+        for (j = 1; j <= n; j++) {
+            c = substr(clean, j, 1)
             if (c == "{") depth++
             if (c == "}") depth--
         }
         if (depth == 0 && in_func) {
-            if (NR - func_start > 150) {
-                printf "%s:%d (%d lines)\n", func_file, func_start, NR - func_start
+            if (FNR - func_start > 150) {
+                printf "%s:%d (%d lines)\n", func_file, func_start, FNR - func_start
             }
             in_func = 0
         }
