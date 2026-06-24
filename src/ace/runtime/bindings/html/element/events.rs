@@ -4,6 +4,8 @@ use rquickjs::{Ctx, Function, Result, Value};
 
 pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'js>) {
     let ptr = el.index;
+    // SAFETY: The listener is stored in the DOM and will be called before the QuickJS context
+    // is dropped. QuickJS guarantees function references remain valid within the callback scope.
     unsafe {
         let listener_static: Function<'static> = std::mem::transmute(listener);
         EventTargetImpl::add_listener(ptr, type_, listener_static);
@@ -80,6 +82,8 @@ pub fn dispatch_event<'js>(el: &Element, _ctx: &Ctx<'js>, event: Value<'js>) -> 
                     continue;
                 }
 
+                // SAFETY: listener_static contains valid Function references from the DOM.
+                // The transmute converts them back to the original lifetime for invocation.
                 let listener: Function<'js> = unsafe { std::mem::transmute(listener_static) };
                 let _: Result<Value> = listener.call((event.clone(),));
             }
