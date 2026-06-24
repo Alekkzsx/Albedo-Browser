@@ -128,7 +128,7 @@ impl AceEngine {
                             0.0,
                         );
                     } else {
-                        println!("[AceEngine] Layout computation failed");
+                        tracing::error!("Layout computation failed");
                     }
                 }
             }
@@ -181,9 +181,11 @@ impl AceEngine {
             }
 
             let total_duration = start_time.elapsed();
-            println!(
-                "[AceEngine] Layout Recomputed (Incremental): Total={:?}, Build={:?}, Compute={:?}",
-                total_duration, build_duration, compute_duration
+            tracing::debug!(
+                total = ?total_duration,
+                build = ?build_duration,
+                compute = ?compute_duration,
+                "Layout recomputed (incremental)"
             );
         }
 
