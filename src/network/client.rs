@@ -1,6 +1,6 @@
 // ARQUIVO: src/net/fetch.rs
 
-use crate::ace::json::{self, JsonValue};
+use crate::shared::json::{self, JsonValue};
 use crate::network::http3::Http3Client;
 use crate::network::security::{AccessControl, Origin};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
