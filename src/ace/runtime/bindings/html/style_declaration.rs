@@ -107,7 +107,7 @@ impl CssStyleDeclaration {
     #[qjs(rename = "removeProperty")]
     pub fn remove_property(&self, property: String) -> String {
         let mut map = self.parse_style();
-        let val = map.remove(&property).unwrap_or_default();
+        let property_value = map.remove(&property).unwrap_or_default();
         self.update_style_attribute(&map);
 
         if let Ok(dom) = self.dom.lock() {

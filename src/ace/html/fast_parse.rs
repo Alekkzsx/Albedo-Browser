@@ -176,7 +176,7 @@ fn push_node(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], node: HtmlNode
 
 fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
     let bytes = html.as_bytes();
-    let mut idx = tag_start + 2;
+    let mut char_index = tag_start + 2;
     while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
         idx += 1;
     }
@@ -199,7 +199,7 @@ fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
 
 fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bool, usize)> {
     let bytes = html.as_bytes();
-    let mut idx = tag_start + 1;
+    let mut char_index = tag_start + 1;
     let name_start = idx;
     while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'-') {
         idx += 1;

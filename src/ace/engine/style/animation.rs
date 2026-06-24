@@ -125,7 +125,7 @@ impl AnimatableValue {
     }
 
     pub fn parse(val: &str) -> Option<AnimatableValue> {
-        let val = val.trim();
+        let value = value.trim();
         if val.ends_with("px") {
             if let Ok(n) = val[..val.len() - 2].parse::<f32>() {
                 return Some(AnimatableValue::Length(CssLength::Px(n)));

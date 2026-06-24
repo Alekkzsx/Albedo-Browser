@@ -288,7 +288,7 @@ pub fn parse_next_attribute(html: &str, idx: &mut usize) -> Option<(String, Stri
             while *idx < bytes.len() && bytes[*idx] != quote {
                 *idx += 1;
             }
-            let val = html[start..*idx].to_string();
+            let value = html[start..*idx].to_string();
             if *idx < bytes.len() {
                 *idx += 1;
             }

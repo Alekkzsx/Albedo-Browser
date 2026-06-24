@@ -75,8 +75,8 @@ impl AceEngine {
                 }
 
                 if let Some(geom) = geometry.get(&node_idx) {
-                    let x = geom.x;
-                    let mut y = geom.y;
+                    let pos_x = geom.x;
+                    let mut pos_y = geom.y;
                     let w = geom.width;
                     let h = geom.height;
                     let mut is_sticky_fixed = false;

@@ -64,7 +64,7 @@ impl Range {
     pub fn select_node(&mut self, node: Value<'_>) {
         if let Some(obj) = node.as_object() {
             if let Some(el_class) = Class::<Element>::from_object(&obj) {
-                let idx = el_class.borrow().index;
+                let element_index = el_class.borrow().index;
                 self.start_container = Some(idx);
                 self.end_container = Some(idx);
                 self.start_offset = 0;

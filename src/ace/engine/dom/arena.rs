@@ -191,7 +191,7 @@ impl DomArena {
         let new_capacity = BLOCK_SIZE / std::mem::size_of::<ArenaNode>();
         self.blocks.push(ArenaBlock::new(new_capacity));
         
-        let idx = self.blocks[self.current_block].push(node).unwrap();
+        let node_index = self.blocks[self.current_block].push(node).unwrap();
         self.total_allocated += 1;
         self.make_global_index(self.current_block, idx)
     }
@@ -389,7 +389,7 @@ mod tests {
         let mut arena = DomArena::new(10);
         
         let node = ArenaNode::new(AceNodeType::Document);
-        let idx = arena.alloc(node);
+        let node_index = arena.alloc(node);
         
         assert!(arena.get(idx).is_some());
         assert_eq!(arena.len(), 1);
@@ -402,7 +402,7 @@ mod tests {
         let mut indices = Vec::new();
         for i in 0..10 {
             let node = ArenaNode::new(AceNodeType::Text(format!("text{}", i).into()));
-            let idx = arena.alloc(node);
+            let node_index = arena.alloc(node);
             indices.push(idx);
         }
         

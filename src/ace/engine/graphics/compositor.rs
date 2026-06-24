@@ -401,8 +401,8 @@ impl GpuCompositor {
                     });
 
                     // Build Quad for Tile
-                    let x = (tile.x as f32) * scale_factor;
-                    let y = (tile.y as f32) * scale_factor;
+                    let pos_x = (tile.x as f32) * scale_factor;
+                    let pos_y = (tile.y as f32) * scale_factor;
                     let w = tile_w as f32;
                     let h = tile_h as f32;
 

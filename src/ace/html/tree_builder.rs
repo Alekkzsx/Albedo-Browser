@@ -184,12 +184,12 @@ impl<'a> HtmlTreeBuilder<'a> {
             AceTokenKind::StartTag {
                 name, attributes, ..
             } if name == "head" => {
-                let idx = self.insert_element("head", attributes);
+                let node_index = self.insert_element("head", attributes);
                 self.head_element = Some(idx);
                 self.insertion_mode = InsertionMode::InHead;
             }
             _ => {
-                let idx = self.insert_element("head", Vec::new());
+                let node_index = self.insert_element("head", Vec::new());
                 self.head_element = Some(idx);
                 self.insertion_mode = InsertionMode::InHead;
                 self.handle_token(token);
