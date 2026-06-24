@@ -1,3 +1,4 @@
+/// TODO: add docs
 pub fn decode(input: &str) -> String {
     let mut bytes = Vec::with_capacity(input.len());
     let mut it = input.as_bytes().iter().peekable();
@@ -31,6 +32,7 @@ pub fn decode(input: &str) -> String {
     String::from_utf8_lossy(&bytes).to_string()
 }
 
+/// TODO: add docs
 pub fn encode(input: &str, set: EncodeSet) -> String {
     let mut result = String::with_capacity(input.len());
     for b in input.as_bytes() {
@@ -59,6 +61,7 @@ pub enum EncodeSet {
     Component,
 }
 
+/// TODO: add docs
 fn should_encode(b: u8, set: EncodeSet) -> bool {
     if b <= 0x1F || b >= 0x7F {
         return true;

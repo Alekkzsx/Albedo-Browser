@@ -6,6 +6,7 @@ pub struct UrlSearchParams {
 }
 
 impl UrlSearchParams {
+    /// TODO: add docs
     pub fn new(query: Option<&str>) -> Self {
         let mut search_params = Self::default();
         if let Some(q) = query {
@@ -19,13 +20,14 @@ impl UrlSearchParams {
                 let value = parts.next().unwrap_or("").replace('+', " ");
                 search_params.append(
                     &percent_encoding::decode(&key),
-                    &percent_encoding::decode(&val),
+                    &percent_encoding::decode(&value),
                 );
             }
         }
         search_params
     }
 
+    /// TODO: add docs
     pub fn get(&self, name: &str) -> Option<String> {
         self.params
             .iter()
@@ -33,6 +35,7 @@ impl UrlSearchParams {
             .map(|(_, v)| v.clone())
     }
 
+    /// TODO: add docs
     pub fn get_all(&self, name: &str) -> Vec<String> {
         self.params
             .iter()
@@ -41,6 +44,7 @@ impl UrlSearchParams {
             .collect()
     }
 
+    /// TODO: add docs
     pub fn set(&mut self, name: &str, value: &str) {
         if let Some(pos) = self.params.iter().position(|(k, _)| k == name) {
             self.params[pos].1 = value.to_string();
@@ -57,18 +61,22 @@ impl UrlSearchParams {
         }
     }
 
+    /// TODO: add docs
     pub fn append(&mut self, name: &str, value: &str) {
         self.params.push((name.to_string(), value.to_string()));
     }
 
+    /// TODO: add docs
     pub fn delete(&mut self, name: &str) {
         self.params.retain(|(k, _)| k != name);
     }
 
+    /// TODO: add docs
     pub fn has(&self, name: &str) -> bool {
         self.params.iter().any(|(k, _)| k == name)
     }
 
+    /// TODO: add docs
     pub fn to_string(&self) -> String {
         let mut result = String::with_capacity(self.params.len() * 20); // Heuristic
         for (i, (k, v)) in self.params.iter().enumerate() {
@@ -82,10 +90,12 @@ impl UrlSearchParams {
         result
     }
 
+    /// TODO: add docs
     pub fn entries(&self) -> impl Iterator<Item = &(String, String)> {
         self.params.iter()
     }
 
+    /// TODO: add docs
     pub fn sort(&mut self) {
         self.params.sort_by(|a, b| a.0.cmp(&b.0));
     }

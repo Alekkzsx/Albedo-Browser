@@ -7,6 +7,7 @@ const DAMP: u32 = 700;
 const INITIAL_BIAS: u32 = 72;
 const INITIAL_N: u32 = 128;
 
+/// TODO: add docs
 pub fn encode(input: &str) -> Result<String, &'static str> {
     let mut output = String::new();
 
@@ -94,6 +95,7 @@ pub fn encode(input: &str) -> Result<String, &'static str> {
     Ok(output)
 }
 
+/// TODO: add docs
 fn value_to_digit(v: u32) -> char {
     if v < 26 {
         (v as u8 + b'a') as char
@@ -102,6 +104,7 @@ fn value_to_digit(v: u32) -> char {
     }
 }
 
+/// TODO: add docs
 fn adapt(mut delta: u32, num_points: u32, first_time: bool) -> u32 {
     delta = if first_time { delta / DAMP } else { delta / 2 };
     delta += delta / num_points;
