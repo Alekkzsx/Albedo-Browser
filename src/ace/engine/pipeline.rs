@@ -5,7 +5,7 @@ use crate::ace::engine::core::AceEngine;
 
 impl AceEngine {
     pub fn load_url(&mut self, url: String) {
-        println!("[AceEngine] Initiating load for URL: {}", url);
+        tracing::info!(url = %url, "Initiating load");
         self.current_url = url.clone();
 
         if let Some(rm) = &self.resource_manager {
@@ -13,12 +13,9 @@ impl AceEngine {
         }
     }
     pub fn load_html(&mut self, html: &str) {
-        println!("[AceEngine] Parsing HTML...");
+        tracing::info!("Parsing HTML");
         let ace_dom = AceDOM::from_html(html);
-        println!(
-            "[AceEngine] DOM Tree created with {} nodes",
-            ace_dom.nodes.len()
-        );
+        tracing::info!(node_count = ace_dom.nodes.len(), "DOM Tree created");
 
         self.dom = Some(Arc::new(Mutex::new(ace_dom)));
 
@@ -45,9 +42,9 @@ impl AceEngine {
 
         if res.url == self.current_url {
             if let Ok(html) = String::from_utf8(res.data.clone()) {
-                println!("[AceEngine] Main document downloaded. Calling process_html...");
+                tracing::info!("Main document downloaded, processing HTML");
                 self.load_html(&html);
-                println!("[AceEngine] process_html returned successfully.");
+                tracing::info!("HTML processing complete");
                 needs_layout = true;
             }
         } else {
@@ -64,7 +61,7 @@ impl AceEngine {
             if is_css {
                 if let Some(data) = css_data {
                     if let Ok(css) = String::from_utf8(data) {
-                        println!("[AceEngine] External CSS downloaded: {}", res.url);
+                        tracing::info!(url = %res.url, "External CSS downloaded");
                         {
                             let mut external = self.external_css.lock().unwrap();
                             external.insert(res.url.clone(), css);
@@ -136,7 +133,7 @@ impl AceEngine {
                                         // Trigger download if not pending
                                         let mut pending = self.pending_resources.lock().unwrap();
                                         if !pending.contains(&url_str) {
-                                            println!("[AceEngine] Triggering download for external CSS: {}", url_str);
+                                            tracing::debug!(url = %url_str, "Triggering download for external CSS");
                                             if let Some(ref rm) = self.resource_manager {
                                                 rm.fetch(
                                                     url_str.clone(),
@@ -156,11 +153,11 @@ impl AceEngine {
         }
 
         let new_stylesheet = crate::ace::engine::style::parse(&css_source);
-        println!(
-            "[AceEngine] Parsed Author CSS, {} bytes injected. Rules fetched: {}, UA: {}",
-            css_source.len(),
-            new_stylesheet.rules.len(),
-            new_stylesheet.user_agent_rules.len()
+        tracing::debug!(
+            css_len = css_source.len(),
+            rules = new_stylesheet.rules.len(),
+            ua_rules = new_stylesheet.user_agent_rules.len(),
+            "Parsed Author CSS"
         );
         let mut current_style = self.stylesheet.lock().unwrap();
         // Copiar TODOS os campos da nova stylesheet (rules, rule_maps, media, supports, container, fonts, keyframes)
@@ -171,7 +168,7 @@ impl AceEngine {
         current_style.container_rules = new_stylesheet.container_rules;
         current_style.font_faces = new_stylesheet.font_faces;
         current_style.keyframes = new_stylesheet.keyframes;
-        println!("[DEBUG] update_stylesheet() setting styles_dirty!");
+        tracing::debug!("update_stylesheet() setting styles_dirty");
         self.styles_dirty
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
