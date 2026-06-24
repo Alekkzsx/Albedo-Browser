@@ -125,13 +125,13 @@ impl AnimatableValue {
     }
 
     pub fn parse(val: &str) -> Option<AnimatableValue> {
-        let value = value.trim();
-        if val.ends_with("px") {
-            if let Ok(n) = val[..val.len() - 2].parse::<f32>() {
+        let trimmed_value = val.trim();
+        if trimmed_value.ends_with("px") {
+            if let Ok(n) = trimmed_value[..trimmed_value.len() - 2].parse::<f32>() {
                 return Some(AnimatableValue::Length(CssLength::Px(n)));
             }
-        } else if val.ends_with("%") {
-            if let Ok(n) = val[..val.len() - 1].parse::<f32>() {
+        } else if trimmed_value.ends_with("%") {
+            if let Ok(n) = trimmed_value[..trimmed_value.len() - 1].parse::<f32>() {
                 return Some(AnimatableValue::Length(CssLength::Percent(n)));
             }
         } else if val.starts_with("#") {

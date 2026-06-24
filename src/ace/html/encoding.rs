@@ -147,21 +147,21 @@ pub fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
     let mut char_index = 0usize;
     let mut attrs = HashMap::new();
 
-    while idx < bytes.len() && bytes[idx] != b' ' && bytes[idx] != b'>' {
-        idx += 1;
+    while char_index < bytes.len() && bytes[char_index] != b' ' && bytes[char_index] != b'>' {
+        char_index += 1;
     }
 
-    while idx < bytes.len() {
-        while idx < bytes.len()
-            && (bytes[idx].is_ascii_whitespace() || bytes[idx] == b'/' || bytes[idx] == b'>')
+    while char_index < bytes.len() {
+        while char_index < bytes.len()
+            && (bytes[char_index].is_ascii_whitespace() || bytes[char_index] == b'/' || bytes[char_index] == b'>')
         {
-            idx += 1;
+            char_index += 1;
         }
-        if idx >= bytes.len() {
+        if char_index >= bytes.len() {
             break;
         }
 
-        if let Some((name, value)) = parse_next_attribute(tag, &mut idx) {
+        if let Some((name, value)) = parse_next_attribute(tag, &mut char_index) {
             attrs.entry(name).or_insert(value);
         } else {
             break;

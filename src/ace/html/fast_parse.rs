@@ -177,48 +177,48 @@ fn push_node(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], node: HtmlNode
 fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
     let bytes = html.as_bytes();
     let mut char_index = tag_start + 2;
-    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-        idx += 1;
+    while char_index < bytes.len() && bytes[char_index].is_ascii_whitespace() {
+        char_index += 1;
     }
-    let name_start = idx;
-    while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'-') {
-        idx += 1;
+    let name_start = char_index;
+    while char_index < bytes.len() && (bytes[char_index].is_ascii_alphanumeric() || bytes[char_index] == b'-') {
+        char_index += 1;
     }
-    if idx == name_start {
+    if char_index == name_start {
         return None;
     }
-    let name = html[name_start..idx].to_ascii_lowercase();
-    while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-        idx += 1;
+    let name = html[name_start..char_index].to_ascii_lowercase();
+    while char_index < bytes.len() && bytes[char_index].is_ascii_whitespace() {
+        char_index += 1;
     }
-    if bytes.get(idx) != Some(&b'>') {
+    if bytes.get(char_index) != Some(&b'>') {
         return None;
     }
-    Some((name, idx))
+    Some((name, char_index))
 }
 
 fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bool, usize)> {
     let bytes = html.as_bytes();
     let mut char_index = tag_start + 1;
-    let name_start = idx;
-    while idx < bytes.len() && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'-') {
-        idx += 1;
+    let name_start = char_index;
+    while char_index < bytes.len() && (bytes[char_index].is_ascii_alphanumeric() || bytes[char_index] == b'-') {
+        char_index += 1;
     }
-    if idx == name_start {
+    if char_index == name_start {
         return None;
     }
 
-    let tag = html[name_start..idx].to_ascii_lowercase();
+    let tag = html[name_start..char_index].to_ascii_lowercase();
     let namespace = Namespace::Html;
     let mut attributes = HashMap::new();
     let mut self_closing = false;
 
     loop {
-        while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
-            idx += 1;
+        while char_index < bytes.len() && bytes[char_index].is_ascii_whitespace() {
+            char_index += 1;
         }
 
-        match bytes.get(idx).copied() {
+        match bytes.get(char_index).copied() {
             Some(b'>') => {
                 return Some((
                     HtmlElement {
@@ -228,15 +228,15 @@ fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bo
                         children: Vec::new(),
                     },
                     self_closing,
-                    idx,
+                    char_index,
                 ));
             }
-            Some(b'/') if bytes.get(idx + 1) == Some(&b'>') => {
+            Some(b'/') if bytes.get(char_index + 1) == Some(&b'>') => {
                 self_closing = true;
-                idx += 1;
+                char_index += 1;
             }
             Some(_) => {
-                let (attr_name, value) = parse_next_attribute(html, &mut idx)?;
+                let (attr_name, value) = parse_next_attribute(html, &mut char_index)?;
                 attributes.entry(attr_name).or_insert(value);
             }
             None => return None,

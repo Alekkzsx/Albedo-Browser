@@ -193,7 +193,7 @@ impl DomArena {
         
         let node_index = self.blocks[self.current_block].push(node).unwrap();
         self.total_allocated += 1;
-        self.make_global_index(self.current_block, idx)
+        self.make_global_index(self.current_block, node_index)
     }
     
     /// Aloca um node reutilizando pooled memory (otimização para tipos comuns)

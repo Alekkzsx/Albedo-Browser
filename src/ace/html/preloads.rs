@@ -224,23 +224,23 @@ fn find_tag_end(bytes: &[u8], start: usize) -> usize {
     let mut pos = start;
     let mut quote = None;
 
-    while idx < bytes.len() {
-        let byte = bytes[idx];
+    while pos < bytes.len() {
+        let byte = bytes[pos];
         if let Some(expected) = quote {
             if byte == expected {
                 quote = None;
             }
-            idx += 1;
+            pos += 1;
             continue;
         }
 
         match byte {
             b'"' | b'\'' => quote = Some(byte),
-            b'>' => return idx,
+            b'>' => return pos,
             _ => {}
         }
 
-        idx += 1;
+        pos += 1;
     }
 
     bytes.len()
@@ -248,66 +248,66 @@ fn find_tag_end(bytes: &[u8], start: usize) -> usize {
 
 fn collect_relevant_attrs(raw: &[u8]) -> FxHashMap<SmolStr, SmolStr> {
     let mut attrs = FxHashMap::default();
-    let mut item_index = 0usize;
+    let mut pos = 0usize;
 
-    while idx < raw.len() {
-        while idx < raw.len() && (raw[idx].is_ascii_whitespace() || raw[idx] == b'/') {
-            idx += 1;
+    while pos < raw.len() {
+        while pos < raw.len() && (raw[pos].is_ascii_whitespace() || raw[pos] == b'/') {
+            pos += 1;
         }
 
-        if idx >= raw.len() {
+        if pos >= raw.len() {
             break;
         }
 
-        let name_start = idx;
-        while idx < raw.len()
-            && !raw[idx].is_ascii_whitespace()
-            && raw[idx] != b'='
-            && raw[idx] != b'/'
-            && raw[idx] != b'>'
+        let name_start = pos;
+        while pos < raw.len()
+            && !raw[pos].is_ascii_whitespace()
+            && raw[pos] != b'='
+            && raw[pos] != b'/'
+            && raw[pos] != b'>'
         {
-            idx += 1;
+            pos += 1;
         }
 
-        if idx == name_start {
+        if pos == name_start {
             break;
         }
 
-        let name = ascii_lower_smol(&raw[name_start..idx]);
-        while idx < raw.len() && raw[idx].is_ascii_whitespace() {
-            idx += 1;
+        let name = ascii_lower_smol(&raw[name_start..pos]);
+        while pos < raw.len() && raw[pos].is_ascii_whitespace() {
+            pos += 1;
         }
 
-        let value = if idx < raw.len() && raw[idx] == b'=' {
-            idx += 1;
-            while idx < raw.len() && raw[idx].is_ascii_whitespace() {
-                idx += 1;
+        let value = if pos < raw.len() && raw[pos] == b'=' {
+            pos += 1;
+            while pos < raw.len() && raw[pos].is_ascii_whitespace() {
+                pos += 1;
             }
 
-            if idx >= raw.len() {
+            if pos >= raw.len() {
                 SmolStr::default()
-            } else if raw[idx] == b'"' || raw[idx] == b'\'' {
-                let quote = raw[idx];
-                idx += 1;
-                let value_start = idx;
-                while idx < raw.len() && raw[idx] != quote {
-                    idx += 1;
+            } else if raw[pos] == b'"' || raw[pos] == b'\'' {
+                let quote = raw[pos];
+                pos += 1;
+                let value_start = pos;
+                while pos < raw.len() && raw[pos] != quote {
+                    pos += 1;
                 }
-                let value = bytes_to_smol(&raw[value_start..idx]);
-                if idx < raw.len() {
-                    idx += 1;
+                let value = bytes_to_smol(&raw[value_start..pos]);
+                if pos < raw.len() {
+                    pos += 1;
                 }
                 value
             } else {
-                let value_start = idx;
-                while idx < raw.len()
-                    && !raw[idx].is_ascii_whitespace()
-                    && raw[idx] != b'/'
-                    && raw[idx] != b'>'
+                let value_start = pos;
+                while pos < raw.len()
+                    && !raw[pos].is_ascii_whitespace()
+                    && raw[pos] != b'/'
+                    && raw[pos] != b'>'
                 {
-                    idx += 1;
+                    pos += 1;
                 }
-                bytes_to_smol(&raw[value_start..idx])
+                bytes_to_smol(&raw[value_start..pos])
             }
         } else {
             SmolStr::default()
