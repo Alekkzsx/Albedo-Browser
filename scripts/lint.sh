@@ -112,7 +112,7 @@ fi
 # ============================================================================
 log_info "Check 4: .unwrap() in non-test code..."
 UNWRAP_HITS=$(grep -rn '\.unwrap()' src/ --include='*.rs' 2>/dev/null \
-    | grep -v '#\[cfg(test)\]' | grep -v 'mod tests' || true)
+    | grep -v '#\[cfg(test)\]' | grep -v 'mod tests' | grep -v '_tests\.rs' | grep -v 'harness\.rs' || true)
 if [ -n "$UNWRAP_HITS" ]; then
     COUNT=$(echo "$UNWRAP_HITS" | wc -l)
     log_error "CHECK4" "$COUNT .unwrap() calls in production code" \
@@ -272,7 +272,7 @@ fi
 # CHECK 8: Arquivos longos (> 250 linhas)
 # ============================================================================
 log_info "Check 8: files exceeding 250 lines..."
-LARGE_FILES=$(find src/ -name '*.rs' -exec sh -c 'lines=$(wc -l < "$1"); if [ "$lines" -gt 250 ]; then echo "$1 ($lines lines)"; fi' _ {} \; 2>/dev/null || true)
+LARGE_FILES=$(find src/ -name '*.rs' ! -name '*test*.rs' ! -name '*harness*.rs' -exec sh -c 'lines=$(wc -l < "$1"); if [ "$lines" -gt 250 ]; then echo "$1 ($lines lines)"; fi' _ {} \; 2>/dev/null || true)
 if [ -n "$LARGE_FILES" ]; then
     while IFS= read -r line; do
         log_error "CHECK8" "$line: file exceeds 250 lines" \

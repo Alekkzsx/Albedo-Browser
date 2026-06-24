@@ -17,6 +17,7 @@ default = ["ace_html_parser"]
 ace_html_parser = []
 
 [dependencies]
+anyhow = "1.0.80"
 slint = { version = "1.9", features = ["raw-window-handle-06"] }
 serde_json = "1.0"
 rfd = "0.14"

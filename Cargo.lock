@@ -141,6 +141,7 @@ name = "albedo"
 version = "0.1.0"
 dependencies = [
  "albedo-jit",
+ "anyhow",
  "arboard",
  "base64",
  "brotli",
