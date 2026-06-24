@@ -3,7 +3,7 @@
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use crate::ace::url::Url;
+use crate::shared::url::Url;
 
 /// Eventos que o Navegador recebe do WebSocket
 #[derive(Debug, Clone)]
