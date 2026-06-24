@@ -3,6 +3,7 @@ use encoding_rs::{UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252};
 use memchr::memchr;
 use super::types::{Encoding, DecodedHtml, ParseError, parse_next_attribute};
 
+/// TODO: add docs
 pub fn decode_html_bytes(
     bytes: &[u8],
     bom: Option<&[u8]>,
@@ -33,6 +34,7 @@ pub fn decode_html_bytes(
     Ok(DecodedHtml { content, encoding })
 }
 
+/// TODO: add docs
 pub fn sniff_document_encoding(
     bytes: &[u8],
     bom: Option<&[u8]>,
@@ -63,6 +65,7 @@ pub fn sniff_document_encoding(
     }
 }
 
+/// TODO: add docs
 pub fn detect_bom(bytes: &[u8]) -> Option<(Encoding, usize)> {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
         return Some((Encoding::Utf8, 3));
@@ -76,6 +79,7 @@ pub fn detect_bom(bytes: &[u8]) -> Option<(Encoding, usize)> {
     None
 }
 
+/// TODO: add docs
 pub fn sniff_meta_charset(bytes: &[u8]) -> Option<Encoding> {
     let head = &bytes[..bytes.len().min(4096)];
     let head_str = String::from_utf8_lossy(head);
@@ -112,6 +116,7 @@ pub fn sniff_meta_charset(bytes: &[u8]) -> Option<Encoding> {
     None
 }
 
+/// TODO: add docs
 pub fn extract_meta_charset(tag: &str) -> Option<String> {
     let attrs = parse_meta_attributes(tag);
     if let Some(charset) = attrs.get("charset").filter(|value| !value.is_empty()) {
@@ -142,6 +147,7 @@ pub fn extract_meta_charset(tag: &str) -> Option<String> {
     }
 }
 
+/// TODO: add docs
 pub fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
     let bytes = tag.as_bytes();
     let mut char_index = 0usize;
@@ -171,6 +177,7 @@ pub fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
     attrs
 }
 
+/// TODO: add docs
 pub fn encoding_from_label(label: &str) -> Option<Encoding> {
     let normalized = label.trim().trim_matches('"').trim_matches('\'');
     let canonical = encoding_rs::Encoding::for_label(normalized.as_bytes())?;

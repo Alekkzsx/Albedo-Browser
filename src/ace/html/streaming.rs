@@ -19,10 +19,12 @@ pub struct StreamingHtmlParser {
 }
 
 impl StreamingHtmlParser {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self::with_options(ParserOptions::default())
     }
 
+    /// TODO: add docs
     pub fn with_options(options: ParserOptions) -> Self {
         Self {
             raw_bytes: Vec::new(),
@@ -34,10 +36,12 @@ impl StreamingHtmlParser {
         }
     }
 
+    /// TODO: add docs
     pub fn feed(&mut self, chunk: &str) -> ChunkResult {
         self.feed_bytes(chunk.as_bytes())
     }
 
+    /// TODO: add docs
     pub fn feed_bytes(&mut self, chunk: &[u8]) -> ChunkResult {
         let start = Instant::now();
         self.raw_bytes.extend_from_slice(chunk);
@@ -71,10 +75,12 @@ impl StreamingHtmlParser {
         ChunkResult::Ok
     }
 
+    /// TODO: add docs
     pub fn end(&mut self) -> HtmlDocument {
         self.end_with_parse_result().document
     }
 
+    /// TODO: add docs
     pub fn end_with_parse_result(&mut self) -> ParseResult {
         if !self.raw_bytes.is_empty() {
             if let Ok(decoded) = decode_html_bytes(
@@ -94,6 +100,7 @@ impl StreamingHtmlParser {
             .unwrap_or_else(|| parse_document_with_errors_and_options(&self.buffer, &self.options))
     }
 
+    /// TODO: add docs
     pub fn snapshot(&self) -> StreamingSnapshot {
         StreamingSnapshot {
             raw_bytes: self.raw_bytes.clone(),
@@ -102,6 +109,7 @@ impl StreamingHtmlParser {
         }
     }
 
+    /// TODO: add docs
     pub fn restore(&mut self, snapshot: StreamingSnapshot) {
         self.raw_bytes = snapshot.raw_bytes;
         self.buffer = snapshot.buffer;
@@ -112,23 +120,28 @@ impl StreamingHtmlParser {
         ));
     }
 
+    /// TODO: add docs
     pub fn p50_latency(&self) -> Duration {
         percentile_duration(&self.chunk_latencies, 50)
     }
 
+    /// TODO: add docs
     pub fn p99_latency(&self) -> Duration {
         percentile_duration(&self.chunk_latencies, 99)
     }
 
+    /// TODO: add docs
     pub fn decided_encoding(&self) -> Option<Encoding> {
         self.decided_encoding
     }
 
+    /// TODO: add docs
     pub fn bytes_seen(&self) -> usize {
         self.raw_bytes.len()
     }
 }
 
+/// TODO: add docs
 pub fn percentile_duration(samples: &[Duration], percentile: usize) -> Duration {
     if samples.is_empty() {
         return Duration::ZERO;
