@@ -102,6 +102,8 @@ pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult
             "[JIT] Executando versão NATIVA acelerada para módulo {:?}",
             mod_id
         );
+        // SAFETY: ptr is a valid function pointer from JIT compilation.
+        // The transmute converts the opaque pointer to the expected function signature.
         let func: extern "C" fn() = unsafe { std::mem::transmute(ptr) };
         func();
         return Ok("JIT_NATIVE_MODULE_SUCCESS".to_string());
