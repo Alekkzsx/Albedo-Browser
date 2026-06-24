@@ -112,7 +112,7 @@ impl QuickJsInterceptor {
             // 1. Tentar obter o ponto de entrada OSR
             if let Some(ptr) = self.jit_bridge.try_osr(id, pc_offset, &self.bytecode_registry) {
                 if ptr.is_null() {
-                    eprintln!("[JIT] OSR: ponteiro de código nativo é nulo — abortando");
+                    tracing::error!("JIT OSR: native code pointer is null, aborting");
                     return false;
                 }
 
@@ -120,9 +120,11 @@ impl QuickJsInterceptor {
                 let reg_count = air.registers_count as usize;
                 let mut spill = vec![JsValue::undefined().0; reg_count];
 
-                println!(
-                    "[JIT] OSR: Saltando para código nativo (PC: {}) em {:p} com {} regs",
-                    pc_offset, ptr, reg_count
+                tracing::debug!(
+                    pc_offset,
+                    ptr = ?ptr,
+                    reg_count,
+                    "JIT OSR: jumping to native code"
                 );
 
                 // 3. Executar o código OSR
@@ -132,10 +134,7 @@ impl QuickJsInterceptor {
                     unsafe { std::mem::transmute(ptr) };
                 let result = osr_func(spill.as_mut_ptr());
 
-                println!(
-                    "[JIT] OSR: Execução completada com sucesso. Resultado: {:x}",
-                    result
-                );
+                tracing::debug!(result = format!("{:x}", result), "JIT OSR execution completed");
                 self.last_osr_result.store(result, Ordering::Release);
                 return true;
             }
