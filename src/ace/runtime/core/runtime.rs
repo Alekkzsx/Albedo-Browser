@@ -507,16 +507,11 @@ impl JsRuntime {
         origin: String,
         _source_rt_id: Option<usize>,
     ) {
-        println!(
-            "[JsRuntime::dispatch_message_event] Entering (ID {})",
-            self.id
-        );
+        tracing::debug!(runtime_id = self.id, "Dispatching message event");
         if self.dom.lock().unwrap().is_some() {
-            println!("[JsRuntime::dispatch_message_event] DOM exists, getting context lock...");
+            tracing::debug!("DOM exists, getting context lock");
             self.with_context(|ctx| {
-                println!(
-                    "[JsRuntime::dispatch_message_event] Context locked, evaluating script..."
-                );
+                tracing::debug!("Context locked, evaluating script");
                 ctx.with(|ctx| {
                     let safe_msg = message_json.replace("'", "\\'");
                     let safe_origin = origin.replace("'", "\\'");
@@ -530,9 +525,9 @@ impl JsRuntime {
                     let _ = ctx.eval::<(), _>(script);
                 })
             });
-            println!("[JsRuntime::dispatch_message_event] Done.");
+            tracing::debug!("Message event dispatch complete");
         } else {
-            println!("[JsRuntime::dispatch_message_event] NO DOM!");
+            tracing::warn!("No DOM available for message event");
         }
     }
 
