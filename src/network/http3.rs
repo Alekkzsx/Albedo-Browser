@@ -170,9 +170,6 @@ impl Http3Client {
             .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
             .and_then(|hd| hd.protocol.clone());
         tracing::info!(pool_key = %pool_key, ?protocol, "QUIC connection established");
-                .map(|p| String::from_utf8_lossy(&p).to_string())
-                .unwrap_or_else(|| "desconhecido".to_string())
-        );
 
         // Armazenar no pool
         {

@@ -292,7 +292,7 @@ pub fn parse_next_attribute(html: &str, idx: &mut usize) -> Option<(String, Stri
             if *idx < bytes.len() {
                 *idx += 1;
             }
-            val
+            value
         } else {
             let start = *idx;
             while *idx < bytes.len()

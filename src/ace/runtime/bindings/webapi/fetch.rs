@@ -156,6 +156,48 @@ impl Response {
 use crate::shared::security::Origin;
 use crate::ace::runtime::core::runtime::JsRuntime;
 
+fn try_service_worker_intercept(
+    sw_manager: &std::sync::Arc<std::sync::Mutex<crate::ace::runtime::core::service_worker::ServiceWorkerManager>>,
+    origin_str: &str,
+    url: &str,
+    method: &str,
+    headers: &std::collections::HashMap<String, String>,
+) -> Option<crate::ace::runtime::core::service_worker::ResponseContext> {
+    if let Ok(Some(reg)) = sw_manager.find_for_url(origin_str, url) {
+        if let Ok(Some(active)) = reg.get_active() {
+            let req_ctx = RequestContext {
+                method: method.to_string(),
+                url: url.to_string(),
+                headers: headers.clone(),
+                body: None,
+                mode: "cors".to_string(),
+                credentials: "omit".to_string(),
+                cache_mode: CacheMode::Default,
+                redirect: RedirectMode::Follow,
+            };
+
+            if let Ok(InterceptResult::Handled(sw_resp)) = sw_manager.dispatch_fetch_event(&active, req_ctx) {
+                return Some(sw_resp);
+            }
+        }
+    }
+    None
+}
+
+fn validate_cors_response(
+    rm: &Option<crate::network::resources::ResourceManager>,
+    org: &Option<Origin>,
+    url: &str,
+    resp_headers: &std::collections::HashMap<String, String>,
+) -> bool {
+    if let Some(ref rm) = rm {
+        if let Some(ref org) = org {
+            return rm.access_control.lock().unwrap().validate_cors(org, url, resp_headers);
+        }
+    }
+    false
+}
+
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {
@@ -221,33 +263,17 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                         };
 
                         // Check for Service Worker Interception
-                        if let Ok(Some(reg)) = sw_manager.find_for_url(&origin_str, &url_captured) {
-                            if let Ok(Some(active)) = reg.get_active() {
-                                let req_ctx = RequestContext {
-                                    method: method_captured.clone(),
-                                    url: url_captured.clone(),
-                                    headers: headers_map.clone(),
-                                    body: None,
-                                    mode: "cors".to_string(),
-                                    credentials: "omit".to_string(),
-                                    cache_mode: CacheMode::Default,
-                                    redirect: RedirectMode::Follow,
-                                };
-
-                                match sw_manager.dispatch_fetch_event(&active, req_ctx) {
-                                    Ok(InterceptResult::Handled(sw_resp)) => {
-                                        let _ = sender.send(AsyncResult {
-                                            id,
-                                            result: Ok((
-                                                sw_resp.status,
-                                                String::from_utf8_lossy(&sw_resp.body).to_string(),
-                                            )),
-                                        });
-                                        return;
-                                    }
-                                    _ => { /* Fallback to network */ }
-                                }
-                            }
+                        if let Some(sw_resp) = try_service_worker_intercept(
+                            &sw_manager, &origin_str, &url_captured, &method_captured, &headers_map,
+                        ) {
+                            let _ = sender.send(AsyncResult {
+                                id,
+                                result: Ok((
+                                    sw_resp.status,
+                                    String::from_utf8_lossy(&sw_resp.body).to_string(),
+                                )),
+                            });
+                            return;
                         }
 
                         let (rm_opt, org_opt) = {
@@ -306,19 +332,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                                     }
 
                                     if is_cross_origin {
-                                        let allowed = if let Some(ref rm) = rm_opt {
-                                            if let Some(ref org) = org_opt {
-                                                rm.access_control.lock().unwrap().validate_cors(
-                                                    org,
-                                                    &url,
-                                                    &resp_headers,
-                                                )
-                                            } else {
-                                                false
-                                            }
-                                        } else {
-                                            false
-                                        };
+                                        let allowed = validate_cors_response(&rm_opt, &org_opt, &url, &resp_headers);
 
                                         if !allowed {
                                             let _ = sender.send(AsyncResult {

@@ -185,12 +185,12 @@ impl<'a> HtmlTreeBuilder<'a> {
                 name, attributes, ..
             } if name == "head" => {
                 let node_index = self.insert_element("head", attributes);
-                self.head_element = Some(idx);
+                self.head_element = Some(node_index);
                 self.insertion_mode = InsertionMode::InHead;
             }
             _ => {
                 let node_index = self.insert_element("head", Vec::new());
-                self.head_element = Some(idx);
+                self.head_element = Some(node_index);
                 self.insertion_mode = InsertionMode::InHead;
                 self.handle_token(token);
             }
