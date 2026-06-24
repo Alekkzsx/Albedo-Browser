@@ -264,22 +264,26 @@ pub struct WPTBuilder {
 }
 
 impl WPTBuilder {
+    /// TODO: add docs
     pub fn new(wpt_root: &str) -> Self {
         WPTBuilder {
             runner: WPTRunner::new(wpt_root),
         }
     }
 
+    /// TODO: add docs
     pub fn with_suite(mut self, suite: &str) -> Self {
         self.runner.enable_suite(suite);
         self
     }
 
+    /// TODO: add docs
     pub fn with_all_dom_suites(mut self) -> Self {
         self.runner.enable_all_dom_suites();
         self
     }
 
+    /// TODO: add docs
     pub fn build(self) -> WPTRunner {
         self.runner
     }
@@ -297,6 +301,7 @@ mod tests {
     }
 
     impl TestTempDir {
+        /// TODO: add docs
         fn new() -> Self {
             let unique = unix_timestamp_nanos();
             let path = std::env::temp_dir().join(format!("albedo-wpt-{unique}"));
@@ -304,17 +309,20 @@ mod tests {
             Self { path }
         }
 
+        /// TODO: add docs
         fn path(&self) -> &Path {
             &self.path
         }
     }
 
     impl Drop for TestTempDir {
+        /// TODO: add docs
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
         }
     }
 
+    /// TODO: add docs
     fn create_mock_wpt_structure() -> TestTempDir {
         let temp_dir = TestTempDir::new();
         

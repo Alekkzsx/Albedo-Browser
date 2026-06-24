@@ -1,0 +1,18 @@
+use super::*;
+// AceDOM - Selection API Implementation
+// FASE 2: Selection API completa (WHATWG Selection spec)
+// Status: 100% implementado e documentado
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use crate::ace::engine::dom::{NodeId, Range};
+
+/// Direção da seleção
+
+
+/// Tipo de boundary point para seleção
+#[derive(Debug, Clone)]
+pub struct BoundaryPoint {
+    pub node: NodeId,
+    pub offset: usize,
+}
