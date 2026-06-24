@@ -58,31 +58,31 @@ fn format_values<'a>(ctx: &Ctx<'a>, args: &[rquickjs::Value<'a>]) -> String {
 
 fn console_log<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
-    println!("[LOG] {}", formatted);
+    tracing::info!(target: "js_console", msg = %formatted, "console.log");
     Ok(())
 }
 
 fn console_error<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
-    eprintln!("[ERROR] {}", formatted);
+    tracing::error!(target: "js_console", msg = %formatted, "console.error");
     Ok(())
 }
 
 fn console_warn<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
-    eprintln!("[WARN] {}", formatted);
+    tracing::warn!(target: "js_console", msg = %formatted, "console.warn");
     Ok(())
 }
 
 fn console_info<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
-    println!("[INFO] {}", formatted);
+    tracing::info!(target: "js_console", msg = %formatted, "console.info");
     Ok(())
 }
 
 fn console_debug<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
-    println!("[DEBUG] {}", formatted);
+    tracing::debug!(target: "js_console", msg = %formatted, "console.debug");
     Ok(())
 }
 
