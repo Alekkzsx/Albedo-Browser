@@ -269,10 +269,7 @@ impl FetchClient {
 
         // Regra Rigorosa: Bloquear na largada se for cross-origin em modo strict same-origin
         if is_cross_origin && opts.mode == FetchMode::SameOrigin {
-            println!(
-                "🛑 [Security] Rejeitado Same-Origin: de {:?} para {}",
-                parent_origin, url
-            );
+            tracing::warn!(?parent_origin, url = %url, "Same-Origin Policy blocked");
             return Err(FetchError::SameOriginBlocked);
         }
 
@@ -317,11 +314,11 @@ impl FetchClient {
         }
 
         // 5. Enviar e Processar
-        println!(
-            "FETCH: Enviando {} para {} (origin: {:?})",
-            opts.method,
-            url,
-            parent_origin.as_ref().map(|o| o.to_string())
+        tracing::debug!(
+            method = %opts.method,
+            url = %url,
+            origin = ?parent_origin.as_ref().map(|o| o.to_string()),
+            "Sending fetch request"
         );
         match builder.send() {
             Ok(resp) => {
@@ -344,10 +341,7 @@ impl FetchClient {
                         // O origin da request
                         if let Some(parent) = &parent_origin {
                             if !access_control.validate_cors(parent, url, &resp_headers) {
-                                eprintln!(
-                                    "🛑 [Security] CORS Negado pela API {} para a origin {}",
-                                    url, parent
-                                );
+                                tracing::warn!(url = %url, origin = %parent, "CORS denied by API");
                                 return Err(FetchError::CorsBlocked);
                             }
                         }
