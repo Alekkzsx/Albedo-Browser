@@ -45,6 +45,6 @@ pub fn parse(s: &str) -> Result<JsonValue, String> {
 }
 
 pub fn stringify(v: &JsonValue) -> String {
-    let val = to_serde(v);
+    let serde_value = to_serde(v);
     serde_json::to_string(&val).unwrap_or_default()
 }

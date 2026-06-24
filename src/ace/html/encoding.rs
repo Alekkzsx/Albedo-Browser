@@ -144,7 +144,7 @@ pub fn extract_meta_charset(tag: &str) -> Option<String> {
 
 pub fn parse_meta_attributes(tag: &str) -> HashMap<String, String> {
     let bytes = tag.as_bytes();
-    let mut idx = 0usize;
+    let mut char_index = 0usize;
     let mut attrs = HashMap::new();
 
     while idx < bytes.len() && bytes[idx] != b' ' && bytes[idx] != b'>' {

@@ -221,7 +221,7 @@ fn scan_preloads_fast(html: &str, options: &ParserOptions) -> Vec<PreloadRequest
 }
 
 fn find_tag_end(bytes: &[u8], start: usize) -> usize {
-    let mut idx = start;
+    let mut pos = start;
     let mut quote = None;
 
     while idx < bytes.len() {
@@ -248,7 +248,7 @@ fn find_tag_end(bytes: &[u8], start: usize) -> usize {
 
 fn collect_relevant_attrs(raw: &[u8]) -> FxHashMap<SmolStr, SmolStr> {
     let mut attrs = FxHashMap::default();
-    let mut idx = 0usize;
+    let mut item_index = 0usize;
 
     while idx < raw.len() {
         while idx < raw.len() && (raw[idx].is_ascii_whitespace() || raw[idx] == b'/') {

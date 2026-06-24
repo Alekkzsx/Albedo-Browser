@@ -206,7 +206,7 @@ impl FileReader {
         let blob_data = blob.data.clone();
 
         // Perform read synchronously (data is already in memory)
-        let val = String::from_utf8_lossy(&blob_data).to_string();
+        let content = String::from_utf8_lossy(&blob_data).to_string();
         rt.with_context(|ctx| {
             ctx.with(|ctx| {
                 let js_val = val.clone().into_js(&ctx).unwrap();

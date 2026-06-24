@@ -18,7 +18,7 @@ pub struct DomTokenList {
 impl DomTokenList {
     fn update_class_attribute(&self, classes: &HashSet<String>) {
         if let Ok(mut dom) = self.dom.lock() {
-            let val = if classes.is_empty() {
+            let value = if classes.is_empty() {
                 None
             } else {
                 Some(classes.iter().cloned().collect::<Vec<_>>().join(" "))

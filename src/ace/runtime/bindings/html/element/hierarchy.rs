@@ -449,7 +449,7 @@ pub fn insert_before<'js>(
         let ref_el = Class::<Element>::from_value(&ref_child).map_err(|_| {
             rquickjs::Error::new_from_js("TypeError", "Argument 2 must be an Element or null")
         })?;
-        let idx = ref_el.borrow().index;
+        let element_index = ref_el.borrow().index;
         Some(idx)
     };
 

@@ -16,7 +16,7 @@ impl UrlSearchParams {
                 }
                 let mut parts = pair.splitn(2, '=');
                 let key = parts.next().unwrap_or("").replace('+', " ");
-                let val = parts.next().unwrap_or("").replace('+', " ");
+                let value = parts.next().unwrap_or("").replace('+', " ");
                 search_params.append(
                     &percent_encoding::decode(&key),
                     &percent_encoding::decode(&val),

@@ -331,7 +331,7 @@ impl IDBObjectStore {
             key_path,
             unique,
         });
-        let idx = IDBIndex {
+        let index = IDBIndex {
             name,
             store_name: self.name.clone(),
             transaction_id: self.transaction_id,

@@ -212,8 +212,8 @@ impl AceEngine {
         parent_y: f32,
     ) {
         if let Ok(layout) = taffy.layout(node) {
-            let x = parent_x + layout.location.x;
-            let y = parent_y + layout.location.y;
+            let pos_x = parent_x + layout.location.x;
+            let pos_y = parent_y + layout.location.y;
             let w = layout.size.width;
             let h = layout.size.height;
 

@@ -61,7 +61,7 @@ pub fn query_selector_all<'js>(
     let array = rquickjs::Array::new(ctx.clone())?;
 
     if let Ok(dom) = doc.dom.lock() {
-        let mut idx = 0;
+        let mut item_index = 0;
         for (i, node) in dom.nodes.iter().enumerate() {
             if matches_node_selector(&node.node_type, &selector) {
                 let element = Element {
