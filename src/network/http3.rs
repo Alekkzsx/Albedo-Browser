@@ -74,23 +74,20 @@ impl Http3Client {
             match roots.add(cert) {
                 Ok(()) => loaded_certs += 1,
                 Err(e) => {
-                    eprintln!("[HTTP/3] Certificado nativo inválido ignorado: {}", e);
+                    tracing::warn!(?e, "Invalid native certificate ignored");
                 }
             }
         }
 
         // Logar erros de carregamento sem abortar
         for err in native_result.errors {
-            eprintln!("[HTTP/3] Erro ao carregar trust anchors nativos: {}", err);
+            tracing::warn!(?err, "Failed to load native trust anchors");
         }
 
         if loaded_certs == 0 {
             return Err("[HTTP/3] Nenhum certificado raiz encontrado no sistema".into());
         }
-        println!(
-            "[HTTP/3] {} certificados raiz carregados do sistema",
-            loaded_certs
-        );
+        tracing::info!(count = loaded_certs, "Root certificates loaded from system");
 
         // 2. Configurar TLS com rustls (zero dependências de OpenSSL)
         let mut tls_config = rustls::ClientConfig::builder()
@@ -124,7 +121,7 @@ impl Http3Client {
         let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse::<SocketAddr>().unwrap())?;
         endpoint.set_default_client_config(client_config);
 
-        println!("[HTTP/3] Client QUIC inicializado com sucesso");
+        tracing::info!("HTTP/3 QUIC client initialized successfully");
 
         Ok(Http3Client {
             endpoint: Arc::new(endpoint),
@@ -160,7 +157,7 @@ impl Http3Client {
             .next()
             .ok_or_else(|| format!("[HTTP/3] DNS não resolveu: {}:{}", host, port))?;
 
-        println!("[HTTP/3] Conectando via QUIC a {} ({})", pool_key, addr);
+        tracing::info!(pool_key = %pool_key, addr = %addr, "Connecting via QUIC");
 
         // Iniciar handshake QUIC (inclui TLS 1.3 em 1-RTT)
         let conn = self
@@ -169,12 +166,10 @@ impl Http3Client {
             .await
             .map_err(|e| format!("[HTTP/3] Handshake QUIC falhou para {}: {}", pool_key, e))?;
 
-        println!(
-            "[HTTP/3] Conexão QUIC estabelecida com {} (protocol: {:?})",
-            pool_key,
-            conn.handshake_data()
-                .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
-                .and_then(|hd| hd.protocol.clone())
+        let protocol = conn.handshake_data()
+            .and_then(|hd| hd.downcast::<quinn::crypto::rustls::HandshakeData>().ok())
+            .and_then(|hd| hd.protocol.clone());
+        tracing::info!(pool_key = %pool_key, ?protocol, "QUIC connection established");
                 .map(|p| String::from_utf8_lossy(&p).to_string())
                 .unwrap_or_else(|| "desconhecido".to_string())
         );
@@ -263,7 +258,7 @@ impl Http3Client {
             // poll_close retorna ConnectionError diretamente
             let err = futures_util::future::poll_fn(|cx| driver.poll_close(cx)).await;
             // Logar apenas erros reais (ignorar fechamento normal)
-            eprintln!("[HTTP/3] Driver finalizado: {}", err);
+            tracing::warn!(?err, "HTTP/3 driver finished");
         });
 
         // 6. Enviar request e receber response
@@ -293,12 +288,7 @@ impl Http3Client {
             body_bytes.extend_from_slice(chunk.chunk());
         }
 
-        println!(
-            "[HTTP/3] Response: {} {} ({} bytes)",
-            status,
-            url,
-            body_bytes.len()
-        );
+        tracing::debug!(status, url = %url, len = body_bytes.len(), "HTTP/3 response received");
 
         // Cancelar driver task (stream já foi consumida)
         drive_task.abort();
@@ -349,7 +339,7 @@ impl Http3Client {
         // 2. Aguardar o endpoint ficar idle (todas as conexões efetivamente fechadas)
         self.endpoint.wait_idle().await;
 
-        println!("[HTTP/3] Client QUIC encerrado");
+        tracing::info!("HTTP/3 QUIC client shut down");
         Ok(())
     }
 
@@ -359,7 +349,7 @@ impl Http3Client {
         pool.retain(|key, conn| {
             let alive = conn.close_reason().is_none();
             if !alive {
-                println!("[HTTP/3] Conexão removida do pool: {}", key);
+                tracing::debug!(key = %key, "Removing dead connection from pool");
             }
             alive
         });
@@ -369,7 +359,7 @@ impl Http3Client {
 impl Default for Http3Client {
     fn default() -> Self {
         Http3Client::new().unwrap_or_else(|e| {
-            eprintln!("[HTTP/3] Falha ao criar client padrão: {}", e);
+            tracing::error!(?e, "Failed to create default HTTP/3 client");
             // Criar um client com endpoint não funcional como fallback seguro
             // Isso nunca deve acontecer em condições normais (falta de certs no SO)
             panic!("[HTTP/3] Impossível criar client QUIC: {}", e);
@@ -394,7 +384,7 @@ mod tests {
             }
             Err(e) => {
                 // Aceitável em ambientes sem certificados nativos
-                println!("HTTP/3 client não disponível neste ambiente: {}", e);
+                tracing::info!(?e, "HTTP/3 client not available in this environment");
             }
         }
     }
