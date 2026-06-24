@@ -133,7 +133,7 @@ pub fn resolve_module_specifier(specifier: &str, referrer: &str, base_url: &str)
 /// Faz download síncrono de um módulo JS via HTTP(S).
 /// Retorna `None` se o download falhar.
 fn fetch_module_source(url: &str) -> Option<String> {
-    println!("[ESModules] Fetching module: {}", url);
+    tracing::info!(url = %url, "Fetching module");
 
     // Data URI handling
     if url.starts_with("data:") {
@@ -163,29 +163,26 @@ fn fetch_module_source(url: &str) -> Option<String> {
                 if response.status().is_success() {
                     match response.text() {
                         Ok(text) => {
-                            println!("[ESModules] Fetched {} bytes from {}", text.len(), url);
+                            tracing::info!(url = %url, len = text.len(), "Fetched module");
                             Some(text)
                         }
                         Err(e) => {
-                            eprintln!(
-                                "[ESModules] Failed to read response body from {}: {}",
-                                url, e
-                            );
+                            tracing::error!(url = %url, ?e, "Failed to read response body");
                             None
                         }
                     }
                 } else {
-                    eprintln!("[ESModules] HTTP {} for module {}", response.status(), url);
+                    tracing::error!(status = %response.status(), url = %url, "HTTP error for module");
                     None
                 }
             }
             Err(e) => {
-                eprintln!("[ESModules] Network error fetching {}: {}", url, e);
+                tracing::error!(url = %url, ?e, "Network error fetching module");
                 None
             }
         },
         Err(e) => {
-            eprintln!("[ESModules] Failed to create HTTP client: {}", e);
+            tracing::error!(?e, "Failed to create HTTP client");
             None
         }
     }
@@ -208,23 +205,17 @@ impl rquickjs::loader::Resolver for AlbedoModuleResolver {
         base: &str,
         name: &str,
     ) -> rquickjs::Result<String> {
-        println!(
-            "[ESModules::Resolver] Resolving '{}' from base '{}'",
-            name, base
-        );
+        tracing::debug!(name = %name, base = %base, "Resolving module");
 
         let base_url = self.registry.base_url.lock().unwrap().clone();
 
         match resolve_module_specifier(name, base, &base_url) {
             Some(resolved) => {
-                println!("[ESModules::Resolver] Resolved to: {}", resolved);
+                tracing::debug!(resolved = %resolved, "Module resolved");
                 Ok(resolved)
             }
             None => {
-                eprintln!(
-                    "[ESModules::Resolver] Failed to resolve '{}' from '{}'",
-                    name, base
-                );
+                tracing::error!(name = %name, base = %base, "Failed to resolve module");
                 Err(rquickjs::Error::new_resolving(base, name))
             }
         }
@@ -243,15 +234,11 @@ impl rquickjs::loader::Loader for AlbedoModuleLoader {
         ctx: &rquickjs::Ctx<'js>,
         name: &str,
     ) -> rquickjs::Result<rquickjs::Module<'js, rquickjs::module::Declared>> {
-        println!("[ESModules::Loader] Loading module: {}", name);
+        tracing::info!(name = %name, "Loading module");
 
         // 1. Verificar se já existe no cache do registry
         if let Some(source) = self.registry.get_source(name) {
-            println!(
-                "[ESModules::Loader] Found in cache: {} ({} bytes)",
-                name,
-                source.len()
-            );
+            tracing::debug!(name = %name, len = source.len(), "Found module in cache");
             return rquickjs::Module::declare(ctx.clone(), name, source);
         }
 
@@ -265,7 +252,7 @@ impl rquickjs::loader::Loader for AlbedoModuleLoader {
             }
         }
 
-        eprintln!("[ESModules::Loader] Failed to load module: {}", name);
+        tracing::error!(name = %name, "Failed to load module");
         Err(rquickjs::Error::new_loading(name))
     }
 }
