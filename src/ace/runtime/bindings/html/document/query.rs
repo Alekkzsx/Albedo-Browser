@@ -3,6 +3,7 @@ use crate::ace::runtime::bindings::html::document::Document;
 use crate::ace::runtime::bindings::html::element::Element;
 use rquickjs::{Class, Ctx, Result, Value};
 
+/// TODO: add docs
 pub fn get_element_by_id<'js>(doc: &Document, ctx: Ctx<'js>, id: String) -> Result<Value<'js>> {
     if let Ok(dom) = doc.dom.lock() {
         for (i, node) in dom.nodes.iter().enumerate() {
@@ -30,6 +31,7 @@ pub fn get_element_by_id<'js>(doc: &Document, ctx: Ctx<'js>, id: String) -> Resu
     Ok(Value::new_null(ctx))
 }
 
+/// TODO: add docs
 pub fn query_selector<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
     if let Ok(dom) = doc.dom.lock() {
         for (i, node) in dom.nodes.iter().enumerate() {
@@ -53,6 +55,7 @@ pub fn query_selector<'js>(doc: &Document, ctx: Ctx<'js>, selector: String) -> R
     Ok(Value::new_null(ctx))
 }
 
+/// TODO: add docs
 pub fn query_selector_all<'js>(
     doc: &Document,
     ctx: Ctx<'js>,
@@ -76,14 +79,15 @@ pub fn query_selector_all<'js>(
                     element_scroll: doc.element_scroll.clone(),
                 };
                 let instance = Class::instance(ctx.clone(), element)?;
-                array.set(idx, instance)?;
-                idx += 1;
+                array.set(index, instance)?;
+                index += 1;
             }
         }
     }
     Ok(array.into_value())
 }
 
+/// TODO: add docs
 fn matches_node_selector(node_type: &AceNodeType, selector: &str) -> bool {
     if let AceNodeType::Element(element) = node_type {
         if selector.starts_with('#') {

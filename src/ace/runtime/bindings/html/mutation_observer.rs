@@ -21,13 +21,13 @@ impl MutationObserver {
 
         // Use a simple incrementing ID for observers
         let id = {
-            let registry = rt.observer_registry.lock().unwrap();
+            let registry = rt.observer_registry.lock().unwrap_or_else(|e| e.into_inner());
             registry.len() + 1
         };
 
         // Save callback in registry (transmute to 'static Persistent for storage)
         {
-            let mut registry = rt.observer_registry.lock().unwrap();
+            let mut registry = rt.observer_registry.lock().unwrap_or_else(|e| e.into_inner());
             let cb_persist = Persistent::save(&ctx, callback);
             // SAFETY: The Persistent reference is valid for the lifetime of the observer.
             // QuickJS guarantees persistent references remain valid until explicitly dropped.
@@ -39,6 +39,7 @@ impl MutationObserver {
         Ok(MutationObserver { id, rt })
     }
 
+    /// TODO: add docs
     pub fn observe(&self, target: Value<'_>, options: Object<'_>) -> Result<()> {
         let element = Class::<Element>::from_value(&target)
             .map_err(|_| rquickjs::Error::new_from_js("Target must be an Element", "TypeError"))?;
@@ -54,31 +55,32 @@ impl MutationObserver {
             character_data_old_value: options.get("characterDataOldValue").unwrap_or(false),
         };
 
-        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
-            let mut dom = dom_arc.lock().unwrap();
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            let mut dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             dom.observe(node_idx, init, self.id);
         }
 
         Ok(())
     }
 
+    /// TODO: add docs
     pub fn disconnect(&self) {
-        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
-            let mut dom = dom_arc.lock().unwrap();
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            let mut dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             for observers in dom.observers.values_mut() {
                 observers.retain(|o| o.callback_id != self.id);
             }
         }
 
         // Remove from registry
-        let mut registry = self.rt.observer_registry.lock().unwrap();
+        let mut registry = self.rt.observer_registry.lock().unwrap_or_else(|e| e.into_inner());
         registry.remove(&self.id);
     }
 
     #[qjs(rename = "takeRecords")]
     pub fn take_records<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
-        if let Some(dom_arc) = self.rt.dom.lock().unwrap().as_ref() {
-            let dom = dom_arc.lock().unwrap();
+        if let Some(dom_arc) = self.rt.dom.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            let dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
             let records = dom
                 .pending_mutations
                 .borrow_mut()
@@ -146,5 +148,6 @@ impl MutationObserver {
 }
 
 impl rquickjs::class::Trace<'_> for MutationObserver {
+    /// TODO: add docs
     fn trace<'a>(&self, _tracer: rquickjs::class::Tracer<'a, '_>) {}
 }

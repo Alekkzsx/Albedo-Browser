@@ -12,7 +12,7 @@ pub struct History {
 impl History {
     #[qjs(get)]
     pub fn length(&self) -> usize {
-        self.rt.history_stack.lock().unwrap().len()
+        self.rt.history_stack.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     #[qjs(rename = "pushState")]
@@ -26,8 +26,8 @@ impl History {
         let json: String = ctx
             .eval(format!("JSON.stringify(arguments[0])").as_bytes())
             .unwrap_or_else(|_| "null".to_string());
-        let mut stack = self.rt.history_stack.lock().unwrap();
-        let mut index = self.rt.history_index.lock().unwrap();
+        let mut stack = self.rt.history_stack.lock().unwrap_or_else(|e| e.into_inner());
+        let mut index = self.rt.history_index.lock().unwrap_or_else(|e| e.into_inner());
 
         stack.truncate(*index + 1);
         stack.push(crate::ace::runtime::core::runtime::HistoryEntry {
@@ -51,8 +51,8 @@ impl History {
         let json: String = ctx
             .eval(format!("JSON.stringify(arguments[0])").as_bytes())
             .unwrap_or_else(|_| "null".to_string());
-        let mut stack = self.rt.history_stack.lock().unwrap();
-        let index = self.rt.history_index.lock().unwrap();
+        let mut stack = self.rt.history_stack.lock().unwrap_or_else(|e| e.into_inner());
+        let index = self.rt.history_index.lock().unwrap_or_else(|e| e.into_inner());
 
         if let Some(entry) = stack.get_mut(*index) {
             entry.url = url.unwrap_or(entry.url.clone());
@@ -62,17 +62,20 @@ impl History {
         Ok(())
     }
 
+    /// TODO: add docs
     pub fn back(&self, ctx: Ctx<'_>) -> Result<()> {
         self.go(ctx, -1)
     }
 
+    /// TODO: add docs
     pub fn forward(&self, ctx: Ctx<'_>) -> Result<()> {
         self.go(ctx, 1)
     }
 
+    /// TODO: add docs
     pub fn go(&self, ctx: Ctx<'_>, delta: i32) -> Result<()> {
-        let mut index = self.rt.history_index.lock().unwrap();
-        let stack = self.rt.history_stack.lock().unwrap();
+        let mut index = self.rt.history_index.lock().unwrap_or_else(|e| e.into_inner());
+        let stack = self.rt.history_stack.lock().unwrap_or_else(|e| e.into_inner());
 
         let new_index = (*index as i32 + delta).max(0).min(stack.len() as i32 - 1) as usize;
         if new_index != *index {
@@ -89,6 +92,7 @@ impl History {
     }
 }
 
+/// TODO: add docs
 fn dispatch_popstate<'js>(ctx: &Ctx<'js>, state: Value<'js>) -> Result<()> {
     let global = ctx.globals();
     if let Ok(window) = global.get::<_, Object>("window") {
@@ -103,7 +107,7 @@ fn dispatch_popstate<'js>(ctx: &Ctx<'js>, state: Value<'js>) -> Result<()> {
                         "new PopStateEvent('popstate', {{ state: {} }})",
                         state
                             .as_string()
-                            .unwrap_or(&rquickjs::String::from_str(ctx.clone(), "null").unwrap())
+                            .unwrap_or(&rquickjs::String::from_str(ctx.clone(), "null").expect("Albedo Engine: internal invariant violated"))
                             .to_string()
                             .unwrap_or("null".to_string())
                     );
@@ -146,6 +150,7 @@ impl PopStateEvent {
     }
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {

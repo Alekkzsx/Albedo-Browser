@@ -2,6 +2,7 @@ use super::Element;
 use crate::ace::engine::dom::{AceDOM, AceNodeType};
 use rquickjs::{Class, Ctx, Result, Value};
 
+/// TODO: add docs
 pub fn query_selector<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(found_idx) = find_element(&dom, el.index, &selector, true) {
@@ -23,6 +24,7 @@ pub fn query_selector<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Res
     Ok(Value::new_null(ctx))
 }
 
+/// TODO: add docs
 pub fn query_selector_all<'js>(
     el: &Element,
     ctx: Ctx<'js>,
@@ -50,6 +52,7 @@ pub fn query_selector_all<'js>(
     Ok(array.into_value())
 }
 
+/// TODO: add docs
 pub fn matches(el: &Element, selector: String) -> bool {
     if let Ok(dom) = el.dom.lock() {
         return matches_selector(&dom, el.index, &selector);
@@ -57,6 +60,7 @@ pub fn matches(el: &Element, selector: String) -> bool {
     false
 }
 
+/// TODO: add docs
 pub fn closest<'js>(el: &Element, ctx: Ctx<'js>, selector: String) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         let mut curr = Some(el.index);
@@ -104,6 +108,7 @@ fn find_element(dom: &AceDOM, root_idx: usize, selector: &str, _is_first: bool) 
     None
 }
 
+/// TODO: add docs
 fn find_elements(dom: &AceDOM, root_idx: usize, selector: &str) -> Vec<usize> {
     let mut results = Vec::new();
     if let Some(node) = dom.get_node(root_idx) {
@@ -117,6 +122,7 @@ fn find_elements(dom: &AceDOM, root_idx: usize, selector: &str) -> Vec<usize> {
     results
 }
 
+/// TODO: add docs
 fn matches_selector(dom: &AceDOM, node_idx: usize, selector: &str) -> bool {
     if let Some(node) = dom.get_node(node_idx) {
         if let AceNodeType::Element(element) = &node.node_type {

@@ -53,7 +53,7 @@ impl IntersectionObserver {
 
         // Gerar observer_id único via event_loop
         let observer_id = {
-            let mut el = rt.event_loop.lock().unwrap();
+            let mut el = rt.event_loop.lock().unwrap_or_else(|e| e.into_inner());
             el.next_observer_id += 1;
             el.next_observer_id
         };
@@ -73,6 +73,7 @@ impl IntersectionObserver {
         })
     }
 
+    /// TODO: add docs
     pub fn observe<'js>(&self, _ctx: Ctx<'js>, target: Value<'js>) {
         // Extrair node_idx do Element JS
         let node_idx = Self::extract_node_idx(&target);
@@ -84,7 +85,7 @@ impl IntersectionObserver {
                 self.targets.borrow_mut().push(idx);
 
                 // Registrar no intersection_registry do JsRuntime para cada threshold
-                let mut registry = self.rt.intersection_registry.lock().unwrap();
+                let mut registry = self.rt.intersection_registry.lock().unwrap_or_else(|e| e.into_inner());
                 let obs_list = registry.entry(idx).or_insert_with(Vec::new);
 
                 // Usar o menor threshold (ou 0.0 se lista vazia)
@@ -101,12 +102,13 @@ impl IntersectionObserver {
         }
     }
 
+    /// TODO: add docs
     pub fn unobserve<'js>(&self, _ctx: Ctx<'js>, target: Value<'js>) {
         if let Some(idx) = Self::extract_node_idx(&target) {
             self.targets.borrow_mut().retain(|&t| t != idx);
 
             // Remover do registry
-            let mut registry = self.rt.intersection_registry.lock().unwrap();
+            let mut registry = self.rt.intersection_registry.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(obs_list) = registry.get_mut(&idx) {
                 // Remover entradas com o mesmo observer_id
                 // Usando tamanho da lista como proxy (simplificado: remove tudo para este nó)
@@ -115,9 +117,10 @@ impl IntersectionObserver {
         }
     }
 
+    /// TODO: add docs
     pub fn disconnect(&self) {
         let targets: Vec<usize> = self.targets.borrow().clone();
-        let mut registry = self.rt.intersection_registry.lock().unwrap();
+        let mut registry = self.rt.intersection_registry.lock().unwrap_or_else(|e| e.into_inner());
         for idx in &targets {
             if let Some(obs_list) = registry.get_mut(idx) {
                 obs_list.clear();
@@ -161,5 +164,6 @@ impl IntersectionObserver {
 }
 
 impl rquickjs::class::Trace<'_> for IntersectionObserver {
+    /// TODO: add docs
     fn trace<'a>(&self, _tracer: rquickjs::class::Tracer<'a, '_>) {}
 }

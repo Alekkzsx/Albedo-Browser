@@ -48,6 +48,7 @@ impl Notification {
     }
 }
 
+/// TODO: add docs
 pub fn register(ctx: &rquickjs::Context) -> Result<()> {
     ctx.with(|ctx| {
         let globals = ctx.globals();

@@ -35,7 +35,7 @@ impl URL {
 
         Ok(URL {
             url,
-            search_params: Persistent::save(&ctx, search_params_obj.unwrap()),
+            search_params: Persistent::save(&ctx, search_params_obj.expect("Albedo Engine: internal invariant violated")),
         })
     }
 
@@ -113,6 +113,7 @@ impl URL {
     }
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {

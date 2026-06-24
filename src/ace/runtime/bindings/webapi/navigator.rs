@@ -50,6 +50,7 @@ impl Navigator {
     }
 }
 
+/// TODO: add docs
 pub fn register(ctx: &Context) -> Result<()> {
     ctx.with(|ctx| {
         let global = ctx.globals();

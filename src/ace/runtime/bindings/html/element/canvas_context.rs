@@ -25,7 +25,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(set, rename = "fillStyle")]
     pub fn set_fill_style(&self, color: String) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.set_fill_style(&color);
         }
@@ -38,7 +38,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(set, rename = "strokeStyle")]
     pub fn set_stroke_style(&self, color: String) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.set_stroke_style(&color);
         }
@@ -51,7 +51,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(set, rename = "lineWidth")]
     pub fn set_line_width(&self, width: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.set_line_width(width);
         }
@@ -64,7 +64,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(set, rename = "globalAlpha")]
     pub fn set_global_alpha(&self, alpha: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.set_global_alpha(alpha);
         }
@@ -73,7 +73,7 @@ impl CanvasRenderingContext2D {
     // --- Retângulos ---
     #[qjs(rename = "fillRect")]
     pub fn fill_rect(&self, x: f32, y: f32, w: f32, h: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.fill_rect(x, y, w, h);
         }
@@ -81,7 +81,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "strokeRect")]
     pub fn stroke_rect(&self, x: f32, y: f32, w: f32, h: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.begin_path();
             ctx.rect(x, y, w, h);
@@ -91,7 +91,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "clearRect")]
     pub fn clear_rect(&self, x: f32, y: f32, w: f32, h: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.clear_rect(x, y, w, h);
         }
@@ -100,7 +100,7 @@ impl CanvasRenderingContext2D {
     // --- Caminhos (Paths) ---
     #[qjs(rename = "beginPath")]
     pub fn begin_path(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.begin_path();
         }
@@ -108,7 +108,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "closePath")]
     pub fn close_path(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.close_path();
         }
@@ -116,7 +116,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "moveTo")]
     pub fn move_to(&self, x: f32, y: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.move_to(x, y);
         }
@@ -124,7 +124,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "lineTo")]
     pub fn line_to(&self, x: f32, y: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.line_to(x, y);
         }
@@ -132,7 +132,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "quadraticCurveTo")]
     pub fn quadratic_curve_to(&self, cx: f32, cy: f32, x: f32, y: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.quadratic_curve_to(cx, cy, x, y);
         }
@@ -140,7 +140,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "bezierCurveTo")]
     pub fn bezier_curve_to(&self, cx1: f32, cy1: f32, cx2: f32, cy2: f32, x: f32, y: f32) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.bezier_curve_to(cx1, cy1, cx2, cy2, x, y);
         }
@@ -148,7 +148,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "fill")]
     pub fn fill(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.fill();
         }
@@ -156,7 +156,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "stroke")]
     pub fn stroke(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.stroke();
         }
@@ -165,7 +165,7 @@ impl CanvasRenderingContext2D {
     // --- Estado ---
     #[qjs(rename = "save")]
     pub fn save(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.save();
         }
@@ -173,7 +173,7 @@ impl CanvasRenderingContext2D {
 
     #[qjs(rename = "restore")]
     pub fn restore(&self) {
-        let mut contexts = self.canvas_contexts.lock().unwrap();
+        let mut contexts = self.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ctx) = contexts.get_mut(&self.index) {
             ctx.restore();
         }

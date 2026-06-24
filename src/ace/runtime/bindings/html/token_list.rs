@@ -16,6 +16,7 @@ pub struct DomTokenList {
 }
 
 impl DomTokenList {
+    /// TODO: add docs
     fn update_class_attribute(&self, classes: &HashSet<String>) {
         if let Ok(mut dom) = self.dom.lock() {
             let value = if classes.is_empty() {
@@ -24,7 +25,7 @@ impl DomTokenList {
                 Some(classes.iter().cloned().collect::<Vec<_>>().join(" "))
             };
 
-            if let Some(v) = val {
+            if let Some(v) = value {
                 dom.set_attribute_notify(self.index, "class".to_string(), v);
             } else {
                 // We need a remove_attribute_notify too, or just call notify manually
@@ -51,6 +52,7 @@ impl DomTokenList {
         }
     }
 
+    /// TODO: add docs
     fn get_classes(&self) -> HashSet<String> {
         if let Ok(dom) = self.dom.lock() {
             if let Some(node) = dom.get_node(self.index) {
@@ -70,6 +72,7 @@ impl DomTokenList {
 
 #[rquickjs::methods]
 impl DomTokenList {
+    /// TODO: add docs
     fn mark_mutation(&self) {
         if let Ok(mut m) = self.mutations.lock() {
             *m = true;

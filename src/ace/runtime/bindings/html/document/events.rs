@@ -2,9 +2,10 @@ use crate::ace::runtime::bindings::html::document::Document;
 use crate::ace::runtime::bindings::html::event::EventTargetImpl;
 use rquickjs::{Function, Result, Value};
 
+/// TODO: add docs
 pub fn add_event_listener<'js>(doc: &Document, type_: String, listener: Function<'js>) {
     let ptr = {
-        let dom = doc.dom.lock().unwrap();
+        let dom = doc.dom.lock().unwrap_or_else(|e| e.into_inner());
         dom.root
     };
     // SAFETY: The listener is stored in the DOM and will be called before the QuickJS context
@@ -15,17 +16,19 @@ pub fn add_event_listener<'js>(doc: &Document, type_: String, listener: Function
     }
 }
 
+/// TODO: add docs
 pub fn remove_event_listener<'js>(doc: &Document, type_: String, _listener: Function<'js>) {
     let ptr = {
-        let dom = doc.dom.lock().unwrap();
+        let dom = doc.dom.lock().unwrap_or_else(|e| e.into_inner());
         dom.root
     };
     EventTargetImpl::remove_listener(ptr, type_);
 }
 
+/// TODO: add docs
 pub fn dispatch_event<'js>(doc: &Document, event: Value<'js>) -> bool {
     let ptr = {
-        let dom = doc.dom.lock().unwrap();
+        let dom = doc.dom.lock().unwrap_or_else(|e| e.into_inner());
         dom.root
     };
     if let Some(obj) = event.as_object() {

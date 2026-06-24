@@ -2,6 +2,7 @@ use super::Element;
 use crate::ace::runtime::bindings::html::event::EventTargetImpl;
 use rquickjs::{Ctx, Function, Result, Value};
 
+/// TODO: add docs
 pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'js>) {
     let ptr = el.index;
     // SAFETY: The listener is stored in the DOM and will be called before the QuickJS context
@@ -12,15 +13,18 @@ pub fn add_event_listener<'js>(el: &Element, type_: String, listener: Function<'
     }
 }
 
+/// TODO: add docs
 pub fn remove_event_listener<'js>(el: &Element, type_: String, _listener: Function<'js>) {
     let ptr = el.index;
     EventTargetImpl::remove_listener(ptr, type_);
 }
 
+/// TODO: add docs
 pub fn dispatch_event_internal<'js>(el: &Element, ctx: &Ctx<'js>, event: Value<'js>) -> bool {
     dispatch_event(el, ctx, event)
 }
 
+/// TODO: add docs
 pub fn dispatch_event<'js>(el: &Element, _ctx: &Ctx<'js>, event: Value<'js>) -> bool {
     let ptr = el.index;
     let dom = el.dom.clone();

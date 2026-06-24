@@ -15,19 +15,19 @@ pub struct Screen {
 impl Screen {
     #[qjs(get)]
     pub fn width(&self) -> i32 {
-        self.size.lock().unwrap().0
+        self.size.lock().unwrap_or_else(|e| e.into_inner()).0
     }
     #[qjs(get)]
     pub fn height(&self) -> i32 {
-        self.size.lock().unwrap().1
+        self.size.lock().unwrap_or_else(|e| e.into_inner()).1
     }
     #[qjs(get, rename = "availWidth")]
     pub fn avail_width(&self) -> i32 {
-        self.size.lock().unwrap().0
+        self.size.lock().unwrap_or_else(|e| e.into_inner()).0
     }
     #[qjs(get, rename = "availHeight")]
     pub fn avail_height(&self) -> i32 {
-        self.size.lock().unwrap().1
+        self.size.lock().unwrap_or_else(|e| e.into_inner()).1
     }
     #[qjs(get, rename = "colorDepth")]
     pub fn color_depth(&self) -> i32 {
@@ -45,11 +45,13 @@ pub struct Performance {}
 
 #[rquickjs::methods]
 impl Performance {
+    /// TODO: add docs
     pub fn now(&self) -> f64 {
         crate::utils::time::monotonic_now()
     }
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {

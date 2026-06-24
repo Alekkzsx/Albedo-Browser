@@ -11,6 +11,7 @@ impl Geolocation {
         Self {}
     }
 
+    /// TODO: add docs
     pub fn get_current_position<'js>(
         &self,
         ctx: Ctx<'js>,
@@ -28,6 +29,7 @@ impl Geolocation {
     }
 }
 
+/// TODO: add docs
 pub fn register(ctx: &rquickjs::Context) -> Result<()> {
     ctx.with(|ctx| {
         let navigator = ctx.globals().get::<_, Object>("navigator")?;

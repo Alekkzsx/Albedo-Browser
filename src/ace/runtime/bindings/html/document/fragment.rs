@@ -52,6 +52,7 @@ impl DocumentFragment {
 }
 
 impl DocumentFragment {
+    /// TODO: add docs
     pub fn new(
         dom: Arc<Mutex<AceDOM>>,
         mutations: Arc<Mutex<bool>>,
@@ -66,7 +67,7 @@ impl DocumentFragment {
         >,
         element_scroll: Arc<Mutex<std::collections::HashMap<usize, (f32, f32)>>>,
     ) -> Self {
-        let mut d = dom.lock().unwrap();
+        let mut d = dom.lock().unwrap_or_else(|e| e.into_inner());
         let index = d.nodes.len();
         d.nodes.push(AceNode {
             node_type: AceNodeType::DocumentFragment,

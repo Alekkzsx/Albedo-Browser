@@ -31,6 +31,7 @@ impl Console {
         runtime.with_context(|ctx| ctx.with(|ctx: Ctx| Self::register_in_ctx(&ctx)))
     }
 
+    /// TODO: add docs
     pub fn register_in_ctx(ctx: &Ctx<'_>) -> Result<(), rquickjs::Error> {
         let console = Object::new(ctx.clone())?;
 
@@ -49,6 +50,7 @@ impl Console {
     }
 }
 
+/// TODO: add docs
 fn format_values<'a>(ctx: &Ctx<'a>, args: &[rquickjs::Value<'a>]) -> String {
     args.iter()
         .map(|arg| value_to_string(ctx, arg))
@@ -56,30 +58,35 @@ fn format_values<'a>(ctx: &Ctx<'a>, args: &[rquickjs::Value<'a>]) -> String {
         .join(" ")
 }
 
+/// TODO: add docs
 fn console_log<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
     tracing::info!(target: "js_console", msg = %formatted, "console.log");
     Ok(())
 }
 
+/// TODO: add docs
 fn console_error<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
     tracing::error!(target: "js_console", msg = %formatted, "console.error");
     Ok(())
 }
 
+/// TODO: add docs
 fn console_warn<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
     tracing::warn!(target: "js_console", msg = %formatted, "console.warn");
     Ok(())
 }
 
+/// TODO: add docs
 fn console_info<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
     tracing::info!(target: "js_console", msg = %formatted, "console.info");
     Ok(())
 }
 
+/// TODO: add docs
 fn console_debug<'a>(ctx: Ctx<'a>, args: Rest<rquickjs::Value<'a>>) -> Result<(), rquickjs::Error> {
     let formatted = format_values(&ctx, &args.0);
     tracing::debug!(target: "js_console", msg = %formatted, "console.debug");
@@ -153,37 +160,37 @@ mod tests {
 
     #[test]
     fn test_console_log() {
-        let rt = JsRuntime::new().unwrap();
-        Console::register(&rt).unwrap();
+        let rt = JsRuntime::new().expect("Albedo Engine: internal invariant violated");
+        Console::register(&rt).expect("Albedo Engine: internal invariant violated");
 
         // Should not crash
-        rt.execute_script("console.log('Hello, World!')").unwrap();
+        rt.execute_script("console.log('Hello, World!')").expect("Albedo Engine: internal invariant violated");
     }
 
     #[test]
     fn test_console_multiple_args() {
-        let rt = JsRuntime::new().unwrap();
-        Console::register(&rt).unwrap();
+        let rt = JsRuntime::new().expect("Albedo Engine: internal invariant violated");
+        Console::register(&rt).expect("Albedo Engine: internal invariant violated");
 
         rt.execute_script("console.log('Number:', 42, 'Boolean:', true, 'Null:', null)")
-            .unwrap();
+            .expect("Albedo Engine: internal invariant violated");
     }
 
     #[test]
     fn test_console_error() {
-        let rt = JsRuntime::new().unwrap();
-        Console::register(&rt).unwrap();
+        let rt = JsRuntime::new().expect("Albedo Engine: internal invariant violated");
+        Console::register(&rt).expect("Albedo Engine: internal invariant violated");
 
         rt.execute_script("console.error('This is an error')")
-            .unwrap();
+            .expect("Albedo Engine: internal invariant violated");
     }
 
     #[test]
     fn test_console_objects() {
-        let rt = JsRuntime::new().unwrap();
-        Console::register(&rt).unwrap();
+        let rt = JsRuntime::new().expect("Albedo Engine: internal invariant violated");
+        Console::register(&rt).expect("Albedo Engine: internal invariant violated");
 
         rt.execute_script("console.log({name: 'Albedo', version: '0.1.0'})")
-            .unwrap();
+            .expect("Albedo Engine: internal invariant violated");
     }
 }

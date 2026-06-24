@@ -10,6 +10,7 @@ pub struct Location {
 }
 
 impl Location {
+    /// TODO: add docs
     pub fn new(url: String, pending_navigation: Arc<Mutex<Option<String>>>) -> Self {
         Self {
             url,
@@ -28,7 +29,7 @@ impl Location {
     #[qjs(set, rename = "href")]
     pub fn set_href(&mut self, val: String) {
         tracing::debug!(href = %val, "Location.href set");
-        *self.pending_navigation.lock().unwrap() = Some(val.clone());
+        *self.pending_navigation.lock().unwrap_or_else(|e| e.into_inner()) = Some(val.clone());
         self.url = val;
     }
 
@@ -117,23 +118,27 @@ impl Location {
         "".to_string()
     }
 
+    /// TODO: add docs
     pub fn reload(&self) {
         tracing::debug!("Location.reload called");
     }
 
+    /// TODO: add docs
     pub fn replace(&mut self, url: String) {
         tracing::debug!(url = %url, "Location.replace called");
-        *self.pending_navigation.lock().unwrap() = Some(url.clone());
+        *self.pending_navigation.lock().unwrap_or_else(|e| e.into_inner()) = Some(url.clone());
         self.url = url;
     }
 
+    /// TODO: add docs
     pub fn assign(&mut self, url: String) {
         tracing::debug!(url = %url, "Location.assign called");
-        *self.pending_navigation.lock().unwrap() = Some(url.clone());
+        *self.pending_navigation.lock().unwrap_or_else(|e| e.into_inner()) = Some(url.clone());
         self.url = url;
     }
 }
 
+/// TODO: add docs
 pub fn register(
     ctx: &Context,
     initial_url: &str,

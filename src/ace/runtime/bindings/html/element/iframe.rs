@@ -9,10 +9,10 @@ pub fn get_content_window<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js
     // In Albedo, subframe engine creation happens in the Engine. We need to get the engine references.
     // For now, if the Element struct was supposed to hold it but doesn't, we need to locate where `subframe_engines` was defined.
     // Wait, let's look at `AceDOM`.
-    let dom = el.dom.lock().unwrap();
+    let dom = el.dom.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(subframes) = &dom.subframes {
          if let Some(engine_arc) = subframes.get(&el.index) {
-             let engine = engine_arc.lock().unwrap();
+             let engine = engine_arc.lock().unwrap_or_else(|e| e.into_inner());
              if let Some(ref sub_rt) = engine.js_runtime {
                  use crate::ace::runtime::bindings::webapi::window_proxy::WindowProxy;
                  if let Ok(proxy_val) = rquickjs::Class::instance(ctx.clone(), WindowProxy::new(sub_rt.id)) {
@@ -29,10 +29,10 @@ pub fn get_content_window<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js
 pub fn get_content_document<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'js>> {
     let caller_rt: crate::ace::runtime::core::runtime::JsRuntime = ctx.globals().get("__albedo_rt__")?;
     
-    let dom = el.dom.lock().unwrap();
+    let dom = el.dom.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(subframes) = &dom.subframes {
         if let Some(engine_arc) = subframes.get(&el.index) {
-            let engine = engine_arc.lock().unwrap();
+            let engine = engine_arc.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(ref sub_rt) = engine.js_runtime {
                 // SOP Check: contentDocument returns null if cross-origin
                 if !caller_rt.check_same_origin(sub_rt) {

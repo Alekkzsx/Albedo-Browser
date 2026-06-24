@@ -16,6 +16,7 @@ pub struct IFrameBinding {
 }
 
 impl IFrameBinding {
+    /// TODO: add docs
     pub fn new(content_origin: String, parent_origin: String) -> Self {
         Self {
             parent_window: None,
@@ -32,6 +33,7 @@ impl IFrameBinding {
         self.normalize_origin(&self.content_origin) == self.normalize_origin(&self.parent_origin)
     }
 
+    /// TODO: add docs
     fn normalize_origin(&self, url: &str) -> String {
         // Simple normalization: extract scheme://host:port
         // For now, just do a basic prefix match since url crate may not be available

@@ -29,7 +29,7 @@ impl MediaQueryList {
 
     #[qjs(get)]
     pub fn matches(&self) -> bool {
-        let (vw, vh) = *self.viewport.lock().unwrap();
+        let (vw, vh) = *self.viewport.lock().unwrap_or_else(|e| e.into_inner());
         crate::ace::engine::style::matches_media_query(
             &self.media_query,
             vw as f32,
@@ -68,7 +68,7 @@ impl MediaQueryList {
             return Ok(());
         }
         let persistent = rquickjs::Persistent::save(&ctx, callback);
-        self.listeners.lock().unwrap().push(persistent);
+        self.listeners.lock().unwrap_or_else(|e| e.into_inner()).push(persistent);
         Ok(())
     }
 
@@ -85,7 +85,7 @@ impl MediaQueryList {
         // Remover por identidade — QuickJS não expõe ptr direto,
         // limpamos todos por ora (simplificação segura para v1)
         // TODO: implementar remoção precisa por referência quando necessário
-        self.listeners.lock().unwrap().clear();
+        self.listeners.lock().unwrap_or_else(|e| e.into_inner()).clear();
         Ok(())
     }
 
@@ -94,13 +94,13 @@ impl MediaQueryList {
     #[qjs(rename = "addListener")]
     pub fn add_listener<'js>(&self, ctx: Ctx<'js>, callback: Function<'js>) -> Result<()> {
         let persistent = rquickjs::Persistent::save(&ctx, callback);
-        self.listeners.lock().unwrap().push(persistent);
+        self.listeners.lock().unwrap_or_else(|e| e.into_inner()).push(persistent);
         Ok(())
     }
 
     #[qjs(rename = "removeListener")]
     pub fn remove_listener<'js>(&self, _callback: Function<'js>) -> Result<()> {
-        self.listeners.lock().unwrap().clear();
+        self.listeners.lock().unwrap_or_else(|e| e.into_inner()).clear();
         Ok(())
     }
 
@@ -113,6 +113,7 @@ impl MediaQueryList {
 
 // ─── Função principal: window.matchMedia(query) ───────────────────────────────
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     let viewport = rt.screen_size.clone();
     let mql_registry = rt.mql_registry.clone();
@@ -130,7 +131,7 @@ pub fn register(rt: &JsRuntime) -> Result<()> {
                         Arc::new(Mutex::new(Vec::new()));
 
                     // Calcular matches inicial
-                    let (vw, vh) = *viewport_cap.lock().unwrap();
+                    let (vw, vh) = *viewport_cap.lock().unwrap_or_else(|e| e.into_inner());
                     let initial_matches = crate::ace::engine::style::matches_media_query(
                         &query, vw as f32, vh as f32, "light",
                     );
@@ -141,7 +142,7 @@ pub fn register(rt: &JsRuntime) -> Result<()> {
                         last_matches: initial_matches,
                         listeners: listeners.clone(),
                     };
-                    registry_cap.lock().unwrap().push(entry);
+                    registry_cap.lock().unwrap_or_else(|e| e.into_inner()).push(entry);
 
                     // Retornar a view structure e deixar rquickjs embrulhar na classe JS
                     MediaQueryList {

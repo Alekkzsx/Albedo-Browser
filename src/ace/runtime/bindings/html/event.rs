@@ -15,6 +15,7 @@ struct Listener {
 pub struct EventTargetImpl;
 
 impl EventTargetImpl {
+    /// TODO: add docs
     pub fn add_listener(target_ptr: usize, type_: String, callback: Function<'static>) {
         REGISTRY.with(|registry| {
             let mut map = registry.borrow_mut();
@@ -24,6 +25,7 @@ impl EventTargetImpl {
         });
     }
 
+    /// TODO: add docs
     pub fn remove_listener(target_ptr: usize, type_: String) {
         REGISTRY.with(|registry| {
             let mut map = registry.borrow_mut();
@@ -33,6 +35,7 @@ impl EventTargetImpl {
         });
     }
 
+    /// TODO: add docs
     pub fn get_listeners(target_ptr: usize, type_: &str) -> Vec<Function<'static>> {
         REGISTRY.with(|registry| {
             let map = registry.borrow();
@@ -45,12 +48,14 @@ impl EventTargetImpl {
         })
     }
 
+    /// TODO: add docs
     pub fn clear_all() {
         REGISTRY.with(|registry| {
             registry.borrow_mut().clear();
         });
     }
 
+    /// TODO: add docs
     pub fn dispatch_event_with_bubbling(
         target_ptr: usize,
         event_obj: &Event,
@@ -96,6 +101,7 @@ pub struct Event {
 
 // Implement Trace for Event (skip tracing Persistent fields)
 impl<'js> rquickjs::class::Trace<'js> for Event {
+    /// TODO: add docs
     fn trace<'a>(&self, _marker: rquickjs::class::Tracer<'a, 'js>) {
         // Persistent fields handle their own tracing, skip for now
     }

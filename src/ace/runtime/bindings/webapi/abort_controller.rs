@@ -19,12 +19,12 @@ impl AbortSignal {
 
     #[qjs(get, rename = "aborted")]
     pub fn aborted(&self) -> bool {
-        *self.aborted_internal.lock().unwrap()
+        *self.aborted_internal.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     #[qjs(rename = "_abort")]
     pub fn _abort(&self) {
-        let mut aborted = self.aborted_internal.lock().unwrap();
+        let mut aborted = self.aborted_internal.lock().unwrap_or_else(|e| e.into_inner());
         *aborted = true;
     }
 
@@ -35,6 +35,7 @@ impl AbortSignal {
     pub fn remove_event_listener<'js>(&self, _type_: String, _listener: Function<'js>) {}
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {

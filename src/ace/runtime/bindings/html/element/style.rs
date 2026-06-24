@@ -3,6 +3,7 @@ use crate::ace::runtime::bindings::html::style_declaration::CssStyleDeclaration;
 use crate::ace::runtime::bindings::html::token_list::DomTokenList;
 use rquickjs::{Class, Ctx, Result, Value};
 
+/// TODO: add docs
 pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let decl = CssStyleDeclaration {
         dom: el.dom.clone(),
@@ -14,6 +15,7 @@ pub fn style<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     Ok(instance.into_value())
 }
 
+/// TODO: add docs
 pub fn class_list<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let list = DomTokenList {
         dom: el.dom.clone(),

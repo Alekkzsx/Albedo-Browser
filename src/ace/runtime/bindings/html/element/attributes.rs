@@ -56,6 +56,7 @@ impl NamedNodeMap {
 }
 
 impl NamedNodeMap {
+    /// TODO: add docs
     fn create_attr_object<'js>(
         &self,
         ctx: Ctx<'js>,
@@ -70,6 +71,7 @@ impl NamedNodeMap {
     }
 }
 
+/// TODO: add docs
 pub fn attributes<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let attrs = NamedNodeMap {
         dom: el.dom.clone(),
