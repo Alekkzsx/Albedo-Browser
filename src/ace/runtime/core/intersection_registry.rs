@@ -21,6 +21,7 @@ pub struct TargetState {
 }
 
 impl Default for TargetState {
+    /// TODO: add docs
     fn default() -> Self {
         Self {
             last_intersection_ratio: -1.0, 
@@ -49,6 +50,7 @@ pub struct SharedIntersectionRegistry {
 }
 
 impl SharedIntersectionRegistry {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             observers: HashMap::new(),
@@ -57,12 +59,14 @@ impl SharedIntersectionRegistry {
         }
     }
 
+    /// TODO: add docs
     pub fn register_observer(&mut self, id: usize, mut data: IntersectionObserverData) {
         data.target_states = HashMap::new();
         self.observers.insert(id, data);
         self.targets.insert(id, Vec::new());
     }
 
+    /// TODO: add docs
     pub fn observe(&mut self, observer_id: usize, target_node: usize) {
         if let Some(list) = self.targets.get_mut(&observer_id) {
             if !list.contains(&target_node) {
@@ -75,6 +79,7 @@ impl SharedIntersectionRegistry {
         }
     }
 
+    /// TODO: add docs
     pub fn unobserve(&mut self, observer_id: usize, target_node: usize) {
         if let Some(list) = self.targets.get_mut(&observer_id) {
             list.retain(|&x| x != target_node);
@@ -84,6 +89,7 @@ impl SharedIntersectionRegistry {
         }
     }
 
+    /// TODO: add docs
     pub fn disconnect(&mut self, observer_id: usize) {
         self.targets.remove(&observer_id);
         // Note: We keep the observer data in 'observers' map mostly, 
@@ -92,10 +98,12 @@ impl SharedIntersectionRegistry {
         self.targets.insert(observer_id, Vec::new());
     }
     
+    /// TODO: add docs
     pub fn queue_notification(&mut self, callback_id: usize, entry: IntersectionObserverEntry) {
         self.pending_notifications.entry(callback_id).or_insert_with(Vec::new).push(entry);
     }
     
+    /// TODO: add docs
     pub fn queue_notifications(&mut self, notifications: HashMap<usize, Vec<IntersectionObserverEntry>>) {
         for (callback_id, entries) in notifications {
             for entry in entries {
@@ -104,6 +112,7 @@ impl SharedIntersectionRegistry {
         }
     }
     
+    /// TODO: add docs
     pub fn take_pending(&mut self) -> HashMap<usize, Vec<IntersectionObserverEntry>> {
         std::mem::take(&mut self.pending_notifications)
     }
