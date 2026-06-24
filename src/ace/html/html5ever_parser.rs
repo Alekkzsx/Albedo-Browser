@@ -30,6 +30,7 @@ pub(crate) fn parse_document_html5ever(html: &str, options: &ParserOptions) -> P
     result
 }
 
+/// TODO: add docs
 fn strip_generic_tree_builder_errors(result: &mut ParseResult) {
     result.errors.retain(|error| {
         !(error.source == super::types::ParseErrorSource::TreeBuilder && error.kind == super::types::ParseErrorKind::HtmlSyntax)
@@ -88,6 +89,7 @@ pub(crate) fn parse_fragment_html5ever(
     result
 }
 
+/// TODO: add docs
 fn unwrap_fragment_children(mut children: Vec<HtmlNode>) -> Vec<HtmlNode> {
     if children.len() != 1 {
         return children;
@@ -102,6 +104,7 @@ fn unwrap_fragment_children(mut children: Vec<HtmlNode>) -> Vec<HtmlNode> {
     }
 }
 
+/// TODO: add docs
 fn build_parse_opts(options: &ParserOptions) -> ParseOpts {
     ParseOpts {
         tree_builder: TreeBuilderOpts {
@@ -114,6 +117,7 @@ fn build_parse_opts(options: &ParserOptions) -> ParseOpts {
     }
 }
 
+/// TODO: add docs
 fn context_qual_name(context: &FragmentContext) -> QualName {
     let ns = match context.namespace {
         Namespace::Html => ns!(html),

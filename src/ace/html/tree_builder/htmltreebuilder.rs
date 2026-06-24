@@ -1,52 +1,10 @@
+use super::*;
 use crate::ace::html::tokenizer_v2::{AceTokenKind, AceTokenizer};
 use crate::ace::util::allocator::AceAllocator;
 use fxhash::FxHashMap;
 use smol_str::SmolStr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InsertionMode {
-    Initial,
-    BeforeHtml,
-    BeforeHead,
-    InHead,
-    InHeadNoscript,
-    AfterHead,
-    InBody,
-    Text,
-    InTable,
-    InTableText,
-    InCaption,
-    InColumnGroup,
-    InTableBody,
-    InRow,
-    InCell,
-    InSelect,
-    InSelectInTable,
-    InTemplate,
-    AfterBody,
-    InFrameset,
-    AfterFrameset,
-    AfterAfterBody,
-    AfterAfterFrameset,
-}
 
-#[derive(Debug, Clone)]
-pub struct AceNodeV2<'a> {
-    pub kind: AceNodeKind<'a>,
-    pub children: Vec<usize>,
-    pub parent: Option<usize>,
-}
-
-#[derive(Debug, Clone)]
-pub enum AceNodeKind<'a> {
-    Document,
-    Element {
-        name: SmolStr,
-        attributes: FxHashMap<SmolStr, SmolStr>,
-    },
-    Text(&'a str),
-    Comment(&'a str),
-}
 
 pub struct HtmlTreeBuilder<'a> {
     tokenizer: AceTokenizer<'a>,
@@ -66,6 +24,7 @@ pub struct HtmlTreeBuilder<'a> {
 }
 
 impl<'a> HtmlTreeBuilder<'a> {
+    /// TODO: add docs
     pub fn new(input: &'a str, allocator: &'a AceAllocator) -> Self {
         let mut builder = Self {
             tokenizer: AceTokenizer::new(input, allocator),
@@ -89,6 +48,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         builder
     }
 
+    /// TODO: add docs
     pub fn run(&mut self) -> Vec<AceNodeV2<'a>> {
         loop {
             let token = self.tokenizer.next_token();
@@ -100,14 +60,14 @@ impl<'a> HtmlTreeBuilder<'a> {
         std::mem::take(&mut self.nodes)
     }
 
-    fn current_node_idx(&self) -> usize {
+pub(crate) fn current_node_idx(&self) -> usize {
         *self
             .open_elements
             .last()
             .expect("Stack of open elements was empty")
     }
 
-    fn insert_element(&mut self, name: &str, attrs: Vec<(&'a str, &'a str)>) -> usize {
+pub(crate) fn insert_element(&mut self, name: &str, attrs: Vec<(&'a str, &'a str)>) -> usize {
         let mut attributes = FxHashMap::default();
         for (k, v) in attrs {
             attributes.insert(SmolStr::new(k), SmolStr::new(v));
@@ -130,7 +90,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         node_idx
     }
 
-    fn insert_text(&mut self, data: &'a str) {
+pub(crate) fn insert_text(&mut self, data: &'a str) {
         let parent_idx = self.current_node_idx();
         let node_idx = self.nodes.len();
         self.nodes.push(AceNodeV2 {
@@ -141,7 +101,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         self.nodes[parent_idx].children.push(node_idx);
     }
 
-    fn handle_token(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_token(&mut self, token: AceTokenKind<'a>) {
         match self.insertion_mode {
             InsertionMode::Initial => self.handle_initial(token),
             InsertionMode::BeforeHtml => self.handle_before_html(token),
@@ -153,7 +113,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_initial(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_initial(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::Doctype { .. } => self.insertion_mode = InsertionMode::BeforeHtml,
             _ => {
@@ -163,7 +123,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_before_html(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_before_html(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::StartTag {
                 name, attributes, ..
@@ -179,7 +139,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_before_head(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_before_head(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::StartTag {
                 name, attributes, ..
@@ -197,7 +157,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_in_head(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_in_head(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::StartTag {
                 name, attributes, ..
@@ -217,7 +177,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_after_head(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_after_head(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::StartTag {
                 name, attributes, ..
@@ -234,7 +194,7 @@ impl<'a> HtmlTreeBuilder<'a> {
         }
     }
 
-    fn handle_in_body(&mut self, token: AceTokenKind<'a>) {
+pub(crate) fn handle_in_body(&mut self, token: AceTokenKind<'a>) {
         match token {
             AceTokenKind::Text { data } => self.insert_text(data),
             AceTokenKind::StartTag {

@@ -5,14 +5,12 @@ use super::types::{
     Namespace, is_void_element, parse_next_attribute
 };
 use super::preloads::extract_preloads;
-
 const FAST_PATH_MIN_BYTES: usize = 16 * 1024;
-
+/// TODO: add docs
 pub fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<ParseResult> {
     if !is_fast_path_candidate(html) {
         return None;
     }
-
     let bytes = html.as_bytes();
     let mut cursor = 0usize;
     let mut document = HtmlDocument {
@@ -21,20 +19,16 @@ pub fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<Pa
     };
     let mut root = Vec::<HtmlNode>::new();
     let mut stack = Vec::<HtmlElement>::new();
-
     while cursor < bytes.len() {
         let Some(relative) = memchr(b'<', &bytes[cursor..]) else {
             append_fast_text(&mut root, &mut stack, &html[cursor..]);
             break;
         };
-
         let tag_start = cursor + relative;
         append_fast_text(&mut root, &mut stack, &html[cursor..tag_start]);
-
         if tag_start + 1 >= bytes.len() {
             return None;
         }
-
         match bytes[tag_start + 1] {
             b'!' => {
                 let after_bang = &html[tag_start + 2..];
@@ -44,7 +38,6 @@ pub fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<Pa
                 if !after_bang[..7].eq_ignore_ascii_case("doctype") {
                     return None;
                 }
-
                 let Some(tag_end_rel) = memchr(b'>', &bytes[tag_start..]) else {
                     return None;
                 };
@@ -84,17 +77,14 @@ pub fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<Pa
             }
         }
     }
-
     while let Some(element) = stack.pop() {
         push_node(&mut root, &mut stack, HtmlNode::Element(element));
     }
-
     document.children = if options.scripting_enabled {
         root
     } else {
         super::transform_noscript(root)
     };
-
     let preload_requests = if fast_path_has_link_tag(bytes) {
         extract_preloads(&document, options)
     } else {
@@ -112,12 +102,11 @@ pub fn try_fast_parse_document(html: &str, options: &ParserOptions) -> Option<Pa
         },
     })
 }
-
+/// TODO: add docs
 fn is_fast_path_candidate(html: &str) -> bool {
     if html.len() < FAST_PATH_MIN_BYTES {
         return false;
     }
-
     let lowercase = html.to_ascii_lowercase();
     !lowercase.contains('&')
         && !lowercase.contains('\0')
@@ -128,7 +117,7 @@ fn is_fast_path_candidate(html: &str) -> bool {
         && !lowercase.contains("<style")
         && !lowercase.contains("<noscript")
 }
-
+/// TODO: add docs
 fn fast_path_has_link_tag(bytes: &[u8]) -> bool {
     let mut cursor = 0usize;
     while cursor < bytes.len() {
@@ -151,7 +140,7 @@ fn fast_path_has_link_tag(bytes: &[u8]) -> bool {
     }
     false
 }
-
+/// TODO: add docs
 fn ascii_starts_with(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.len() >= needle.len()
         && haystack
@@ -159,13 +148,13 @@ fn ascii_starts_with(haystack: &[u8], needle: &[u8]) -> bool {
             .zip(needle.iter())
             .all(|(actual, expected)| actual.to_ascii_lowercase() == *expected)
 }
-
+/// TODO: add docs
 fn append_fast_text(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], text: &str) {
     if !text.is_empty() {
         push_node(root, stack, HtmlNode::Text(text.to_string()));
     }
 }
-
+/// TODO: add docs
 fn push_node(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], node: HtmlNode) {
     if let Some(parent) = stack.last_mut() {
         parent.children.push(node);
@@ -173,7 +162,7 @@ fn push_node(root: &mut Vec<HtmlNode>, stack: &mut [HtmlElement], node: HtmlNode
         root.push(node);
     }
 }
-
+/// TODO: add docs
 fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
     let bytes = html.as_bytes();
     let mut char_index = tag_start + 2;
@@ -196,7 +185,7 @@ fn parse_fast_end_tag(html: &str, tag_start: usize) -> Option<(String, usize)> {
     }
     Some((name, char_index))
 }
-
+/// TODO: add docs
 fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bool, usize)> {
     let bytes = html.as_bytes();
     let mut char_index = tag_start + 1;
@@ -207,17 +196,14 @@ fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bo
     if char_index == name_start {
         return None;
     }
-
     let tag = html[name_start..char_index].to_ascii_lowercase();
     let namespace = Namespace::Html;
     let mut attributes = HashMap::new();
     let mut self_closing = false;
-
     loop {
         while char_index < bytes.len() && bytes[char_index].is_ascii_whitespace() {
             char_index += 1;
         }
-
         match bytes.get(char_index).copied() {
             Some(b'>') => {
                 return Some((
@@ -243,5 +229,3 @@ fn parse_fast_start_tag(html: &str, tag_start: usize) -> Option<(HtmlElement, bo
         }
     }
 }
-
-

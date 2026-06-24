@@ -8,6 +8,7 @@ pub struct SerializeOptions {
 }
 
 impl Default for SerializeOptions {
+    /// TODO: add docs
     fn default() -> Self {
         Self {
             indent: None,
@@ -16,6 +17,7 @@ impl Default for SerializeOptions {
     }
 }
 
+/// TODO: add docs
 pub fn serialize_document(doc: &HtmlDocument, options: &SerializeOptions) -> String {
     let mut out = String::new();
     
@@ -33,29 +35,32 @@ pub fn serialize_document(doc: &HtmlDocument, options: &SerializeOptions) -> Str
     out
 }
 
+/// TODO: add docs
 pub fn serialize_node(node: &HtmlNode, options: &SerializeOptions) -> String {
     let mut out = String::new();
     serialize_node_recursive(node, 0, options, &mut out);
     out
 }
 
+/// TODO: add docs
 fn serialize_doctype(doctype: &DoctypeToken, out: &mut String) {
     out.push_str("<!DOCTYPE");
     if let Some(ref name) = doctype.name {
-        write!(out, " {}", name).unwrap();
+        write!(out, " {}", name).expect("Albedo Engine: internal invariant violated");
     }
     if let Some(ref public) = doctype.public_id {
-        write!(out, " PUBLIC \"{}\"", public).unwrap();
+        write!(out, " PUBLIC \"{}\"", public).expect("Albedo Engine: internal invariant violated");
     }
     if let Some(ref system) = doctype.system_id {
         if doctype.public_id.is_none() {
-            write!(out, " SYSTEM").unwrap();
+            write!(out, " SYSTEM").expect("Albedo Engine: internal invariant violated");
         }
-        write!(out, " \"{}\"", system).unwrap();
+        write!(out, " \"{}\"", system).expect("Albedo Engine: internal invariant violated");
     }
     out.push_str(">\n");
 }
 
+/// TODO: add docs
 fn serialize_node_recursive(
     node: &HtmlNode,
     depth: usize,
@@ -75,7 +80,7 @@ fn serialize_node_recursive(
             }
         }
         HtmlNode::Comment(text) => {
-            write!(out, "<!--{}-->", text).unwrap();
+            write!(out, "<!--{}-->", text).expect("Albedo Engine: internal invariant violated");
         }
         HtmlNode::Element(el) => {
             serialize_element(el, depth, options, out);
@@ -83,19 +88,20 @@ fn serialize_node_recursive(
     }
 }
 
+/// TODO: add docs
 fn serialize_element(
     el: &HtmlElement,
     depth: usize,
     options: &SerializeOptions,
     out: &mut String,
 ) {
-    write!(out, "<{}", el.tag).unwrap();
+    write!(out, "<{}", el.tag).expect("Albedo Engine: internal invariant violated");
     
     let mut attrs: Vec<_> = el.attributes.iter().collect();
     attrs.sort_by(|a, b| a.0.cmp(b.0));
     
     for (name, value) in attrs {
-        write!(out, " {}=\"{}\"", name, escape_attr(value)).unwrap();
+        write!(out, " {}=\"{}\"", name, escape_attr(value)).expect("Albedo Engine: internal invariant violated");
     }
     
     if is_void_element(&el.tag) {
@@ -120,14 +126,15 @@ fn serialize_element(
     }
     
     if is_pretty && has_children {
-        out.push_str(&" ".repeat(depth * options.indent.unwrap()));
+        out.push_str(&" ".repeat(depth * options.indent.expect("Albedo Engine: internal invariant violated")));
     }
     
-    write!(out, "</{}>", el.tag).unwrap();
+    write!(out, "</{}>", el.tag).expect("Albedo Engine: internal invariant violated");
 }
 
 
 
+/// TODO: add docs
 fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -143,6 +150,7 @@ fn escape_html(s: &str) -> String {
     out
 }
 
+/// TODO: add docs
 fn escape_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

@@ -38,6 +38,7 @@ pub enum AceTokenKind<'a> {
 }
 
 impl<'a> AceTokenizer<'a> {
+    /// TODO: add docs
     pub fn new(input: &'a str, allocator: &'a AceAllocator) -> Self {
         Self {
             inner: Tokenizer::new(input),
