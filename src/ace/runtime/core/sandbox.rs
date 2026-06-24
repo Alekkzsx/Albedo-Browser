@@ -2,6 +2,7 @@
 pub struct SandboxFlags(pub u32);
 
 impl Default for SandboxFlags {
+    /// TODO: add docs
     fn default() -> Self {
         // If the sandbox attribute is present but empty, all flags are disabled (strict sandbox)
         // If the attribute is MISSING, all flags are effectively enabled (normalized to a specific bypass state or just not applied)
@@ -19,14 +20,17 @@ impl SandboxFlags {
     pub const ALLOW_MODALS: Self = Self(1 << 5);
     pub const ALLOW_DOWNLOADS: Self = Self(1 << 6);
 
+    /// TODO: add docs
     pub fn insert(&mut self, other: Self) {
         self.0 |= other.0;
     }
 
+    /// TODO: add docs
     pub fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
 
+    /// TODO: add docs
     pub fn from_attr(attr: &str) -> Self {
         let mut flags = Self::NONE;
         for part in attr.split_whitespace() {

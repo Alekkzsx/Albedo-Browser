@@ -31,14 +31,17 @@ pub struct QuickJsInterceptor {
 }
 
 impl QuickJsInterceptor {
+    /// TODO: add docs
     pub fn enter_ctx(ctx: &Ctx) {
         CURRENT_CTX.with(|c| c.set(Some(ctx.as_raw().as_ptr())));
     }
 
+    /// TODO: add docs
     pub fn exit_ctx() {
         CURRENT_CTX.with(|c| c.set(None));
     }
 
+    /// TODO: add docs
     pub fn new(
         jit_bridge: Arc<JitBridge>,
         profiler: Arc<JitProfiler>,

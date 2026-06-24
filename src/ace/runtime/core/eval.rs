@@ -1,6 +1,7 @@
 use super::runtime::{JsResult, JsRuntime};
 use rquickjs::Value;
 
+/// TODO: add docs
 pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
     tracing::info!(len = code.len(), "Executing script");
 
@@ -22,7 +23,7 @@ pub fn execute_script(rt: &JsRuntime, code: &str) -> JsResult<String> {
         return Ok("JIT_NATIVE_EXECUTION_SUCCESS".to_string());
     }
 
-    let ctx = rt.context.lock().unwrap();
+    let ctx = rt.context.lock().unwrap_or_else(|e| e.into_inner());
     ctx.with(|ctx| {
         // Registrar contexto para OSR
         crate::ace::runtime::bridge::quickjs_intercept::QuickJsInterceptor::enter_ctx(&ctx);
@@ -99,7 +100,7 @@ pub fn execute_module(rt: &JsRuntime, code: &str, module_name: &str) -> JsResult
         return Ok("JIT_NATIVE_MODULE_SUCCESS".to_string());
     }
 
-    let ctx = rt.context.lock().unwrap();
+    let ctx = rt.context.lock().unwrap_or_else(|e| e.into_inner());
     ctx.with(|ctx| {
         // Registrar contexto para OSR
         crate::ace::runtime::bridge::quickjs_intercept::QuickJsInterceptor::enter_ctx(&ctx);
@@ -146,7 +147,7 @@ pub fn execute_module_from_url(rt: &JsRuntime, url: &str) -> JsResult<String> {
 
     // Verificar se já foi avaliado
     {
-        let registry = rt.module_registry.lock().unwrap();
+        let registry = rt.module_registry.lock().unwrap_or_else(|e| e.into_inner());
         if registry.is_evaluated(url) {
             tracing::info!(url = %url, "Module already evaluated, skipping");
             return Ok("already_evaluated".to_string());
@@ -155,14 +156,14 @@ pub fn execute_module_from_url(rt: &JsRuntime, url: &str) -> JsResult<String> {
 
     // Verificar se o código já está no cache
     let source = {
-        let registry = rt.module_registry.lock().unwrap();
+        let registry = rt.module_registry.lock().unwrap_or_else(|e| e.into_inner());
         registry.get_source(url)
     };
 
     if let Some(code) = source {
         let result = execute_module(rt, &code, url);
         if result.is_ok() {
-            let registry = rt.module_registry.lock().unwrap();
+            let registry = rt.module_registry.lock().unwrap_or_else(|e| e.into_inner());
             registry.mark_evaluated(url);
         }
         return result;
@@ -172,12 +173,12 @@ pub fn execute_module_from_url(rt: &JsRuntime, url: &str) -> JsResult<String> {
     if let Some(code) = crate::ace::runtime::core::module_loader::fetch_module_source_public(url) {
         // Registrar no cache
         {
-            let registry = rt.module_registry.lock().unwrap();
+            let registry = rt.module_registry.lock().unwrap_or_else(|e| e.into_inner());
             registry.register_external(url, code.clone());
         }
         let result = execute_module(rt, &code, url);
         if result.is_ok() {
-            let registry = rt.module_registry.lock().unwrap();
+            let registry = rt.module_registry.lock().unwrap_or_else(|e| e.into_inner());
             registry.mark_evaluated(url);
         }
         return result;
