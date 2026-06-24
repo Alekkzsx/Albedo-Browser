@@ -5,6 +5,7 @@ use albedo::ui;
 use albedo::browser::tabs::manager::TabManager;
 use slint::ComponentHandle;
 
+/// TODO: add docs
 fn setup_tracing() {
     tracing_subscriber::fmt()
         .with_target(false)
@@ -12,6 +13,7 @@ fn setup_tracing() {
         .init();
 }
 
+/// TODO: add docs
 fn parse_start_url() -> String {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
@@ -21,7 +23,7 @@ fn parse_start_url() -> String {
         {
             args[1].clone()
         } else {
-            let path = std::env::current_dir().unwrap().join(&args[1]);
+            let path = std::env::current_dir().expect("Albedo Engine: internal invariant violated").join(&args[1]);
             format!("file://{}", path.display())
         }
     } else {
@@ -29,6 +31,7 @@ fn parse_start_url() -> String {
     }
 }
 
+/// TODO: add docs
 fn create_initial_tab(
     ui: &slint::Weak<ui::AppWindow>,
     tab_manager: &TabManager,
@@ -44,6 +47,7 @@ fn create_initial_tab(
     }
 }
 
+/// TODO: add docs
 fn setup_timers(
     ui_handle: &slint::Weak<ui::AppWindow>,
     tab_manager: &TabManager,
@@ -75,6 +79,7 @@ fn setup_timers(
     );
 }
 
+/// TODO: add docs
 fn register_callbacks(
     ui: &ui::AppWindow,
     tab_manager: &TabManager,
@@ -149,6 +154,7 @@ fn register_callbacks(
     });
 }
 
+/// TODO: add docs
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_tracing();
     browser::setup::set_panic_hook();

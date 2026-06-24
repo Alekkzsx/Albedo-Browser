@@ -55,14 +55,17 @@ impl AceAllocator {
 pub struct SharedAceAllocator(Rc<RefCell<AceAllocator>>);
 
 impl SharedAceAllocator {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self(Rc::new(RefCell::new(AceAllocator::new())))
     }
 
+    /// TODO: add docs
     pub fn with_capacity(capacity: usize) -> Self {
         Self(Rc::new(RefCell::new(AceAllocator::with_capacity(capacity))))
     }
 
+    /// TODO: add docs
     pub fn use_allocator<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&AceAllocator) -> R,
@@ -71,6 +74,7 @@ impl SharedAceAllocator {
         f(&allocator)
     }
 
+    /// TODO: add docs
     pub fn reset(&self) {
         self.0.borrow_mut().reset();
     }

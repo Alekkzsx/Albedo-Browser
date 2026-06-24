@@ -8,9 +8,11 @@ pub mod sha2 {
     pub fn sha256(_data: &[u8]) -> [u8; 32] {
         crate::utils::crypto::sha256(_data)
     }
+    /// TODO: add docs
     pub fn sha384(_data: &[u8]) -> [u8; 48] {
         [0; 48]
     }
+    /// TODO: add docs
     pub fn sha512(_data: &[u8]) -> [u8; 64] {
         [0; 64]
     }
@@ -23,6 +25,7 @@ pub mod ecdh {
     pub struct X25519SecretKey;
 
     impl X25519SecretKey {
+        /// TODO: add docs
         pub fn generate() -> Self { Self }
         pub fn from_bytes(_bytes: [u8; 32]) -> Self { Self }
         pub fn to_bytes(&self) -> [u8; 32] { [0; 32] }
@@ -31,21 +34,25 @@ pub mod ecdh {
     }
 
     impl X25519PublicKey {
+        /// TODO: add docs
         pub fn from_bytes(_bytes: [u8; 32]) -> Self { Self }
         pub fn to_bytes(&self) -> [u8; 32] { [0; 32] }
     }
 
     impl P256SecretKey {
+        /// TODO: add docs
         pub fn from_bytes(_bytes: [u8; 32]) -> Result<Self, String> { Ok(Self) }
         pub fn to_bytes(&self) -> [u8; 32] { [0; 32] }
         pub fn diffie_hellman(&self, _public: &P256PublicKey) -> Result<[u8; 32], String> { Ok([0; 32]) }
     }
 
     impl P256PublicKey {
+        /// TODO: add docs
         pub fn from_uncompressed_bytes(_bytes: &[u8]) -> Result<Self, String> { Ok(Self) }
         pub fn to_uncompressed_bytes(&self) -> Vec<u8> { vec![] }
     }
 
+    /// TODO: add docs
     pub fn p256_generate_keypair() -> Result<([u8; 32], Vec<u8>), String> {
         Ok(([0; 32], vec![]))
     }
@@ -54,10 +61,12 @@ pub mod ecdh {
 pub mod gcm {
     pub struct AesGcm;
     impl AesGcm {
+        /// TODO: add docs
         pub fn new(_key: &[u8]) -> Result<Self, String> { Ok(Self) }
         pub fn encrypt(&self, _iv: &[u8], _aad: &[u8], _plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 16]), String> {
             Ok((vec![], [0; 16]))
         }
+        /// TODO: add docs
         pub fn decrypt(&self, _iv: &[u8], _aad: &[u8], _ciphertext: &[u8], _tag: &[u8; 16]) -> Result<Vec<u8>, String> {
             Ok(vec![])
         }
