@@ -8,6 +8,7 @@ pub struct Origin {
 }
 
 impl Origin {
+    /// TODO: add docs
     pub fn from_url(url: &str) -> Option<Self> {
         let parsed = crate::ace::url::parse(url, None).ok()?;
         Some(Self {
@@ -17,16 +18,19 @@ impl Origin {
         })
     }
 
+    /// TODO: add docs
     pub fn is_same_origin(&self, other: &Origin) -> bool {
         self.scheme == other.scheme && self.host == other.host && self.port == other.port
     }
 
+    /// TODO: add docs
     pub fn is_secure(&self) -> bool {
         self.scheme == "https" || self.scheme == "albedo"
     }
 }
 
 impl fmt::Display for Origin {
+    /// TODO: add docs
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(port) = self.port {
             write!(f, "{}://{}:{}", self.scheme, self.host, port)
@@ -49,6 +53,7 @@ pub struct ContentSecurityPolicy {
 }
 
 impl ContentSecurityPolicy {
+    /// TODO: add docs
     pub fn parse(raw: &str) -> Self {
         let mut script_src = Vec::new();
         let mut connect_src = Vec::new();
@@ -73,14 +78,17 @@ impl ContentSecurityPolicy {
         }
     }
 
+    /// TODO: add docs
     pub fn allows_connect(&self, url: &str, origin: &Origin) -> bool {
         self.check_directive(&self.connect_src, url, origin)
     }
 
+    /// TODO: add docs
     pub fn allows_script(&self, url: &str, origin: &Origin) -> bool {
         self.check_directive(&self.script_src, url, origin)
     }
 
+    /// TODO: add docs
     fn check_directive(&self, directive: &[String], url: &str, origin: &Origin) -> bool {
         if directive.is_empty() {
             return true;
@@ -116,12 +124,14 @@ pub struct AccessControl {
 }
 
 impl AccessControl {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             allowed_origins: Vec::new(),
         }
     }
 
+    /// TODO: add docs
     pub fn validate_cors(
         &self,
         origin: &Origin,
@@ -169,12 +179,14 @@ pub struct Cookie {
 }
 
 impl CookieJar {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             cookies: std::collections::HashMap::new(),
         }
     }
 
+    /// TODO: add docs
     pub fn set_cookie(&mut self, url: &str, cookie_str: &str) {
         // Very simplified cookie parser
         let origin = Origin::from_url(url);
@@ -202,6 +214,7 @@ impl CookieJar {
         }
     }
 
+    /// TODO: add docs
     pub fn get_cookies_for_url(&self, url: &str) -> String {
         let origin = Origin::from_url(url);
         if let Some(org) = origin {
