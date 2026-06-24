@@ -72,6 +72,8 @@ struct ArenaBlock {
 impl ArenaBlock {
     fn new(capacity: usize) -> Self {
         let layout = Layout::array::<ArenaNode>(capacity).unwrap();
+        // SAFETY: We allocate memory for ArenaNode array and initialize each element.
+        // The allocation is checked for null and handle_alloc_error is called on failure.
         unsafe {
             let ptr = alloc::alloc(layout);
             if ptr.is_null() {
@@ -100,6 +102,8 @@ impl ArenaBlock {
             return None;
         }
         
+        // SAFETY: current_len is within bounds (checked above).
+        // The pointer is valid for the arena's lifetime.
         unsafe {
             let ptr = self.data.as_ptr() as *mut ArenaNode;
             std::ptr::write(ptr.add(current_len), node);
@@ -113,6 +117,8 @@ impl ArenaBlock {
         if index >= self.len.get() {
             return None;
         }
+        // SAFETY: index is within bounds (checked above).
+        // The arena guarantees memory validity for its lifetime.
         unsafe { self.data.as_ref().get(index) }
     }
     
@@ -120,12 +126,16 @@ impl ArenaBlock {
         if index >= self.len.get() {
             return None;
         }
+        // SAFETY: index is within bounds (checked above).
+        // We have exclusive access via &mut self.
         unsafe { self.data.as_mut().get_mut(index) }
     }
 }
 
 impl Drop for ArenaBlock {
     fn drop(&mut self) {
+        // SAFETY: The pointer was allocated with this layout in ArenaBlock::new.
+        // We have exclusive access via &mut self in Drop.
         unsafe {
             let layout = Layout::array::<ArenaNode>(self.capacity).unwrap();
             alloc::dealloc(self.data.as_ptr() as *mut u8, layout);
