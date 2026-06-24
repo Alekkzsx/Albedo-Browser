@@ -27,7 +27,7 @@ impl Location {
 
     #[qjs(set, rename = "href")]
     pub fn set_href(&mut self, val: String) {
-        println!("Location.href set to: {}", val);
+        tracing::debug!(href = %val, "Location.href set");
         *self.pending_navigation.lock().unwrap() = Some(val.clone());
         self.url = val;
     }
@@ -118,17 +118,17 @@ impl Location {
     }
 
     pub fn reload(&self) {
-        println!("Location.reload called");
+        tracing::debug!("Location.reload called");
     }
 
     pub fn replace(&mut self, url: String) {
-        println!("Location.replace called with {}", url);
+        tracing::debug!(url = %url, "Location.replace called");
         *self.pending_navigation.lock().unwrap() = Some(url.clone());
         self.url = url;
     }
 
     pub fn assign(&mut self, url: String) {
-        println!("Location.assign called with {}", url);
+        tracing::debug!(url = %url, "Location.assign called");
         *self.pending_navigation.lock().unwrap() = Some(url.clone());
         self.url = url;
     }
