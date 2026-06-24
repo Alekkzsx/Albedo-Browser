@@ -1011,26 +1011,26 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
         let mut decls = Vec::new();
         while !input.is_exhausted() {
             let ident_res = input.expect_ident();
-            println!("[DEBUG-CSS-PARSE] expect_ident res: {:?}", ident_res);
+            tracing::debug!(?ident_res, "expect_ident result");
             if let Ok(name) = ident_res {
                 let name = name.to_string();
                 let colon_res = input.expect_colon();
-                println!("[DEBUG-CSS-PARSE] expect_colon res: {:?}", colon_res);
+                tracing::debug!(?colon_res, "expect_colon result");
                 if colon_res.is_ok() {
                     let mut value_raw = String::new();
                     while !input.is_exhausted() {
                         match input.next() {
                             Ok(cssparser::Token::Semicolon) => {
-                                println!("[DEBUG-CSS-PARSE] Semicolon token hit in inner loop");
+                                tracing::debug!("Semicolon token hit");
                                 break;
                             }
                             Ok(token) => {
                                 let tok_str = token.to_css_string();
-                                println!("[DEBUG-CSS-PARSE] Value token: {:?}", tok_str);
+                                tracing::debug!(token = %tok_str, "Value token");
                                 value_raw.push_str(&tok_str);
                             }
                             Err(e) => {
-                                println!("[DEBUG-CSS-PARSE] Error token in inner loop: {:?}", e);
+                                tracing::debug!(?e, "Error token in inner loop");
                                 break;
                             }
                         }
@@ -1362,7 +1362,7 @@ impl<'i> cssparser::QualifiedRuleParser<'i> for AceStyleRuleParser {
             let _ = input.next();
         }
 
-        println!("[DEBUG-CSS-PARSE] Returning QualifiedRule with {} decls", decls.len());
+        tracing::debug!(decl_count = decls.len(), "Returning QualifiedRule");
         Ok(AceRule {
             selectors: prelude,
             declarations: decls,
@@ -1419,15 +1419,12 @@ fn parse_simple(source: &str) -> Stylesheet {
     while let Some(result) = rule_parser.next() {
         match result {
             Ok(mut rule) => {
-                println!(
-                    "[DEBUG-PARSER] Block parsed OK with {} decls",
-                    rule.declarations.len()
-                );
+                tracing::debug!(decl_count = rule.declarations.len(), "Block parsed OK");
                 rule.order = stylesheet.rules.len();
                 stylesheet.rules.push(rule);
             }
             Err((e, _)) => {
-                println!("[DEBUG-PARSER] Rule failed: {:?}", e);
+                tracing::debug!(?e, "Rule failed");
             }
         }
     }
@@ -1701,14 +1698,14 @@ impl Stylesheet {
                 );
 
                 if el.tag == "body" || el.tag == "div" {
-                    println!(
-                        "[DEBUG-CSS] element <{}> class '{:?}' has {} matched rules.",
-                        el.tag,
-                        el.attributes.get("class"),
-                        matched_rules.len()
+                    tracing::debug!(
+                        tag = %el.tag,
+                        class = ?el.attributes.get("class"),
+                        matched_count = matched_rules.len(),
+                        "Element matched rules"
                     );
                     for mr in &matched_rules {
-                        println!("  -> Matched selector: {:?}", mr.rule.selectors);
+                        tracing::debug!(selectors = ?mr.rule.selectors, "Matched selector");
                     }
                 }
 
