@@ -16,6 +16,7 @@ pub struct CssStyleDeclaration {
 }
 
 impl CssStyleDeclaration {
+    /// TODO: add docs
     fn parse_style(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Ok(dom) = self.dom.lock() {
@@ -38,6 +39,7 @@ impl CssStyleDeclaration {
         map
     }
 
+    /// TODO: add docs
     fn update_style_attribute(&self, map: &HashMap<String, String>) {
         if let Ok(mut dom) = self.dom.lock() {
             if let Some(node) = dom.nodes.get_mut(self.index) {
@@ -64,6 +66,7 @@ impl CssStyleDeclaration {
 
 #[rquickjs::methods]
 impl CssStyleDeclaration {
+    /// TODO: add docs
     fn mark_mutation(&self) {
         if let Ok(mut m) = self.mutations.lock() {
             *m = true;
@@ -127,7 +130,7 @@ impl CssStyleDeclaration {
         }
 
         self.mark_mutation();
-        val
+        value
     }
 
     #[qjs(get, rename = "cssText")]
@@ -220,6 +223,7 @@ impl CssStyleDeclaration {
         self.parse_style().len()
     }
 
+    /// TODO: add docs
     pub fn item(&self, index: usize) -> Option<String> {
         self.parse_style().keys().nth(index).cloned()
     }

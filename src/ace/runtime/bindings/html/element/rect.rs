@@ -31,8 +31,9 @@ impl DOMRect {
 use super::Element;
 use rquickjs::{Class, Ctx, Result, Value};
 
+/// TODO: add docs
 pub fn get_bounding_client_rect<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
-    let primitives = el.primitives.lock().unwrap();
+    let primitives = el.primitives.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(prim) = primitives.iter().find(|p| p.node_idx == el.index) {
         let rect = DOMRect::new(prim.x, prim.y, prim.width, prim.height);
         let instance = Class::instance(ctx, rect)?;

@@ -12,6 +12,7 @@ pub struct DomStringMap {
 
 #[rquickjs::methods]
 impl DomStringMap {
+    /// TODO: add docs
     pub fn get(&self, name: String) -> Option<String> {
         let attr_name = format!("data-{}", name); // Basic mapping
         if let Ok(dom) = self.dom.lock() {
@@ -24,6 +25,7 @@ impl DomStringMap {
         None
     }
 
+    /// TODO: add docs
     pub fn set(&self, name: String, value: String) {
         let attr_name = format!("data-{}", name);
         if let Ok(mut dom) = self.dom.lock() {
@@ -33,12 +35,14 @@ impl DomStringMap {
 }
 
 impl DomStringMap {
+    /// TODO: add docs
     pub fn new(dom: Arc<Mutex<AceDOM>>, node_idx: usize) -> Self {
         Self { dom, node_idx }
     }
 }
 
 use super::Element;
+/// TODO: add docs
 pub fn dataset<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let ds = DomStringMap::new(el.dom.clone(), el.index);
     let instance = Class::instance(ctx, ds)?;

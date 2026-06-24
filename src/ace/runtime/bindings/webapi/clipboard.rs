@@ -54,6 +54,7 @@ impl Clipboard {
     }
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx: &rquickjs::Context| {
         ctx.with(|ctx: Ctx<'_>| {

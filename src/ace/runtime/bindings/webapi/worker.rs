@@ -28,8 +28,8 @@ impl Worker {
     #[qjs(constructor)]
     pub fn new(ctx: Ctx<'_>, url: String) -> Result<Self> {
         let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
-        let parent_rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap())
-            .unwrap()
+        let parent_rt = Class::<JsRuntime>::from_object(rt_val.as_object().expect("Albedo Engine: internal invariant violated"))
+            .expect("Albedo Engine: internal invariant violated")
             .borrow()
             .clone();
         let parent_rt_id = parent_rt.id;
@@ -50,7 +50,7 @@ impl Worker {
         );
 
         // Save origin if needed
-        *rt.origin.lock().unwrap() = parent_rt.origin.lock().unwrap().clone();
+        *rt.origin.lock().unwrap_or_else(|e| e.into_inner()) = parent_rt.origin.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
         // Setup worker context
         let rt_clone = rt.clone();
@@ -94,7 +94,7 @@ impl Worker {
                     let msg_json = match m_ctx.json_stringify(&msg) {
                         Ok(Some(s)) => s
                             .as_string()
-                            .unwrap()
+                            .expect("Albedo Engine: internal invariant violated")
                             .to_string()
                             .unwrap_or_else(|_| "null".to_string()),
                         _ => "null".to_string(),
@@ -103,22 +103,22 @@ impl Worker {
                     if let Some(parent_arc) =
                         crate::ace::runtime::core::registry::get_runtime(parent_rt_id_captured)
                     {
-                        let parent_lock = parent_arc.lock().unwrap();
-                        parent_lock.event_loop.lock().unwrap().enqueue_message(
+                        let parent_lock = parent_arc.lock().unwrap_or_else(|e| e.into_inner());
+                        parent_lock.event_loop.lock().unwrap_or_else(|e| e.into_inner()).enqueue_message(
                             msg_json,
                             "worker".to_string(),
                             Some(worker_rt_id),
                         );
                     }
                 })
-                .unwrap();
-                ctx.globals().set("postMessage", post_message).unwrap();
+                .expect("Albedo Engine: internal invariant violated");
+                ctx.globals().set("postMessage", post_message).expect("Albedo Engine: internal invariant violated");
             });
         });
 
         // TODO: Resource Manager to Fetch `url` and execute script
         // For MVP, we will print a message. Proper network integration will fetch URL text.
-        let _resource_manager = parent_rt.resource_manager.lock().unwrap().clone();
+        let _resource_manager = parent_rt.resource_manager.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let thread_rt = rt.clone();
         let thread_is_terminated = is_terminated.clone();
 
@@ -150,7 +150,7 @@ impl Worker {
         // Fetch user script logic
         let url_str = url.clone();
         let worker_rt_id_fetch = worker_rt_id;
-        let origin = parent_rt.origin.lock().unwrap().clone();
+        let origin = parent_rt.origin.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
         thread::spawn(move || {
             // O script do Worker DEVE respeitar Same-Origin e passa pelo pipeline FetchClient (HTTP/3 + Seguranças)
@@ -164,7 +164,7 @@ impl Worker {
                     if let Some(w_arc) =
                         crate::ace::runtime::core::registry::get_runtime(worker_rt_id_fetch)
                     {
-                        let w_rt = w_arc.lock().unwrap();
+                        let w_rt = w_arc.lock().unwrap_or_else(|e| e.into_inner());
                         let _ = w_rt.execute_script(&content);
                     }
                 } else {
@@ -184,18 +184,19 @@ impl Worker {
     #[qjs(rename = "postMessage")]
     pub fn post_message<'js>(&self, ctx: Ctx<'js>, msg: Value<'js>) -> Result<()> {
         let msg_json = match ctx.json_stringify(msg)? {
-            Some(s) => s.as_string().unwrap().to_string()?,
+            Some(s) => s.as_string().expect("Albedo Engine: internal invariant violated").to_string()?,
             None => "null".to_string(),
         };
 
-        let tx = self.sender.lock().unwrap();
+        let tx = self.sender.lock().unwrap_or_else(|e| e.into_inner());
         let _ = tx.send(WorkerMessage::PostMessage(msg_json));
         Ok(())
     }
 
+    /// TODO: add docs
     pub fn terminate(&self) {
         self.is_terminated.store(true, Ordering::Relaxed);
-        let _ = self.sender.lock().unwrap().send(WorkerMessage::Terminate);
+        let _ = self.sender.lock().unwrap_or_else(|e| e.into_inner()).send(WorkerMessage::Terminate);
     }
 
     #[qjs(get, rename = "onmessage")]
@@ -221,6 +222,7 @@ impl Worker {
     pub fn onerror_setter<'js>(&self, _f: Function<'js>) {}
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {

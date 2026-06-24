@@ -28,6 +28,7 @@ impl URLSearchParams {
         Ok(Self { params })
     }
 
+    /// TODO: add docs
     pub fn get(&self, name: String) -> Option<String> {
         self.params
             .iter()
@@ -35,6 +36,7 @@ impl URLSearchParams {
             .map(|(_, v)| v.clone())
     }
 
+    /// TODO: add docs
     pub fn set(&mut self, name: String, value: String) {
         if let Some(pos) = self.params.iter().position(|(k, _)| k == &name) {
             self.params[pos].1 = value;
@@ -52,14 +54,17 @@ impl URLSearchParams {
         }
     }
 
+    /// TODO: add docs
     pub fn append(&mut self, name: String, value: String) {
         self.params.push((name, value));
     }
 
+    /// TODO: add docs
     pub fn delete(&mut self, name: String) {
         self.params.retain(|(k, _)| k != &name);
     }
 
+    /// TODO: add docs
     pub fn has(&self, name: String) -> bool {
         self.params.iter().any(|(k, _)| k == &name)
     }
@@ -73,10 +78,12 @@ impl URLSearchParams {
             .collect()
     }
 
+    /// TODO: add docs
     pub fn sort(&mut self) {
         self.params.sort_by(|a, b| a.0.cmp(&b.0));
     }
 
+    /// TODO: add docs
     pub fn entries<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let arr = Array::new(ctx.clone())?;
         for (i, (k, v)) in self.params.iter().enumerate() {
@@ -91,6 +98,7 @@ impl URLSearchParams {
         Ok(arr.into_value())
     }
 
+    /// TODO: add docs
     pub fn keys<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let arr = Array::new(ctx.clone())?;
         for (i, (k, _)) in self.params.iter().enumerate() {
@@ -99,6 +107,7 @@ impl URLSearchParams {
         Ok(arr.into_value())
     }
 
+    /// TODO: add docs
     pub fn values<'js>(&self, ctx: Ctx<'js>) -> Result<Value<'js>> {
         let arr = Array::new(ctx.clone())?;
         for (i, (_, v)) in self.params.iter().enumerate() {
@@ -107,6 +116,7 @@ impl URLSearchParams {
         Ok(arr.into_value())
     }
 
+    /// TODO: add docs
     pub fn to_string(&self) -> String {
         self.params
             .iter()
@@ -123,6 +133,7 @@ impl URLSearchParams {
 // Ensure the class is iterable in JS
 // rquickjs usually allows defining [Symbol.iterator]
 
+/// TODO: add docs
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let globals = ctx.globals();
     globals.set(

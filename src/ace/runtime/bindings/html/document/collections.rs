@@ -62,6 +62,7 @@ impl HtmlCollection {
 }
 
 impl HtmlCollection {
+    /// TODO: add docs
     fn get_elements_indices(&self) -> Vec<usize> {
         let mut indices = Vec::new();
         if let Ok(dom) = self.dom.lock() {
@@ -74,6 +75,7 @@ impl HtmlCollection {
         indices
     }
 
+    /// TODO: add docs
     pub fn to_array<'js>(&self, ctx: Ctx<'js>) -> Result<Array<'js>> {
         let array = Array::new(ctx.clone())?;
         let indices = self.get_elements_indices();

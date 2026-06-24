@@ -17,8 +17,8 @@ pub struct ComputedCSSStyleDeclaration {
 impl ComputedCSSStyleDeclaration {
     #[qjs(rename = "getPropertyValue")]
     pub fn get_property_value(&self, property: String) -> String {
-        let stylesheet_lock = self.stylesheet.lock().unwrap();
-        let dom_lock = self.dom.lock().unwrap();
+        let stylesheet_lock = self.stylesheet.lock().unwrap_or_else(|e| e.into_inner());
+        let dom_lock = self.dom.lock().unwrap_or_else(|e| e.into_inner());
         tracing::debug!(node_idx = self.node_idx, property = %property, "get_property_value");
         if let Some(node) = dom_lock.get_node(self.node_idx) {
             tracing::debug!(?node, "Node found");

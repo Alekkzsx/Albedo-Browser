@@ -24,19 +24,18 @@ pub fn post_message<'js>(
         .json_stringify(message)?
         .ok_or_else(|| rquickjs::Error::Exception)?
         .as_string()
-        .unwrap()
+        .expect("Albedo Engine: internal invariant violated")
         .to_string()?;
 
     let caller_origin = caller_rt
         .origin
-        .lock()
-        .unwrap()
+        .lock().unwrap_or_else(|e| e.into_inner())
         .as_ref()
         .map(|o: &crate::network::security::Origin| o.to_string())
         .unwrap_or_else(|| "null".to_string());
 
     if let Some(target_rt_arc) = crate::ace::runtime::core::registry::get_runtime(target_rt_id) {
-        let target_rt = target_rt_arc.lock().unwrap();
+        let target_rt = target_rt_arc.lock().unwrap_or_else(|e| e.into_inner());
 
         // Origin Check
         let mut allowed = true;
@@ -44,7 +43,7 @@ pub fn post_message<'js>(
             // Same-origin only
             allowed = caller_rt.check_same_origin(&target_rt);
         } else if target_origin != "*" {
-            let target_rt_origin_lock = target_rt.origin.lock().unwrap();
+            let target_rt_origin_lock = target_rt.origin.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(ref target_rt_origin) = *target_rt_origin_lock {
                 if target_rt_origin.to_string() != target_origin {
                     allowed = false;
@@ -66,6 +65,7 @@ pub fn post_message<'js>(
     Ok(())
 }
 
+/// TODO: add docs
 pub fn register(ctx: &Ctx<'_>) -> Result<()> {
     let global = ctx.globals();
     global.set("postMessage", Function::new(ctx.clone(), post_message)?)?;

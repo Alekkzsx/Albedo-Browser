@@ -22,7 +22,7 @@ impl Selection {
 
     #[qjs(rename = "getRangeAt")]
     pub fn get_range_at<'js>(&self, ctx: Ctx<'js>, index: usize) -> Result<Value<'js>> {
-        let lock = self.ranges.lock().unwrap();
+        let lock = self.ranges.lock().unwrap_or_else(|e| e.into_inner());
         if index < lock.len() {
             let instance = Class::instance(ctx, lock[index].clone())?;
             Ok(instance.into_value())
@@ -36,7 +36,7 @@ impl Selection {
         if let Some(obj) = range.as_object() {
             if let Some(r_class) = Class::<Range>::from_object(&obj) {
                 let range_data = r_class.borrow().clone();
-                let mut lock = self.ranges.lock().unwrap();
+                let mut lock = self.ranges.lock().unwrap_or_else(|e| e.into_inner());
                 lock.push(range_data);
                 self.is_collapsed = false; // By definition adding arbitrary range may uncollapse
             }
@@ -45,7 +45,7 @@ impl Selection {
 
     #[qjs(rename = "removeAllRanges")]
     pub fn remove_all_ranges(&mut self) {
-        self.ranges.lock().unwrap().clear();
+        self.ranges.lock().unwrap_or_else(|e| e.into_inner()).clear();
         self.is_collapsed = true;
     }
 
@@ -58,7 +58,7 @@ impl Selection {
 
     #[qjs(get, rename = "anchorOffset")]
     pub fn anchor_offset(&self) -> usize {
-        let lock = self.ranges.lock().unwrap();
+        let lock = self.ranges.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(r) = lock.first() {
             r.start_offset
         } else {
@@ -73,7 +73,7 @@ impl Selection {
 
     #[qjs(get, rename = "focusOffset")]
     pub fn focus_offset(&self) -> usize {
-        let lock = self.ranges.lock().unwrap();
+        let lock = self.ranges.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(r) = lock.first() {
             r.end_offset
         } else {
@@ -83,6 +83,6 @@ impl Selection {
 
     #[qjs(get, rename = "rangeCount")]
     pub fn range_count(&self) -> usize {
-        self.ranges.lock().unwrap().len()
+        self.ranges.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 }

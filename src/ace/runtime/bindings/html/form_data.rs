@@ -27,14 +27,17 @@ impl FormData {
         Ok(Self { data })
     }
 
+    /// TODO: add docs
     pub fn append(&mut self, name: String, value: String) {
         self.data.entry(name).or_insert_with(Vec::new).push(value);
     }
 
+    /// TODO: add docs
     pub fn delete(&mut self, name: String) {
         self.data.remove(&name);
     }
 
+    /// TODO: add docs
     pub fn get(&self, name: String) -> Option<String> {
         self.data.get(&name).and_then(|v| v.first().cloned())
     }
@@ -44,10 +47,12 @@ impl FormData {
         self.data.get(&name).cloned().unwrap_or_default()
     }
 
+    /// TODO: add docs
     pub fn has(&self, name: String) -> bool {
         self.data.contains_key(&name)
     }
 
+    /// TODO: add docs
     pub fn set(&mut self, name: String, value: String) {
         self.data.insert(name, vec![value]);
     }

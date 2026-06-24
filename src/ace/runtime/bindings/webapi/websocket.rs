@@ -16,8 +16,8 @@ impl WebSocket {
     #[qjs(constructor)]
     pub fn new(ctx: Ctx<'_>, url: String) -> Result<Self> {
         let rt_val = ctx.globals().get::<_, Value>("__albedo_rt__")?;
-        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().unwrap())
-            .unwrap()
+        let rt = Class::<JsRuntime>::from_object(rt_val.as_object().expect("Albedo Engine: internal invariant violated"))
+            .expect("Albedo Engine: internal invariant violated")
             .borrow()
             .clone();
         let client = Arc::new(Mutex::new(None));
@@ -34,7 +34,7 @@ impl WebSocket {
             let (ws_client_opt, mut events) =
                 WebSocketClient::connect(&url_parsed.as_str(), "web_socket".to_string());
             if let Some(ws_client) = ws_client_opt {
-                *client_clone.lock().unwrap() = Some(ws_client);
+                *client_clone.lock().unwrap_or_else(|e| e.into_inner()) = Some(ws_client);
 
                 while let Some(event) = events.recv().await {
                     match event {
@@ -42,7 +42,7 @@ impl WebSocket {
                             let el_clone = event_loop.clone();
                             let rt_wrapper = rt_send.clone();
 
-                            let _ = el_clone.lock().unwrap().queue_macro_task(move || {
+                            let _ = el_clone.lock().unwrap_or_else(|e| e.into_inner()).queue_macro_task(move || {
                                 let rt = rt_wrapper.0.clone();
                                 rt.with_context(|ctx: &rquickjs::Context| {
                                     ctx.with(|_ctx: Ctx<'_>| {
@@ -60,8 +60,9 @@ impl WebSocket {
         Ok(WebSocket { client })
     }
 
+    /// TODO: add docs
     pub fn send(&self, data: Value<'_>) -> Result<()> {
-        if let Some(ref client) = *self.client.lock().unwrap() {
+        if let Some(ref client) = *self.client.lock().unwrap_or_else(|e| e.into_inner()) {
             if let Some(s) = data.as_string() {
                 client.send_text(&s.to_string()?);
             } else if let Some(obj) = data.as_object() {
@@ -80,8 +81,9 @@ impl WebSocket {
         Ok(())
     }
 
+    /// TODO: add docs
     pub fn close(&self) {
-        if let Some(client) = self.client.lock().unwrap().take() {
+        if let Some(client) = self.client.lock().unwrap_or_else(|e| e.into_inner()).take() {
             client.close();
         }
     }
@@ -115,6 +117,7 @@ impl WebSocket {
     pub fn onclose_setter<'js>(&self, _f: Function<'js>) {}
 }
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> Result<()> {
     rt.with_context(|ctx| {
         ctx.with(|ctx| {

@@ -17,6 +17,7 @@ struct StorageData {
 }
 
 impl StorageData {
+    /// TODO: add docs
     fn new(path: Option<PathBuf>) -> Self {
         let mut items = HashMap::new();
         if let Some(ref path) = path {
@@ -38,6 +39,7 @@ impl StorageData {
         }
     }
 
+    /// TODO: add docs
     fn save(&self) {
         if let Some(ref path) = self.persistence_path {
             if let Some(parent) = path.parent() {
@@ -57,53 +59,58 @@ impl StorageData {
 impl Storage {
     #[qjs(rename = "getItem")]
     pub fn get_item(&self, key: String) -> Option<String> {
-        self.data.lock().unwrap().items.get(&key).cloned()
+        self.data.lock().unwrap_or_else(|e| e.into_inner()).items.get(&key).cloned()
     }
 
     #[qjs(rename = "setItem")]
     pub fn set_item(&self, key: String, value: String) {
-        let mut data = self.data.lock().unwrap();
+        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         data.items.insert(key, value);
         data.save();
     }
 
     #[qjs(rename = "removeItem")]
     pub fn remove_item(&self, key: String) {
-        let mut data = self.data.lock().unwrap();
+        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         data.items.remove(&key);
         data.save();
     }
 
+    /// TODO: add docs
     pub fn clear(&self) {
-        let mut data = self.data.lock().unwrap();
+        let mut data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         data.items.clear();
         data.save();
     }
 
+    /// TODO: add docs
     pub fn key(&self, index: usize) -> Option<String> {
-        let data = self.data.lock().unwrap();
+        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
         data.items.keys().nth(index).cloned()
     }
 
     #[qjs(get)]
     pub fn length(&self) -> usize {
-        self.data.lock().unwrap().items.len()
+        self.data.lock().unwrap_or_else(|e| e.into_inner()).items.len()
     }
 }
 
 impl Storage {
+    /// TODO: add docs
     pub fn new_local(path: PathBuf) -> Self {
         Self {
             data: Arc::new(Mutex::new(StorageData::new(Some(path)))),
         }
     }
 
+    /// TODO: add docs
     pub fn new_session() -> Self {
         Self {
             data: Arc::new(Mutex::new(StorageData::new(None))),
         }
     }
 
+    /// TODO: add docs
     pub fn register(ctx: &Ctx<'_>, name: &str, storage: Self) -> Result<()> {
         let global = ctx.globals();
         let instance = Class::instance(ctx.clone(), storage)?;
@@ -119,8 +126,8 @@ mod tests {
 
     #[test]
     fn test_storage_basic() {
-        let rt = Runtime::new().unwrap();
-        let ctx = Context::full(&rt).unwrap();
+        let rt = Runtime::new().expect("Albedo Engine: internal invariant violated");
+        let ctx = Context::full(&rt).expect("Albedo Engine: internal invariant violated");
 
         ctx.with(|ctx| {
             let storage = Storage::new_session();
@@ -137,11 +144,11 @@ mod tests {
     #[test]
     fn test_storage_persistence() {
         let path = std::env::current_dir()
-            .unwrap()
+            .expect("Albedo Engine: internal invariant violated")
             .join("target")
             .join("albedo_test_storage.json");
         if path.exists() {
-            std::fs::remove_file(&path).unwrap();
+            std::fs::remove_file(&path).expect("Albedo Engine: internal invariant violated");
         }
 
         {
@@ -157,6 +164,6 @@ mod tests {
             );
         }
 
-        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(path).expect("Albedo Engine: internal invariant violated");
     }
 }

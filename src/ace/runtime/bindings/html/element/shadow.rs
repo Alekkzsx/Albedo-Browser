@@ -47,6 +47,7 @@ impl ShadowRoot {
     }
 }
 
+/// TODO: add docs
 pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     let shadow_idx = if let Ok(mut dom) = el.dom.lock() {
         dom.attach_shadow(el.index)
@@ -72,6 +73,7 @@ pub fn attach_shadow<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     Ok(instance.into_value())
 }
 
+/// TODO: add docs
 pub fn get_shadow_root<'js>(el: &Element, ctx: Ctx<'js>) -> Result<Value<'js>> {
     if let Ok(dom) = el.dom.lock() {
         if let Some(node) = dom.get_node(el.index) {

@@ -1,6 +1,7 @@
 use crate::ace::runtime::core::runtime::JsRuntime;
 use rquickjs::{prelude::*, Function, Persistent};
 
+/// TODO: add docs
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
     rt.with_context(|context| {
         context.with(|ctx| {
@@ -15,7 +16,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                     // Use the context associated with the callback to ensure identical lifetimes
                     let cb_ctx = callback.ctx().clone();
                     let callback_persistent = Persistent::save(&cb_ctx, callback);
-                    let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                    let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                     Ok(event_loop.set_timer(callback_persistent, delay, false))
                 },
             )?;
@@ -28,7 +29,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                 move |callback: Function<'_>| -> rquickjs::Result<u32> {
                     let cb_ctx = callback.ctx().clone();
                     let callback_persistent = Persistent::save(&cb_ctx, callback);
-                    let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                    let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                     event_loop.push_raf_callback(callback_persistent);
                     Ok(0) // rAF doesn't strictly need a unique ID for MVP if cancel isn't implemented yet, but we could add one
                 },
@@ -38,7 +39,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             // clearTimeout
             let rt_clone = rt.clone();
             let clear_timeout = Function::new(ctx.clone(), move |id: u32| {
-                let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                 event_loop.clear_timer(id);
             })?;
             global.set("clearTimeout", clear_timeout)?;
@@ -51,7 +52,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                     let delay = delay.unwrap_or(0.0) as u64;
                     let cb_ctx = callback.ctx().clone();
                     let callback_persistent = Persistent::save(&cb_ctx, callback);
-                    let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                    let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                     Ok(event_loop.set_timer(callback_persistent, delay, true))
                 },
             )?;
@@ -60,7 +61,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             // clearInterval
             let rt_clone = rt.clone();
             let clear_interval = Function::new(ctx.clone(), move |id: u32| {
-                let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                 event_loop.clear_timer(id);
             })?;
             global.set("clearInterval", clear_interval)?;
@@ -84,7 +85,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
                         }
                     }
 
-                    let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                    let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                     Ok(event_loop.push_idle_callback(callback_persistent, timeout_ms))
                 },
             )?;
@@ -93,7 +94,7 @@ pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {
             // cancelIdleCallback
             let rt_clone = rt.clone();
             let cancel_idle_callback = Function::new(ctx.clone(), move |id: u32| {
-                let mut event_loop = rt_clone.event_loop.lock().unwrap();
+                let mut event_loop = rt_clone.event_loop.lock().unwrap_or_else(|e| e.into_inner());
                 event_loop.cancel_idle_callback(id);
             })?;
             global.set("cancelIdleCallback", cancel_idle_callback)?;

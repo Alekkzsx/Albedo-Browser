@@ -4,6 +4,7 @@ use crate::ace::engine::dom::AceNodeType;
 use crate::ace::engine::graphics::canvas2d::Canvas2D;
 use rquickjs::{Class, Ctx, Result, Value};
 
+/// TODO: add docs
 pub fn get_context<'js>(el: &Element, ctx: Ctx<'js>, type_: String) -> Result<Value<'js>> {
     if type_ != "2d" {
         return Ok(Value::new_null(ctx));
@@ -29,7 +30,7 @@ pub fn get_context<'js>(el: &Element, ctx: Ctx<'js>, type_: String) -> Result<Va
     }
 
     // Obter ou criar contexto
-    let mut contexts = el.canvas_contexts.lock().unwrap();
+    let mut contexts = el.canvas_contexts.lock().unwrap_or_else(|e| e.into_inner());
     if !contexts.contains_key(&el.index) {
         // Obter largura/altura dos atributos ou padrão (300x150)
         let w = super::props::width(el) as u32;

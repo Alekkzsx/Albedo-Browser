@@ -20,7 +20,7 @@ impl ResizeObserver {
             .expect("JsRuntime required");
 
         let _id = {
-            let mut el = rt.event_loop.lock().unwrap();
+            let mut el = rt.event_loop.lock().unwrap_or_else(|e| e.into_inner());
             el.next_observer_id += 1;
             el.next_observer_id
         };
@@ -34,6 +34,7 @@ impl ResizeObserver {
         })
     }
 
+    /// TODO: add docs
     pub fn observe<'js>(&self, target: Value<'js>, _options: Option<Object<'js>>) {
         // Mock implementation
         // SAFETY: The target value is stored for later use within the same QuickJS context.
@@ -43,15 +44,18 @@ impl ResizeObserver {
             .push(unsafe { std::mem::transmute(target) });
     }
 
+    /// TODO: add docs
     pub fn unobserve<'js>(&self, _target: Value<'js>) {
         // Mock implementation
     }
 
+    /// TODO: add docs
     pub fn disconnect(&self) {
         self.targets.borrow_mut().clear();
     }
 }
 
 impl rquickjs::class::Trace<'_> for ResizeObserver {
+    /// TODO: add docs
     fn trace<'a>(&self, _tracer: rquickjs::class::Tracer<'a, '_>) {}
 }
