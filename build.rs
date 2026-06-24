@@ -16,6 +16,12 @@ fn main() {
 }
 
 fn run_lint_checks() {
+    // Skip lint checks if SKIP_LINT environment variable is set
+    if std::env::var("SKIP_LINT").is_ok() {
+        eprintln!("warning: skipping lint checks (SKIP_LINT set)");
+        return;
+    }
+
     let status = if cfg!(target_os = "windows") {
         Command::new("powershell")
             .args(["-ExecutionPolicy", "Bypass", "-File", "scripts/lint.ps1"])
