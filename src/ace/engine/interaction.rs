@@ -34,7 +34,7 @@ impl AceEngine {
             // Para colocar o elemento no topo da visão: viewport_y = -y
             // Para centralizar: viewport_y = -y + (window_height / 2)
             self.viewport_y = -geom.y;
-            println!("[AceEngine] Scrolling to node {}: Y={}", node_idx, geom.y);
+            tracing::debug!(node_idx, y = geom.y, "Scrolling to node");
         }
     }
     pub fn check_mutations(&mut self) -> (bool, bool) {

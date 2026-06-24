@@ -722,7 +722,7 @@ impl AceEngine {
         }
 
         if has_changes {
-            println!("[DEBUG] tick() has_changes == true, setting styles_dirty!");
+            tracing::debug!("tick() has_changes == true, setting styles_dirty");
             self.styles_dirty
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }

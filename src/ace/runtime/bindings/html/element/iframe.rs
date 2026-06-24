@@ -36,7 +36,7 @@ pub fn get_content_document<'js>(ctx: &Ctx<'js>, el: &Element) -> Result<Value<'
             if let Some(ref sub_rt) = engine.js_runtime {
                 // SOP Check: contentDocument returns null if cross-origin
                 if !caller_rt.check_same_origin(sub_rt) {
-                    println!("[SOP] Blocked cross-origin access to contentDocument");
+                    tracing::warn!("SOP: Blocked cross-origin access to contentDocument");
                     return Ok(Value::new_null(ctx.clone()));
                 }
 

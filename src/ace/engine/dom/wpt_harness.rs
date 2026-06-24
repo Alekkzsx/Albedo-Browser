@@ -85,7 +85,7 @@ impl WPTRunner {
         let mut all_results = HashMap::new();
 
         for suite_name in &self.enabled_suites {
-            println!("🏃 Running suite: {}", suite_name);
+            tracing::info!(suite = %suite_name, "Running WPT suite");
             let result = self.run_suite(suite_name);
             all_results.insert(suite_name.clone(), result);
         }
@@ -99,7 +99,7 @@ impl WPTRunner {
         let suite_path = self.wpt_root.join(suite_name);
         
         if !suite_path.exists() {
-            println!("⚠️  Suite path not found: {:?}", suite_path);
+            tracing::warn!(?suite_path, "WPT suite path not found");
             return SuiteResult {
                 suite_name: suite_name.to_string(),
                 total: 0,
@@ -142,9 +142,14 @@ impl WPTRunner {
         };
 
         // Imprimir resumo
-        println!(
-            "📊 {} - Total: {}, Pass: {}, Fail: {}, Skip: {}, Rate: {:.2}%",
-            suite_name, total, passed, failed, skipped, pass_rate
+        tracing::info!(
+            suite = %suite_name,
+            total,
+            passed,
+            failed,
+            skipped,
+            pass_rate = format!("{:.2}%", pass_rate),
+            "WPT suite results"
         );
 
         suite_result

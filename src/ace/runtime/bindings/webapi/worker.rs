@@ -168,10 +168,7 @@ impl Worker {
                         let _ = w_rt.execute_script(&content);
                     }
                 } else {
-                    eprintln!(
-                        "🛑 [Worker] Recusado iniciar script em {} (SOP/Network bloqueou)",
-                        url_str
-                    );
+                    tracing::error!(url = %url_str, "Worker script blocked by SOP/Network");
                 }
             }
         });

@@ -62,7 +62,7 @@ impl WindowProxy {
         }; // All locks on target_rt released here
 
         if !allowed {
-            println!("[WindowProxy::postMessage] Blocked: origin mismatch.");
+            tracing::warn!("WindowProxy::postMessage blocked: origin mismatch");
             return Ok(());
         }
 

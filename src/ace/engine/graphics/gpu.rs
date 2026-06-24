@@ -51,7 +51,7 @@ pub struct GpuContext {
 
 impl GpuContext {
     pub async fn new(width: u32, height: u32) -> Option<Self> {
-        println!("GPU: Inicializando WGPU Instanced Renderer...");
+        tracing::info!("Initializing WGPU Instanced Renderer");
 
         let instance = wgpu::Instance::default();
 

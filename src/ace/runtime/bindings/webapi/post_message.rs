@@ -55,7 +55,7 @@ pub fn post_message<'js>(
         }
 
         if !allowed {
-            println!("[postMessage] Blocked: origin mismatch.");
+            tracing::warn!("postMessage blocked: origin mismatch");
             return Ok(());
         }
 
