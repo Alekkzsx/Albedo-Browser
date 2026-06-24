@@ -197,10 +197,7 @@ impl ResourceManager {
                     if let Ok(InterceptResult::Handled(res_ctx)) =
                         sw_manager.dispatch_fetch_event(&active, req_ctx)
                     {
-                        println!(
-                            "[ResourceManager] Intercepted by Service Worker: {}",
-                            url_str
-                        );
+                        tracing::info!(url = %url_str, "Intercepted by Service Worker");
                         let response = ResourceResponse {
                             url: url_str.clone(),
                             data: res_ctx.body,
@@ -231,10 +228,7 @@ impl ResourceManager {
         if let Some(ref parent) = parent_origin {
             if parent.scheme == "https" && url.starts_with("http://") && !url.contains("localhost")
             {
-                eprintln!(
-                    "[Security] Mixed Content Bloqueado: {} tentou carregar recurso inseguro {}",
-                    parent, url
-                );
+                tracing::warn!(parent = %parent, url = %url, "Mixed Content blocked");
                 return;
             }
         }
@@ -414,11 +408,7 @@ impl ResourceManager {
                         Self::send_response(&tx, response);
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[ResourceManager] Erro ao ler arquivo {}: {}",
-                            path.display(),
-                            e
-                        );
+                        tracing::error!(path = %path.display(), ?e, "Failed to read file");
                         let response = ResourceResponse {
                             url: url_clone,
                             data: Vec::new(),
@@ -479,7 +469,7 @@ impl ResourceManager {
                     match h3.get(&url_clone).await {
                         Ok(h3_resp) => {
                             used_h3 = true;
-                            println!("[ResourceManager] ✅ HTTP/3 sucesso para {}", url_clone);
+                            tracing::info!(url = %url_clone, "HTTP/3 success");
 
                             // Processar resposta HTTP/3
                             let status_code = h3_resp.status;
@@ -546,10 +536,7 @@ impl ResourceManager {
                         }
                         Err(e) => {
                             // HTTP/3 falhou — fallback para HTTP/2
-                            eprintln!(
-                                "[ResourceManager] HTTP/3 fallback para {} → {}",
-                                url_clone, e
-                            );
+                            tracing::warn!(url = %url_clone, ?e, "HTTP/3 failed, falling back to HTTP/2");
                         }
                     }
                 }
@@ -663,7 +650,7 @@ impl ResourceManager {
                         }
                     }
                     Err(e) => {
-                        eprintln!("[ResourceManager] Erro ao buscar {}: {}", url_clone, e);
+                        tracing::error!(url = %url_clone, ?e, "Failed to fetch resource");
                     }
                 }
             }
