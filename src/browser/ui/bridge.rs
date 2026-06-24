@@ -2,6 +2,7 @@ use crate::browser::tabs::manager::TabManager;
 use crate::ui::AppWindow;
 use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer};
 
+/// TODO: add docs
 pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
     if let Some((_, engine, _)) = tm.get_active_tab_native_data() {
         let scale_factor = ui.window().scale_factor();
@@ -28,7 +29,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
         let framebuffer = engine.framebuffer.clone();
 
         let mut dirty_rects = {
-            let mut im = engine.invalidation_manager.lock().unwrap();
+            let mut im = engine.invalidation_manager.lock().unwrap_or_else(|e| e.into_inner());
             let rects = im.dirty_rects.clone();
             im.clear();
             rects
@@ -36,7 +37,7 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
 
         let mut fb_size_changed = false;
         {
-            let fb = framebuffer.lock().unwrap();
+            let fb = framebuffer.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(ref p) = *fb {
                 if p.width() != physical_w || p.height() != physical_h {
                     fb_size_changed = true;
@@ -96,9 +97,9 @@ pub fn sync_ace_visuals(ui: &AppWindow, tm: &TabManager) {
 
             // 2. Fallback: CPU Rasterization (Tiny-Skia)
             if !gpu_success {
-                let mut font_system_lock = font_system_arc.lock().unwrap();
-                let mut swash_cache_lock = swash_cache_arc.lock().unwrap();
-                let mut fb_lock = framebuffer.lock().unwrap();
+                let mut font_system_lock = font_system_arc.lock().unwrap_or_else(|e| e.into_inner());
+                let mut swash_cache_lock = swash_cache_arc.lock().unwrap_or_else(|e| e.into_inner());
+                let mut fb_lock = framebuffer.lock().unwrap_or_else(|e| e.into_inner());
                 for layer in primitives.get_all_layers_sorted() {
                     let tiles = layer.build_tiles(512);
                     for tile in tiles {
