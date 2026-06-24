@@ -61,12 +61,12 @@ pub fn handle_navigate(
         format!("https://{}", url_str)
     };
 
-    println!("Navigating to: {}", final_url);
+    tracing::info!(url = %final_url, "Navigating");
     if let Some(ui) = ui_handle.upgrade() {
         // Guard against infinite loops / same URL
         let current = ui.get_current_url();
         if current.as_str() == final_url {
-            println!("[Navigation] Ignoring duplicate request to: {}", final_url);
+            tracing::debug!(url = %final_url, "Ignoring duplicate navigation request");
             return;
         }
 
@@ -145,7 +145,7 @@ pub fn handle_key_down(
     if tm.handle_key_down(key.as_str(), code.as_str(), ctrl, shift, alt, meta) {
         // Se a engine mudou algo (ex: focus), poderíamos sincronizar aqui,
         // mas o pulse timer cuidará disso se houver mudanças de estilo/mutação.
-        println!("[Events] KeyDown handled: {}", key);
+        tracing::debug!(key = %key, "KeyDown handled");
     }
 }
 
@@ -196,7 +196,7 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
                 .styles_dirty
                 .load(std::sync::atomic::Ordering::SeqCst)
             {
-                println!("[Pulse] Recomputing dirty styles...");
+                tracing::debug!("Recomputing dirty styles");
                 engine.recompute_dirty_styles();
                 sync_ace_visuals(&ui, tm);
             }
@@ -213,9 +213,7 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
                     * 1000.0;
 
                 let raf_executed = rt.run_raf_callbacks(now_ms);
-                // println!("[Pulse] Running JS pending jobs...");
                 let (js_executed, js_style_dirty) = rt.run_pending();
-                // println!("[Pulse] JS pending jobs done.");
 
                 if raf_executed || js_executed || js_style_dirty {
                     sync_ace_visuals(&ui, tm);
@@ -225,15 +223,14 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
             let (mutated, style_dirty) = engine.check_mutations();
 
             if style_dirty {
-                println!("[Pulse] Updating stylesheet...");
+                tracing::debug!("Updating stylesheet");
                 engine.update_stylesheet();
                 sync_ace_visuals(&ui, tm);
             } else if mutated {
-                println!("[Pulse] Recomputing layout due to mutations...");
+                tracing::debug!("Recomputing layout due to mutations");
                 engine.recompute_layout();
-                println!("[Pulse] Syncing ACE visuals...");
+                tracing::debug!("Syncing ACE visuals");
                 sync_ace_visuals(&ui, tm);
-                println!("[Pulse] Layout and visual sync complete.");
             }
         }
     }
