@@ -595,6 +595,8 @@ impl ServiceWorkerManager {
             ));
 
             // Restore ID using unsafe as it's immutable field
+            // SAFETY: The Arc is exclusively owned at this point (no other references exist).
+            // The cast is needed to set the immutable id field during hydration from DB.
             let mut_reg = unsafe { &mut *(Arc::as_ptr(&reg) as *mut ServiceWorkerRegistration) };
             mut_reg.id = data.id.clone();
 
