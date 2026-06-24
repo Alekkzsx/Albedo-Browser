@@ -365,7 +365,7 @@ impl ServiceWorkerInstance {
         is_running.store(true, std::sync::atomic::Ordering::SeqCst);
 
         let handle = std::thread::spawn(move || {
-            println!("[SW] Thread started for Worker: {}", script_url);
+            tracing::info!(url = %script_url, "Service Worker thread started");
             // Initialize runtime inside the thread
             let rt = crate::ace::runtime::core::init::init_sw_runtime(&script_url, &origin)
                 .unwrap_or_else(|| {
@@ -400,7 +400,7 @@ impl ServiceWorkerInstance {
                 }
             }
             is_running.store(false, std::sync::atomic::Ordering::SeqCst);
-            println!("[SW] Thread stopped for Worker: {}", script_url);
+            tracing::info!(url = %script_url, "Service Worker thread stopped");
         });
 
         let mut h = self.thread_handle.lock().unwrap();
@@ -603,10 +603,7 @@ impl ServiceWorkerManager {
             let key = format!("{}#{}", data.origin, data.scope);
             regs.insert(key, reg);
         }
-        println!(
-            "[ServiceWorkerManager] Hydrated {} registrations from DB",
-            regs.len()
-        );
+        tracing::info!(count = regs.len(), "Hydrated Service Worker registrations from DB");
         Ok(())
     }
 
