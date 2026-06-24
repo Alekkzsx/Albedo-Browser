@@ -1,4 +1,4 @@
-use crate::network::protocols::websocket::{WebSocketClient, WsEvent};
+use crate::shared::websocket::{WebSocketClient, WsEvent};
 use crate::ace::runtime::core::event_loop::UnsafeSendVal;
 use crate::ace::runtime::core::runtime::JsRuntime;
 use rquickjs::{Class, Ctx, Function, Result, Value};

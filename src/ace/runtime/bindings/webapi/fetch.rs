@@ -153,7 +153,7 @@ impl Response {
     }
 }
 
-use crate::network::security::Origin;
+use crate::shared::security::Origin;
 use crate::ace::runtime::core::runtime::JsRuntime;
 
 pub fn register(rt: &JsRuntime) -> rquickjs::Result<()> {

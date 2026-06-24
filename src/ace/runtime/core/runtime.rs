@@ -1,6 +1,6 @@
 use crate::ace::engine::dom::AceDOM;
 use crate::network::resources::ResourceManager;
-use crate::network::security::Origin;
+use crate::shared::security::Origin;
 use rquickjs::function::IntoJsFunc;
 use rquickjs::{Context, Ctx, Runtime, Value};
 use std::collections::HashMap;
