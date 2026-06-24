@@ -8,6 +8,7 @@ pub struct TabCollection {
 }
 
 impl TabCollection {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             tabs: Vec::new(),
@@ -16,6 +17,7 @@ impl TabCollection {
         }
     }
 
+    /// TODO: add docs
     pub fn add(&mut self, url: String) -> String {
         let id = Uuid::new_v4().to_string();
         let new_tab = Tab::new(id.clone(), url);
@@ -26,6 +28,7 @@ impl TabCollection {
         id
     }
 
+    /// TODO: add docs
     pub fn get_active(&self) -> Option<&Tab> {
         if let Some(idx) = self.active_index {
             self.tabs.get(idx)
@@ -34,6 +37,7 @@ impl TabCollection {
         }
     }
 
+    /// TODO: add docs
     pub fn get_active_mut(&mut self) -> Option<&mut Tab> {
         if let Some(idx) = self.active_index {
             self.tabs.get_mut(idx)
@@ -42,6 +46,7 @@ impl TabCollection {
         }
     }
 
+    /// TODO: add docs
     pub fn switch_to(&mut self, index: usize) -> Option<&Tab> {
         if index < self.tabs.len() {
             self.active_index = Some(index);
@@ -51,6 +56,7 @@ impl TabCollection {
         }
     }
 
+    /// TODO: add docs
     pub fn close(&mut self, index: usize) {
         if index >= self.tabs.len() {
             return;

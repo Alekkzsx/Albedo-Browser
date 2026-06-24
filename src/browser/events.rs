@@ -5,17 +5,15 @@ use crate::ui::{AppWindow, TabData};
 use slint::{ComponentHandle, SharedString, VecModel, Weak};
 use std::cell::RefCell;
 use std::rc::Rc;
-
+/// TODO: add docs
 pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<AceSysInfo>>) {
     if let Some(ui) = ui_handle.upgrade() {
         let mut sys = system.borrow_mut();
         sys.refresh();
-
         let cpu_count = sys.cpu_count();
         let total_ram = sys.total_memory();
         let used_ram = sys.used_memory();
         let cpu_usage = sys.cpu_usage();
-
         let stats = format!(
             "RAM: {}/{} MB | CPU: {:.1}% | CORES: {} | MODE: EFFICIENT",
             used_ram, total_ram, cpu_usage, cpu_count
@@ -23,7 +21,7 @@ pub fn handle_system_monitor(ui_handle: &Weak<AppWindow>, system: &Rc<RefCell<Ac
         ui.set_system_stats(stats.into());
     }
 }
-
+/// TODO: add docs
 pub fn sync_tabs(tm: &TabManager, tabs_model: &Rc<VecModel<TabData>>) {
     let tabs_info = tm.get_tabs_info();
     let slint_tabs: Vec<TabData> = tabs_info
@@ -37,7 +35,7 @@ pub fn sync_tabs(tm: &TabManager, tabs_model: &Rc<VecModel<TabData>>) {
         .collect();
     tabs_model.set_vec(slint_tabs);
 }
-
+/// TODO: add docs
 pub fn handle_navigate(
     ui_handle: &Weak<AppWindow>,
     tm: &TabManager,
@@ -60,7 +58,6 @@ pub fn handle_navigate(
     } else {
         format!("https://{}", url_str)
     };
-
     tracing::info!(url = %final_url, "Navigating");
     if let Some(ui) = ui_handle.upgrade() {
         // Guard against infinite loops / same URL
@@ -69,12 +66,11 @@ pub fn handle_navigate(
             tracing::debug!(url = %final_url, "Ignoring duplicate navigation request");
             return;
         }
-
         tm.request_navigate(final_url);
         sync_tabs(tm, tabs_model);
     }
 }
-
+/// TODO: add docs
 pub fn handle_new_tab(
     ui_handle: &Weak<AppWindow>,
     tm: &TabManager,
@@ -85,7 +81,7 @@ pub fn handle_new_tab(
         sync_tabs(tm, tabs_model);
     }
 }
-
+/// TODO: add docs
 pub fn handle_switch_tab(
     ui_handle: &Weak<AppWindow>,
     tm: &TabManager,
@@ -94,7 +90,6 @@ pub fn handle_switch_tab(
 ) {
     let result = tm.switch_to_tab(index as usize);
     sync_tabs(tm, tabs_model);
-
     if let Some((url, show_start, _native_content, _mode)) = result {
         if let Some(ui) = ui_handle.upgrade() {
             ui.set_current_url(url.into());
@@ -103,12 +98,12 @@ pub fn handle_switch_tab(
         }
     }
 }
-
+/// TODO: add docs
 pub fn handle_close_tab(tm: &TabManager, index: i32, tabs_model: &Rc<VecModel<TabData>>) {
     tm.close_tab(index as usize);
     sync_tabs(tm, tabs_model);
 }
-
+/// TODO: add docs
 fn dispatch_and_sync(ui_handle: &Weak<AppWindow>, tm: &TabManager, changed: bool) {
     if changed {
         if let Some(ui) = ui_handle.upgrade() {
@@ -116,23 +111,23 @@ fn dispatch_and_sync(ui_handle: &Weak<AppWindow>, tm: &TabManager, changed: bool
         }
     }
 }
-
+/// TODO: add docs
 pub fn handle_pointer_click(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
     dispatch_and_sync(ui_handle, tm, tm.handle_click(x, y));
 }
-
+/// TODO: add docs
 pub fn handle_hover(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
     dispatch_and_sync(ui_handle, tm, tm.handle_hover(x, y));
 }
-
+/// TODO: add docs
 pub fn handle_pointer_down(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
     dispatch_and_sync(ui_handle, tm, tm.handle_pointer_down(x, y));
 }
-
+/// TODO: add docs
 pub fn handle_pointer_up(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32) {
     dispatch_and_sync(ui_handle, tm, tm.handle_pointer_up(x, y));
 }
-
+/// TODO: add docs
 pub fn handle_key_down(
     tm: &TabManager,
     key: SharedString,
@@ -148,7 +143,7 @@ pub fn handle_key_down(
         tracing::debug!(key = %key, "KeyDown handled");
     }
 }
-
+/// TODO: add docs
 pub fn handle_key_up(
     tm: &TabManager,
     key: SharedString,
@@ -160,11 +155,11 @@ pub fn handle_key_up(
 ) {
     tm.handle_key_up(key.as_str(), code.as_str(), ctrl, shift, alt, meta);
 }
-
+/// TODO: add docs
 pub fn handle_scroll(ui_handle: &Weak<AppWindow>, tm: &TabManager, x: f32, y: f32, delta: f32) {
     dispatch_and_sync(ui_handle, tm, tm.handle_scroll(x, y, delta));
 }
-
+/// TODO: add docs
 pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
     if let Some(ui) = ui_handle.upgrade() {
         // Processar navegação pendente
@@ -177,20 +172,16 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
                 sync_ace_visuals(&ui, tm);
             }
         }
-
         // Processar recursos assíncronos primeiro
         if tm.process_active_tab_resources() {
             sync_ace_visuals(&ui, tm);
         }
-
         // Animações
         if tm.process_animations() {
             sync_ace_visuals(&ui, tm);
         }
-
         if let Some((_, mut engine, progress)) = tm.get_active_tab_native_data() {
             ui.set_loading_progress(progress);
-
             // Recompilar estilos se hover/focus mudou
             if engine
                 .styles_dirty
@@ -200,28 +191,22 @@ pub fn handle_pulse(ui_handle: &slint::Weak<AppWindow>, tm: &TabManager) {
                 engine.recompute_dirty_styles();
                 sync_ace_visuals(&ui, tm);
             }
-
             // Pulse JS Runtime
             if let Some(ref rt) = engine.js_runtime {
                 // Sincroniza scroll position para uso de instersectionObservers no event_loop
-                *rt.viewport_y.lock().unwrap() = engine.viewport_y;
-
+                *rt.viewport_y.lock().unwrap_or_else(|e| e.into_inner()) = engine.viewport_y;
                 let now_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs_f64()
                     * 1000.0;
-
                 let raf_executed = rt.run_raf_callbacks(now_ms);
                 let (js_executed, js_style_dirty) = rt.run_pending();
-
                 if raf_executed || js_executed || js_style_dirty {
                     sync_ace_visuals(&ui, tm);
                 }
             }
-
             let (mutated, style_dirty) = engine.check_mutations();
-
             if style_dirty {
                 tracing::debug!("Updating stylesheet");
                 engine.update_stylesheet();

@@ -22,6 +22,7 @@ pub struct Tab {
 }
 
 impl Tab {
+    /// TODO: add docs
     pub fn new(id: String, url: String) -> Self {
         Self {
             id,
@@ -37,6 +38,7 @@ impl Tab {
         }
     }
 
+    /// TODO: add docs
     pub fn load_url(&mut self, url: String) {
         tracing::info!(url = %url, "Loading URL");
         self.url = url.clone();
