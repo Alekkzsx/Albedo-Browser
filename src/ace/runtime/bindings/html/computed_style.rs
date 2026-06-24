@@ -19,13 +19,13 @@ impl ComputedCSSStyleDeclaration {
     pub fn get_property_value(&self, property: String) -> String {
         let stylesheet_lock = self.stylesheet.lock().unwrap();
         let dom_lock = self.dom.lock().unwrap();
-        println!("[DEBUG-COMPUTED] get_property_value: node_idx = {}, property = {}", self.node_idx, property);
+        tracing::debug!(node_idx = self.node_idx, property = %property, "get_property_value");
         if let Some(node) = dom_lock.get_node(self.node_idx) {
-            println!("[DEBUG-COMPUTED] node = {:?}", node);
+            tracing::debug!(?node, "Node found");
         }
-        println!("[DEBUG-COMPUTED] author rules count = {}", stylesheet_lock.rules.len());
+        tracing::debug!(rule_count = stylesheet_lock.rules.len(), "Author rules count");
         for (i, rule) in stylesheet_lock.rules.iter().enumerate() {
-            println!("[DEBUG-COMPUTED] rule {} = {:?}", i, rule);
+            tracing::debug!(index = i, ?rule, "Rule");
         }
         // stylesheet.calculate_style signature was updated in previous steps to accept &AceDOM and usize
         // For now, we don't have parent context easily available here without traversing up.
