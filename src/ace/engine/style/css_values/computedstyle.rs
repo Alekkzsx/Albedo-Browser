@@ -1,0 +1,218 @@
+use super::*;
+use std::fmt;
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComputedStyle {
+    // Display & Layout
+    pub display: CssDisplay,
+    pub position: CssPosition,
+    pub overflow: CssOverflow,
+    pub z_index: i32,
+    pub float: CssFloat,
+    pub clear: CssClear,
+    // Box Model - Dimensions
+    pub width: CssLength,
+    pub height: CssLength,
+    pub min_width: CssLength,
+    pub max_width: CssLength,
+    pub min_height: CssLength,
+    pub max_height: CssLength,
+    // Box Model - Position (for absolute/fixed)
+    pub top: CssLength,
+    pub right: CssLength,
+    pub bottom: CssLength,
+    pub left: CssLength,
+    pub text_transform: CssTextTransform,
+    pub text_overflow: CssTextOverflow,
+    pub white_space: CssWhiteSpace,
+    // Backgroundel - Margins
+    pub margin_top: CssLength,
+    pub margin_right: CssLength,
+    pub margin_bottom: CssLength,
+    pub margin_left: CssLength,
+    // Box Model - Padding
+    pub padding_top: CssLength,
+    pub padding_right: CssLength,
+    pub padding_bottom: CssLength,
+    pub padding_left: CssLength,
+    // Spacing
+    pub letter_spacing: CssLength,
+    pub word_spacing: CssLength,
+    // Border
+    pub border_width_top: CssLength,
+    pub border_width_right: CssLength,
+    pub border_width_bottom: CssLength,
+    pub border_width_left: CssLength,
+    pub border_color_top: CssColor,
+    pub border_color_right: CssColor,
+    pub border_color_bottom: CssColor,
+    pub border_color_left: CssColor,
+    pub border_radius_top_left: f32,
+    pub border_radius_top_right: f32,
+    pub border_radius_bottom_right: f32,
+    pub border_radius_bottom_left: f32,
+    // Visual
+    pub color: CssColor,
+    pub background_color: CssColor,
+    pub background_image: BackgroundImage,
+    pub opacity: f32,
+    pub box_shadow: Vec<BoxShadow>,
+    pub text_shadow: Vec<TextShadow>,
+    pub outline: Option<Outline>,
+    pub line_height: CssLength,
+    // Typography
+    pub font_size: f32,
+    pub font_family: String,
+    pub font_weight: CssFontWeight,
+    pub font_style: String,
+    pub text_align: CssTextAlign,
+    // Flexbox
+    pub flex_direction: CssFlexDirection,
+    pub justify_content: CssJustifyContent,
+    pub align_items: CssAlignItems,
+    pub flex_wrap: CssFlexWrap,
+    pub flex_grow: f32,
+    pub flex_shrink: f32,
+    pub flex_basis: CssLength,
+    // Grid Layout
+    pub grid_template_columns: Vec<CssLength>,
+    pub grid_template_rows: Vec<CssLength>,
+    pub grid_column_start: CssLength,
+    pub grid_column_end: CssLength,
+    pub grid_row_start: CssLength,
+    pub grid_row_end: CssLength,
+    pub grid_column_gap: CssLength,
+    pub grid_row_gap: CssLength,
+    pub grid_template_areas: Vec<String>,
+    // Flexbox/Grid alignment
+    pub order: i32,
+    pub align_self: CssAlignItems,
+    pub align_content: CssAlignContent,
+    // Pseudo-element content
+    pub content: CssContent,
+    // Modern CSS
+    pub aspect_ratio: Option<f32>,
+    pub box_sizing: CssBoxSizing,
+    pub visibility: CssVisibility,
+    pub cursor: CssCursor,
+    pub pointer_events: CssPointerEvents,
+    pub transform: Vec<TransformFunction>,
+    pub object_fit: CssObjectFit,
+    pub object_position: CssObjectPosition,
+    pub filters: Vec<CssFilter>,
+    pub backdrop_filters: Vec<CssFilter>,
+    pub mix_blend_mode: CssBlendMode,
+    pub transitions: Vec<CssTransition>,
+    pub animations: Vec<CssAnimation>,
+    pub clip_path: Option<String>,
+    // Custom properties (CSS Variables)
+    pub custom_properties: std::collections::HashMap<String, String>,
+}
+impl Default for ComputedStyle {
+pub(crate) fn default() -> Self {
+        Self {
+            // Display & Layout
+            position: CssPosition::Static,
+            overflow: CssOverflow::Visible,
+            z_index: 0,
+            float: CssFloat::None,
+            clear: CssClear::None,
+            // Dimensions
+            width: CssLength::Auto,
+            height: CssLength::Auto,
+            min_width: CssLength::Zero,
+            max_width: CssLength::Auto,
+            min_height: CssLength::Zero,
+            max_height: CssLength::Auto,
+            display: CssDisplay::default(),
+            // Position
+            top: CssLength::Auto,
+            right: CssLength::Auto,
+            bottom: CssLength::Auto,
+            left: CssLength::Auto,
+            text_transform: CssTextTransform::default(),
+            text_overflow: CssTextOverflow::default(),
+            white_space: CssWhiteSpace::default(),
+            // Backgrounds
+            margin_top: CssLength::Zero,
+            margin_right: CssLength::Zero,
+            margin_bottom: CssLength::Zero,
+            margin_left: CssLength::Zero,
+            // Padding
+            padding_top: CssLength::Zero,
+            padding_right: CssLength::Zero,
+            padding_bottom: CssLength::Zero,
+            padding_left: CssLength::Zero,
+            // Spacing
+            letter_spacing: CssLength::Zero,
+            word_spacing: CssLength::Zero,
+            // Border
+            border_width_top: CssLength::Zero,
+            border_width_right: CssLength::Zero,
+            border_width_bottom: CssLength::Zero,
+            border_width_left: CssLength::Zero,
+            border_color_top: CssColor::Named("black".to_string()),
+            border_color_right: CssColor::Named("black".to_string()),
+            border_color_bottom: CssColor::Named("black".to_string()),
+            border_color_left: CssColor::Named("black".to_string()),
+            border_radius_top_left: 0.0,
+            border_radius_top_right: 0.0,
+            border_radius_bottom_right: 0.0,
+            border_radius_bottom_left: 0.0,
+            // Visual
+            color: CssColor::Named("black".to_string()),
+            background_color: CssColor::Transparent,
+            background_image: BackgroundImage::None,
+            opacity: 1.0,
+            box_shadow: Vec::new(),
+            text_shadow: Vec::new(),
+            outline: None,
+            line_height: CssLength::Px(1.2), // Default line-height
+            // Typography
+            font_size: 16.0,
+            font_family: "sans-serif".to_string(),
+            font_weight: CssFontWeight::Normal,
+            font_style: "normal".to_string(),
+            text_align: CssTextAlign::Left,
+            // Flexbox
+            flex_direction: CssFlexDirection::Row,
+            justify_content: CssJustifyContent::FlexStart,
+            align_items: CssAlignItems::Stretch,
+            flex_wrap: CssFlexWrap::NoWrap,
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            flex_basis: CssLength::Auto,
+            // Grid Default
+            grid_template_columns: Vec::new(),
+            grid_template_rows: Vec::new(),
+            grid_column_start: CssLength::Auto,
+            grid_column_end: CssLength::Auto,
+            grid_row_start: CssLength::Auto,
+            grid_row_end: CssLength::Auto,
+            grid_column_gap: CssLength::Zero,
+            grid_row_gap: CssLength::Zero,
+            // Pseudo-element content
+            content: CssContent::Normal,
+            aspect_ratio: None,
+            box_sizing: CssBoxSizing::ContentBox,
+            visibility: CssVisibility::Visible,
+            cursor: CssCursor::Auto,
+            pointer_events: CssPointerEvents::Auto,
+            transform: Vec::new(),
+            object_fit: CssObjectFit::Fill,
+            object_position: CssObjectPosition::default(),
+            filters: Vec::new(),
+            backdrop_filters: Vec::new(),
+            mix_blend_mode: CssBlendMode::Normal,
+            transitions: Vec::new(),
+            animations: Vec::new(),
+            clip_path: None,
+            // Custom properties
+            custom_properties: std::collections::HashMap::new(),
+            // New Flexbox/Grid properties
+            order: 0,
+            align_self: CssAlignItems::Auto, // Default is auto, which computes to parent's align-items
+            align_content: CssAlignContent::Stretch,
+            grid_template_areas: Vec::new(),
+        }
+    }
+}
