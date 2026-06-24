@@ -38,7 +38,7 @@ impl Tab {
     }
 
     pub fn load_url(&mut self, url: String) {
-        println!("[Tab] Loading URL: {}", url);
+        tracing::info!(url = %url, "Loading URL");
         self.url = url.clone();
         self.is_loading = true;
         self.loading_progress = 0.1; // Iniciou requisição

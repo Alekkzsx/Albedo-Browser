@@ -124,7 +124,7 @@ pub fn run_pending(rt: &JsRuntime) -> (bool, bool) {
         let ctx = rt.context.lock().unwrap();
         ctx.with(|ctx| {
             while ctx.execute_pending_job() {
-                println!("[JS] Microtask/Promise executed.");
+                tracing::debug!("Microtask/Promise executed");
                 executed = true;
             }
         });

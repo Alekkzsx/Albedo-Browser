@@ -111,7 +111,7 @@ impl Document {
 
     #[qjs(set, rename = "title")]
     pub fn set_title(&self, title: String) {
-        println!("Document title set to: {}", title);
+        tracing::debug!(title = %title, "Document title set");
     }
 
     #[qjs(rename = "createElement")]

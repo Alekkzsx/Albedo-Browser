@@ -20,7 +20,7 @@ impl FormData {
                 // For now, we'll try to get it if it's an Element of type 'FORM'.
                 // This requires access to the DOM, which we don't have easily here without more bindings.
                 // A better way would be to have a helper in JS or Element to populate this.
-                println!("FormData constructor called with form element (stub: data extraction not yet fully implemented from Element)");
+                tracing::debug!("FormData constructor called (stub)");
             }
         }
 

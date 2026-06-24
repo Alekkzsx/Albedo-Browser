@@ -379,7 +379,7 @@ mod tests {
         // não há panic
         match client {
             Ok(c) => {
-                println!("HTTP/3 client criado com sucesso");
+                tracing::debug!("HTTP/3 client created successfully");
                 assert!(c.is_alive());
             }
             Err(e) => {
