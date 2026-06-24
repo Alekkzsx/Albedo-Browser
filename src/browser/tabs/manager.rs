@@ -33,7 +33,7 @@ impl TabManager {
     }
 
     pub fn create_tab(&self, _window: &slint::Window, url: &str) {
-        println!("[TabManager] Creating new tab for URL: {}", url);
+        tracing::info!(url = %url, "Creating new tab");
 
         // Criar canal para esta aba
         let (tx, rx) = mpsc::unbounded_channel();
@@ -54,7 +54,7 @@ impl TabManager {
     }
 
     pub fn load_url(&self, tab_id: String, url: String) {
-        println!("[TabManager] Loading URL: {}", url);
+        tracing::info!(url = %url, "Loading URL");
         let mut col = self.collection.borrow_mut();
         if let Some(pos) = col.tabs.iter().position(|t| t.id == tab_id) {
             col.tabs[pos].load_url(url.clone());
@@ -134,10 +134,10 @@ impl TabManager {
     }
 
     pub fn switch_to_tab(&self, index: usize) -> Option<(String, bool, String, TabMode)> {
-        println!("[TabManager] Switching to tab index: {}", index);
+        tracing::debug!(index, "Switching to tab");
         self.with_collection_mut(|col| {
             if let Some(tab) = col.switch_to(index) {
-                println!("[TabManager] Tab switched successfully to: {}", tab.url);
+                tracing::debug!(url = %tab.url, "Tab switched");
                 return Some((
                     tab.url.clone(),
                     tab.show_start_page,
@@ -238,7 +238,7 @@ impl TabManager {
             if let Some(tab) = col.get_active() {
                 if let Some(ref rt) = tab.engine.js_runtime {
                     if let Some(ref dom) = tab.engine.dom {
-                        println!("[TabManager] Dispatching click to node index: {}", node_idx);
+                        tracing::debug!(node_idx, "Dispatching click to node");
                         rt.dispatch_event(dom.clone(), node_idx, "click");
                         return true;
                     }
@@ -331,7 +331,7 @@ impl TabManager {
                 // Dispatch JS click event
                 if let Some(ref rt) = tab.engine.js_runtime {
                     if let Some(ref dom) = tab.engine.dom {
-                        println!("[TabManager] Click at ({}, {}) -> Node {}", x, y, idx);
+                        tracing::debug!(x, y, node_idx = idx, "Click at position");
                         rt.dispatch_event(dom.clone(), idx, "click");
                         return true;
                     }
