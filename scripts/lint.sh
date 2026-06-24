@@ -121,10 +121,31 @@ fi
 # CHECK 5: unsafe blocks
 # ============================================================================
 log_info "Check 5: unsafe blocks..."
-UNSAFE_HITS=$(grep -rn 'unsafe {' src/ --include='*.rs' 2>/dev/null \
-    | grep -v '//.*SAFETY' | grep -v '#\[cfg(test)\]' || true)
+UNSAFE_HITS=""
+while IFS= read -r file; do
+    while IFS= read -r result; do
+        linenum=$(echo "$result" | cut -d: -f1)
+        # Check if any of the 4 lines above have SAFETY comment
+        has_safety=false
+        for offset in 1 2 3 4; do
+            prev_line=$((linenum - offset))
+            if [ "$prev_line" -gt 0 ]; then
+                prev_content=$(sed -n "${prev_line}p" "$file" 2>/dev/null || true)
+                if echo "$prev_content" | grep -q '//.*SAFETY'; then
+                    has_safety=true
+                    break
+                fi
+            fi
+        done
+        if [ "$has_safety" = false ]; then
+            UNSAFE_HITS="${UNSAFE_HITS}${file}:${linenum}: unsafe block without SAFETY comment
+"
+        fi
+    done < <(grep -n 'unsafe {' "$file" 2>/dev/null || true)
+done < <(find src/ -name '*.rs' 2>/dev/null)
+
 if [ -n "$UNSAFE_HITS" ]; then
-    COUNT=$(echo "$UNSAFE_HITS" | wc -l)
+    COUNT=$(echo "$UNSAFE_HITS" | grep -c . || true)
     log_error "CHECK5" "$COUNT unsafe blocks without // SAFETY: comment" \
         "add '// SAFETY: <justificativa>' above each unsafe block"
     echo "$UNSAFE_HITS" | head -5
