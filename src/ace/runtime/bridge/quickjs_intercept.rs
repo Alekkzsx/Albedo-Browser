@@ -126,6 +126,8 @@ impl QuickJsInterceptor {
                 );
 
                 // 3. Executar o código OSR
+                // SAFETY: ptr is a valid function pointer from JIT On-Stack Replacement.
+                // The transmute converts the opaque pointer to the expected OSR function signature.
                 let osr_func: extern "C" fn(*mut u64) -> u64 =
                     unsafe { std::mem::transmute(ptr) };
                 let result = osr_func(spill.as_mut_ptr());
