@@ -16,6 +16,7 @@ pub struct BlobStore {
 }
 
 impl BlobStore {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             blobs: Arc::new(Mutex::new(HashMap::new())),
@@ -34,7 +35,7 @@ impl BlobStore {
         let uuid = crate::utils::uuid::Uuid::new_v4().to_string();
         let url = format!("blob:{}", uuid);
 
-        let mut blobs = self.blobs.lock().unwrap();
+        let mut blobs = self.blobs.lock().unwrap_or_else(|e| e.into_inner());
         blobs.insert(url.clone(), blob);
 
         url
@@ -42,13 +43,13 @@ impl BlobStore {
 
     /// Get a blob by its URL
     pub fn get_blob(&self, url: &str) -> Option<Blob> {
-        let blobs = self.blobs.lock().unwrap();
+        let blobs = self.blobs.lock().unwrap_or_else(|e| e.into_inner());
         blobs.get(url).cloned()
     }
 
     /// Remove a blob by its URL (revokeObjectURL)
     pub fn revoke_blob(&self, url: &str) {
-        let mut blobs = self.blobs.lock().unwrap();
+        let mut blobs = self.blobs.lock().unwrap_or_else(|e| e.into_inner());
         blobs.remove(url);
     }
 }

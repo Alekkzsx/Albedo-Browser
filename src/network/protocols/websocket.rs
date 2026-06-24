@@ -129,6 +129,7 @@ impl WebSocketClient {
         });
     }
 
+    /// TODO: add docs
     pub fn send_binary(&self, bin: Vec<u8>) {
         let sender = self.command_sender.clone();
         tokio::spawn(async move {
@@ -136,6 +137,7 @@ impl WebSocketClient {
         });
     }
 
+    /// TODO: add docs
     pub fn close(&self) {
         let sender = self.command_sender.clone();
         tokio::spawn(async move {

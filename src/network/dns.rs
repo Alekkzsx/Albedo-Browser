@@ -10,6 +10,7 @@ pub struct DnsPrefetcher {
 }
 
 impl DnsPrefetcher {
+    /// TODO: add docs
     pub fn new() -> Self {
         Self {
             resolved_hosts: Arc::new(Mutex::new(HashSet::new())),
@@ -18,7 +19,7 @@ impl DnsPrefetcher {
 
     /// Prefetch DNS for a given hostname
     pub fn prefetch(&self, hostname: String) {
-        let mut resolved = self.resolved_hosts.lock().unwrap();
+        let mut resolved = self.resolved_hosts.lock().unwrap_or_else(|e| e.into_inner());
         if resolved.contains(&hostname) {
             return;
         }
