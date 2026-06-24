@@ -895,7 +895,7 @@ pub fn parse(source: &str) -> Stylesheet {
                         if let Ok(name) = p.expect_ident() {
                             let name_str = name.to_string();
                             if p.expect_colon().is_ok() {
-                                let mut val = String::new();
+                                let mut value = String::new();
                                 while let Ok(t) = p.next() {
                                     val.push_str(&t.to_css_string());
                                 }
@@ -936,7 +936,7 @@ pub fn parse(source: &str) -> Stylesheet {
                                         if let Ok(name) = inner_p.expect_ident() {
                                             let name_str = name.to_string();
                                             if inner_p.expect_colon().is_ok() {
-                                                let mut val = String::new();
+                                                let mut value = String::new();
                                                 while let Ok(t) = inner_p.next() {
                                                     val.push_str(&t.to_css_string());
                                                 }
@@ -2135,7 +2135,7 @@ impl Stylesheet {
 
                 for match_rule in &matched_rules {
                     for decl in &match_rule.rule.declarations {
-                        let val = decl.value.trim();
+                        let value = decl.value.trim();
                         match decl.name.as_str() {
                             "content" => style.content = parse_content(val),
                             "color" => style.color = parse_color(val),
@@ -2177,7 +2177,7 @@ impl Stylesheet {
 
 // Parsing Helpers
 fn parse_length(val: &str) -> CssLength {
-    let val = val.trim();
+    let value = value.trim();
     if val == "auto" {
         return CssLength::Auto;
     }
@@ -2308,7 +2308,7 @@ fn parse_length(val: &str) -> CssLength {
 }
 
 fn parse_grid_placement(val: &str) -> CssLength {
-    let val = val.trim();
+    let value = value.trim();
     if let Ok(num) = val.parse::<f32>() {
         return CssLength::Number(num);
     }
@@ -2458,7 +2458,7 @@ fn parse_grid_template_areas(val: &str) -> Vec<String> {
 fn parse_content(val: &str) -> CssContent {
     use self::css_values::CssContent;
 
-    let val = val.trim();
+    let value = value.trim();
     match val {
         "none" => CssContent::None,
         "normal" => CssContent::Normal,
@@ -2478,7 +2478,7 @@ fn parse_content(val: &str) -> CssContent {
 }
 
 fn parse_color(val: &str) -> CssColor {
-    let val = val.trim();
+    let value = value.trim();
     match val {
         "transparent" => CssColor::Transparent,
         "currentcolor" => CssColor::CurrentColor,
@@ -2650,7 +2650,7 @@ fn parse_flex_wrap(val: &str) -> CssFlexWrap {
 }
 
 fn parse_border_radius(val: &str) -> f32 {
-    let val = val.trim();
+    let value = value.trim();
     if let Some(n) = val.strip_suffix("px") {
         if let Ok(num) = n.trim().parse::<f32>() {
             return num;
@@ -2763,7 +2763,7 @@ fn parse_pointer_events(val: &str) -> CssPointerEvents {
 
 fn parse_filters(val: &str) -> Vec<CssFilter> {
     let mut filters = Vec::new();
-    let val = val.trim();
+    let value = value.trim();
     if val == "none" || val.is_empty() {
         return filters;
     }
@@ -2980,7 +2980,7 @@ fn parse_animations(val: &str) -> Vec<self::css_values::CssAnimation> {
 
 fn parse_transform(val: &str) -> Vec<TransformFunction> {
     let mut transforms = Vec::new();
-    let val = val.trim();
+    let value = value.trim();
     if val == "none" || val.is_empty() {
         return transforms;
     }
@@ -3086,7 +3086,7 @@ fn parse_transform(val: &str) -> Vec<TransformFunction> {
 
 // MELHORIA: Parse box-shadow
 fn parse_box_shadow(val: &str) -> Vec<BoxShadow> {
-    let val = val.trim();
+    let value = value.trim();
     if val == "none" || val.is_empty() {
         return Vec::new();
     }
@@ -3171,7 +3171,7 @@ fn parse_box_shadow(val: &str) -> Vec<BoxShadow> {
 
 // MELHORIA: Parse text-shadow
 fn parse_text_shadow(val: &str) -> Vec<TextShadow> {
-    let val = val.trim();
+    let value = value.trim();
     if val == "none" || val.is_empty() {
         return Vec::new();
     }
@@ -3231,7 +3231,7 @@ fn parse_text_shadow(val: &str) -> Vec<TextShadow> {
 
 // MELHORIA: Parse background-image (supports gradients)
 fn parse_background_image(val: &str) -> BackgroundImage {
-    let val = val.trim();
+    let value = value.trim();
 
     if val == "none" || val.is_empty() {
         return BackgroundImage::None;
@@ -3529,7 +3529,7 @@ pub fn apply_single_declaration(
 
     if phase_1_only {
         if name == "font-size" {
-            let val = if val_raw.contains("var(") {
+            let value = if val_raw.contains("var(") {
                 resolve_css_variables(val_raw, style)
             } else {
                 val_raw.to_string()
@@ -3563,7 +3563,7 @@ pub fn apply_single_declaration(
     } else {
         val_raw.to_string()
     };
-    let val = val_string.as_str();
+    let value = val_string.as_str();
 
     let _resolve_rel_recursive = |l: CssLength, f: &dyn Fn(CssLength) -> CssLength| -> CssLength {
         match l {
@@ -4001,7 +4001,7 @@ fn matches_feature(feature: &str, vw: f32, vh: f32, color_scheme: &str) -> bool 
 
     if let Some(idx) = f.find(':') {
         let name = f[..idx].trim();
-        let val = f[idx + 1..].trim();
+        let value = f[idx + 1..].trim();
 
         let get_px = |v: &str| -> f32 {
             if let Some(p) = v.strip_suffix("px") {
@@ -4082,7 +4082,7 @@ fn matches_container(condition: &str, vw: f32) -> bool {
     };
     if let Some(idx) = c.find(':') {
         let name = c[..idx].trim();
-        let val = c[idx + 1..].trim();
+        let value = c[idx + 1..].trim();
         let get_px = |v: &str| -> f32 {
             if let Some(p) = v.strip_suffix("px") {
                 p.parse::<f32>().unwrap_or(0.0)
