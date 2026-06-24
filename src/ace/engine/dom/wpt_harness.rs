@@ -316,10 +316,10 @@ mod tests {
     }
 
     fn create_mock_wpt_structure() -> TestTempDir {
-        let tmp = TestTempDir::new();
+        let temp_dir = TestTempDir::new();
         
         // Criar estrutura básica
-        let dom_dir = tmp.path().join("dom");
+        let dom_dir = temp_dir.path().join("dom");
         fs::create_dir_all(&dom_dir).unwrap();
         
         // Criar arquivo de teste fake
@@ -331,16 +331,16 @@ mod tests {
 
     #[test]
     fn test_runner_creation() {
-        let tmp = create_mock_wpt_structure();
-        let runner = WPTRunner::new(tmp.path().to_str().unwrap());
+        let temp_dir = create_mock_wpt_structure();
+        let runner = WPTRunner::new(temp_dir.path().to_str().unwrap());
         
         assert_eq!(runner.enabled_suites.len(), 0);
     }
 
     #[test]
     fn test_enable_suites() {
-        let tmp = create_mock_wpt_structure();
-        let mut runner = WPTRunner::new(tmp.path().to_str().unwrap());
+        let temp_dir = create_mock_wpt_structure();
+        let mut runner = WPTRunner::new(temp_dir.path().to_str().unwrap());
         
         runner.enable_suite("dom");
         runner.enable_suite("shadow-dom");
@@ -352,8 +352,8 @@ mod tests {
 
     #[test]
     fn test_enable_all_dom_suites() {
-        let tmp = create_mock_wpt_structure();
-        let mut runner = WPTRunner::new(tmp.path().to_str().unwrap());
+        let temp_dir = create_mock_wpt_structure();
+        let mut runner = WPTRunner::new(temp_dir.path().to_str().unwrap());
         
         runner.enable_all_dom_suites();
         
@@ -365,8 +365,8 @@ mod tests {
 
     #[test]
     fn test_run_suite_mock() {
-        let tmp = create_mock_wpt_structure();
-        let mut runner = WPTRunner::new(tmp.path().to_str().unwrap());
+        let temp_dir = create_mock_wpt_structure();
+        let mut runner = WPTRunner::new(temp_dir.path().to_str().unwrap());
         
         runner.enable_suite("dom");
         let results = runner.run_all();
@@ -378,8 +378,8 @@ mod tests {
 
     #[test]
     fn test_json_report_generation() {
-        let tmp = create_mock_wpt_structure();
-        let mut runner = WPTRunner::new(tmp.path().to_str().unwrap());
+        let temp_dir = create_mock_wpt_structure();
+        let mut runner = WPTRunner::new(temp_dir.path().to_str().unwrap());
         
         runner.enable_suite("dom");
         runner.run_all();
@@ -391,8 +391,8 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let tmp = create_mock_wpt_structure();
-        let runner = WPTBuilder::new(tmp.path().to_str().unwrap())
+        let temp_dir = create_mock_wpt_structure();
+        let runner = WPTBuilder::new(temp_dir.path().to_str().unwrap())
             .with_suite("dom")
             .with_suite("range")
             .build();
