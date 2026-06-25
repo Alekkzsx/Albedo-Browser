@@ -6,10 +6,10 @@ use super::types::{Url, UrlError};
 
 
 pub(crate) struct ParseContext {
-    url: Url,
-    buffer: String,
-    state: State,
-    chars: Vec<char>,
-    i: usize,
-    base: Option<Url>,
+    pub url: Url,
+    pub buffer: String,
+    pub state: State,
+    pub chars: Vec<char>,
+    pub i: usize,
+    pub base: Option<Url>,
 }

@@ -64,7 +64,8 @@ impl TabManager {
                     }
 
                     if is_favicon && tab.favicon_data.is_none() {
-                        if let Some((width, height, ref rgba_data)) = response.decoded_image {
+                        if let Some((width, height, ref rgba_data_vec)) = response.decoded_image {
+                            let rgba_data: &[u8] = rgba_data_vec;
                             let buffer =
                                 slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                                     rgba_data, width, height,
@@ -81,8 +82,9 @@ impl TabManager {
 
                             did_update = true;
                         }
-                    } else if let Some((width, height, ref rgba_data)) = response.decoded_image {
+                    } else if let Some((width, height, ref rgba_data_vec)) = response.decoded_image {
                         // Imagens genéricas processadas em background
+                        let rgba_data: &[u8] = rgba_data_vec;
                         let buffer =
                             slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
                                 rgba_data, width, height,

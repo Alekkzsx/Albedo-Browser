@@ -62,7 +62,7 @@ impl DiskCache {
                 status_code,
                 original_size,
                 compressed_size,
-                compression.as_str(),
+                compression.to_string(),
                 file_hash,
                 now,
                 now,

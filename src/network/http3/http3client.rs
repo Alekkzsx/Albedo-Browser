@@ -35,9 +35,9 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct Http3Client {
     /// Endpoint QUIC compartilhado (um único socket UDP para todas as conexões)
-    endpoint: Arc<quinn::Endpoint>,
+    pub endpoint: Arc<quinn::Endpoint>,
     /// Pool de conexões QUIC ativas indexadas por "host:port"
-    connection_pool: Arc<Mutex<HashMap<String, quinn::Connection>>>,
+    pub connection_pool: Arc<Mutex<HashMap<String, quinn::Connection>>>,
 }
 
 impl Default for Http3Client {

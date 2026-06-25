@@ -10,5 +10,5 @@ use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct TabManager {
-    collection: Rc<RefCell<TabCollection>>,
+    pub collection: Rc<RefCell<TabCollection>>,
 }

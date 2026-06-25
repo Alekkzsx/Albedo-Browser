@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Disk cache manager for HTTP resources
 pub struct DiskCache {
-    content_dir: PathBuf,
-    conn: std::sync::Arc<std::sync::Mutex<Connection>>,
-    max_size_bytes: u64, // 500 MB default
+    pub content_dir: PathBuf,
+    pub conn: std::sync::Arc<std::sync::Mutex<Connection>>,
+    pub max_size_bytes: u64, // 500 MB default
 }
