@@ -238,4 +238,6 @@
                     first_word_in_line = false;
                     let _ = first_word_in_line;
                 }
+            }
+        }
 }

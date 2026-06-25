@@ -125,6 +125,7 @@ impl ResourceManager {
 
             tokio::spawn(async move {
                 include!("resource_data.rs");
+            });
             return;
         }
 
@@ -135,6 +136,7 @@ impl ResourceManager {
 
             tokio::spawn(async move {
                 include!("resource_blob.rs");
+            });
             return;
         }
 
@@ -150,5 +152,6 @@ impl ResourceManager {
 
         tokio::spawn(async move {
             include!("resource_http.rs");
+        });
     }
 }

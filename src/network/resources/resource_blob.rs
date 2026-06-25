@@ -1,3 +1,4 @@
+{
                 // Access global blob store
                 if let Some(blob) = crate::network::blob::GLOBAL_BLOB_STORE.get_blob(&url_clone) {
                     let response = ResourceResponse {
@@ -35,4 +36,4 @@
                     };
                     Self::send_response(&tx, response);
                 }
-            });
+}

@@ -9,17 +9,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-pub mod arena;
-pub mod live_nodelist;
-pub mod range;
-pub mod selection;
-pub mod shadow;
-pub mod custom_elements;
-pub mod a11y;
-pub mod virtual_dom;
-pub mod string_intern;
-pub mod wpt_harness;
-pub mod benchmarks;
+
 
 pub use arena::{DomArena, ArenaNode};
 pub use live_nodelist::{LiveNodeList, HTMLCollection, NodeList, ChildrenCollection, NodeQuery, TagNameQuery, ClassNameQuery, IdQuery};

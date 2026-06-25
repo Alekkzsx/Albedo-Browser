@@ -6,12 +6,6 @@ use crate::ace::runtime::core::runtime::JsRuntime;
 use rquickjs::{Class, Ctx, Function, Result, Value};
 use std::sync::{Arc, Mutex};
 
-pub mod collections;
-pub mod events;
-pub mod fragment;
-pub mod query;
-
-
 
 /// TODO: add docs
 pub fn register(

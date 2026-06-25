@@ -151,22 +151,11 @@ pub fn paint_layout_tree(
         }
 
         // 3. Draw Text Node
-            include!("paint_text.rs");
-            }
-        }
+        include!("paint_text.rs");
 
         // 4. Draw Form Controls (Specialized)
         if prim.element_type == crate::ace::engine::types::ElementRenderType::Input {
-            match prim.input_type {
-                    include!("paint_form_color.rs");
-                }
-                    include!("paint_form_range.rs");
-                }
-                crate::ace::engine::types::FormInputType::Date
-                    include!("paint_form_date.rs");
-                }
-                _ => {}
-            }
+            include!("paint_form_controls.rs");
         }
     }
 }

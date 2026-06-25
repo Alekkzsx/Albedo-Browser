@@ -79,7 +79,7 @@ impl GpuCompositor {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("WGSL Core Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders.wgsl").into()),
         });
 
         let render_pipeline_layout =

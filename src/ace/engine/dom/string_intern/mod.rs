@@ -16,4 +16,4 @@ pub mod stringinterner; pub use stringinterner::*;
 pub mod internstats; pub use internstats::*;
 #[macro_use]
 pub mod intern; pub use intern::*;
-pub mod ref; pub use ref::*;
+pub mod r#ref; pub use r#ref::*;

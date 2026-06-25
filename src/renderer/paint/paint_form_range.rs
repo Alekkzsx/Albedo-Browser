@@ -1,4 +1,3 @@
-{
                 crate::ace::engine::types::FormInputType::Range => {
                     // Modern Slider: Gradient track and circular thumb
                     let track_h = 6.0;
@@ -104,4 +103,4 @@
                             None,
                         );
                     }
-}
+                }

@@ -199,7 +199,6 @@ impl AceEngine {
                             crate::ace::engine::style::css_values::CssPosition::Fixed
                         );
 
-                    let prim = DisplayItem {
                     let prim = include!("visual_display_item.rs");
                     include!("visual_outline.rs");
                     include!("visual_backdrop.rs");

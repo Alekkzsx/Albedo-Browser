@@ -1,4 +1,3 @@
-{
                 crate::ace::engine::types::FormInputType::Color => {
                     // Premium Color Button: Rounded and with a "chip" look
                     if let Ok(color) = crate::utils::color::parse_hex_color(&prim.input_value) {
@@ -57,4 +56,4 @@
                             }
                         }
                     }
-}
+                }

@@ -109,15 +109,4 @@ pub(crate) fn match_rules_for_element<'a>(
         matched_rules.sort_by(|a, b| a.priority.cmp(&b.priority));
     }
 
-    // Calculate style with inheritance
-    pub fn calculate_style(
-        &self,
-        dom: &AceDOM,
-        node_id: usize,
-        parent_style: Option<&ComputedStyle>,
-        root_style: Option<&ComputedStyle>,
-        hovered_element: Option<usize>,
-        focused_element: Option<usize>,
-        active_element: Option<usize>,
-        _animation_manager: Option<&self::animation::AnimationManager>,
 }

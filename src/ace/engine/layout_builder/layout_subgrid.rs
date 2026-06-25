@@ -1,3 +1,4 @@
+{
             // If this is a subgrid, we use the parent's context but with offsets
             let parent_ctx = parent_grid_ctx.expect("Albedo Engine: internal invariant violated");
             let mut ctx = parent_ctx.clone();
@@ -38,3 +39,4 @@
             }
 
             grid_ctx = Some(ctx);
+}
