@@ -1,3 +1,4 @@
+DisplayItem {
                         pos_x,
                         pos_y,
                         width: w,

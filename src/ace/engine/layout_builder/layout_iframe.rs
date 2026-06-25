@@ -22,8 +22,9 @@
                             if let Some(ref dom_arc) = sub_eng.dom {
                                 let mut sub_dom = dom_arc.lock().unwrap_or_else(|e| e.into_inner());
                                 sub_dom.iframe_node_idx = Some(node_idx);
-                            }
-                        }
+                }
+            }
+        }
                         subframes.insert(node_idx, sub_engine);
                         needs_init = true;
 

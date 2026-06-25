@@ -1,3 +1,4 @@
+{
             // 2. Verificar cache primeiro
             let mut cached_response = None;
             let mut etag_for_validation = None;
@@ -217,4 +218,4 @@
                     }
                 }
             }
-        });
+}

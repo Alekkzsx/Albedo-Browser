@@ -7,6 +7,82 @@ use crate::utils::time::unix_timestamp_secs_f64;
 use taffy::geometry::MinMax;
 use crate::ace::engine::core::AceEngine;
 
+fn scan_table_children(
+    dom: &AceDOM,
+    node_idx: usize,
+    row_count: &mut usize,
+    col_count: &mut usize,
+    cell_list: &mut Vec<(usize, usize, usize)>,
+    col_max_widths: &mut std::collections::HashMap<usize, f32>,
+    font_size_cache: f32,
+) {
+    if let Some(node) = dom.get_node(node_idx) {
+        for &child_idx in &node.children {
+            if let Some(child_node) = dom.get_node(child_idx) {
+                if let crate::ace::engine::dom::AceNodeType::Element(el) =
+                    &child_node.node_type
+                {
+                    let tag = el.tag.as_str();
+                    if tag == "tr" {
+                        let mut current_cols = 0;
+                        for &cell_idx in &child_node.children {
+                            if let Some(cell_node) = dom.get_node(cell_idx) {
+                                if let crate::ace::engine::dom::AceNodeType::Element(
+                                    cell_el,
+                                ) = &cell_node.node_type
+                                {
+                                    if cell_el.tag == "td" || cell_el.tag == "th" {
+                                        cell_list.push((
+                                            *row_count,
+                                            current_cols,
+                                            cell_idx,
+                                        ));
+
+                                        let mut text_len = 0.0;
+                                        for &inner_idx in &cell_node.children {
+                                            if let Some(inner_node) =
+                                                dom.get_node(inner_idx)
+                                            {
+                                                if let crate::ace::engine::dom::AceNodeType::Text(text_str) = &inner_node.node_type {
+                                                     text_len += text_str.len() as f32 * (font_size_cache * 0.55);
+                                                }
+                                            }
+                                        }
+                                        text_len += 20.0;
+
+                                        let max_w = col_max_widths
+                                            .entry(current_cols)
+                                            .or_insert(0.0);
+                                        if text_len > *max_w {
+                                            *max_w = text_len;
+                                        }
+
+                                        current_cols += 1;
+                                    }
+                                }
+                            }
+                        }
+                        if current_cols > *col_count {
+                            *col_count = current_cols;
+                        }
+                        *row_count += 1;
+                    } else if tag == "thead" || tag == "tbody" || tag == "tfoot" {
+                        scan_table_children(
+                            dom,
+                            child_idx,
+                            row_count,
+                            col_count,
+                            cell_list,
+                            col_max_widths,
+                            font_size_cache,
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 
 impl AceEngine {
@@ -144,11 +220,14 @@ impl AceEngine {
         } else if (is_subgrid_cols || is_subgrid_rows) && parent_grid_ctx.is_some() {
             include!("layout_subgrid.rs");
         } else if let crate::ace::engine::dom::AceNodeType::Element(el) = &node_type {
-            include!("layout_iframe.rs");
+            if el.tag == "iframe" {
+                include!("layout_iframe.rs");
             } else if el.tag == "svg" {
-            include!("layout_svg.rs");
+                include!("layout_svg.rs");
+            }
         } else if let crate::ace::engine::dom::AceNodeType::Text(text) = &node_type {
             include!("layout_text.rs");
+        }
 
         let mut children = Vec::new();
 

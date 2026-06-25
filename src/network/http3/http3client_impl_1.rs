@@ -1,4 +1,3 @@
-use super::*;
 //! HTTP/3 QUIC Client — Implementação Real via quinn + h3
 //!
 //! Este módulo fornece suporte HTTP/3 real via protocolo QUIC para o Albedo Browser.
@@ -9,6 +8,7 @@ use super::*;
 //!   - Recuperação de perda de pacotes por stream individual
 //!   - Controle de congestionamento per-stream
 
+use super::*;
 use bytes::Buf;
 use std::collections::HashMap;
 use std::error::Error;

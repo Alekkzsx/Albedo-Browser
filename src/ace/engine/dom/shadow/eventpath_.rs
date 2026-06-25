@@ -1,4 +1,3 @@
-use super::*;
 //! Shadow DOM Implementation - W3C Shadow DOM v1 Spec
 //! 
 //! Este módulo implementa:
@@ -8,6 +7,7 @@ use super::*;
 //! - Pseudo-elemento ::slotted()
 //! - Host integration
 
+use super::*;
 use std::collections::{HashMap, HashSet};
 use crate::ace::engine::dom::{AceDOM, AceNode, AceNodeType, NodeDirtyFlags};
 

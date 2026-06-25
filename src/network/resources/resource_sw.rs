@@ -1,3 +1,4 @@
+{
         // 0. Service Worker Interception
         // Convert URL to string for safety
         let url_str = url.clone();
@@ -54,3 +55,4 @@
                 }
             }
         }
+}

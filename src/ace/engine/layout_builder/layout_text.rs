@@ -1,3 +1,4 @@
+{
             let transformed_text =
                 crate::ace::engine::layout::inline::apply_text_transform(text.as_ref(), &style.text_transform);
             // Text nodes need an intrinsic size estimate to be visible
@@ -53,4 +54,4 @@
 
             node_map.insert(taffy_node, node_idx);
             return vec![taffy_node];
-        }
+}

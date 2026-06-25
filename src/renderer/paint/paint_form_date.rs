@@ -1,4 +1,3 @@
-{
                 | crate::ace::engine::types::FormInputType::Time => {
                     // Date/Time with Icon and polished text
                     let is_date = prim.input_type == crate::ace::engine::types::FormInputType::Date;
@@ -126,4 +125,4 @@
                             }
                         }
                     }
-}
+                }

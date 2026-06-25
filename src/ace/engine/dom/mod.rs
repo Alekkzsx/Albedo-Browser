@@ -23,3 +23,15 @@ pub mod acedom_impl_7; pub use acedom_impl_7::*;
 pub mod acedom_impl_8; pub use acedom_impl_8::*;
 pub mod acedom_impl_9; pub use acedom_impl_9::*;
 pub mod make_element_dom; pub use make_element_dom::*;
+
+pub mod arena;
+pub mod live_nodelist;
+pub mod range;
+pub mod selection;
+pub mod shadow;
+pub mod custom_elements;
+pub mod a11y;
+pub mod virtual_dom;
+pub mod string_intern;
+pub mod wpt_harness;
+pub mod benchmarks;

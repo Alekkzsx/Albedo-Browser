@@ -21,6 +21,17 @@ use crate::ace::engine::style::css_values::TransformFunction;
 
 
 impl Stylesheet {
+    // Calculate style with inheritance
+    pub fn calculate_style(
+        &self,
+        dom: &AceDOM,
+        node_id: usize,
+        parent_style: Option<&ComputedStyle>,
+        root_style: Option<&ComputedStyle>,
+        hovered_element: Option<usize>,
+        focused_element: Option<usize>,
+        active_element: Option<usize>,
+        _animation_manager: Option<&crate::ace::engine::style::animation::AnimationManager>,
         _current_time: f64,
         vw: f32,
         vh: f32,

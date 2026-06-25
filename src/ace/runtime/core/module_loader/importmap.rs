@@ -1,4 +1,3 @@
-use super::*;
 //! ES Module Loader & Resolver para o Albedo Browser
 //!
 //! Implementa as traits `rquickjs::loader::Resolver` e `rquickjs::loader::Loader`
@@ -13,6 +12,7 @@ use super::*;
 //! - `ModuleRegistry`: Cache compartilhado que armazena (url → código_fonte) para
 //!   evitar re-downloads e re-avaliações.
 
+use super::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

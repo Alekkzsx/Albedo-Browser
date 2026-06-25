@@ -137,3 +137,4 @@ impl SubtleCrypto {
     include!("crypto_encrypt.rs");
     include!("crypto_decrypt.rs");
     include!("crypto_derive_bits.rs");
+}

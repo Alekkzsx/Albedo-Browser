@@ -1,4 +1,4 @@
-            } else if el.tag == "svg" {
+{
                 // SVGs are treated as leaf nodes in layout, but we need to extract their dimensions
                 let mut svg_width = style.width.clone();
                 let mut svg_height = style.height.clone();
@@ -26,4 +26,4 @@
                 let taffy_node = taffy.new_leaf(taffy_style).expect("Albedo Engine: internal invariant violated");
                 node_map.insert(taffy_node, node_idx);
                 return vec![taffy_node];
-            }
+}

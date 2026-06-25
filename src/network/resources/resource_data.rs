@@ -1,3 +1,4 @@
+{
                 if let Some(comma_pos) = url_clone.find(',') {
                     let metadata = &url_clone[5..comma_pos];
                     let data_part = &url_clone[comma_pos + 1..];
@@ -39,4 +40,4 @@
 
                     Self::send_response(&tx, response);
                 }
-            });
+}

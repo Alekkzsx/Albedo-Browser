@@ -1,4 +1,3 @@
-use super::*;
 //! Accessibility Tree (ARIA 1.2) Implementation - W3C WAI-ARIA Spec
 //! 
 //! Este módulo implementa:
@@ -8,6 +7,7 @@ use super::*;
 //! - Relations (aria-controls, aria-owns, etc.)
 //! - Tree traversal para screen readers
 
+use super::*;
 use std::collections::HashMap;
 use crate::ace::engine::dom::{AceDOM, AceNodeType};
 
