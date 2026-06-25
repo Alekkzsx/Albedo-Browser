@@ -6,8 +6,7 @@ use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstrain
 use selectors::matching::{ElementSelectorFlags, MatchingContext, MatchingMode};
 use selectors::OpaqueElement;
 use std::collections::HashMap;
-pub mod css_values;
-use self::css_values::{
+use crate::ace::engine::style::css_values::{
     BackgroundImage, BoxShadow, ComputedStyle, CssAlignContent, CssAlignItems, CssBlendMode,
     CssBoxSizing, CssClear, CssColor, CssContent, CssCursor, CssDisplay, CssFlexDirection,
     CssFlexWrap, CssFloat, CssFontWeight, CssJustifyContent, CssLength, CssObjectFit,
@@ -17,7 +16,7 @@ use self::css_values::{
 use crate::ace::engine::style::css_values::CssFilter;
 use crate::ace::engine::style::css_values::TransformFunction;
 
-pub mod animation;
+
 
 
 pub struct Stylesheet {
