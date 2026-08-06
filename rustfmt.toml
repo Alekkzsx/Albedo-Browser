@@ -1,0 +1,8 @@
+max_width = 120
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Auto"
+use_field_init_shorthand = true
+duplicate_requires = true
+combine_control_imports = true
+edition = "2021"

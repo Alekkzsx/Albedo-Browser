@@ -1,0 +1,8 @@
+# CODEOWNERS - Albedo Browser Enterprise Governance
+# Define os responsáveis por módulo para revisão automática
+
+*                   @Alekkzsx
+/src/engine/        @Alekkzsx
+/src/network/       @Alekkzsx
+/src/ui/            @Alekkzsx
+/.github/           @Alekkzsx

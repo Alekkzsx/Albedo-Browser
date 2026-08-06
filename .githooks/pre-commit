@@ -1,0 +1,47 @@
+#!/bin/sh
+# Albedo Browser Enterprise Pre-Commit Hook
+# Impede commits que violem o padrão de código, formatação ou arquitetura
+
+echo "🔍 Running pre-commit quality checks..."
+
+# 1. Verificação de Formatação
+if command -v cargo >/dev/null 2>&1; then
+    echo "🎨 Checking code formatting (rustfmt)..."
+    cargo fmt --all -- --check
+    if [ $? -ne 0 ]; then
+        echo "❌ ERRO: O código não está formatado de acordo com o padrão do projeto!"
+        echo "👉 Execute 'cargo fmt' antes de realizar o commit."
+        exit 1
+    fi
+
+    # 2. Verificação de Linter (Clippy)
+    echo "🧹 Running linter checks (clippy)..."
+    cargo clippy --all-targets -- -D warnings
+    if [ $? -ne 0 ]; then
+        echo "❌ ERRO: O Clippy encontrou avisos ou erros!"
+        echo "👉 Corrija os lints indicados acima antes de realizar o commit."
+        exit 1
+    fi
+fi
+
+# 3. Verificação de Arquitetura (Tamanho do main.rs)
+if [ -f "src/main.rs" ]; then
+    LINES=$(wc -l < src/main.rs | tr -d ' ')
+    if [ "$LINES" -gt 150 ]; then
+        echo "❌ ERRO: src/main.rs tem $LINES linhas (máximo permitido: 150)!"
+        echo "👉 Mova a lógica para os módulos correspondentes (engine, network, ui)."
+        exit 1
+    fi
+fi
+
+# 4. Bloqueio de Arquivos Fragmentados (_impl_X.rs)
+BAD_FILES=$(find src/ -name "*_impl_*.rs" 2>/dev/null)
+if [ -n "$BAD_FILES" ]; then
+    echo "❌ ERRO: Arquivos fragmentados no formato '_impl_X.rs' foram detectados:"
+    echo "$BAD_FILES"
+    echo "👉 Unifique o código em seus respetivos módulos organizados."
+    exit 1
+fi
+
+echo "✅ Pre-commit checks passed successfully!"
+exit 0

@@ -1,0 +1,53 @@
+name: 🔍 Automated Code Reviewer & Architecture Linter
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  code-review:
+    name: 🤖 Automated Code Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust & Components
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check main.rs Size Limits
+        run: |
+          if [ -f "src/main.rs" ]; then
+            LINES=$(wc -l < src/main.rs)
+            echo "Line count in src/main.rs: $LINES"
+            if [ "$LINES" -gt 150 ]; then
+              echo "::error file=src/main.rs::src/main.rs possui $LINES linhas! Mova a lógica para os módulos apropriados (engine, network, ui) para manter o arquivo limpo."
+              exit 1
+            fi
+          fi
+
+      - name: Check for Fragmented Implementations
+        run: |
+          BAD_FILES=$(find src/ -name "*_impl_*.rs" 2>/dev/null || true)
+          if [ -n "$BAD_FILES" ]; then
+            echo "::error::Arquivos fragmentados de implementação detectados:"
+            echo "$BAD_FILES"
+            echo "Unifique esses arquivos em seus módulos correspondentes!"
+            exit 1
+          fi
+
+      - name: Run Clippy Linter with Annotations
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Report Architecture Status
+        if: success()
+        run: echo "✅ Revisão automatizada de código concluída com sucesso! Estrutura e padrões aprovados."
