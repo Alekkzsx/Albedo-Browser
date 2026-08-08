@@ -1,0 +1,25 @@
+# Lefthook Enterprise Git Hooks Configuration - Albedo Browser
+pre-commit:
+  parallel: true
+  commands:
+    rustfmt:
+      glob: "*.rs"
+      run: cargo fmt --all -- --check
+    clippy:
+      glob: "*.rs"
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    cargo-check:
+      glob: "*.rs"
+      run: cargo check --all-targets --all-features
+
+commit-msg:
+  commands:
+    conventional-commits:
+      run: |
+        MSG=$(cat {1})
+        REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?: .+"
+        if ! echo "$MSG" | grep -qE "$REGEX"; then
+          echo "❌ ERRO: Mensagem de commit fora do padrão Conventional Commits!"
+          echo "👉 Exemplo válido: 'feat(engine): implementar parser inicial de seletores CSS'"
+          exit 1
+        fi
