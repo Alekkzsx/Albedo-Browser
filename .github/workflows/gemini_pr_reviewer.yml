@@ -2,6 +2,7 @@ name: 🤖 Gemini Enterprise AI Code Reviewer
 
 on:
   pull_request:
+    branches: [ "main", "develop" ]
     types: [opened, synchronize, reopened, edited]
 
 permissions:
@@ -20,14 +21,20 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch Target Branch
-        run: git fetch origin ${{ github.base_ref }}
+        run: |
+          TARGET="${{ github.base_ref }}"
+          if [ -z "$TARGET" ]; then TARGET="main"; fi
+          git fetch origin $TARGET
 
       - name: Gather PR Context (Diff & Commits)
         id: pr_context
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+          TARGET="${{ github.base_ref }}"
+          if [ -z "$TARGET" ]; then TARGET="main"; fi
+          
+          git diff origin/$TARGET...HEAD > pr_diff.txt
           DIFF_SIZE=$(wc -l < pr_diff.txt | awk '{print $1}')
-          git log origin/${{ github.base_ref }}..HEAD --pretty=format:"- %s" > pr_commits.txt
+          git log origin/$TARGET..HEAD --pretty=format:"- %s" > pr_commits.txt
           
           if [ "$DIFF_SIZE" -eq 0 ]; then
             echo "EMPTY_DIFF=true" >> $GITHUB_ENV
