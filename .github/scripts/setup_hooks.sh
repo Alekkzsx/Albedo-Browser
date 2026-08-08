@@ -6,7 +6,7 @@ set -e
 echo "⚙️ Configurando Git Hooks para o Albedo Browser..."
 
 # Garante permissão de execução nos hooks nativos
-chmod +x .githooks/* 2>/dev/null || true
+chmod +x .github/.githooks/* 2>/dev/null || true
 
 # Caso o lefthook esteja instalado, usa o lefthook
 if command -v lefthook >/dev/null 2>&1; then
