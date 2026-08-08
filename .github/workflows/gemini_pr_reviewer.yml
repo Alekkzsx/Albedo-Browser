@@ -2,7 +2,7 @@ name: 🤖 Gemini Enterprise AI Code Reviewer
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -22,12 +22,13 @@ jobs:
       - name: Fetch Target Branch
         run: git fetch origin ${{ github.base_ref }}
 
-      - name: Calculate PR Diff
-        id: get_diff
+      - name: Gather PR Context (Diff & Commits)
+        id: pr_context
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
-          DIFF_SIZE=$(wc -l < pr_diff.txt)
-          echo "Diff total lines: $DIFF_SIZE"
+          DIFF_SIZE=$(wc -l < pr_diff.txt | awk '{print $1}')
+          git log origin/${{ github.base_ref }}..HEAD --pretty=format:"- %s" > pr_commits.txt
+          
           if [ "$DIFF_SIZE" -eq 0 ]; then
             echo "EMPTY_DIFF=true" >> $GITHUB_ENV
           else
@@ -38,7 +39,7 @@ jobs:
         if: env.EMPTY_DIFF == 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           node -e '
           const fs = require("fs");
@@ -51,24 +52,40 @@ jobs:
           }
 
           let diffContent = fs.readFileSync("pr_diff.txt", "utf8");
-          if (diffContent.length > 40000) {
-            diffContent = diffContent.substring(0, 40000) + "\n\n...[Diff truncado por limite de tamanho]...";
+          if (diffContent.length > 35000) {
+            diffContent = diffContent.substring(0, 35000) + "\n\n...[Diff truncado]...";
           }
+          
+          const commitsContent = fs.readFileSync("pr_commits.txt", "utf8");
+          const prTitle = process.env.PR_TITLE || "Sem título";
 
-          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust rival do Chromium/Firefox).
-Analise com rigor enterprise a seguinte Pull Request.
+          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser.
 
-Sua revisão DEVE cobrir:
-1. 🏛️ **Arquitetura & Organização**: Respeito à divisão modular (engine, network, ui, utils). Impedir lógica pesada ou monolítica em main.rs e rejeitar arquivos fragmentados (*_impl_*.rs).
-2. 🛡️ **Segurança & Rust Safety**: Erros potenciais com .unwrap()/.expect(), concorrência em Tokio, data races, uso indevido de unsafe code.
-3. ⚡ **Performance & Zero-Cost Abstractions**: Evitar clones/alocações desnecessárias no caminho crítico do motor.
-4. 🧪 **Testes & Documentação**: Código novo deve ter cobertura de teste unitário e docstrings claras.
+Sua revisão DEVE cobrir obrigatoriamente:
+1. 🏷️ **Qualidade dos Commits e PR Title**: (TÍTULO: "${prTitle}"). Valide o padrão Conventional Commits.
+2. 🐞 **Detecção de Erros e Falhas Lógicas**: Busque bugs, syntax errors e falhas de concorrência.
+3. 🏛️ **Arquitetura & Organização**.
+4. 🛡️ **Segurança & Rust Safety**: .unwrap() banido em produção.
+5. ⚡ **Performance**.
 
-Forneça uma resposta estruturada em Markdown:
-- **Resumo Executivo & Veredito**: (APROVADO / REQUER AJUSTES / BLOQUEADO)
-- **Tabela de Pontuação por Critério** (Arquitetura, Segurança, Performance, Testes)
-- **Pontos Positivos**
-- **Pontos de Melhoria & Sugestões de Código** (Use alertas GitHub > [!IMPORTANT] ou > [!WARNING])`;
+REGRA DE VEREDITO E BLOQUEIO:
+No final de sua resposta, você DEVE obrigatoriamente incluir uma linha exata com o veredito:
+"VEREDITO: APROVADO" ou "VEREDITO: REJEITADO".
+Se você encontrar QUAISQUER bugs, violações de segurança, falhas arquiteturais ou uso de unwrap em produção, você DEVE retornar "VEREDITO: REJEITADO". 
+
+REGRA DO BOTÃO DE CORREÇÃO (Suggested Changes):
+Sempre que encontrar um erro no código, forneça a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub.
+Isso permitirá que o desenvolvedor clique no botão "Commit suggestion" no PR.
+Exemplo:
+\`\`\`suggestion
+código corrigido perfeitamente aqui
+\`\`\`
+
+Estruture a resposta de forma analítica e agressiva na qualidade:
+- **Resumo Executivo**
+- **Análise de Commits**
+- **Bugs & Sugestões de Correção** (Use blocos \`\`\`suggestion para as correções práticas)
+- **VEREDITO: [APROVADO/REJEITADO]**`;
 
           const payload = JSON.stringify({
             contents: [
@@ -76,13 +93,13 @@ Forneça uma resposta estruturada em Markdown:
                 role: "user",
                 parts: [
                   { text: systemPrompt },
-                  { text: "Diff da Pull Request:\n\n```diff\n" + diffContent + "\n```" }
+                  { text: "TÍTULO DA PR:\n" + prTitle + "\n\nCOMMITS NESTA PR:\n" + commitsContent + "\n\nDIFF DA PULL REQUEST:\n\n```diff\n" + diffContent + "\n```" }
                 ]
               }
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 2500
+              maxOutputTokens: 3500
             }
           });
 
@@ -112,6 +129,14 @@ Forneça uma resposta estruturada em Markdown:
                 }
 
                 fs.writeFileSync("review_comment.md", "## 🤖 Enterprise Gemini AI Review\n\n" + reviewText);
+                
+                // Determina o status para travar o merge se houver rejeição
+                if (reviewText.includes("VEREDITO: REJEITADO")) {
+                  fs.writeFileSync("review_status.txt", "fail");
+                } else {
+                  fs.writeFileSync("review_status.txt", "pass");
+                }
+                
                 console.log("Revisão enterprise gerada com sucesso!");
               });
             }
@@ -141,3 +166,15 @@ Forneça uma resposta estruturada em Markdown:
               issue_number: context.issue.number,
               body: commentBody
             });
+
+      - name: Enforce Merge Blocking on Rejection
+        if: env.EMPTY_DIFF == 'false'
+        run: |
+          if [ -f review_status.txt ]; then
+            STATUS=$(cat review_status.txt)
+            if [ "$STATUS" == "fail" ]; then
+              echo "❌ O revisor Gemini encontrou erros, violações de arquitetura ou falhas de segurança!"
+              echo "❌ O Veredito foi REJEITADO. A Action está falhando para bloquear o Merge na branch Main."
+              exit 1
+            fi
+          fi
