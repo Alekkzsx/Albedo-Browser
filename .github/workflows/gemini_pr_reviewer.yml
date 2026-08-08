@@ -70,29 +70,30 @@ jobs:
           const systemPrompt = `Você é um Engenheiro de Software Sênior, Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust).
 
           Sua revisão DEVE cobrir obrigatoriamente:
-          1. 🏷️ **Qualidade dos Commits e PR Title**: (TÍTULO: "${prTitle}"). Valide o padrão Conventional Commits.
-          2. 🐞 **Detecção de Erros e Falhas Lógicas**: Busque bugs, syntax errors e falhas de concorrência.
-          3. 🏛️ **Arquitetura & Organização**: Respeito à divisão modular (engine, network, ui, utils).
-          4. 🛡️ **Segurança & Rust Safety**: .unwrap() banido em produção.
-          5. ⚡ **Performance**: Abstrações de custo zero.
+          1. 🏷️ Qualidade dos Commits e PR Title.
+          2. 🐞 Detecção de Erros e Falhas Lógicas.
+          3. 🏛️ Arquitetura & Organização.
+          4. 🛡️ Segurança & Rust Safety.
+          5. ⚡ Performance.
 
-          REGRA DE VEREDITO E BLOQUEIO:
-          No final de sua resposta, você DEVE incluir uma linha exata:
-          "VEREDITO: APROVADO" ou "VEREDITO: REJEITADO".
-          Se encontrar qualquer erro, violação ou uso de unwrap em prod, retorne "VEREDITO: REJEITADO".
+          Você deve responder ESTRITAMENTE em formato JSON, com a exata seguinte estrutura:
+          {
+            "resumo": "Texto em markdown com o Resumo Executivo e a Análise da PR/Commits",
+            "veredito": "APROVADO ou REJEITADO",
+            "comentarios_inline": [
+              {
+                "path": "caminho/do/arquivo/modificado",
+                "line": 42,
+                "suggestion": "código corrigido exato para substituir a linha"
+              }
+            ]
+          }
 
-          REGRA DO BOTÃO DE CORREÇÃO (Suggested Changes):
-          Sempre que encontrar um erro no código, uma falha lógica, ou sugerir uma melhoria que possa ser aplicada diretamente em uma linha, VOCÊ DEVE OBRIGATORIAMENTE fornecer a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub:
-          \`\`\`suggestion
-          código corrigido aqui
-          \`\`\`
-          Se não houver blocos de suggestion onde houver código a ser alterado, sua revisão será considerada incompleta.
-
-          Estruture a resposta:
-          - **Resumo Executivo**
-          - **Análise de Commits**
-          - **Bugs & Sugestões de Correção** (Use blocos \`\`\`suggestion)
-          - **VEREDITO: [APROVADO/REJEITADO]**`;
+          Regras:
+          - O Veredito deve ser "REJEITADO" se houver erros lógicos, violação de arquitetura ou uso de unwrap() em prod.
+          - O campo "line" de "comentarios_inline" DEVE ser o número exato da linha no arquivo NOVO, baseado nos cabeçalhos @@ -... +... @@ do DIFF.
+          - O campo "suggestion" deve conter APENAS o código (sem usar crases markdown).
+          - Se não houver sugestões, envie uma lista vazia para "comentarios_inline".`;
 
           const payload = JSON.stringify({
             contents: [
@@ -106,7 +107,8 @@ jobs:
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 18192
+              maxOutputTokens: 18192,
+              responseMimeType: "application/json"
             }
           });
 
@@ -169,13 +171,7 @@ jobs:
               process.exit(1);
             }
 
-            fs.writeFileSync("review_comment.md", "## 🤖 Enterprise Gemini AI Review\n\n" + reviewText);
-
-            if (reviewText.includes("VEREDITO: REJEITADO")) {
-              fs.writeFileSync("review_status.txt", "fail");
-            } else {
-              fs.writeFileSync("review_status.txt", "pass");
-            }
+            fs.writeFileSync("review_data.json", reviewText);
           }
 
           main();
@@ -188,27 +184,52 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            if (fs.existsSync('review_comment.md')) {
-              const commentBody = fs.readFileSync('review_comment.md', 'utf8');
-              
+            if (fs.existsSync('review_data.json')) {
               if (context.eventName === 'pull_request') {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  body: commentBody
-                });
-              } else {
-                console.log("Not a PR, skipping comment creation. Comment body was:\n", commentBody);
+                try {
+                  const data = JSON.parse(fs.readFileSync('review_data.json', 'utf8'));
+                  
+                  const comments = (data.comentarios_inline || []).map(c => ({
+                    path: c.path,
+                    line: parseInt(c.line),
+                    body: "```suggestion\n" + c.suggestion + "\n```"
+                  }));
+                  
+                  try {
+                    await github.rest.pulls.createReview({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: context.issue.number,
+                      event: data.veredito === "REJEITADO" ? "REQUEST_CHANGES" : "COMMENT",
+                      body: "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo,
+                      comments: comments.length > 0 ? comments : undefined
+                    });
+                  } catch (reviewError) {
+                    console.warn("⚠️ API pulls.createReview falhou (provavelmente linhas fora do diff). Usando fallback para issues.createComment.");
+                    
+                    let fallbackBody = "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo + "\n\n### Sugestões de Código:\n";
+                    for (const c of (data.comentarios_inline || [])) {
+                      fallbackBody += `**Arquivo:** \`${c.path}\` (Linha ${c.line})\n\`\`\`suggestion\n${c.suggestion}\n\`\`\`\n\n`;
+                    }
+                    
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.issue.number,
+                      body: fallbackBody
+                    });
+                  }
+                } catch (e) {
+                  console.error("❌ Falha ao processar o JSON do Gemini:", e);
+                }
               }
             }
 
       - name: Enforce Merge Blocking on Rejection
         if: env.EMPTY_DIFF == 'false'
         run: |
-          if [ -f review_status.txt ]; then
-            STATUS=$(cat review_status.txt)
-            if [ "$STATUS" == "fail" ]; then
+          if [ -f review_data.json ]; then
+            if grep -q '"veredito": "REJEITADO"' review_data.json; then
               echo "❌ O revisor Gemini encontrou erros, violações de arquitetura ou falhas de segurança!"
               echo "❌ O Veredito foi REJEITADO. A Action está falhando para bloquear o Merge na branch Main."
               exit 1
