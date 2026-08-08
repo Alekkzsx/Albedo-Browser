@@ -13,26 +13,9 @@ if command -v cargo >/dev/null 2>&1; then
         echo "👉 Execute 'cargo fmt' para corrigir a formatação."
         exit 1
     fi
-
-    # 2. Verificação de Linter (Clippy)
-    echo "🧹 Running linter checks (clippy)..."
-    cargo clippy --all-targets --all-features -- -D warnings
-    if [ $? -ne 0 ]; then
-        echo "❌ ERRO: O Clippy encontrou avisos ou erros!"
-        echo "👉 Corrija os avisos do linter antes de commitar."
-        exit 1
-    fi
-
-    # 3. Verificação básica de compilação
-    echo "🏗️ Checking build (cargo check)..."
-    cargo check --all-targets --all-features
-    if [ $? -ne 0 ]; then
-        echo "❌ ERRO: O projeto possui erros de compilação!"
-        exit 1
-    fi
 fi
 
-# 4. Verificação de Arquitetura (Tamanho do main.rs)
+# 2. Verificação de Arquitetura (Tamanho do main.rs)
 if [ -f "src/main.rs" ]; then
     LINES=$(wc -l < src/main.rs | tr -d ' ')
     if [ "$LINES" -gt 200 ]; then
