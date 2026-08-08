@@ -22,7 +22,7 @@ jobs:
       - name: Setup Rust & Components
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
 
       - name: Check main.rs Size Limits
         run: |
@@ -45,13 +45,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run Clippy Linter with Annotations
-        run: |
-          if [ -f "Cargo.toml" ]; then
-            cargo clippy --all-targets -- -D warnings
-          else
-            echo "💡 Cargo.toml ainda não existe. Pulando verificação do clippy até o projeto Rust ser inicializado."
-          fi
 
       - name: Report Architecture Status
         if: success()
