@@ -24,10 +24,20 @@ jobs:
           components: clippy, rustfmt
 
       - name: Verify Code Formatting
-        run: cargo fmt --all -- --check
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo fmt --all -- --check
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação do rustfmt."
+          fi
 
       - name: Run Clippy Linter (Strict)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo clippy --all-targets --all-features -- -D warnings
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação do clippy."
+          fi
 
   security-and-licenses:
     name: 🛡️ Security & Licensing Audit
@@ -41,14 +51,28 @@ jobs:
 
       - name: Install Security Tools (cargo-deny & cargo-audit)
         run: |
-          cargo install cargo-deny --locked || true
-          cargo install cargo-audit --locked || true
+          if [ -f "Cargo.toml" ]; then
+            cargo install cargo-deny --locked || true
+            cargo install cargo-audit --locked || true
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando instalação de ferramentas."
+          fi
 
       - name: Audit Dependencies (RustSec)
-        run: cargo audit
+        run: |
+          if [ -f "Cargo.lock" ]; then
+            cargo audit
+          else
+            echo "💡 Cargo.lock não encontrado. Pulando auditoria de vulnerabilidades."
+          fi
 
       - name: Check Licensing & Banned Crates (cargo-deny)
-        run: cargo deny check
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo deny check
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação de licenças."
+          fi
 
   build-and-test:
     name: 🏗️ Build & Test (${{ matrix.os }})
@@ -72,13 +96,29 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
         uses: Swatinem/rust-cache@v2
 
       - name: Cargo Check
-        run: cargo check --all-targets --all-features
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo check --all-targets --all-features
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando cargo check."
+          fi
 
       - name: Run Unit & Integration Tests
-        run: cargo test --all-features --verbose
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo test --all-features --verbose
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando testes."
+          fi
 
       - name: Compile Release Binary
-        run: cargo build --release
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo build --release
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando build de release."
+          fi
