@@ -1,8 +1,9 @@
-max_width = 120
+# Formatação de Código Rust Enterprise - Albedo Browser
+max_width = 100
 hard_tabs = false
 tab_spaces = 4
-newline_style = "Auto"
+newline_style = "Unix"
 use_field_init_shorthand = true
-duplicate_requires = true
+use_try_shorthand = true
 combine_control_imports = true
 edition = "2021"

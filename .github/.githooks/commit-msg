@@ -1,0 +1,25 @@
+#!/bin/sh
+# Albedo Browser Enterprise Native Commit-Msg Hook Backup
+# Valida a mensagem do commit contra o padrão Conventional Commits
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Ignora commits automáticos de merge / revert padrão do git
+if echo "$COMMIT_MSG" | grep -qE "^Merge branch" || echo "$COMMIT_MSG" | grep -qE "^Revert "; then
+    exit 0
+fi
+
+REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?: .+"
+
+if ! echo "$COMMIT_MSG" | grep -qE "$REGEX"; then
+    echo "❌ ERRO: A mensagem do commit não segue o padrão Conventional Commits!"
+    echo "------------------------------------------------------------------"
+    echo "Formato esperado: <tipo>(<escopo opcional>): <descrição curta>"
+    echo "Tipos aceitos: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+    echo "Exemplo: feat(engine): adicionar algoritmo de cálculo de especificidade CSS"
+    echo "------------------------------------------------------------------"
+    exit 1
+fi
+
+exit 0

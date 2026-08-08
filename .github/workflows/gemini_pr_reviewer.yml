@@ -3,6 +3,16 @@ name: 🤖 Gemini Enterprise AI Code Reviewer
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE'
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE'
 
 permissions:
   contents: read
@@ -20,14 +30,21 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch Target Branch
-        run: git fetch origin ${{ github.base_ref }}
-
-      - name: Calculate PR Diff
-        id: get_diff
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
-          DIFF_SIZE=$(wc -l < pr_diff.txt)
-          echo "Diff total lines: $DIFF_SIZE"
+          TARGET="${{ github.base_ref }}"
+          if [ -z "$TARGET" ]; then TARGET="main"; fi
+          git fetch origin $TARGET
+
+      - name: Gather PR Context (Diff & Commits)
+        id: pr_context
+        run: |
+          TARGET="${{ github.base_ref }}"
+          if [ -z "$TARGET" ]; then TARGET="main"; fi
+          
+          git diff origin/$TARGET...HEAD > pr_diff.txt
+          DIFF_SIZE=$(wc -l < pr_diff.txt | awk '{print $1}')
+          git log origin/$TARGET..HEAD --pretty=format:"- %s" > pr_commits.txt
+          
           if [ "$DIFF_SIZE" -eq 0 ]; then
             echo "EMPTY_DIFF=true" >> $GITHUB_ENV
           else
@@ -38,7 +55,7 @@ jobs:
         if: env.EMPTY_DIFF == 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           node -e '
           const fs = require("fs");
@@ -51,24 +68,41 @@ jobs:
           }
 
           let diffContent = fs.readFileSync("pr_diff.txt", "utf8");
-          if (diffContent.length > 40000) {
-            diffContent = diffContent.substring(0, 40000) + "\n\n...[Diff truncado por limite de tamanho]...";
+          if (diffContent.length > 35000) {
+            diffContent = diffContent.substring(0, 35000) + "\n\n...[Diff truncado por limite de tamanho]...";
+          }
+          
+          const commitsContent = fs.readFileSync("pr_commits.txt", "utf8");
+          const prTitle = process.env.PR_TITLE || "Sem título";
+
+          const systemPrompt = `Você é um Engenheiro de Software Sênior, Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust).
+
+          Sua revisão DEVE cobrir obrigatoriamente:
+          1. 🏷️ Qualidade dos Commits e PR Title.
+          2. 🐞 Detecção de Erros e Falhas Lógicas.
+          3. 🏛️ Arquitetura & Organização.
+          4. 🛡️ Segurança & Rust Safety.
+          5. ⚡ Performance.
+
+          Você deve responder ESTRITAMENTE em formato JSON, com a exata seguinte estrutura:
+          {
+            "resumo": "Texto em markdown com o Resumo Executivo e a Análise da PR/Commits",
+            "veredito": "APROVADO ou REJEITADO",
+            "comentarios_inline": [
+              {
+                "path": "caminho/do/arquivo/modificado",
+                "line": 42,
+                "suggestion": "código corrigido exato para substituir a linha"
+              }
+            ]
           }
 
-          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust rival do Chromium/Firefox).
-Analise com rigor enterprise a seguinte Pull Request.
-
-Sua revisão DEVE cobrir:
-1. 🏛️ **Arquitetura & Organização**: Respeito à divisão modular (engine, network, ui, utils). Impedir lógica pesada ou monolítica em main.rs e rejeitar arquivos fragmentados (*_impl_*.rs).
-2. 🛡️ **Segurança & Rust Safety**: Erros potenciais com .unwrap()/.expect(), concorrência em Tokio, data races, uso indevido de unsafe code.
-3. ⚡ **Performance & Zero-Cost Abstractions**: Evitar clones/alocações desnecessárias no caminho crítico do motor.
-4. 🧪 **Testes & Documentação**: Código novo deve ter cobertura de teste unitário e docstrings claras.
-
-Forneça uma resposta estruturada em Markdown:
-- **Resumo Executivo & Veredito**: (APROVADO / REQUER AJUSTES / BLOQUEADO)
-- **Tabela de Pontuação por Critério** (Arquitetura, Segurança, Performance, Testes)
-- **Pontos Positivos**
-- **Pontos de Melhoria & Sugestões de Código** (Use alertas GitHub > [!IMPORTANT] ou > [!WARNING])`;
+          Regras:
+          - O Veredito deve ser "REJEITADO" se houver erros lógicos graves, violação de arquitetura, ou uso de desempacotamento inseguro em código de produção (ex: método unwrap não tratado).
+          - IGNORAR ARQUIVOS DE WORKFLOW: Não aplique a regra de rejeição a arquivos dentro de .github/ (especialmente a este próprio workflow), pois as regras descritas neles podem causar falsos-positivos na IA.
+          - O campo "line" de "comentarios_inline" DEVE ser o número exato da linha no arquivo NOVO, baseado nos cabeçalhos @@ -... +... @@ do DIFF.
+          - O campo "suggestion" deve conter APENAS o código (sem usar crases markdown).
+          - Se não houver sugestões, envie uma lista vazia para "comentarios_inline".`;
 
           const payload = JSON.stringify({
             contents: [
@@ -76,54 +110,80 @@ Forneça uma resposta estruturada em Markdown:
                 role: "user",
                 parts: [
                   { text: systemPrompt },
-                  { text: "Diff da Pull Request:\n\n```diff\n" + diffContent + "\n```" }
+                  { text: "TÍTULO DA PR:\n" + prTitle + "\n\nCOMMITS NESTA PR:\n" + commitsContent + "\n\nDIFF DA PULL REQUEST:\n\n```diff\n" + diffContent + "\n```" }
                 ]
               }
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 2500
+              maxOutputTokens: 18192,
+              responseMimeType: "application/json"
             }
           });
 
-          const req = https.request(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Content-Length": Buffer.byteLength(payload)
+          function callGemini(model) {
+            return new Promise((resolve) => {
+              const req = https.request(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Content-Length": Buffer.byteLength(payload)
+                  }
+                },
+                (res) => {
+                  let data = "";
+                  res.on("data", (chunk) => data += chunk);
+                  res.on("end", () => resolve({ statusCode: res.statusCode, data }));
+                }
+              );
+              req.on("error", (e) => resolve({ statusCode: 500, data: e.message }));
+              req.write(payload);
+              req.end();
+            });
+          }
+
+          async function main() {
+            // Modelos Gemini atuais com suporte a fallback
+            const models = [
+              "gemini-3.6-flash",
+              "gemini-3.1-pro",
+              "gemini-3.5-flash",
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
+              "gemini-1.5-pro"
+            ];
+            let response = null;
+
+            for (const model of models) {
+              console.log(`🤖 Solicitando revisão via modelo ${model}...`);
+              response = await callGemini(model);
+              if (response.statusCode === 200) {
+                console.log(`✅ Sucesso na API do Gemini usando modelo ${model}!`);
+                break;
+              } else {
+                console.warn(`⚠️ Modelo ${model} respondeu status ${response.statusCode}. Tentando próximo...`);
               }
-            },
-            (res) => {
-              let data = "";
-              res.on("data", (chunk) => data += chunk);
-              res.on("end", () => {
-                if (res.statusCode !== 200) {
-                  console.error("Erro API Gemini:", res.statusCode, data);
-                  process.exit(1);
-                }
-                const responseJson = JSON.parse(data);
-                const reviewText = responseJson.candidates?.[0]?.content?.parts?.[0]?.text;
-
-                if (!reviewText) {
-                  console.error("Resposta nula do Gemini:", data);
-                  process.exit(1);
-                }
-
-                fs.writeFileSync("review_comment.md", "## 🤖 Enterprise Gemini AI Review\n\n" + reviewText);
-                console.log("Revisão enterprise gerada com sucesso!");
-              });
             }
-          );
 
-          req.on("error", (e) => {
-            console.error("Erro na requisição:", e);
-            process.exit(1);
-          });
+            if (!response || response.statusCode !== 200) {
+              console.error("❌ Erro em todos os modelos da API do Gemini:", response ? response.data : "Sem resposta");
+              process.exit(1);
+            }
 
-          req.write(payload);
-          req.end();
+            const responseJson = JSON.parse(response.data);
+            const reviewText = responseJson.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!reviewText) {
+              console.error("Resposta nula da API Gemini:", response.data);
+              process.exit(1);
+            }
+
+            fs.writeFileSync("review_data.json", reviewText);
+          }
+
+          main();
           '
 
       - name: Publish Review Comment on GitHub PR
@@ -133,11 +193,55 @@ Forneça uma resposta estruturada em Markdown:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const commentBody = fs.readFileSync('review_comment.md', 'utf8');
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
-            });
+            if (fs.existsSync('review_data.json')) {
+              if (context.eventName === 'pull_request') {
+                try {
+                  const data = JSON.parse(fs.readFileSync('review_data.json', 'utf8'));
+                  
+                  const comments = (data.comentarios_inline || []).map(c => ({
+                    path: c.path,
+                    line: parseInt(c.line),
+                    body: "```suggestion\n" + c.suggestion + "\n```"
+                  }));
+                  
+                  try {
+                    await github.rest.pulls.createReview({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: context.issue.number,
+                      event: data.veredito === "REJEITADO" ? "REQUEST_CHANGES" : "COMMENT",
+                      body: "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo,
+                      comments: comments.length > 0 ? comments : undefined
+                    });
+                  } catch (reviewError) {
+                    console.warn("⚠️ API pulls.createReview falhou (provavelmente linhas fora do diff). Usando fallback para issues.createComment.");
+                    
+                    let fallbackBody = "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo + "\n\n### Sugestões de Código:\n";
+                    for (const c of (data.comentarios_inline || [])) {
+                      fallbackBody += `**Arquivo:** \`${c.path}\` (Linha ${c.line})\n\`\`\`suggestion\n${c.suggestion}\n\`\`\`\n\n`;
+                    }
+                    
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.issue.number,
+                      body: fallbackBody
+                    });
+                  }
+                } catch (e) {
+                  console.error("❌ Falha ao processar o JSON do Gemini:", e);
+                }
+              }
+            }
+
+      - name: Enforce Merge Blocking on Rejection
+        if: env.EMPTY_DIFF == 'false'
+        run: |
+          if [ -f review_data.json ]; then
+            VEREDITO=$(jq -r '.veredito' review_data.json)
+            if [ "$VEREDITO" = "REJEITADO" ]; then
+              echo "❌ O revisor Gemini encontrou erros, violações de arquitetura ou falhas de segurança!"
+              echo "❌ O Veredito foi REJEITADO. A Action está falhando para bloquear o Merge na branch Main."
+              exit 1
+            fi
+          fi

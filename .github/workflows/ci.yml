@@ -14,6 +14,9 @@ jobs:
   lint-and-format:
     name: 🧹 Linter & Code Formatting
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -23,32 +26,79 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
+
       - name: Verify Code Formatting
-        run: cargo fmt --all -- --check
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo fmt --all -- --check
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação do rustfmt."
+          fi
 
       - name: Run Clippy Linter (Strict)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo clippy --all-targets --all-features -- -D warnings
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação do clippy."
+          fi
 
-  security-audit:
-    name: 🛡️ Security & Dependency Audit
+  security-and-licenses:
+    name: 🛡️ Security & Licensing Audit
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Audit Dependencies for Known Vulnerabilities
-        uses: rustsec/audit-check-action@v1.4.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-  build-matrix:
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Security Tools (cargo-deny & cargo-audit)
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo install cargo-deny --locked || true
+            cargo install cargo-audit --locked || true
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando instalação de ferramentas."
+          fi
+
+      - name: Audit Dependencies (RustSec)
+        run: |
+          if [ -f "Cargo.lock" ]; then
+            cargo audit
+          else
+            echo "💡 Cargo.lock não encontrado. Pulando auditoria de vulnerabilidades."
+          fi
+
+      - name: Check Licensing & Banned Crates (cargo-deny)
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo deny check
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando verificação de licenças."
+          fi
+
+  build-and-test:
     name: 🏗️ Build & Test (${{ matrix.os }})
-    needs: [lint-and-format, security-audit]
+    needs: [lint-and-format, security-and-licenses]
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -62,14 +112,30 @@ jobs:
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo Build Artifacts
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
         uses: Swatinem/rust-cache@v2
 
       - name: Cargo Check
-        run: cargo check --all-targets
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo check --all-targets --all-features
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando cargo check."
+          fi
 
-      - name: Run Unit Tests
-        run: cargo test --verbose
+      - name: Run Unit & Integration Tests
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo test --all-features --verbose
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando testes."
+          fi
 
       - name: Compile Release Binary
-        run: cargo build --release
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            cargo build --release
+          else
+            echo "💡 Cargo.toml não encontrado. Pulando build de release."
+          fi

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Albedo Browser Enterprise Native Pre-Commit Hook Backup
+# Executado caso o desenvolvedor utilize os hooks nativos do Git em vez do Lefthook
+
+echo "🔍 Running pre-commit quality checks..."
+
+if command -v cargo >/dev/null 2>&1; then
+    # 1. Verificação de Formatação
+    echo "🎨 Checking code formatting (rustfmt)..."
+    cargo fmt --all -- --check
+    if [ $? -ne 0 ]; then
+        echo "❌ ERRO: O código não atende ao padrão do rustfmt!"
+        echo "👉 Execute 'cargo fmt' para corrigir a formatação."
+        exit 1
+    fi
+fi
+
+# 2. Verificação de Arquitetura (Tamanho do main.rs)
+if [ -f "src/main.rs" ]; then
+    LINES=$(wc -l < src/main.rs | tr -d ' ')
+    if [ "$LINES" -gt 200 ]; then
+        echo "❌ ERRO: src/main.rs tem $LINES linhas (máximo permitido: 200)!"
+        echo "👉 Mova a lógica para os submódulos correspondentes (engine, network, ui)."
+        exit 1
+    fi
+fi
+
+echo "✅ All pre-commit checks passed successfully!"
+exit 0
