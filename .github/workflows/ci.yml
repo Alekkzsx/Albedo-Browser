@@ -26,6 +26,10 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
+
       - name: Verify Code Formatting
         run: |
           if [ -f "Cargo.toml" ]; then
@@ -54,6 +58,10 @@ jobs:
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Security Tools (cargo-deny & cargo-audit)
         run: |
