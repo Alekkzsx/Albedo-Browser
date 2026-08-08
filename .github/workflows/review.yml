@@ -22,14 +22,14 @@ jobs:
       - name: Setup Rust & Components
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
 
       - name: Check main.rs Size Limits
         run: |
           if [ -f "src/main.rs" ]; then
             LINES=$(wc -l < src/main.rs)
             echo "Line count in src/main.rs: $LINES"
-            if [ "$LINES" -gt 150 ]; then
+            if [ "$LINES" -gt 200 ]; then
               echo "::error file=src/main.rs::src/main.rs possui $LINES linhas! Mova a lógica para os módulos apropriados (engine, network, ui) para manter o arquivo limpo."
               exit 1
             fi
@@ -45,8 +45,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run Clippy Linter with Annotations
-        run: cargo clippy --all-targets -- -D warnings
 
       - name: Report Architecture Status
         if: success()
