@@ -19,7 +19,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -54,7 +54,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -101,7 +101,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Linux Graphic System Dependencies
         if: matrix.os == 'ubuntu-latest'
