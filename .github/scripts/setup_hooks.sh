@@ -15,7 +15,7 @@ if command -v lefthook >/dev/null 2>&1; then
     echo "✅ Hooks ativados via Lefthook!"
 else
     echo "📌 Configurando hooks nativos do Git em .github/.githooks..."
-    git config core.hooksPath .githooks
+    git config core.hooksPath .github/.githooks
     echo "✅ Git Hooks nativos configurados com sucesso!"
     echo "💡 Dica: Instale 'lefthook' ou 'prek' via cargo para ter checagens paralelas ultrarrápidas:"
     echo "   cargo install lefthook"
