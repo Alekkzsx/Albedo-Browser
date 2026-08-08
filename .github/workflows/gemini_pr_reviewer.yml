@@ -53,38 +53,36 @@ jobs:
 
           let diffContent = fs.readFileSync("pr_diff.txt", "utf8");
           if (diffContent.length > 35000) {
-            diffContent = diffContent.substring(0, 35000) + "\n\n...[Diff truncado]...";
+            diffContent = diffContent.substring(0, 35000) + "\n\n...[Diff truncado por limite de tamanho]...";
           }
           
           const commitsContent = fs.readFileSync("pr_commits.txt", "utf8");
           const prTitle = process.env.PR_TITLE || "Sem título";
 
-          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser.
+          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust).
 
 Sua revisão DEVE cobrir obrigatoriamente:
 1. 🏷️ **Qualidade dos Commits e PR Title**: (TÍTULO: "${prTitle}"). Valide o padrão Conventional Commits.
 2. 🐞 **Detecção de Erros e Falhas Lógicas**: Busque bugs, syntax errors e falhas de concorrência.
-3. 🏛️ **Arquitetura & Organização**.
+3. 🏛️ **Arquitetura & Organização**: Respeito à divisão modular (engine, network, ui, utils).
 4. 🛡️ **Segurança & Rust Safety**: .unwrap() banido em produção.
-5. ⚡ **Performance**.
+5. ⚡ **Performance**: Abstrações de custo zero.
 
 REGRA DE VEREDITO E BLOQUEIO:
-No final de sua resposta, você DEVE obrigatoriamente incluir uma linha exata com o veredito:
+No final de sua resposta, você DEVE incluir uma linha exata:
 "VEREDITO: APROVADO" ou "VEREDITO: REJEITADO".
-Se você encontrar QUAISQUER bugs, violações de segurança, falhas arquiteturais ou uso de unwrap em produção, você DEVE retornar "VEREDITO: REJEITADO". 
+Se encontrar qualquer erro, violação ou uso de unwrap em prod, retorne "VEREDITO: REJEITADO".
 
 REGRA DO BOTÃO DE CORREÇÃO (Suggested Changes):
-Sempre que encontrar um erro no código, forneça a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub.
-Isso permitirá que o desenvolvedor clique no botão "Commit suggestion" no PR.
-Exemplo:
+Sempre que encontrar um erro no código, forneça a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub:
 \`\`\`suggestion
-código corrigido perfeitamente aqui
+código corrigido aqui
 \`\`\`
 
-Estruture a resposta de forma analítica e agressiva na qualidade:
+Estruture a resposta:
 - **Resumo Executivo**
 - **Análise de Commits**
-- **Bugs & Sugestões de Correção** (Use blocos \`\`\`suggestion para as correções práticas)
+- **Bugs & Sugestões de Correção** (Use blocos \`\`\`suggestion)
 - **VEREDITO: [APROVADO/REJEITADO]**`;
 
           const payload = JSON.stringify({
@@ -103,52 +101,75 @@ Estruture a resposta de forma analítica e agressiva na qualidade:
             }
           });
 
-          const req = https.request(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Content-Length": Buffer.byteLength(payload)
+          function callGemini(model) {
+            return new Promise((resolve) => {
+              const req = https.request(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Content-Length": Buffer.byteLength(payload)
+                  }
+                },
+                (res) => {
+                  let data = "";
+                  res.on("data", (chunk) => data += chunk);
+                  res.on("end", () => resolve({ statusCode: res.statusCode, data }));
+                }
+              );
+              req.on("error", (e) => resolve({ statusCode: 500, data: e.message }));
+              req.write(payload);
+              req.end();
+            });
+          }
+
+          async function main() {
+            // Modelos Gemini atuais com suporte a fallback
+            const models = [
+              "gemini-3.6-flash",
+              "gemini-3.1-pro",
+              "gemini-3.5-flash",
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
+              "gemini-1.5-pro"
+            ];
+            let response = null;
+
+            for (const model of models) {
+              console.log(`🤖 Solicitando revisão via modelo ${model}...`);
+              response = await callGemini(model);
+              if (response.statusCode === 200) {
+                console.log(`✅ Sucesso na API do Gemini usando modelo ${model}!`);
+                break;
+              } else {
+                console.warn(`⚠️ Modelo ${model} respondeu status ${response.statusCode}. Tentando próximo...`);
               }
-            },
-            (res) => {
-              let data = "";
-              res.on("data", (chunk) => data += chunk);
-              res.on("end", () => {
-                if (res.statusCode !== 200) {
-                  console.error("Erro API Gemini:", res.statusCode, data);
-                  process.exit(1);
-                }
-                const responseJson = JSON.parse(data);
-                const reviewText = responseJson.candidates?.[0]?.content?.parts?.[0]?.text;
-
-                if (!reviewText) {
-                  console.error("Resposta nula do Gemini:", data);
-                  process.exit(1);
-                }
-
-                fs.writeFileSync("review_comment.md", "## 🤖 Enterprise Gemini AI Review\n\n" + reviewText);
-                
-                // Determina o status para travar o merge se houver rejeição
-                if (reviewText.includes("VEREDITO: REJEITADO")) {
-                  fs.writeFileSync("review_status.txt", "fail");
-                } else {
-                  fs.writeFileSync("review_status.txt", "pass");
-                }
-                
-                console.log("Revisão enterprise gerada com sucesso!");
-              });
             }
-          );
 
-          req.on("error", (e) => {
-            console.error("Erro na requisição:", e);
-            process.exit(1);
-          });
+            if (!response || response.statusCode !== 200) {
+              console.error("❌ Erro em todos os modelos da API do Gemini:", response ? response.data : "Sem resposta");
+              process.exit(1);
+            }
 
-          req.write(payload);
-          req.end();
+            const responseJson = JSON.parse(response.data);
+            const reviewText = responseJson.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (!reviewText) {
+              console.error("Resposta nula da API Gemini:", response.data);
+              process.exit(1);
+            }
+
+            fs.writeFileSync("review_comment.md", "## 🤖 Enterprise Gemini AI Review\n\n" + reviewText);
+
+            if (reviewText.includes("VEREDITO: REJEITADO")) {
+              fs.writeFileSync("review_status.txt", "fail");
+            } else {
+              fs.writeFileSync("review_status.txt", "pass");
+            }
+          }
+
+          main();
           '
 
       - name: Publish Review Comment on GitHub PR
