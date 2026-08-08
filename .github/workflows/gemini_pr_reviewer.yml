@@ -2,8 +2,9 @@ name: 🤖 Gemini Enterprise AI Code Reviewer
 
 on:
   pull_request:
-    branches: [ "main", "develop" ]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -186,14 +187,20 @@ Estruture a resposta:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const commentBody = fs.readFileSync('review_comment.md', 'utf8');
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
-            });
+            if (fs.existsSync('review_comment.md')) {
+              const commentBody = fs.readFileSync('review_comment.md', 'utf8');
+              
+              if (context.eventName === 'pull_request') {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
+              } else {
+                console.log("Not a PR, skipping comment creation. Comment body was:\n", commentBody);
+              }
+            }
 
       - name: Enforce Merge Blocking on Rejection
         if: env.EMPTY_DIFF == 'false'
