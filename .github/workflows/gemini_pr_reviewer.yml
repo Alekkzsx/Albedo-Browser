@@ -67,7 +67,7 @@ jobs:
           const commitsContent = fs.readFileSync("pr_commits.txt", "utf8");
           const prTitle = process.env.PR_TITLE || "Sem título";
 
-          const systemPrompt = `Você é o Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust).
+          const systemPrompt = `Você é um Engenheiro de Software Sênior, Revisor de Código Principal e Arquiteto de Sistemas do Albedo Browser (motor de alta performance em Rust).
 
           Sua revisão DEVE cobrir obrigatoriamente:
           1. 🏷️ **Qualidade dos Commits e PR Title**: (TÍTULO: "${prTitle}"). Valide o padrão Conventional Commits.
@@ -82,10 +82,11 @@ jobs:
           Se encontrar qualquer erro, violação ou uso de unwrap em prod, retorne "VEREDITO: REJEITADO".
 
           REGRA DO BOTÃO DE CORREÇÃO (Suggested Changes):
-          Sempre que encontrar um erro no código, forneça a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub:
+          Sempre que encontrar um erro no código, uma falha lógica, ou sugerir uma melhoria que possa ser aplicada diretamente em uma linha, VOCÊ DEVE OBRIGATORIAMENTE fornecer a correção exata utilizando a tag markdown \`\`\`suggestion do GitHub:
           \`\`\`suggestion
           código corrigido aqui
           \`\`\`
+          Se não houver blocos de suggestion onde houver código a ser alterado, sua revisão será considerada incompleta.
 
           Estruture a resposta:
           - **Resumo Executivo**
@@ -105,7 +106,7 @@ jobs:
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 3500
+              maxOutputTokens: 18192
             }
           });
 
