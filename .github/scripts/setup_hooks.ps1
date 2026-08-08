@@ -6,7 +6,7 @@ if (Get-Command lefthook -ErrorAction SilentlyContinue) {
     lefthook install
     Write-Host "✅ Hooks ativados via Lefthook com sucesso!" -ForegroundColor Green
 } else {
-    git config core.hooksPath .githooks
+    git config core.hooksPath .github/.githooks
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Git Hooks nativos configurados com sucesso! Seu 'git commit' passará por verificações automáticas." -ForegroundColor Green
         Write-Host "💡 Dica: Instale o 'lefthook' via cargo para checagens mais rápidas: cargo install lefthook" -ForegroundColor Gray
