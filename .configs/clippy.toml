@@ -1,0 +1,21 @@
+# Configuração do Linter Clippy Enterprise - Albedo Browser
+msrv = "1.80.0"
+too-many-lines-threshold = 100
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 7
+cyclomatic-complexity-threshold = 20
+type-complexity-threshold = 300
+
+doc-valid-idents = [
+    "Albedo",
+    "ACE",
+    "WHATWG",
+    "HTML5",
+    "CSS3",
+    "HTTP",
+    "HTTPS",
+    "QUIC",
+    "Slint",
+    "JavaScript",
+    "WebAssembly"
+]
