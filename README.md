@@ -19,6 +19,8 @@ O resultado? Navegadores que consomem gigabytes de memória RAM apenas para rend
 
 O **Albedo Browser** não é um *wrapper* do Chromium, nem utiliza motores de renderização ou webviews pré-existentes. Não há CEF, Electron, WebView2, Servo ou Wry embutidos sob o capô. **O Albedo Engine é a nossa própria fundação.**
 
+Nosso objetivo não é ser apenas mais um navegador de nicho, mas sim construir um motor de nova geração com capacidade técnica, segurança e performance para **rivalizar diretamente com os monopólios do Chromium e do Firefox**, devolvendo a diversidade tecnológica à web.
+
 Este projeto é um manifesto de engenharia voltado a responder a seguinte pergunta: *Como seria um navegador web se ele fosse projetado hoje, do zero, utilizando as melhores bibliotecas do ecossistema Rust e focando estritamente no processamento assíncrono e em paralelismo massivo?*
 
 ---
