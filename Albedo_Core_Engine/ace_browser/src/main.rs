@@ -1,3 +1,3 @@
 fn main() {
-    println!("Hello, world!");
+    println!("Albedo Browser v0.1.0");
 }
