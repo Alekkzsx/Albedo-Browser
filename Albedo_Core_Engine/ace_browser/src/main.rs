@@ -1,3 +1,4 @@
+// Albedo Core Engine - Browser Process
 fn main() {
-    println!("Albedo Browser v0.1.0");
+    println!("Albedo Browser Iniciado!");
 }
