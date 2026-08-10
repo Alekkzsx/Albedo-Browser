@@ -1,3 +1,4 @@
+/// Adiciona dois inteiros de 64 bits sem sinal utilizando adição saturada para prevenir overflow.
 pub fn add(left: u64, right: u64) -> u64 {
     left.saturating_add(right)
 }
