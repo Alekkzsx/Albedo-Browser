@@ -99,7 +99,7 @@ jobs:
 
           Regras:
           - O Veredito deve ser "REJEITADO" se houver erros lógicos graves, violação de arquitetura, ou uso de desempacotamento inseguro em código de produção (ex: método unwrap não tratado).
-          - IGNORAR ARQUIVOS DE WORKFLOW: Não aplique a regra de rejeição a arquivos dentro de .github/ (especialmente a este próprio workflow), pois as regras descritas neles podem causar falsos-positivos na IA.
+          - IGNORAR ARQUIVOS DE WORKFLOW E CARGO.TOML: Não aplique a regra de rejeição a arquivos dentro de .github/ ou sugerir mudanças no campo `edition` ou `version` dos arquivos Cargo.toml, pois isso causa loops infinitos de sugestões contraditórias.
           - O campo "line" de "comentarios_inline" DEVE ser o número exato da linha no arquivo NOVO, baseado nos cabeçalhos @@ -... +... @@ do DIFF.
           - O campo "suggestion" deve conter APENAS o código (sem usar crases markdown).
           - Se não houver sugestões, envie uma lista vazia para "comentarios_inline".`;
