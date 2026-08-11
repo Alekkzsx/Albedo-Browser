@@ -6,6 +6,7 @@
 // ============================================================================
 
 use ace_core::AceError;
+use std::borrow::Cow;
 
 /// Representa o resultado do parseamento de um `data: URI`.
 #[derive(Debug, PartialEq)]
@@ -25,7 +26,7 @@ fn decode_b64_char(c: u8) -> Result<u8, AceError> {
         b'/' => Ok(63),
         b'=' => Ok(0), // Padding
         _ => Err(AceError::Parse {
-            message: format!("Caractere Base64 inválido: {}", c as char),
+            message: Cow::Owned(format!("Caractere Base64 inválido: {}", c as char)),
         }),
     }
 }
@@ -48,7 +49,7 @@ pub fn decode_base64(input: &str) -> ace_core::AceResult<Vec<u8>> {
 
     if clean_bytes.len() % 4 != 0 {
         return Err(AceError::Parse {
-            message: "Comprimento do Base64 não é múltiplo de 4".to_string(),
+            message: Cow::Borrowed("Comprimento do Base64 não é múltiplo de 4"),
         });
     }
 
@@ -81,10 +82,10 @@ pub fn decode_base64(input: &str) -> ace_core::AceResult<Vec<u8>> {
 }
 
 /// Extrai os metadados e os bytes crus de uma string `data:` (Ex: `data:text/plain;base64,SGVsbG8=`).
-pub fn parse_data_uri(uri: &str) -> ace_core::AceResult<DataUri> {
+pub fn parse_data_uri(uri: &str) -> ace_core::AceResult<DataUri<'_>> {
     if !uri.starts_with("data:") {
         return Err(AceError::Parse {
-            message: "URI não começa com 'data:'".to_string(),
+            message: Cow::Borrowed("URI não começa com 'data:'"),
         });
     }
 
@@ -92,7 +93,7 @@ pub fn parse_data_uri(uri: &str) -> ace_core::AceResult<DataUri> {
     
     // Procura pela vírgula que separa os metadados dos dados
     let comma_idx = rest.find(',').ok_or_else(|| AceError::Parse {
-        message: "URI data: não contém vírgula separadora".to_string(),
+        message: Cow::Borrowed("URI data: não contém vírgula separadora"),
     })?;
 
     let meta = &rest[..comma_idx];
@@ -134,18 +135,18 @@ fn url_decode(input: &str) -> ace_core::AceResult<Vec<u8>> {
         if bytes[i] == b'%' {
             if i + 2 < bytes.len() {
                 let hex_str = std::str::from_utf8(&bytes[i+1..i+3]).map_err(|_| AceError::Parse {
-                    message: "Sequência URL-encoded inválida (Não é UTF-8)".to_string(),
+                    message: Cow::Borrowed("Sequência URL-encoded inválida (Não é UTF-8)"),
                 })?;
                 
                 let byte = u8::from_str_radix(hex_str, 16).map_err(|_| AceError::Parse {
-                    message: "Hexadecimal inválido na URL".to_string(),
+                    message: Cow::Borrowed("Hexadecimal inválido na URL"),
                 })?;
                 
                 output.push(byte);
                 i += 3;
             } else {
                 return Err(AceError::Parse {
-                    message: "Sequência URL-encoded incompleta no final".to_string(),
+                    message: Cow::Borrowed("Sequência URL-encoded incompleta no final"),
                 });
             }
         } else {

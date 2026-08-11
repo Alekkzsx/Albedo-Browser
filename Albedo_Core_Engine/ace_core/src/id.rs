@@ -12,6 +12,7 @@
 //! e segurança contra concorrência massiva de processos, o Albedo define um modelo
 //! rigoroso de NewTypes (`TabId`, `NodeId`, etc.) baseados num gerador atômico seguro.
 
+use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ----------------------------------------------------------------------------
@@ -29,26 +30,34 @@ macro_rules! define_id {
     ) => {
         $(#[$meta])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub struct $name(u64);
+        pub struct $name(NonZeroU64);
 
         impl $name {
             /// Gera um novo ID global e único, acessível de forma concorrente sem locks.
+            /// 
+            /// **Null Pointer Optimization (NPO):**
+            /// Por baixo dos panos usamos `NonZeroU64`, garantindo que `Option<Id>` 
+            /// gaste os mesmos 8 bytes de um ponteiro cru, cortando o uso de RAM pela metade
+            /// em grandes estruturas como o DOM Tree.
             pub fn new() -> Self {
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
-                Self(COUNTER.fetch_add(1, Ordering::Relaxed))
+                // SAFETY: fetch_add começa em 1. Um overflow para 0 precisaria de 
+                // 584 anos operando a 1 bilhão de IDs por segundo (Impossível fisicamente).
+                let val = COUNTER.fetch_add(1, Ordering::Relaxed);
+                Self(unsafe { NonZeroU64::new_unchecked(val) })
             }
 
             /// Cria um ID diretamente a partir de um valor cru primitivo.
             ///
             /// ⚠️ **Uso Restrito:** Deve ser usado primariamente no módulo IPC durante
             /// a deserialização de pacotes binários entre processos do SO.
-            pub fn from_raw(id: u64) -> Self {
-                Self(id)
+            pub fn from_raw(id: u64) -> Option<Self> {
+                NonZeroU64::new(id).map(Self)
             }
 
             /// Recupera o valor primário int para fins de logs ou serialização.
             pub fn raw(&self) -> u64 {
-                self.0
+                self.0.get()
             }
         }
 
