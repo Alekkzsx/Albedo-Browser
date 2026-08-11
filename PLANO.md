@@ -188,9 +188,9 @@ Já entregue. Reforços pendentes (para garantir a aderência):
 - [ ] Implementar `AceError` com pelo menos 15 variantes, com contexto (ex: `Io { source: std::io::Error, path: PathBuf }`).
 - [ ] Implementar IDs newtypes usando `struct Id(u64)` com geração via contador atômico (`AtomicU64`).
 - [ ] Implementar módulo `math` com todos os tipos, com testes extensivos (incluindo propriedades como associatividade, comutatividade).
-- [ ] Implementar macros de logging: usar `std::fmt` para formatação, suporte a cores no terminal (ANSI).
-- [ ] Implementar `ThreadPool` com testes de stress (1000 jobs).
-- [ ] Implementar `EventLoop` com um exemplo simples: agendar uma tarefa, executar, e sair.
+- [x] Implementar macros de logging: usar `std::fmt` para formatação, suporte a cores no terminal (ANSI).
+- [x] Implementar `ThreadPool` com testes de stress (1000 jobs).
+- [x] Implementar `EventLoop` com um exemplo simples: agendar uma tarefa, executar, e sair.
 - [ ] Implementar `ace_ipc` com serialização binária e canais in-process.
 - [ ] Escrever o `xtask setup` para instalar `cargo-fuzz`, `criterion`, `cargo-deny`, configurar hooks de pre-commit (via `pre-commit` ou script).
 - [ ] Documentar cada item público com `///` e exemplos.
