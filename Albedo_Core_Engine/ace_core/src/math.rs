@@ -170,3 +170,92 @@ pub fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * clamp(t, 0.0, 1.0)
 }
+
+// ----------------------------------------------------------------------------
+// 3D & 4D Vectors
+// ----------------------------------------------------------------------------
+
+/// Vetor 3D (Espaço Tridimensional)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vec3<T> {
+    pub x: T,
+    pub y: T,
+    pub z: T,
+}
+
+impl<T> Vec3<T> {
+    pub fn new(x: T, y: T, z: T) -> Self {
+        Self { x, y, z }
+    }
+}
+
+impl<T: Add<Output = T>> Add for Vec3<T> {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        Self::new(self.x + other.x, self.y + other.y, self.z + other.z)
+    }
+}
+
+impl<T: Sub<Output = T>> Sub for Vec3<T> {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self::new(self.x - other.x, self.y - other.y, self.z - other.z)
+    }
+}
+
+/// Vetor Homogêneo 4D (Computação Gráfica / WebGL)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vec4<T> {
+    pub x: T,
+    pub y: T,
+    pub z: T,
+    pub w: T,
+}
+
+impl<T> Vec4<T> {
+    pub fn new(x: T, y: T, z: T, w: T) -> Self {
+        Self { x, y, z, w }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Matrices
+// ----------------------------------------------------------------------------
+
+/// Matriz de Transformação 3x3 (Rotação, Escala, Cisalhamento em 2D)
+/// Organizada em Column-Major format (padrão WebGL).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Matrix3x3<T> {
+    pub data: [T; 9],
+}
+
+impl<T: Default + Copy> Default for Matrix3x3<T> {
+    fn default() -> Self {
+        Self { data: [T::default(); 9] }
+    }
+}
+
+impl<T: Default + Copy> Matrix3x3<T> {
+    pub fn new(data: [T; 9]) -> Self {
+        Self { data }
+    }
+}
+
+/// Matriz de Transformação Homogênea 4x4 (Projeção e Transformação 3D).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Matrix4x4<T> {
+    pub data: [T; 16],
+}
+
+impl<T: Default + Copy> Default for Matrix4x4<T> {
+    fn default() -> Self {
+        Self { data: [T::default(); 16] }
+    }
+}
+
+impl<T: Default + Copy> Matrix4x4<T> {
+    pub fn new(data: [T; 16]) -> Self {
+        Self { data }
+    }
+}
+
