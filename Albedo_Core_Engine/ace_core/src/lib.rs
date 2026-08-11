@@ -23,9 +23,12 @@
 // ----------------------------------------------------------------------------
 
 pub mod error;
+pub mod event_loop;
 pub mod id;
+pub mod io;
 pub mod log;
 pub mod math;
+pub mod thread_pool;
 pub mod time;
 
 // ----------------------------------------------------------------------------
@@ -33,7 +36,10 @@ pub mod time;
 // ----------------------------------------------------------------------------
 
 pub use error::{AceError, AceResult};
+pub use event_loop::*;
 pub use id::*;
+pub use io::*;
 pub use log::*;
 pub use math::*;
+pub use thread_pool::*;
 pub use time::*;
