@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "Albedo_Core_Engine/ace_browser",
+    "Albedo_Core_Engine/ace_core",
+    "Albedo_Core_Engine/ace_data_models",
+    "Albedo_Core_Engine/ace_dom",
+    "Albedo_Core_Engine/ace_ipc",
+    "Albedo_Core_Engine/ace_js",
+    "Albedo_Core_Engine/ace_layout",
+    "Albedo_Core_Engine/ace_media",
+    "Albedo_Core_Engine/ace_net",
+    "Albedo_Core_Engine/ace_render",
+    "Albedo_Core_Engine/ace_storage",
+    "Albedo_Core_Engine/ace_style",
+    "Albedo_Core_Engine/ace_test_driver"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Albedo Browser Engineering Team"]
+publish = false
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
