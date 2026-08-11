@@ -15,7 +15,9 @@
 
 use std::env;
 use std::io::{self, Write};
+use std::sync::mpsc::{self, SyncSender};
 use std::sync::OnceLock;
+use std::thread;
 
 // ----------------------------------------------------------------------------
 // Log Configuration
@@ -72,15 +74,43 @@ pub fn current_log_level() -> LogLevel {
 // Sink de Escrita (Low Level Sink)
 // ----------------------------------------------------------------------------
 
-/// Executor base invisível: serializa a mensagem bloqueando temporariamente o Handle.
+/// Singleton que guarda o transmissor do Logger Assíncrono.
+/// Inicializa a Thread Operária em background na primeira chamada.
+fn get_logger_sender() -> &'static SyncSender<String> {
+    static SENDER: OnceLock<SyncSender<String>> = OnceLock::new();
+    SENDER.get_or_init(|| {
+        // Criamos uma fila MPMC de alta capacidade para evitar backpressure
+        let (tx, rx) = mpsc::sync_channel::<String>(10000);
+        
+        // Spawna a Thead Operária (I/O)
+        thread::Builder::new()
+            .name("ACE_Logger".to_string())
+            .spawn(move || {
+                let stderr = io::stderr();
+                // A trava (lock) ocorre apenas nesta Thread, liberando a Main Thread.
+                let mut handle = stderr.lock();
+                while let Ok(msg) = rx.recv() {
+                    let _ = writeln!(handle, "{}", msg);
+                }
+            })
+            .expect("Falha ao spawnar a Thread de Logs");
+            
+        tx
+    })
+}
+
+/// Executor base lock-free: formata a mensagem na RAM e dispara pelo canal.
 #[doc(hidden)]
 pub fn _log(level: LogLevel, target: &str, args: std::fmt::Arguments) {
     if level >= current_log_level() {
-        let stderr = io::stderr();
-        let mut handle = stderr.lock();
-        // A formatação nativa e raw evita sobrecargas.
-        // O `_` ignora casos como terminal desanexado sem entrar em panic.
-        let _ = writeln!(handle, "[{}] [{}] {}", level.as_str(), target, args);
+        // Formata a string no Heap da Main Thread
+        let msg = format!("[{}] [{}] {}", level.as_str(), target, args);
+        
+        let tx = get_logger_sender();
+        // Dispara de forma Não-Bloqueante (Non-Blocking). Se o terminal for excessivamente lento
+        // e o buffer atingir 10.000, as mensagens seguintes são dropadas até esvaziar,
+        // garantindo que o `EventLoop` jamais engasgue.
+        let _ = tx.try_send(msg);
     }
 }
 

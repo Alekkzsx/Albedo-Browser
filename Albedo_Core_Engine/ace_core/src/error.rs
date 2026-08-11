@@ -6,6 +6,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
+use std::borrow::Cow;
 use std::fmt;
 
 // ----------------------------------------------------------------------------
@@ -23,50 +24,50 @@ pub enum AceError {
     /// Envolve um erro de origem (`std::io::Error`) para cadeia de chamadas (stacktrace).
     Io {
         source: std::io::Error,
-        context: String,
+        context: Cow<'static, str>,
     },
 
     /// Ocorre em caso de anomalias no parser HTML/CSS.
-    Parse { message: String },
+    Parse { message: Cow<'static, str> },
 
     /// Erros relacionados a falhas de conexão, timeout ou protocolos.
-    Network { message: String },
+    Network { message: Cow<'static, str> },
 
     /// Violações de política (ex: CORS, CSP, SOP).
-    Security { message: String },
+    Security { message: Cow<'static, str> },
 
     /// Falhas na resolução do Box Model ou algoritmos de geometria espacial.
-    Layout { message: String },
+    Layout { message: Cow<'static, str> },
 
     /// Problemas na VM, Compilação JIT ou interopabilidade DOM/JS.
-    Js { message: String },
+    Js { message: Cow<'static, str> },
 
     /// Erros durante validação TLS ou algoritmos de criptografia.
-    Crypto { message: String },
+    Crypto { message: Cow<'static, str> },
 
     /// Falhas de persistência local (LocalStorage, IndexedDB interno).
-    Storage { message: String },
+    Storage { message: Cow<'static, str> },
 
     /// Problemas no pipeline gráfico e rasterização na CPU.
-    Render { message: String },
+    Render { message: Cow<'static, str> },
 
     /// Inconsistências na manipulação da árvore de documentos.
-    Dom { message: String },
+    Dom { message: Cow<'static, str> },
 
     /// Problemas com computação em cascata e herança de estilos.
-    Style { message: String },
+    Style { message: Cow<'static, str> },
 
     /// Falhas de decodificação de imagens, vídeo e áudio.
-    Media { message: String },
+    Media { message: Cow<'static, str> },
 
     /// Interrupções na comunicação inter-processo nativa do browser.
-    Ipc { message: String },
+    Ipc { message: Cow<'static, str> },
 
     /// Deadlocks, envenenamento de Mutex, ou panes de Thread Pool.
-    Thread { message: String },
+    Thread { message: Cow<'static, str> },
 
     /// Erro não classificado (uso estrito como último recurso).
-    Unknown { message: String },
+    Unknown { message: Cow<'static, str> },
 }
 
 // ----------------------------------------------------------------------------
