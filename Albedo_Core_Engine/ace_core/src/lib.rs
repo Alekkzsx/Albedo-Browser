@@ -26,6 +26,7 @@ pub mod error;
 pub mod id;
 pub mod log;
 pub mod math;
+pub mod time;
 
 // ----------------------------------------------------------------------------
 // Public Exports (Facade)
@@ -35,3 +36,4 @@ pub use error::{AceError, AceResult};
 pub use id::*;
 pub use log::*;
 pub use math::*;
+pub use time::*;
