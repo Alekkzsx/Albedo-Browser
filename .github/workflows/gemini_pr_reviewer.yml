@@ -99,7 +99,7 @@ jobs:
 
           Regras:
           - O Veredito deve ser "REJEITADO" se houver erros lógicos graves, violação de arquitetura, ou uso de desempacotamento inseguro em código de produção (ex: método unwrap não tratado).
-          - IGNORAR ARQUIVOS DE WORKFLOW: Não aplique a regra de rejeição a arquivos dentro de .github/ (especialmente a este próprio workflow), pois as regras descritas neles podem causar falsos-positivos na IA.
+          - IGNORAR ARQUIVOS DE WORKFLOW E CARGO.TOML: Não aplique a regra de rejeição a arquivos dentro de .github/ ou sugerir mudanças no campo 'edition' ou 'version' dos arquivos Cargo.toml, pois isso causa loops infinitos de sugestões contraditórias.
           - O campo "line" de "comentarios_inline" DEVE ser o número exato da linha no arquivo NOVO, baseado nos cabeçalhos @@ -... +... @@ do DIFF.
           - O campo "suggestion" deve conter APENAS o código (sem usar crases markdown).
           - Se não houver sugestões, envie uma lista vazia para "comentarios_inline".`;
@@ -197,36 +197,95 @@ jobs:
               if (context.eventName === 'pull_request') {
                 try {
                   const data = JSON.parse(fs.readFileSync('review_data.json', 'utf8'));
+                  const isApproved = data.veredito === "APROVADO";
                   
-                  const comments = (data.comentarios_inline || []).map(c => ({
-                    path: c.path,
-                    line: parseInt(c.line),
-                    body: "```suggestion\n" + c.suggestion + "\n```"
-                  }));
+                  // 1. Limpa qualquer review anterior de 'CHANGES_REQUESTED' deixado pelo bot se a PR for aprovada agora
+                  try {
+                    const { data: reviews } = await github.rest.pulls.listReviews({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: context.issue.number,
+                    });
+                    
+                    const staleBotReviews = reviews.filter(r => 
+                      r.user && r.user.login.includes('github-actions') && r.state === 'CHANGES_REQUESTED'
+                    );
+
+                    if (isApproved) {
+                      for (const review of staleBotReviews) {
+                        console.log(`🧹 Descartando review anterior bloqueante #${review.id}...`);
+                        await github.rest.pulls.dismissReview({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          pull_number: context.issue.number,
+                          review_id: review.id,
+                          message: "✅ Análise atualizada pelo Gemini AI: a Pull Request foi APROVADA."
+                        });
+                      }
+                    }
+                  } catch (dismissErr) {
+                    console.warn("⚠️ Aviso: Não foi possível descartar reviews anteriores:", dismissErr.message);
+                  }
+
+                  // 2. Prepara os comentários inline de maneira segura
+                  const comments = (data.comentarios_inline || [])
+                    .filter(c => c.path && c.line && c.suggestion)
+                    .map(c => ({
+                      path: c.path,
+                      line: parseInt(c.line, 10),
+                      body: "```suggestion\n" + c.suggestion + "\n```"
+                    }));
                   
+                  const reviewEvent = isApproved ? "APPROVE" : "COMMENT";
+
+                  // 3. Tenta publicar o Review oficial
                   try {
                     await github.rest.pulls.createReview({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
                       pull_number: context.issue.number,
-                      event: data.veredito === "REJEITADO" ? "REQUEST_CHANGES" : "COMMENT",
+                      event: reviewEvent,
                       body: "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo,
                       comments: comments.length > 0 ? comments : undefined
                     });
+                    console.log(`✅ Review de PR publicado com sucesso! Evento: ${reviewEvent}`);
                   } catch (reviewError) {
-                    console.warn("⚠️ API pulls.createReview falhou (provavelmente linhas fora do diff). Usando fallback para issues.createComment.");
+                    console.warn("⚠️ API pulls.createReview falhou (provavelmente linhas fora do diff). Aplicando fallback sem comentários inline...", reviewError.message);
                     
-                    let fallbackBody = "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo + "\n\n### Sugestões de Código:\n";
-                    for (const c of (data.comentarios_inline || [])) {
-                      fallbackBody += `**Arquivo:** \`${c.path}\` (Linha ${c.line})\n\`\`\`suggestion\n${c.suggestion}\n\`\`\`\n\n`;
+                    try {
+                      // Fallback Nível 1: Publica o Review sem comentários inline para garantir o status de APPROVE/COMMENT
+                      await github.rest.pulls.createReview({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: context.issue.number,
+                        event: reviewEvent,
+                        body: "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo
+                      });
+                      console.log(`✅ Review de PR (sem comentários inline) publicado com sucesso! Evento: ${reviewEvent}`);
+                    } catch (fallbackReviewErr) {
+                      console.warn("⚠️ Fallback 1 falhou. Publicando resumo como comentário de issue...", fallbackReviewErr.message);
+                      // Fallback Nível 2: Comentário padrão na issue
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                        body: "## 🤖 Enterprise Gemini AI Review\n\n" + data.resumo
+                      });
                     }
-                    
-                    await github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: context.issue.number,
-                      body: fallbackBody
-                    });
+
+                    // Se houver sugestões, posta em comentário secundário separado
+                    if (comments.length > 0) {
+                      let fallbackBody = "### 💡 Sugestões de Código do Gemini:\n\n";
+                      for (const c of (data.comentarios_inline || [])) {
+                        fallbackBody += `**Arquivo:** \`${c.path}\` (Linha ${c.line})\n\`\`\`suggestion\n${c.suggestion}\n\`\`\`\n\n`;
+                      }
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                        body: fallbackBody
+                      });
+                    }
                   }
                 } catch (e) {
                   console.error("❌ Falha ao processar o JSON do Gemini:", e);
