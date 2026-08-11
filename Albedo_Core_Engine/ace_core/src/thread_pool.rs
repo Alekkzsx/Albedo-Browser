@@ -1,124 +1,154 @@
 // ============================================================================
 // Albedo Core Engine (ACE)
 // File: thread_pool.rs
-// Description: Gerenciador Nativo de Threads para execução assíncrona de
-//              Macrotasks e Microtasks sem dependências externas (tokio/rayon).
+// Description: Gerenciador Nativo de Threads com "Work-Stealing" Local Queues,
+//              Mechanical Sympathy (Padded 64 bytes) e Zero Lock Contention Global.
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
 use std::collections::VecDeque;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
-/// Representa uma tarefa enfileirada no pool.
-/// O tipo `Box<dyn FnOnce()>` permite que os workers executem qualquer closure de forma genérica.
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
 
-/// O estado imutável de memória que todas as threads compartilham,
-/// sincronizado primitivamente via `Mutex` e acordado via `Condvar`.
-struct ThreadPoolState {
-    jobs: VecDeque<Job>,
-    shutdown: bool,
+/// Fila isolada de um único Worker.
+/// Alinhada em 64 bytes para evitar `False Sharing` no Cache L1/L2 do processador.
+#[repr(align(64))]
+struct PaddedQueue {
+    queue: Mutex<VecDeque<Job>>,
 }
 
 struct SharedState {
-    state: Mutex<ThreadPoolState>,
+    local_queues: Vec<PaddedQueue>,
+    /// Usado apenas para a condição de dormência (Condvar)
+    sleep_mutex: Mutex<()>,
     condvar: Condvar,
+    shutdown: AtomicBool,
+    /// Mantém o rastro do volume total para evitar bloqueios cegos
+    pending_tasks: AtomicUsize,
 }
 
 impl SharedState {
-    fn new() -> Self {
+    fn new(num_workers: usize) -> Self {
+        let mut local_queues = Vec::with_capacity(num_workers);
+        for _ in 0..num_workers {
+            local_queues.push(PaddedQueue {
+                queue: Mutex::new(VecDeque::new()),
+            });
+        }
+        
         Self {
-            state: Mutex::new(ThreadPoolState {
-                jobs: VecDeque::new(),
-                shutdown: false,
-            }),
+            local_queues,
+            sleep_mutex: Mutex::new(()),
             condvar: Condvar::new(),
+            shutdown: AtomicBool::new(false),
+            pending_tasks: AtomicUsize::new(0),
         }
     }
 }
 
-/// Um Worker retém o controle sobre uma Thread real alocada no SO.
 struct Worker {
-    id: usize,
+    _id: usize,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Worker {
-    /// Inicia uma nova thread do SO que ficará girando ad aeternum, consumindo a fila.
     fn new(id: usize, shared_state: Arc<SharedState>) -> Self {
+        let num_workers = shared_state.local_queues.len();
         let builder = thread::Builder::new().name(format!("ace-worker-{}", id));
 
         let thread = builder
             .spawn(move || {
                 loop {
-                    let job = {
-                        // Trava o acesso à fila
-                        let mut state = shared_state.state.lock().unwrap();
+                    let mut job = None;
 
-                        // Enquanto a fila estiver vazia e não for para desligar, a thread dorme (0% CPU).
-                        while state.jobs.is_empty() && !state.shutdown {
-                            state = shared_state.condvar.wait(state).unwrap();
+                    // 1. TENTATIVA LOCAL (LIFO para Localidade de Cache)
+                    if let Ok(mut local) = shared_state.local_queues[id].queue.try_lock() {
+                        job = local.pop_back();
+                    }
+
+                    // 2. TENTATIVA DE ROUBO (WORK-STEALING)
+                    if job.is_none() {
+                        for i in 0..num_workers {
+                            // Varre todos os outros workers
+                            let target_id = (id + i + 1) % num_workers;
+                            if let Ok(mut target) = shared_state.local_queues[target_id].queue.try_lock() {
+                                // Rouba da base (FIFO) para não perturbar a localidade de cache do dono
+                                if let Some(stolen) = target.pop_front() {
+                                    job = Some(stolen);
+                                    break;
+                                }
+                            }
                         }
+                    }
 
-                        // Se recebemos a ordem de shutdown e esvaziamos a fila, o ciclo de vida desta thread chegou ao fim.
-                        if state.shutdown && state.jobs.is_empty() {
+                    // 3. EXECUÇÃO
+                    if let Some(j) = job {
+                        // Subtrai do contador de pendências globais
+                        shared_state.pending_tasks.fetch_sub(1, Ordering::Relaxed);
+                        
+                        let result = catch_unwind(AssertUnwindSafe(j));
+                        if let Err(e) = result {
+                            let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                                *s
+                            } else if let Some(s) = e.downcast_ref::<String>() {
+                                s.as_str()
+                            } else {
+                                "OOM ou Falha Fatal"
+                            };
+                            crate::ace_error!("Worker {} sofreu Panic Interno: {}", id, msg);
+                        }
+                        continue; // Evita entrar no fluxo de sleep se tínhamos trabalho
+                    }
+
+                    // 4. SHUTDOWN CHECK
+                    if shared_state.shutdown.load(Ordering::Acquire) {
+                        let pending = shared_state.pending_tasks.load(Ordering::Acquire);
+                        if pending == 0 {
                             crate::ace_trace!("Worker {} desligando com sucesso.", id);
                             break;
                         }
+                    }
 
-                        // Removemos a tarefa do topo da fila (Garantido de não falhar, pois o while bloqueou a execução)
-                        state.jobs.pop_front().unwrap()
-                    }; // <--- Mutex é automaticamente destravado aqui antes da tarefa rodar!
-
-                    // --------------------------------------------------------
-                    // Proteção de Pânico (Resiliência Crítica)
-                    // --------------------------------------------------------
-                    // Um erro fatal no JS JIT ou Layout não pode derrubar a Thread.
-                    // Nós capturamos a explosão ("unwind") e simplesmente reportamos o log,
-                    // mantendo a Thread perfeitamente saudável para pegar o próximo Job.
-                    let result = catch_unwind(AssertUnwindSafe(job));
-                    if let Err(e) = result {
-                        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-                            *s
-                        } else if let Some(s) = e.downcast_ref::<String>() {
-                            s.as_str()
-                        } else {
-                            "Panic desconhecido ou falha irrecuperável de OOM."
-                        };
-                        crate::ace_error!("Worker {} sofreu Panic Interno: {}", id, msg);
+                    // 5. DORMÊNCIA (Se não achou nada e não está desligando)
+                    let pending = shared_state.pending_tasks.load(Ordering::Acquire);
+                    if pending == 0 {
+                        // Trava o sleep_mutex para aguardar na Condvar
+                        let lock = shared_state.sleep_mutex.lock().unwrap();
+                        // Checagem dupla para prevenir "Missed Wakeup"
+                        if shared_state.pending_tasks.load(Ordering::Acquire) == 0 && !shared_state.shutdown.load(Ordering::Acquire) {
+                            drop(shared_state.condvar.wait(lock).unwrap());
+                        }
+                    } else {
+                        // Se há pending, mas o try_lock falhou, nós cedemos o slice de CPU 
+                        // para as outras threads destrarem os Mutexes mais rápido.
+                        thread::yield_now();
                     }
                 }
             })
             .unwrap();
 
         Self {
-            id,
+            _id: id,
             thread: Some(thread),
         }
     }
 }
 
-/// A Interface Principal do Escalador de Tarefas do Albedo.
 pub struct ThreadPool {
     workers: Vec<Worker>,
     shared_state: Arc<SharedState>,
+    next_worker: AtomicUsize,
 }
 
 impl ThreadPool {
-    /// Inicializa o ThreadPool. Se `size` for 0, o sistema lerá a contagem
-    /// nativa de processadores lógicos do Hardware.
-    pub fn new(mut size: usize) -> Self {
-        if size == 0 {
-            size = std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4); // Fallback conservador para 4 núcleos lógicos se a syscall falhar
-        }
+    pub fn new(size: usize) -> Self {
+        assert!(size > 0, "O ThreadPool exige no mínimo 1 Worker.");
 
-        crate::ace_debug!("Booting ACE ThreadPool com {} workers.", size);
-
-        let shared_state = Arc::new(SharedState::new());
+        let shared_state = Arc::new(SharedState::new(size));
         let mut workers = Vec::with_capacity(size);
 
         for id in 0..size {
@@ -128,62 +158,44 @@ impl ThreadPool {
         Self {
             workers,
             shared_state,
+            next_worker: AtomicUsize::new(0),
         }
     }
 
-    /// Envia uma *closure* pesada para a fila de execução concorrente e acorda um Worker nativo.
     pub fn execute<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
+        
+        // Distribui usando Round-Robin
+        let num_workers = self.workers.len();
+        let target_worker = self.next_worker.fetch_add(1, Ordering::Relaxed) % num_workers;
+        
+        // Incrementa ANTES de colocar na fila (evita a thread roubar antes de registrarmos)
+        self.shared_state.pending_tasks.fetch_add(1, Ordering::Release);
+        
         {
-            let mut state = self.shared_state.state.lock().unwrap();
-            
-            // Segurança: Se o pool já entrou em desligamento, bloqueamos a submissão.
-            if state.shutdown {
-                crate::ace_warn!("Aviso: Tentativa de `execute` após emissão de Shutdown.");
-                return;
-            }
-            
-            state.jobs.push_back(job);
+            let mut local = self.shared_state.local_queues[target_worker].queue.lock().unwrap();
+            local.push_back(job);
         }
         
-        // Acorda exatamente 1 Worker adormecido (se houver) via Sinal Nativo (Condvar).
+        // Acorda os workers dormentes
         self.shared_state.condvar.notify_one();
     }
     
-    /// Drena a fila atual graciosamente. Trava a thread de chamada até que
-    /// o último Worker finalize seu trabalho pendente e saia limpo.
-    pub fn join(self) {
-        // Ao tomar `self` por valor, a estrutura é consumida.
-        // O escopo encerra, e a trait `Drop` cuidará automaticamente da sincronização.
-    }
+    pub fn join(self) {}
 }
 
-/// Implementa a destruição limpa do pool, evitando vazamentos e
-/// garantindo que todas as tarefas enfileiradas executem antes da morte térmica.
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        crate::ace_debug!("Iniciando Shutdown Graceful do ThreadPool...");
-
-        {
-            let mut state = self.shared_state.state.lock().unwrap();
-            state.shutdown = true;
-        }
-
-        // Broad-cast global: "Acordem todos e leiam a bandeira de desligamento!"
+        self.shared_state.shutdown.store(true, Ordering::Release);
         self.shared_state.condvar.notify_all();
 
         for worker in &mut self.workers {
-            crate::ace_trace!("Aguardando encerramento final do Worker {}...", worker.id);
             if let Some(thread) = worker.thread.take() {
-                let _ = thread.join();
+                thread.join().unwrap();
             }
         }
-        
-        crate::ace_debug!("ThreadPool encerrado com sucesso.");
     }
 }
-
-
