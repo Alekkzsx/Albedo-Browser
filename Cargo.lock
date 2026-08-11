@@ -37,6 +37,9 @@ version = "0.1.0"
 [[package]]
 name = "ace_net"
 version = "0.1.0"
+dependencies = [
+ "ace_core",
+]
 
 [[package]]
 name = "ace_render"
