@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Temporização e Relógio Virtual
-//! 
+//!
 //! O motor baseia sua renderização (a cada 16.6ms) e as APIs web (`setTimeout`)
 //! em uma fonte de tempo centralizada. Em cenários de produção, mapeia para o tempo
 //! real do sistema operacional. Em testes de unidade e integração, mapeia para

@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Observabilidade Core
-//! 
+//!
 //! O motor base precisa reportar anomalias e rotinas assíncronas do Event Loop de
 //! forma otimizada. Usar Stdout serializado sem blocos síncronos longos.
 //! Todo módulo tem acesso a macros para output (JSON ou Texto) condicionado
@@ -42,8 +42,8 @@ impl LogLevel {
         match self {
             LogLevel::Trace => "TRACE",
             LogLevel::Debug => "DEBUG",
-            LogLevel::Info  => "INFO ",
-            LogLevel::Warn  => "WARN ",
+            LogLevel::Info => "INFO ",
+            LogLevel::Warn => "WARN ",
             LogLevel::Error => "ERROR",
         }
     }
@@ -56,14 +56,14 @@ pub fn current_log_level() -> LogLevel {
         match env::var("ACE_LOG")
             .unwrap_or_else(|_| "INFO".to_string())
             .to_uppercase()
-            .as_str() 
+            .as_str()
         {
             "TRACE" => LogLevel::Trace,
             "DEBUG" => LogLevel::Debug,
-            "INFO"  => LogLevel::Info,
-            "WARN"  => LogLevel::Warn,
+            "INFO" => LogLevel::Info,
+            "WARN" => LogLevel::Warn,
             "ERROR" => LogLevel::Error,
-            _       => LogLevel::Info,
+            _ => LogLevel::Info,
         }
     })
 }

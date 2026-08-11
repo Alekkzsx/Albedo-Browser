@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Identificadores Primários da Engine
-//! 
+//!
 //! Para garantir total rastreabilidade (sem misturar u64 soltos pela codebase)
 //! e segurança contra concorrência massiva de processos, o Albedo define um modelo
 //! rigoroso de NewTypes (`TabId`, `NodeId`, etc.) baseados num gerador atômico seguro.
@@ -39,7 +39,7 @@ macro_rules! define_id {
             }
 
             /// Cria um ID diretamente a partir de um valor cru primitivo.
-            /// 
+            ///
             /// ⚠️ **Uso Restrito:** Deve ser usado primariamente no módulo IPC durante
             /// a deserialização de pacotes binários entre processos do SO.
             pub fn from_raw(id: u64) -> Self {
@@ -51,7 +51,7 @@ macro_rules! define_id {
                 self.0
             }
         }
-        
+
         impl Default for $name {
             fn default() -> Self {
                 Self::new()
