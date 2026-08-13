@@ -97,10 +97,19 @@ impl Hasher for FxHasher {
 pub type FxBuildHasher = BuildHasherDefault<FxHasher>;
 
 /// `HashMap` otimizado em nível extremo para dados internos da engine.
+/// CUIDADO: Vulnerável a HashDoS. NUNCA use com dados fornecidos pelo usuário.
 pub type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
 
 /// `HashSet` otimizado em nível extremo para dados internos da engine.
+/// CUIDADO: Vulnerável a HashDoS.
 pub type FxHashSet<T> = HashSet<T, FxBuildHasher>;
+
+/// `HashMap` seguro para dados externos (Ex: Objetos JS, DOM Attributes).
+/// Usa SipHash com chaves aleatórias (RandomState), imune a HashDoS em custo de leve perda de performance.
+pub type SecureHashMap<K, V> = HashMap<K, V, std::collections::hash_map::RandomState>;
+
+/// `HashSet` seguro para dados externos.
+pub type SecureHashSet<T> = HashSet<T, std::collections::hash_map::RandomState>;
 
 /// Calcula rapidamente um hash de 32 bits usando a lógica do FxHash.
 /// Útil para estruturas que precisam de hashes 32 bits, como o Bloom Filter.
