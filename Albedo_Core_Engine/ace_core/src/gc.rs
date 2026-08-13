@@ -11,15 +11,17 @@ use std::ptr::NonNull;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GcColor {
+    Black, // Em uso (vivo)
     White, // Não visitado (candidato à coleta)
-    Gray,  // Visitado, filhos não visitados
-    Black, // Visitado, filhos visitados
+    Gray,  // Em processamento pelo Mark & Sweep
+    Purple, // Suspeito de Ciclo (Refcount diminuiu mas não chegou a zero)
 }
 
 /// A Trait fundamental. Qualquer objeto que viva no Heap do GC e aponte para
-/// outros objetos do GC deve implementar `Trace`.
+/// outros objetos do GC deve implementar `Trace` para percorrer o grafo,
+/// seja para Mark & Sweep ou para Cycle Collection.
 pub trait Trace {
-    /// O GC chamará este método para que o objeto marque seus filhos como Gray.
+    /// O GC chamará este método para que o objeto marque seus filhos como Gray (ou para CCGC).
     fn trace(&self);
 }
 
@@ -30,6 +32,7 @@ pub trait Trace {
 /// O cabeçalho escondido antes de cada alocação no GC.
 pub struct GcHeader {
     color: Cell<GcColor>,
+    ref_count: Cell<usize>, // CCGC: Contagem de referências para detecção de ciclos
     next: Option<NonNull<GcHeader>>,
     /// Um ponteiro de função para fazer o downcast do Drop e Trace.
     /// Isso é necessário porque o Heap guarda headers genéricos, mas precisa
@@ -49,6 +52,10 @@ pub struct GcBox<T: Trace + 'static> {
 
 impl<T: Trace + 'static> Clone for GcBox<T> {
     fn clone(&self) -> Self {
+        unsafe {
+            let header = &self.ptr.as_ref().header;
+            header.ref_count.set(header.ref_count.get() + 1);
+        }
         Self {
             ptr: self.ptr,
             _marker: PhantomData,
@@ -56,6 +63,32 @@ impl<T: Trace + 'static> Clone for GcBox<T> {
     }
 }
 impl<T: Trace + 'static> Copy for GcBox<T> {}
+
+thread_local! {
+    /// O Buffer de Suspeitos do Cycle Collector. Nós órfãos (ref_count diminuiu, mas > 0)
+    /// são jogados aqui para serem rastreados por ciclos depois.
+    pub static SUSPECT_BUFFER: std::cell::RefCell<Vec<NonNull<GcHeader>>> = std::cell::RefCell::new(Vec::new());
+}
+
+impl<T: Trace + 'static> Drop for GcBox<T> {
+    fn drop(&mut self) {
+        unsafe {
+            let header = &self.ptr.as_ref().header;
+            let count = header.ref_count.get();
+            if count > 0 {
+                header.ref_count.set(count - 1);
+                // Se count - 1 for > 0, significa que nós o soltamos do JS, mas o DOM ainda aponta pra ele.
+                // É um suspeito clássico de Ciclo.
+                if count - 1 > 0 && header.color.get() != GcColor::Purple {
+                    header.color.set(GcColor::Purple); // Pinta de suspeito
+                    SUSPECT_BUFFER.with(|buf| {
+                        buf.borrow_mut().push(self.ptr.cast());
+                    });
+                }
+            }
+        }
+    }
+}
 
 #[repr(C)]
 struct GcNode<T: Trace + 'static> {
@@ -77,6 +110,7 @@ impl<T: Trace + 'static> std::ops::Deref for GcBox<T> {
 pub struct GcHeap {
     head: Option<NonNull<GcHeader>>,
     bytes_allocated: usize,
+    pub suspects: Vec<NonNull<GcHeader>>, // CCGC: Raízes suspeitas de ciclo
 }
 
 impl GcHeap {
@@ -84,6 +118,7 @@ impl GcHeap {
         Self {
             head: None,
             bytes_allocated: 0,
+            suspects: Vec::new(),
         }
     }
 
@@ -92,6 +127,7 @@ impl GcHeap {
         let node = Box::new(GcNode {
             header: GcHeader {
                 color: Cell::new(GcColor::White),
+                ref_count: Cell::new(1),
                 next: self.head,
                 dropper: drop_node::<T>,
                 tracer: trace_node::<T>,
