@@ -36,20 +36,25 @@ impl<T> SpinLock<T> {
         }
     }
 
-    /// Adquire a posse dos dados girando no processador ativamente.
+    /// Adquire a posse dos dados girando no processador ativamente (com Backoff Adaptativo).
     #[inline]
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
-        // Tenta adquirir o Lock (Troca False por True atomicamente)
+        let mut backoff = 1;
         while self.locked.compare_exchange_weak(
             false, 
             true, 
             Ordering::Acquire, 
             Ordering::Relaxed
         ).is_err() {
-            // Se falhou (alguém tem o Lock), gira otimizadamente
+            // Se falhou (alguém tem o Lock), gira com exponential backoff
             while self.locked.load(Ordering::Relaxed) {
-                // Pausa sutil da CPU para economizar energia e cache L1
-                spin_loop();
+                for _ in 0..backoff {
+                    spin_loop();
+                }
+                // Cap no backoff para não causar latência imensa no destravamento (Max 64 ciclos)
+                if backoff < 64 {
+                    backoff *= 2;
+                }
             }
         }
         
