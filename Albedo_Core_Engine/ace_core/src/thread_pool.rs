@@ -14,15 +14,24 @@ use std::thread::{self, JoinHandle};
 
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaskPriority {
+    UserBlocking = 0,
+    UserVisible = 1,
+    BestEffort = 2,
+}
+
+const NUM_PRIORITIES: usize = 3;
+
 /// Fila isolada de um único Worker (Agora Lock-Free)
 /// Alinhada em 64 bytes para evitar `False Sharing`.
 #[repr(align(64))]
 struct PaddedQueue {
-    queue: WorkerDeque<Job>,
+    queues: [WorkerDeque<Job>; NUM_PRIORITIES],
 }
 
 struct SharedState {
-    global_queue: Mutex<std::collections::VecDeque<Job>>,
+    global_queues: [Mutex<std::collections::VecDeque<Job>>; NUM_PRIORITIES],
     local_queues: Vec<PaddedQueue>,
     /// Usado apenas para a condição de dormência (Condvar)
     sleep_mutex: Mutex<()>,
@@ -39,12 +48,20 @@ impl SharedState {
         let mut local_queues = Vec::with_capacity(num_workers);
         for _ in 0..num_workers {
             local_queues.push(PaddedQueue {
-                queue: WorkerDeque::new(),
+                queues: [
+                    WorkerDeque::new(),
+                    WorkerDeque::new(),
+                    WorkerDeque::new(),
+                ],
             });
         }
 
         Self {
-            global_queue: Mutex::new(std::collections::VecDeque::new()),
+            global_queues: [
+                Mutex::new(std::collections::VecDeque::new()),
+                Mutex::new(std::collections::VecDeque::new()),
+                Mutex::new(std::collections::VecDeque::new()),
+            ],
             local_queues,
             sleep_mutex: Mutex::new(()),
             condvar: Condvar::new(),
@@ -69,29 +86,32 @@ impl Worker {
         let thread = builder
             .spawn(move || {
                 loop {
-                    // 1. TENTATIVA LOCAL (LIFO, sem lock, O(1))
-                    let mut job = shared_state.local_queues[id].queue.pop();
+                    let mut job = None;
 
-                    // 2. TENTATIVA GLOBAL (FIFO)
-                    if job.is_none() {
-                        if let Ok(mut global) = shared_state.global_queue.try_lock() {
+                    // Itera nas prioridades da mais alta (0 - UserBlocking) para a mais baixa (2 - BestEffort)
+                    for p in 0..NUM_PRIORITIES {
+                        // 1. TENTATIVA LOCAL (LIFO, sem lock, O(1))
+                        job = shared_state.local_queues[id].queues[p].pop();
+                        if job.is_some() { break; }
+
+                        // 2. TENTATIVA GLOBAL (FIFO)
+                        if let Ok(mut global) = shared_state.global_queues[p].try_lock() {
                             job = global.pop_front();
+                            if job.is_some() { break; }
                         }
-                    }
 
-                    // 3. TENTATIVA DE ROUBO (WORK-STEALING, FIFO, CAS Lock-Free)
-                    if job.is_none() {
+                        // 3. TENTATIVA DE ROUBO (WORK-STEALING, CAS Lock-Free)
                         for i in 0..num_workers {
                             let target_id = (id + i + 1) % num_workers;
-                            if let Some(stolen) = shared_state.local_queues[target_id].queue.steal()
-                            {
+                            if let Some(stolen) = shared_state.local_queues[target_id].queues[p].steal() {
                                 job = Some(stolen);
-                                break;
+                                break; // Interrompe a busca de roubo
                             }
                         }
+                        if job.is_some() { break; } // Interrompe o loop de prioridade
                     }
 
-                    // 3. EXECUÇÃO
+                    // 4. EXECUÇÃO
                     if let Some(j) = job {
                         let result = catch_unwind(AssertUnwindSafe(j));
                         if let Err(e) = result {
@@ -173,7 +193,17 @@ impl ThreadPool {
         }
     }
 
+    /// Executa uma tarefa com prioridade UserVisible por padrão (retrocompatibilidade)
     pub fn execute<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.execute_with_priority(TaskPriority::UserVisible, f);
+    }
+
+    /// Executa uma tarefa na fila de prioridade especificada.
+    /// UserBlocking domina o escalonador. BestEffort só roda quando o motor está ocioso.
+    pub fn execute_with_priority<F>(&self, priority: TaskPriority, f: F)
     where
         F: FnOnce() + Send + 'static,
     {
@@ -184,11 +214,9 @@ impl ThreadPool {
             .pending_tasks
             .fetch_add(1, Ordering::Release);
 
-        // Insere na fila GLOBAL (MPMC)
-        // O execute pode ser chamado por Múltiplas Threads concorrentemente,
-        // então não podemos usar o Chase-Lev (SPMC) aqui.
+        // Insere na fila GLOBAL da prioridade correta (MPMC)
         self.shared_state
-            .global_queue
+            .global_queues[priority as usize]
             .lock()
             .unwrap()
             .push_back(job);
