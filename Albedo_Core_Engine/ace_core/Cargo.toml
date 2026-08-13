@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+[features]
+default = []
+# Ativa ferramentas pesadas de log, tracing de perfilamento e asserts rigorosos.
+debug-tools = []
+# Habilita o subsistema de GC (que pode ter impacto no tempo de compilação/runtime se não necessário ainda)
+gc = []
