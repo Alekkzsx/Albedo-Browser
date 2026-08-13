@@ -22,14 +22,17 @@
 // Modules Declaration
 // ----------------------------------------------------------------------------
 
+pub mod alloc;
 pub mod error;
 pub mod event_loop;
 pub mod id;
 pub mod io;
 pub mod log;
 pub mod math;
+pub mod sync;
 pub mod thread_pool;
 pub mod time;
+pub mod trace;
 
 // ----------------------------------------------------------------------------
 // Public Exports (Facade)
