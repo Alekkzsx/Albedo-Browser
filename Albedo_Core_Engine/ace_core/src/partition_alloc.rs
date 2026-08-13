@@ -22,44 +22,122 @@ pub enum MemoryPartition {
     JsContext,
 }
 
+#[cfg(target_os = "windows")]
+mod win_os {
+    pub const MEM_COMMIT: u32 = 0x00001000;
+    pub const MEM_RESERVE: u32 = 0x00002000;
+    pub const MEM_RELEASE: u32 = 0x00008000;
+    pub const PAGE_READWRITE: u32 = 0x04;
+    pub const PAGE_NOACCESS: u32 = 0x01;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn VirtualAlloc(
+            lpAddress: *mut std::ffi::c_void,
+            dwSize: usize,
+            flAllocationType: u32,
+            flProtect: u32,
+        ) -> *mut std::ffi::c_void;
+
+        pub fn VirtualFree(
+            lpAddress: *mut std::ffi::c_void,
+            dwSize: usize,
+            dwFreeType: u32,
+        ) -> i32;
+    }
+}
+
 /// Página de alocação protegida pelo Sistema Operacional.
 pub struct SecurePage {
     partition: MemoryPartition,
     base_ptr: *mut u8,
-    size: usize,
+    data_size: usize,
 }
 
 impl SecurePage {
     /// Aloca uma nova página na memória virtual com Guard Pages (Páginas de proteção).
     pub fn allocate_isolated(partition: MemoryPartition, size_in_bytes: usize) -> Result<Self, &'static str> {
-        // Em um ambiente de produção real, chamaríamos `VirtualAlloc` (Windows)
-        // ou `mmap` (Linux/macOS) com flags MAP_ANONYMOUS | MAP_PRIVATE e 
-        // mapearíamos PROT_NONE nas extremidades.
+        let page_size = 4096;
+        // Alinhamento para múltiplos do tamanho da página
+        let aligned_size = (size_in_bytes + page_size - 1) & !(page_size - 1);
         
-        // Simulação da alocação estrutural:
-        let layout = std::alloc::Layout::from_size_align(size_in_bytes, 4096).unwrap();
-        let ptr = unsafe { std::alloc::alloc(layout) };
+        // Tamanho total = Espaço alinhado + 2 Guard Pages (Início e Fim)
+        let total_size = aligned_size + 2 * page_size;
 
-        if ptr.is_null() {
-            // Em vez de invocar std::panic!, acionamos o OOM Killer interno.
-            OomKiller::trigger_memory_pressure_purge();
-            return Err("System Out of Memory. OOM Killer acionado.");
-        }
+        #[cfg(target_os = "windows")]
+        let base_ptr = unsafe {
+            use win_os::*;
+            // 1. Reserva o espaço total (incluso Guard Pages) sem dar acesso (PAGE_NOACCESS)
+            let base = VirtualAlloc(
+                ptr::null_mut(),
+                total_size,
+                MEM_RESERVE,
+                PAGE_NOACCESS,
+            );
+
+            if base.is_null() {
+                OomKiller::trigger_memory_pressure_purge();
+                return Err("Falha na reserva de memória (System OOM).");
+            }
+
+            // 2. Comita apenas a região central com leitura/escrita
+            let data_ptr = (base as *mut u8).add(page_size);
+            let committed = VirtualAlloc(
+                data_ptr as *mut std::ffi::c_void,
+                aligned_size,
+                MEM_COMMIT,
+                PAGE_READWRITE,
+            );
+
+            if committed.is_null() {
+                VirtualFree(base, 0, MEM_RELEASE);
+                OomKiller::trigger_memory_pressure_purge();
+                return Err("Falha no commit de memória central (System OOM).");
+            }
+
+            base as *mut u8
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let base_ptr = {
+            // Fallback (simulação) para outras plataformas temporariamente
+            let layout = std::alloc::Layout::from_size_align(total_size, 4096).unwrap();
+            let ptr = unsafe { std::alloc::alloc(layout) };
+            if ptr.is_null() {
+                OomKiller::trigger_memory_pressure_purge();
+                return Err("System Out of Memory. OOM Killer acionado.");
+            }
+            ptr
+        };
 
         Ok(Self {
             partition,
-            base_ptr: ptr,
-            size: size_in_bytes,
+            base_ptr,
+            data_size: aligned_size,
         })
+    }
+
+    /// Retorna o ponteiro seguro para manipulação de dados (ignora a Guard Page inicial)
+    pub fn data_ptr(&self) -> *mut u8 {
+        unsafe { self.base_ptr.add(4096) }
     }
 }
 
 impl Drop for SecurePage {
     fn drop(&mut self) {
         if !self.base_ptr.is_null() {
-            let layout = std::alloc::Layout::from_size_align(self.size, 4096).unwrap();
+            #[cfg(target_os = "windows")]
             unsafe {
-                std::alloc::dealloc(self.base_ptr, layout);
+                win_os::VirtualFree(self.base_ptr as *mut std::ffi::c_void, 0, win_os::MEM_RELEASE);
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                let total_size = self.data_size + 2 * 4096;
+                let layout = std::alloc::Layout::from_size_align(total_size, 4096).unwrap();
+                unsafe {
+                    std::alloc::dealloc(self.base_ptr, layout);
+                }
             }
         }
     }
