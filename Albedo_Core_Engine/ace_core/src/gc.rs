@@ -38,19 +38,18 @@ pub struct GcHeader {
     tracer: unsafe fn(*mut ()),
 }
 
+use std::marker::PhantomData;
+
 /// O Smart Pointer que o usuário interage. Funciona como um `Rc` ou `Box`,
 /// mas a vida é gerenciada pelo Tri-Color Mark-and-Sweep.
 pub struct GcBox<T: Trace + 'static> {
     ptr: NonNull<GcNode<T>>,
+    _marker: PhantomData<*mut ()>, // Anula Send e Sync no Rust Stable
 }
-
-// Nós do GC não são Send nem Sync (como no V8, onde Isolates são Thread-Local)
-impl<T: Trace + 'static> !Send for GcBox<T> {}
-impl<T: Trace + 'static> !Sync for GcBox<T> {}
 
 impl<T: Trace + 'static> Clone for GcBox<T> {
     fn clone(&self) -> Self {
-        Self { ptr: self.ptr }
+        Self { ptr: self.ptr, _marker: PhantomData }
     }
 }
 impl<T: Trace + 'static> Copy for GcBox<T> {}
@@ -101,7 +100,7 @@ impl GcHeap {
         self.head = Some(ptr.cast());
         self.bytes_allocated += std::mem::size_of::<GcNode<T>>();
         
-        GcBox { ptr }
+        GcBox { ptr, _marker: PhantomData }
     }
 
     /// Executa o ciclo Tri-Color Mark-and-Sweep completo.
@@ -174,7 +173,7 @@ pub fn mark<T: Trace + 'static>(gc_box: &GcBox<T>) {
     }
 }
 
-impl<T: Trace + 'static> Drop for GcHeap {
+impl Drop for GcHeap {
     fn drop(&mut self) {
         // Ao destruir o Heap inteiro, força a coleta de tudo
         let empty_roots: &[&dyn Trace] = &[];
