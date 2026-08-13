@@ -80,4 +80,28 @@ impl<T> Drop for AtomicEbr<T> {
     }
 }
 
-// Testes movidos para tests/ebr_tests.rs
+}
+
+// ----------------------------------------------------------------------------
+// Thread-Local Storage para o EBR
+// ----------------------------------------------------------------------------
+
+thread_local! {
+    /// O relógio local da thread atual.
+    pub static LOCAL_EPOCH: std::cell::Cell<u64> = std::cell::Cell::new(0);
+    
+    /// Fila de ponteiros adiados aguardando a época virar.
+    pub static DEFER_QUEUE: std::cell::RefCell<Vec<(*mut (), unsafe fn(*mut ()))>> = std::cell::RefCell::new(Vec::new());
+}
+
+/// Registra o ponteiro na lista local da thread. 
+/// Ele só será deletado quando a Época Global for estritamente maior
+/// que a época em que foi adiado.
+pub fn defer_drop<T>(ptr: *mut T) {
+    unsafe fn drop_ptr<T>(p: *mut ()) {
+        let _ = Box::from_raw(p as *mut T);
+    }
+    DEFER_QUEUE.with(|q| {
+        q.borrow_mut().push((ptr as *mut (), drop_ptr::<T>));
+    });
+}

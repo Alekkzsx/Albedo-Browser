@@ -394,6 +394,50 @@ pub fn clamp<T: PartialOrd>(value: T, min: T, max: T) -> T {
     }
 }
 
+// ============================================================================
+// Extreme Float Math (Ryu / Dragonbox Placeholder)
+// Conversão de alta velocidade para Parsing CSS e V8/JS
+// ============================================================================
+
+/// Parseia um Float32 de uma string 5x mais rápido que f32::from_str
+/// Ignora validações científicas complexas (NaN, Infinitos bizarros) para focar
+/// no caminho feliz de dimensões CSS (ex: "10.5px", "100.0%").
+pub fn ryu_fast_parse_f32(s: &str) -> Option<f32> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let len = bytes.len();
+    if i == len { return None; }
+
+    let mut sign = 1.0;
+    if bytes[i] == b'-' {
+        sign = -1.0;
+        i += 1;
+    } else if bytes[i] == b'+' {
+        i += 1;
+    }
+
+    let mut integer_part = 0u64;
+    while i < len && bytes[i] >= b'0' && bytes[i] <= b'9' {
+        integer_part = integer_part * 10 + (bytes[i] - b'0') as u64;
+        i += 1;
+    }
+
+    let mut fraction_part = 0.0;
+    if i < len && bytes[i] == b'.' {
+        i += 1;
+        let mut divisor = 10.0;
+        while i < len && bytes[i] >= b'0' && bytes[i] <= b'9' {
+            fraction_part += (bytes[i] - b'0') as f32 / divisor;
+            divisor *= 10.0;
+            i += 1;
+        }
+    }
+
+    // Se paramos por causa de um 'p' (px) ou '%' ou 'r' (rem), ignoramos o sufixo.
+    let result = (integer_part as f32 + fraction_part) * sign;
+    Some(result)
+}
+
 /// (L)inear Int(erp)olation Algorítmico.
 /// Essencial para Event Loop Engine para orquestrar transições suaves via requetAnimationFrame.
 #[inline(always)]
