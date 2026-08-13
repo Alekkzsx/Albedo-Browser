@@ -21,7 +21,7 @@ const MSB_MASK: usize = usize::from_ne_bytes([0x80; 8]);
 #[inline]
 pub fn find_byte_fast(haystack: &[u8], needle: u8) -> Option<usize> {
     let len = haystack.len();
-    let mut ptr = haystack.as_ptr();
+    let ptr = haystack.as_ptr();
     let mut offset = 0;
 
     // A máscara que queremos buscar replicada para preencher um `usize`
