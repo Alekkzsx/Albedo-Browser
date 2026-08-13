@@ -13,6 +13,7 @@
 //! geradas pelo Rust (como Vectors e Strings) são pesadas.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Contadores atômicos globais para tracking massivo sem overhead de Locks.
@@ -20,18 +21,57 @@ pub static ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
 pub static ACTIVE_ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
 pub static PEAK_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
 
-/// O Alocador Customizado do Albedo.
-/// Intercepta as chamadas para registrar a contabilidade e delega a memória
-/// bruta ao alocador do sistema (`System`).
+const TLAC_BATCH_SIZE: usize = 64 * 1024; // 64 KB
+
+thread_local! {
+    // Usamos `const` block para garantir inicialização Zero-Cost (sem chamadas a `malloc`).
+    // Isso evita Stack Overflow recursivo (onde inicializar o thread_local chama malloc,
+    // que chama o thread_local, infinitamente).
+    static LOCAL_ALLOC_BYTES: Cell<usize> = const { Cell::new(0) };
+    static LOCAL_DEALLOC_BYTES: Cell<usize> = const { Cell::new(0) };
+    static REENTRANCY_GUARD: Cell<bool> = const { Cell::new(false) };
+}
+
+/// O Alocador Customizado do Albedo com TLAC.
 pub struct AlbedoAllocator;
 
 unsafe impl GlobalAlloc for AlbedoAllocator {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // Incrementa as métricas
-        let current = ALLOCATED_BYTES.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
-        PEAK_MEMORY_BYTES.fetch_max(current, Ordering::Relaxed);
         ACTIVE_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        
+        // Tenta usar o cache local
+        let size = layout.size();
+        let mut bypass_tlac = true;
+        
+        REENTRANCY_GUARD.with(|guard| {
+            if !guard.get() {
+                guard.set(true);
+                bypass_tlac = false;
+                
+                LOCAL_ALLOC_BYTES.with(|local| {
+                    let mut current = local.get();
+                    current += size;
+                    
+                    if current >= TLAC_BATCH_SIZE {
+                        // Flush batch to global
+                        let total = ALLOCATED_BYTES.fetch_add(current, Ordering::Relaxed) + current;
+                        PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+                        local.set(0);
+                    } else {
+                        local.set(current);
+                    }
+                });
+                
+                guard.set(false);
+            }
+        });
+
+        if bypass_tlac {
+            // Fallback direto no global se houver reentrância (ex: inicialização do thread_local)
+            let total = ALLOCATED_BYTES.fetch_add(size, Ordering::Relaxed) + size;
+            PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+        }
 
         // Delega de fato ao OS
         System.alloc(layout)
@@ -39,9 +79,36 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Decrementa as métricas
-        ALLOCATED_BYTES.fetch_sub(layout.size(), Ordering::Relaxed);
         ACTIVE_ALLOCATIONS.fetch_sub(1, Ordering::Relaxed);
+        
+        let size = layout.size();
+        let mut bypass_tlac = true;
+        
+        REENTRANCY_GUARD.with(|guard| {
+            if !guard.get() {
+                guard.set(true);
+                bypass_tlac = false;
+                
+                LOCAL_DEALLOC_BYTES.with(|local| {
+                    let mut current = local.get();
+                    current += size;
+                    
+                    if current >= TLAC_BATCH_SIZE {
+                        // Flush batch to global
+                        ALLOCATED_BYTES.fetch_sub(current, Ordering::Relaxed);
+                        local.set(0);
+                    } else {
+                        local.set(current);
+                    }
+                });
+                
+                guard.set(false);
+            }
+        });
+
+        if bypass_tlac {
+            ALLOCATED_BYTES.fetch_sub(size, Ordering::Relaxed);
+        }
 
         // Libera no OS
         System.dealloc(ptr, layout)

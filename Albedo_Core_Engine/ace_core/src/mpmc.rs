@@ -20,10 +20,14 @@ struct Slot<T> {
 
 /// Fila Lock-Free MPMC (Multi-Producer Multi-Consumer) limitada (Bounded).
 /// Oferece performance extrema para transferência de mensagens e tarefas entre threads.
+#[repr(align(64))]
 pub struct ArrayQueue<T> {
     buffer: Box<[Slot<T>]>,
     mask: usize,
     head: AtomicUsize,
+    // Previne False Sharing forçando o tail a residir em uma linha de cache (64 bytes)
+    // diferente da cabeça, já que Produtores mexem no tail e Consumidores no head.
+    _pad: [u8; 64],
     tail: AtomicUsize,
 }
 
@@ -50,6 +54,7 @@ impl<T> ArrayQueue<T> {
             buffer: buffer.into_boxed_slice(),
             mask: power_of_two_capacity - 1,
             head: AtomicUsize::new(0),
+            _pad: [0; 64],
             tail: AtomicUsize::new(0),
         }
     }

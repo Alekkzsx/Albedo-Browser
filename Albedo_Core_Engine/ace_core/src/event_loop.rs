@@ -76,14 +76,21 @@ impl<I: IoMultiplexer> EventLoop<I> {
             }
         }
 
-        // 2. MICROTASKS: O Dreno Absoluto (Run to completion).
-        // Todas as Microtasks pendentes (ex: ".then()" de Promises) rodam AGORA, in-place.
+        // 2. MICROTASKS: O Dreno com Circuit Breaker (Starvation Prevention).
+        // Diferente da especificação bruta que trava a aba, aplicamos um orçamento de 5ms
+        // para garantir que a Main Thread NUNCA congele (Resiliência Extrema).
+        let microtask_start = MonotonicClock::now_ms();
+        const MICROTASK_BUDGET_MS: u64 = 5;
+
         while let Some(micro_task) = self.microtasks.pop_front() {
-            // Em um motor JS real (Fase 10), rodaremos in-place.
-            // Para não travar a main-thread neste momento inicial, enviamos ao ThreadPool
-            // mas aguardamos (blocking) se necessário, ou assumimos arquitetura assíncrona.
-            // Vamos executar in-place para respeitar a especificação do JS.
             micro_task();
+
+            // Verifica o orçamento a cada iteração
+            let elapsed_micro = MonotonicClock::now_ms().saturating_sub(microtask_start);
+            if elapsed_micro >= MICROTASK_BUDGET_MS {
+                crate::ace_trace!("EventLoop: Circuit Breaker ativado nas Microtasks após {}ms. Cedendo controle!", elapsed_micro);
+                break;
+            }
         }
 
         // 3. RENDERIZAÇÃO: Controle de Frame Rate (60 FPS = 16.6ms)
