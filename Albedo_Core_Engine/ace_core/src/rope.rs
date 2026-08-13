@@ -7,8 +7,8 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::sync::Arc;
 use crate::string::AceString;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RopeNode {
@@ -41,6 +41,8 @@ pub struct Rope {
     root: Arc<RopeNode>,
 }
 
+#[allow(clippy::should_implement_trait)]
+#[allow(clippy::inherent_to_string)]
 impl Rope {
     /// Cria uma Rope vazia apontando para uma AceString pequena otimizada em stack (SSO).
     #[inline]
@@ -85,7 +87,9 @@ impl Rope {
             length,
         };
 
-        Rope { root: Arc::new(new_root) }
+        Rope {
+            root: Arc::new(new_root),
+        }
     }
 
     /// Achata a árvore e extrai a String completa.

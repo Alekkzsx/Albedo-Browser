@@ -16,7 +16,7 @@ const INLINE_CAPACITY: usize = 23;
 
 /// Representação de String otimizada para o padrão da Web (DOM / ECMAScript).
 ///
-/// A especificação da web e do Javascript assume indexação UTF-16. 
+/// A especificação da web e do Javascript assume indexação UTF-16.
 /// Usar o `String` padrão do Rust (UTF-8) causa gargalos $O(N)$ na busca por índices de caracteres
 /// e desperdiça memória para textos ASCII puros.
 ///
@@ -27,13 +27,19 @@ const INLINE_CAPACITY: usize = 23;
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AceString {
     /// Small String Optimization. O primeiro campo é o tamanho, o array contém os dados Latin1.
-    Inline { len: u8, data: [u8; INLINE_CAPACITY] },
+    Inline {
+        len: u8,
+        data: [u8; INLINE_CAPACITY],
+    },
     /// Armazenamento Latin-1 no Heap (1 byte por caractere).
     Latin1(Vec<u8>),
     /// Armazenamento UTF-16 no Heap (2 bytes por caractere).
     Utf16(Vec<u16>),
 }
 
+#[allow(clippy::should_implement_trait)]
+#[allow(clippy::inherent_to_string)]
+#[allow(clippy::inherent_to_string_shadow_display)]
 impl AceString {
     /// Cria uma `AceString` vazia alocada no Stack.
     #[inline]
@@ -115,9 +121,7 @@ impl AceString {
                 }
                 s
             }
-            AceString::Utf16(vec) => {
-                String::from_utf16_lossy(vec)
-            }
+            AceString::Utf16(vec) => String::from_utf16_lossy(vec),
         }
     }
 }

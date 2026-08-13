@@ -26,7 +26,7 @@ fn test_rope_concatenation_zero_copy() {
 fn test_rope_empty() {
     let r1 = Rope::new();
     let r2 = Rope::from_str("Test");
-    
+
     let r3 = Rope::concat(&r1, &r2);
     assert_eq!(r3.len(), 4);
     assert_eq!(r3.to_string(), "Test");

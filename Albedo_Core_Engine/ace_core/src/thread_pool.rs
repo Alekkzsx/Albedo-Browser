@@ -48,11 +48,7 @@ impl SharedState {
         let mut local_queues = Vec::with_capacity(num_workers);
         for _ in 0..num_workers {
             local_queues.push(PaddedQueue {
-                queues: [
-                    WorkerDeque::new(),
-                    WorkerDeque::new(),
-                    WorkerDeque::new(),
-                ],
+                queues: [WorkerDeque::new(), WorkerDeque::new(), WorkerDeque::new()],
             });
         }
 
@@ -92,23 +88,31 @@ impl Worker {
                     for p in 0..NUM_PRIORITIES {
                         // 1. TENTATIVA LOCAL (LIFO, sem lock, O(1))
                         job = shared_state.local_queues[id].queues[p].pop();
-                        if job.is_some() { break; }
+                        if job.is_some() {
+                            break;
+                        }
 
                         // 2. TENTATIVA GLOBAL (FIFO)
                         if let Ok(mut global) = shared_state.global_queues[p].try_lock() {
                             job = global.pop_front();
-                            if job.is_some() { break; }
+                            if job.is_some() {
+                                break;
+                            }
                         }
 
                         // 3. TENTATIVA DE ROUBO (WORK-STEALING, CAS Lock-Free)
                         for i in 0..num_workers {
                             let target_id = (id + i + 1) % num_workers;
-                            if let Some(stolen) = shared_state.local_queues[target_id].queues[p].steal() {
+                            if let Some(stolen) =
+                                shared_state.local_queues[target_id].queues[p].steal()
+                            {
                                 job = Some(stolen);
                                 break; // Interrompe a busca de roubo
                             }
                         }
-                        if job.is_some() { break; } // Interrompe o loop de prioridade
+                        if job.is_some() {
+                            break;
+                        } // Interrompe o loop de prioridade
                     }
 
                     // 4. EXECUÇÃO
@@ -215,8 +219,7 @@ impl ThreadPool {
             .fetch_add(1, Ordering::Release);
 
         // Insere na fila GLOBAL da prioridade correta (MPMC)
-        self.shared_state
-            .global_queues[priority as usize]
+        self.shared_state.global_queues[priority as usize]
             .lock()
             .unwrap()
             .push_back(job);

@@ -139,3 +139,38 @@ jobs:
           else
             echo "💡 Cargo.toml não encontrado. Pulando build de release."
           fi
+
+  concurrency-validation:
+    name: 🔬 Miri & ThreadSanitizer Validation
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Nightly (for TSan & Miri)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri, rust-src
+
+      - name: Cache Cargo Dependencies
+        if: hashFiles('Cargo.lock') != ''
+        uses: Swatinem/rust-cache@v2
+
+      - name: 🛑 ThreadSanitizer (TSan) Stress Tests
+        env:
+          RUSTFLAGS: "-Z sanitizer=thread"
+          RUSTDOCFLAGS: "-Z sanitizer=thread"
+        run: |
+          # Rodamos os testes punitivos de concorrência com TSan ativado
+          cargo test --test stress_thread_pool --test stress_concurrency_primitives --test stress_phase3 -Z build-std --target x86_64-unknown-linux-gnu
+
+      - name: ⚛️ Miri Lock-Free Verification
+        env:
+          MIRIFLAGS: "-Zmiri-strict-provenance -Zmiri-symbolic-alignment-check"
+        run: |
+          # Usamos o interpretador Miri para varrer o EBR e CCGC contra Undefined Behavior
+          cargo miri test --test ebr_tests --test gc_tests

@@ -7,12 +7,12 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
-/// Um "Guardião" (Guard) sinaliza que a thread atual está ativamente lendo 
-/// estruturas de dados compartilhadas. Durante o tempo de vida do Guard, 
-/// a época (Epoch) global não pode avançar para a fase de coleta de lixo, 
+/// Um "Guardião" (Guard) sinaliza que a thread atual está ativamente lendo
+/// estruturas de dados compartilhadas. Durante o tempo de vida do Guard,
+/// a época (Epoch) global não pode avançar para a fase de coleta de lixo,
 /// garantindo que ponteiros não sejam invalidados (No Use-After-Free).
 pub struct Guard {
     _private: (),
@@ -27,7 +27,7 @@ impl Guard {
     }
 }
 
-/// Um ponteiro atômico protegido por EBR. 
+/// Um ponteiro atômico protegido por EBR.
 /// Permite leituras 100% Lock-Free e Deleção Segura Diferida (Deferred Reclamation).
 pub struct AtomicEbr<T> {
     inner: AtomicPtr<T>,
@@ -60,7 +60,7 @@ impl<T> AtomicEbr<T> {
         if !ptr.is_null() {
             // No algoritmo EBR real, aqui o ponteiro `ptr` é adicionado à "Garbage List"
             // da época atual (Epoch). Ele só sofrerá Drop quando a época avançar.
-            
+
             // Para o escopo fundacional atual (Fase 2), fazemos o drop síncrono.
             unsafe {
                 let _ = Box::from_raw(ptr);
@@ -80,8 +80,6 @@ impl<T> Drop for AtomicEbr<T> {
     }
 }
 
-}
-
 // ----------------------------------------------------------------------------
 // Thread-Local Storage para o EBR
 // ----------------------------------------------------------------------------
@@ -89,12 +87,12 @@ impl<T> Drop for AtomicEbr<T> {
 thread_local! {
     /// O relógio local da thread atual.
     pub static LOCAL_EPOCH: std::cell::Cell<u64> = std::cell::Cell::new(0);
-    
+
     /// Fila de ponteiros adiados aguardando a época virar.
     pub static DEFER_QUEUE: std::cell::RefCell<Vec<(*mut (), unsafe fn(*mut ()))>> = std::cell::RefCell::new(Vec::new());
 }
 
-/// Registra o ponteiro na lista local da thread. 
+/// Registra o ponteiro na lista local da thread.
 /// Ele só será deletado quando a Época Global for estritamente maior
 /// que a época em que foi adiado.
 pub fn defer_drop<T>(ptr: *mut T) {

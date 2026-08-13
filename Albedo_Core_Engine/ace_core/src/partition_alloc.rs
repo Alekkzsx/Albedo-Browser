@@ -10,7 +10,7 @@
 use std::ptr;
 
 /// Tipos de partições de memória rigidamente isoladas fisicamente pelo SO.
-/// Isso impede que um Buffer Overflow no decodificador de Imagens invada 
+/// Isso impede que um Buffer Overflow no decodificador de Imagens invada
 /// o heap da Máquina Virtual JavaScript, mitigando exploits Tier-1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryPartition {
@@ -39,11 +39,8 @@ mod win_os {
             flProtect: u32,
         ) -> *mut std::ffi::c_void;
 
-        pub fn VirtualFree(
-            lpAddress: *mut std::ffi::c_void,
-            dwSize: usize,
-            dwFreeType: u32,
-        ) -> i32;
+        pub fn VirtualFree(lpAddress: *mut std::ffi::c_void, dwSize: usize, dwFreeType: u32)
+            -> i32;
     }
 }
 
@@ -56,11 +53,14 @@ pub struct SecurePage {
 
 impl SecurePage {
     /// Aloca uma nova página na memória virtual com Guard Pages (Páginas de proteção).
-    pub fn allocate_isolated(partition: MemoryPartition, size_in_bytes: usize) -> Result<Self, &'static str> {
+    pub fn allocate_isolated(
+        partition: MemoryPartition,
+        size_in_bytes: usize,
+    ) -> Result<Self, &'static str> {
         let page_size = 4096;
         // Alinhamento para múltiplos do tamanho da página
         let aligned_size = (size_in_bytes + page_size - 1) & !(page_size - 1);
-        
+
         // Tamanho total = Espaço alinhado + 2 Guard Pages (Início e Fim)
         let total_size = aligned_size + 2 * page_size;
 
@@ -68,12 +68,7 @@ impl SecurePage {
         let base_ptr = unsafe {
             use win_os::*;
             // 1. Reserva o espaço total (incluso Guard Pages) sem dar acesso (PAGE_NOACCESS)
-            let base = VirtualAlloc(
-                ptr::null_mut(),
-                total_size,
-                MEM_RESERVE,
-                PAGE_NOACCESS,
-            );
+            let base = VirtualAlloc(ptr::null_mut(), total_size, MEM_RESERVE, PAGE_NOACCESS);
 
             if base.is_null() {
                 OomKiller::trigger_memory_pressure_purge();
@@ -128,7 +123,11 @@ impl Drop for SecurePage {
         if !self.base_ptr.is_null() {
             #[cfg(target_os = "windows")]
             unsafe {
-                win_os::VirtualFree(self.base_ptr as *mut std::ffi::c_void, 0, win_os::MEM_RELEASE);
+                win_os::VirtualFree(
+                    self.base_ptr as *mut std::ffi::c_void,
+                    0,
+                    win_os::MEM_RELEASE,
+                );
             }
 
             #[cfg(not(target_os = "windows"))]
@@ -152,10 +151,10 @@ impl OomKiller {
     pub fn trigger_memory_pressure_purge() {
         // 1. Forçar o Garbage Collector do JavaScript em todos os contextos ativos.
         crate::ace_warn!("OOM Killer Ativado! Limpando Lixo do JS...");
-        
+
         // 2. Destruir buffers de imagem ocultos (que não estão na tela atual).
         crate::ace_warn!("Descartando caches de mídia não-essenciais...");
-        
+
         // 3. Compactar Strings do DOM (forçar shrink_to_fit).
         crate::ace_warn!("Compactando Arenas...");
     }

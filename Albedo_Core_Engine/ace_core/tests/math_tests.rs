@@ -156,7 +156,6 @@ fn test_colorimetry() {
     assert_eq!(blended.b, 127); // Metade do azul
 }
 
-
 #[test]
 fn test_advanced_matrix_features() {
     // Inverse (Scale by 2)
