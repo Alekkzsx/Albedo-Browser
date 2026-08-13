@@ -11,9 +11,9 @@ use std::ptr::NonNull;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GcColor {
-    Black, // Em uso (vivo)
-    White, // Não visitado (candidato à coleta)
-    Gray,  // Em processamento pelo Mark & Sweep
+    Black,  // Em uso (vivo)
+    White,  // Não visitado (candidato à coleta)
+    Gray,   // Em processamento pelo Mark & Sweep
     Purple, // Suspeito de Ciclo (Refcount diminuiu mas não chegou a zero)
 }
 
@@ -68,7 +68,7 @@ impl<T: Trace + 'static> Clone for GcBox<T> {
 thread_local! {
     /// O Buffer de Suspeitos do Cycle Collector. Nós órfãos (ref_count diminuiu, mas > 0)
     /// são jogados aqui para serem rastreados por ciclos depois.
-    pub static SUSPECT_BUFFER: std::cell::RefCell<Vec<NonNull<GcHeader>>> = std::cell::RefCell::new(Vec::new());
+    pub static SUSPECT_BUFFER: std::cell::RefCell<Vec<NonNull<GcHeader>>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 impl<T: Trace + 'static> Drop for GcBox<T> {
@@ -112,6 +112,12 @@ pub struct GcHeap {
     head: Option<NonNull<GcHeader>>,
     bytes_allocated: usize,
     pub suspects: Vec<NonNull<GcHeader>>, // CCGC: Raízes suspeitas de ciclo
+}
+
+impl Default for GcHeap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GcHeap {

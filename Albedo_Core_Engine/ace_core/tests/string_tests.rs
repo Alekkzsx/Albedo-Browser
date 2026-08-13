@@ -18,7 +18,7 @@ fn test_latin1_creation() {
     // Uma string repetida longa para quebrar o limite do SSO (23 bytes)
     let raw = "Hello World! This is a long pure ASCII string.";
     let s = AceString::from_str(raw);
-    
+
     if let AceString::Latin1(vec) = &s {
         assert_eq!(vec.len(), raw.len());
     } else {
@@ -31,7 +31,7 @@ fn test_latin1_creation() {
 fn test_utf16_creation() {
     let raw = "Hello 🌍 World!";
     let s = AceString::from_str(raw);
-    
+
     if let AceString::Utf16(vec) = &s {
         // "Hello " (6) + "🌍" (2 u16 surrogates) + " World!" (7) = 15 code units
         assert_eq!(vec.len(), 15);

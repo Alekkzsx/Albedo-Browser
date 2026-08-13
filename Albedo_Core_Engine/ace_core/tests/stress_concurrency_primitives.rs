@@ -7,9 +7,9 @@ use std::thread;
 fn test_stress_ring_buffer_10_million() {
     let ring = Arc::new(RingBuffer::<u64>::new(1024));
     let ring_c = Arc::clone(&ring);
-    
+
     let total_messages = 10_000_000;
-    
+
     let producer = thread::spawn(move || {
         for i in 0..total_messages {
             // Tenta inserir, se estiver cheio faz yield para o consumidor agir
@@ -18,11 +18,11 @@ fn test_stress_ring_buffer_10_million() {
             }
         }
     });
-    
+
     let consumer = thread::spawn(move || {
         let mut count = 0;
         let mut expected = 0;
-        
+
         while count < total_messages {
             if let Some(val) = ring_c.pop() {
                 assert_eq!(val, expected, "Data corruption detectado no RingBuffer!");
@@ -33,7 +33,7 @@ fn test_stress_ring_buffer_10_million() {
             }
         }
     });
-    
+
     producer.join().unwrap();
     consumer.join().unwrap();
 }
@@ -43,9 +43,9 @@ fn test_stress_spinlock_extreme_contention() {
     let counter = Arc::new(SpinLock::new(0usize));
     let num_threads = 8;
     let increments = 1_000_000;
-    
+
     let mut handles = vec![];
-    
+
     for _ in 0..num_threads {
         let c = Arc::clone(&counter);
         handles.push(thread::spawn(move || {
@@ -55,11 +55,11 @@ fn test_stress_spinlock_extreme_contention() {
             }
         }));
     }
-    
+
     for h in handles {
         h.join().unwrap();
     }
-    
+
     let final_val = *counter.lock();
     assert_eq!(final_val, num_threads * increments);
 }

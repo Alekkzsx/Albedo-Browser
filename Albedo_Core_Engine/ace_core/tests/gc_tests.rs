@@ -1,15 +1,15 @@
 use ace_core::gc::{mark, GcBox, GcHeap, Trace};
-use std::cell::Cell;
+use std::cell::RefCell;
 
 struct JsObject {
     value: i32,
-    child: Cell<Option<GcBox<JsObject>>>,
+    child: RefCell<Option<GcBox<JsObject>>>,
 }
 
 impl Trace for JsObject {
     fn trace(&self) {
-        if let Some(child_box) = self.child.get() {
-            mark(&child_box);
+        if let Some(child_box) = self.child.borrow().as_ref() {
+            mark(child_box);
         }
     }
 }
@@ -18,8 +18,8 @@ impl Trace for JsObject {
 struct Root(Option<GcBox<JsObject>>);
 impl Trace for Root {
     fn trace(&self) {
-        if let Some(b) = self.0 {
-            mark(&b);
+        if let Some(b) = &self.0 {
+            mark(b);
         }
     }
 }
@@ -30,22 +30,22 @@ fn test_gc_mark_and_sweep() {
 
     let a = heap.allocate(JsObject {
         value: 1,
-        child: Cell::new(None),
+        child: RefCell::new(None),
     });
     let b = heap.allocate(JsObject {
         value: 2,
-        child: Cell::new(None),
+        child: RefCell::new(None),
     });
-    let c = heap.allocate(JsObject {
+    let _c = heap.allocate(JsObject {
         value: 3,
-        child: Cell::new(None),
+        child: RefCell::new(None),
     });
 
     // A aponta para B.
-    a.child.set(Some(b));
+    *a.child.borrow_mut() = Some(b.clone());
     // C fica isolado e inatingível a partir do root (A).
 
-    let root = Root(Some(a));
+    let root = Root(Some(a.clone()));
     let roots: &[&dyn Trace] = &[&root];
 
     let freed = heap.collect(roots);
