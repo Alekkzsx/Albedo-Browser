@@ -7,6 +7,7 @@
 // ============================================================================
 
 use crate::hash::FxHashMap;
+use crate::string::AceString;
 use crate::sync::SpinLock;
 use std::sync::OnceLock;
 
@@ -17,8 +18,8 @@ use std::sync::OnceLock;
 pub struct Symbol(pub u32);
 
 struct Interner {
-    map: FxHashMap<&'static str, u32>,
-    vec: Vec<&'static str>,
+    map: FxHashMap<AceString, u32>,
+    vec: Vec<AceString>,
 }
 
 impl Interner {
@@ -30,24 +31,23 @@ impl Interner {
     }
 
     fn intern(&mut self, text: &str) -> Symbol {
-        if let Some(&id) = self.map.get(text) {
+        // Converte imediatamente usando Small String Optimization sem alocar no Heap
+        // para strings menores que 24 caracteres.
+        let ace_str = AceString::from_str(text);
+
+        if let Some(&id) = self.map.get(&ace_str) {
             return Symbol(id);
         }
 
-        // Se a string não existe, devemos convertê-la em 'static str.
-        // Como o interner nunca apaga dados, vazar (leak) a string aqui é o
-        // comportamento correto arquiteturalmente para "imortais".
         let id = self.vec.len() as u32;
-        let leaked_str: &'static str = Box::leak(text.to_string().into_boxed_str());
-
-        self.map.insert(leaked_str, id);
-        self.vec.push(leaked_str);
+        self.map.insert(ace_str.clone(), id);
+        self.vec.push(ace_str);
 
         Symbol(id)
     }
 
-    fn resolve(&self, symbol: Symbol) -> Option<&'static str> {
-        self.vec.get(symbol.0 as usize).copied()
+    fn resolve(&self, symbol: Symbol) -> Option<String> {
+        self.vec.get(symbol.0 as usize).map(|ace| ace.to_string())
     }
 }
 
@@ -67,8 +67,8 @@ pub fn intern(text: &str) -> Symbol {
     lock.intern(text)
 }
 
-/// Resolve o Símbolo de volta para texto, se existir.
-pub fn resolve(symbol: Symbol) -> Option<&'static str> {
+/// Resolve o Símbolo de volta para texto alocado, se existir.
+pub fn resolve(symbol: Symbol) -> Option<String> {
     let global = get_interner();
     let lock = global.lock();
     lock.resolve(symbol)
