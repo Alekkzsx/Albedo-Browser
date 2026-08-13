@@ -34,6 +34,8 @@ pub struct RingBuffer<T> {
 }
 
 // O Ring Buffer é seguro para transitar entre Threads porque os Atômicos protegem as pontas
+// SAFETY: Produtores e Consumidores operam em pontas diferentes. Os ponteiros Head e Tail são 
+// atômicos com garantias de Acquire/Release, protegendo as gravações/leituras de Data Races.
 unsafe impl<T: Send> Send for RingBuffer<T> {}
 unsafe impl<T: Send> Sync for RingBuffer<T> {}
 
@@ -67,6 +69,8 @@ impl<T> RingBuffer<T> {
             return Err(value);
         }
 
+        // SAFETY: Confirmamos que head != tail no momento lógico atual. A memória no slot
+        // `current_head` pertence exclusivamente ao produtor antes da publicação no atômico.
         unsafe {
             // Grava o valor no ponteiro inseguro da célula
             let slot = self.buffer[current_head].get();
@@ -90,6 +94,8 @@ impl<T> RingBuffer<T> {
             return None;
         }
 
+        // SAFETY: Confirmamos que a fila não está vazia. O produtor já publicou (Release)
+        // e nós já adquirimos (Acquire), tornando a leitura da memória totalmente sincronizada e segura.
         let value = unsafe {
             let slot = self.buffer[current_tail].get();
             (*slot).as_ptr().read()
