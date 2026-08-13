@@ -26,6 +26,7 @@ pub mod arena;
 pub mod alloc;
 pub mod deque;
 pub mod error;
+pub mod gc;
 pub mod id;
 pub mod intern;
 pub mod log;
