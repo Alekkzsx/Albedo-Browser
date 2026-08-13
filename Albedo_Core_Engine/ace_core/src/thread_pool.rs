@@ -22,6 +22,7 @@ struct PaddedQueue {
 }
 
 struct SharedState {
+    global_queue: Mutex<std::collections::VecDeque<Job>>,
     local_queues: Vec<PaddedQueue>,
     /// Usado apenas para a condição de dormência (Condvar)
     sleep_mutex: Mutex<()>,
@@ -41,6 +42,7 @@ impl SharedState {
         }
         
         Self {
+            global_queue: Mutex::new(std::collections::VecDeque::new()),
             local_queues,
             sleep_mutex: Mutex::new(()),
             condvar: Condvar::new(),
@@ -66,7 +68,14 @@ impl Worker {
                     // 1. TENTATIVA LOCAL (LIFO, sem lock, O(1))
                     let mut job = shared_state.local_queues[id].queue.pop();
 
-                    // 2. TENTATIVA DE ROUBO (WORK-STEALING, FIFO, CAS Lock-Free)
+                    // 2. TENTATIVA GLOBAL (FIFO)
+                    if job.is_none() {
+                        if let Ok(mut global) = shared_state.global_queue.try_lock() {
+                            job = global.pop_front();
+                        }
+                    }
+
+                    // 3. TENTATIVA DE ROUBO (WORK-STEALING, FIFO, CAS Lock-Free)
                     if job.is_none() {
                         for i in 0..num_workers {
                             let target_id = (id + i + 1) % num_workers;
@@ -160,17 +169,13 @@ impl ThreadPool {
     {
         let job = Box::new(f);
         
-        // Distribui usando Round-Robin
-        let num_workers = self.workers.len();
-        let target_worker = self.next_worker.fetch_add(1, Ordering::Relaxed) % num_workers;
-        
         // Incrementa ANTES de colocar na fila (evita a thread roubar antes de registrarmos)
         self.shared_state.pending_tasks.fetch_add(1, Ordering::Release);
         
-        // Insere na fila (LIFO Lock-Free)
-        // Como o fallback de capacidade estourada ainda não foi feito, garantimos por ora que não vai explodir
-        // com o Assert ou um retry, mas no mundo real a task iria para uma Global Queue.
-        let _ = self.shared_state.local_queues[target_worker].queue.push(job);
+        // Insere na fila GLOBAL (MPMC)
+        // O execute pode ser chamado por Múltiplas Threads concorrentemente,
+        // então não podemos usar o Chase-Lev (SPMC) aqui.
+        self.shared_state.global_queue.lock().unwrap().push_back(job);
         
         // Acorda os workers dormentes
         self.shared_state.condvar.notify_one();
