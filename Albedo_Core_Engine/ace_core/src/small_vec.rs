@@ -48,6 +48,8 @@ impl<T, const N: usize> SmallVec<T, N> {
                 } else {
                     // Sem espaço inline: Promove para o Heap
                     let mut vec = Vec::with_capacity(N + 1);
+                    // SAFETY: O tamanho do array Inline nunca excede N. `copy_nonoverlapping` move bits
+                    // em memória, o que é seguro pois Inline não será mais usado, mitigando double-drop.
                     unsafe {
                         // Move os elementos da stack para o heap sem disparar destructors
                         let inline_ptr = buffer.as_ptr() as *const T;
@@ -93,6 +95,7 @@ impl<T, const N: usize> Deref for SmallVec<T, N> {
 
     fn deref(&self) -> &Self::Target {
         match &self.storage {
+            // SAFETY: A slice criada mapeia com precisão a área efetivamente preenchida na stack (indicada por len).
             SmallVecStorage::Inline { buffer, len } => unsafe {
                 slice::from_raw_parts(buffer.as_ptr() as *const T, *len)
             },
@@ -104,6 +107,7 @@ impl<T, const N: usize> Deref for SmallVec<T, N> {
 impl<T, const N: usize> DerefMut for SmallVec<T, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.storage {
+            // SAFETY: A slice criada mapeia com precisão a área mutável efetivamente preenchida na stack.
             SmallVecStorage::Inline { buffer, len } => unsafe {
                 slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut T, *len)
             },
@@ -115,6 +119,8 @@ impl<T, const N: usize> DerefMut for SmallVec<T, N> {
 impl<T, const N: usize> Drop for SmallVec<T, N> {
     fn drop(&mut self) {
         if let SmallVecStorage::Inline { buffer, len } = &mut self.storage {
+            // SAFETY: Chamamos drop explicitamente nos elementos empilhados, o que é mandatório pois
+            // arranjos de MaybeUninit não disparam drop por padrão, o que causaria Memory Leak.
             unsafe {
                 // Temos que rodar os drops manuais, senão teremos vazamentos de memória (ex: SmallVec<String, 4>)
                 let slice = slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut T, *len);

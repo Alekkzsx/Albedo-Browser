@@ -142,6 +142,8 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
+        // SAFETY: A Arena é a única dona de seus chunks. Liberamos recursivamente 
+        // a memória alocada, restaurando a propriedade para o Box destruir o ponteiro.
         unsafe {
             let mut current = Some(self.head.get());
             while let Some(mut chunk_ptr) = current {

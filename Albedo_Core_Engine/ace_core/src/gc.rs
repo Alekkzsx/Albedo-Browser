@@ -117,6 +117,7 @@ impl GcHeap {
         let mut prev: Option<NonNull<GcHeader>> = None;
 
         while let Some(mut node_ptr) = current {
+            // SAFETY: O ponteiro é um nó válido alocado pelo GC e nós garantimos que a mutação `color` é síncrona.
             unsafe {
                 let node = node_ptr.as_mut();
                 if node.color.get() == GcColor::White {
@@ -150,12 +151,16 @@ impl GcHeap {
 // Funções Internas Type-Erased
 // ----------------------------------------------------------------------------
 
+// SAFETY: O ponteiro ptr é garantido pelo GC como pertencente a GcNode<T>. A deleção em tempo de execução 
+// faz cast de volta para o tipo correto e permite o Box desmantelar a estrutura.
 unsafe fn drop_node<T: Trace + 'static>(ptr: *mut ()) {
     let typed_ptr = ptr as *mut GcNode<T>;
     // Recria o Box para o Rust invocar o Drop de `T` e liberar a memória do Heap
     let _ = Box::from_raw(typed_ptr);
 }
 
+// SAFETY: O ponteiro ptr é garantido como sendo do tipo GcNode<T>. Permite que o ciclo mark chame
+// o trace original do objeto para continuar varrendo as raízes.
 unsafe fn trace_node<T: Trace + 'static>(ptr: *mut ()) {
     let typed_ptr = ptr as *mut GcNode<T>;
     let node = &*typed_ptr;
@@ -167,6 +172,7 @@ unsafe fn trace_node<T: Trace + 'static>(ptr: *mut ()) {
 
 // A função que o usuário deve chamar de dentro dos seus `Trace` impls
 pub fn mark<T: Trace + 'static>(gc_box: &GcBox<T>) {
+    // SAFETY: Acessamos o tracer type-erased armazenado no cabeçalho do GcBox para prosseguir na varredura.
     unsafe {
         let node_ptr = gc_box.ptr.as_ptr();
         ( (*node_ptr).header.tracer )(node_ptr as *mut ());
