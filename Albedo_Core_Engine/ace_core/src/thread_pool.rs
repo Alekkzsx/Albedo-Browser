@@ -7,6 +7,7 @@
 // ============================================================================
 
 use crate::deque::WorkerDeque;
+use crate::mpmc::ArrayQueue;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -31,7 +32,7 @@ struct PaddedQueue {
 }
 
 struct SharedState {
-    global_queues: [Mutex<std::collections::VecDeque<Job>>; NUM_PRIORITIES],
+    global_queues: [ArrayQueue<Job>; NUM_PRIORITIES],
     local_queues: Vec<PaddedQueue>,
     /// Usado apenas para a condição de dormência (Condvar)
     sleep_mutex: Mutex<()>,
@@ -54,9 +55,9 @@ impl SharedState {
 
         Self {
             global_queues: [
-                Mutex::new(std::collections::VecDeque::new()),
-                Mutex::new(std::collections::VecDeque::new()),
-                Mutex::new(std::collections::VecDeque::new()),
+                ArrayQueue::new(65536),
+                ArrayQueue::new(65536),
+                ArrayQueue::new(65536),
             ],
             local_queues,
             sleep_mutex: Mutex::new(()),
@@ -92,12 +93,10 @@ impl Worker {
                             break;
                         }
 
-                        // 2. TENTATIVA GLOBAL (FIFO)
-                        if let Ok(mut global) = shared_state.global_queues[p].try_lock() {
-                            job = global.pop_front();
-                            if job.is_some() {
-                                break;
-                            }
+                        // 2. TENTATIVA GLOBAL (FIFO, MPMC Lock-Free)
+                        job = shared_state.global_queues[p].pop();
+                        if job.is_some() {
+                            break;
                         }
 
                         // 3. TENTATIVA DE ROUBO (WORK-STEALING, CAS Lock-Free)
@@ -218,11 +217,11 @@ impl ThreadPool {
             .pending_tasks
             .fetch_add(1, Ordering::Release);
 
-        // Insere na fila GLOBAL da prioridade correta (MPMC)
-        self.shared_state.global_queues[priority as usize]
-            .lock()
-            .unwrap()
-            .push_back(job);
+        // Insere na fila GLOBAL da prioridade correta (MPMC Lock-Free)
+        if let Err(_job) = self.shared_state.global_queues[priority as usize].push(job) {
+            crate::ace_error!("Fila Global MPMC atingiu capacidade máxima (65536 tarefas)!");
+            panic!("Fila de prioridade {:?} estourou!", priority);
+        }
 
         // Acorda os workers dormentes
         self.shared_state.condvar.notify_one();
