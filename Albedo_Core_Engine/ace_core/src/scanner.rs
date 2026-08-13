@@ -29,6 +29,8 @@ pub fn find_byte_fast(haystack: &[u8], needle: u8) -> Option<usize> {
 
     // Lê de bloco em bloco
     while offset + USIZE_BYTES <= len {
+        // SAFETY: Nós garantimos pela condição do while (`offset + USIZE_BYTES <= len`)
+        // que a leitura de 8 bytes (ou 4 bytes em 32-bits) nunca excederá a memória alocada do slice.
         unsafe {
             // Lemos 8 bytes da memória ignorando alinhamento estrito
             let chunk = ptr.add(offset).cast::<usize>().read_unaligned();
@@ -54,6 +56,8 @@ pub fn find_byte_fast(haystack: &[u8], needle: u8) -> Option<usize> {
 
     // Processa os bytes restantes que não couberam em um bloco inteiro
     while offset < len {
+        // SAFETY: O loop anterior parou antes de len. O limite superior agora
+        // é garantido `offset < len`, então o acesso individual por byte é seguro.
         unsafe {
             if *ptr.add(offset) == needle {
                 return Some(offset);
