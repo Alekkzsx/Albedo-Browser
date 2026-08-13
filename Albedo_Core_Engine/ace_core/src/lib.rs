@@ -29,22 +29,6 @@ pub mod bloom;
 pub mod deque;
 pub mod ebr;
 pub mod error;
-#[cfg(feature = "gc")]
-pub mod gc;
-pub mod hash;
-pub mod id;
-pub mod intern;
-pub mod log;
-pub mod math;
-pub mod partition_alloc;
-pub mod ring;
-pub mod scanner;
-pub mod slab;
-pub mod small_vec;
-pub mod string;
-pub mod sync;
-#[cfg(feature = "debug-tools")]
-pub mod trace;
 
 // (Esses módulos já haviam sido criados por outra sessão, listamos para compilar tudo)
 pub mod event_loop;
