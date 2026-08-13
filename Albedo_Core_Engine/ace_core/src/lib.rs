@@ -22,17 +22,24 @@
 // Modules Declaration
 // ----------------------------------------------------------------------------
 
+pub mod arena;
 pub mod alloc;
+pub mod deque;
 pub mod error;
-pub mod event_loop;
 pub mod id;
-pub mod io;
+pub mod intern;
 pub mod log;
 pub mod math;
+pub mod ring;
+pub mod small_vec;
 pub mod sync;
+pub mod trace;
+
+// (Esses módulos já haviam sido criados por outra sessão, listamos para compilar tudo)
+pub mod event_loop;
+pub mod io;
 pub mod thread_pool;
 pub mod time;
-pub mod trace;
 
 // ----------------------------------------------------------------------------
 // Public Exports (Facade)
