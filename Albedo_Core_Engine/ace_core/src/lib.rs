@@ -32,6 +32,7 @@ pub mod intern;
 pub mod log;
 pub mod math;
 pub mod ring;
+pub mod scanner;
 pub mod small_vec;
 pub mod sync;
 pub mod trace;
