@@ -9,6 +9,6 @@ fn test_string_interner() {
     assert_ne!(sym1, sym2);
     assert_eq!(sym1, sym3); // Desduplicação O(1) funciona!
 
-    assert_eq!(resolve(sym1), Some("display"));
-    assert_eq!(resolve(sym2), Some("margin"));
+    assert_eq!(resolve(sym1).as_deref(), Some("display"));
+    assert_eq!(resolve(sym2).as_deref(), Some("margin"));
 }
