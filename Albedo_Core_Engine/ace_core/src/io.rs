@@ -24,6 +24,12 @@ pub struct MockMultiplexer {
     _reserved: bool,
 }
 
+impl Default for MockMultiplexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockMultiplexer {
     pub fn new() -> Self {
         Self { _reserved: true }

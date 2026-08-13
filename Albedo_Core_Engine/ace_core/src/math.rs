@@ -27,7 +27,7 @@ use std::ops::{Add, Mul, Sub};
 // ----------------------------------------------------------------------------
 // Constantes Matemáticas Fundamentais
 // ----------------------------------------------------------------------------
-pub const PI: f32 = 3.14159265358979323846;
+pub const PI: f32 = std::f32::consts::PI;
 pub const TAU: f32 = 2.0 * PI;
 pub const DEG_TO_RAD: f32 = PI / 180.0;
 pub const RAD_TO_DEG: f32 = 180.0 / PI;

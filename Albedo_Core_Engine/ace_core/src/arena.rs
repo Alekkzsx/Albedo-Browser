@@ -51,6 +51,12 @@ pub struct Arena {
     head: Cell<NonNull<Chunk>>,
 }
 
+impl Default for Arena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Arena {
     pub fn new() -> Self {
         let chunk = Box::new(Chunk::new(CHUNK_SIZE));
@@ -62,6 +68,7 @@ impl Arena {
     /// Aloca uma estrutura T e retorna uma referência mutável.
     /// A alocação é puramente a soma de um ponteiro e alinhamento matemático.
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub fn alloc<T>(&self, value: T) -> &mut T {
         // SAFETY: O Bump pointer (`offset`) nunca excede `capacity`. O preenchimento (`padding`) e `align`
         // garantem que não há writes desalinhados, emulando perfeitamente a semântica nativa do Rust.

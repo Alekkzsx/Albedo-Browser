@@ -30,7 +30,7 @@ impl BitSet {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            blocks: Vec::with_capacity((capacity + 63) / 64),
+            blocks: Vec::with_capacity(capacity.div_ceil(64)),
         }
     }
 
