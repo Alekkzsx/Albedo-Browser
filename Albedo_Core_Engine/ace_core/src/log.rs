@@ -51,23 +51,51 @@ impl LogLevel {
     }
 }
 
+struct LogConfig {
+    global_level: LogLevel,
+    module_levels: std::collections::HashMap<String, LogLevel>,
+    is_json: bool,
+}
+
 /// Extrai atomicamente (OnceLock) a configuração nativa do motor Albedo (ACE_LOG).
-pub fn current_log_level() -> LogLevel {
-    static LEVEL: OnceLock<LogLevel> = OnceLock::new();
-    *LEVEL.get_or_init(|| {
-        match env::var("ACE_LOG")
-            .unwrap_or_else(|_| "INFO".to_string())
-            .to_uppercase()
-            .as_str()
-        {
-            "TRACE" => LogLevel::Trace,
-            "DEBUG" => LogLevel::Debug,
-            "INFO" => LogLevel::Info,
-            "WARN" => LogLevel::Warn,
-            "ERROR" => LogLevel::Error,
-            _ => LogLevel::Info,
+fn get_log_config() -> &'static LogConfig {
+    static CONFIG: OnceLock<LogConfig> = OnceLock::new();
+    CONFIG.get_or_init(|| {
+        let is_json = env::var("ACE_LOG_JSON").map(|v| v == "1" || v == "true").unwrap_or(false);
+        
+        let mut global_level = LogLevel::Info;
+        let mut module_levels = std::collections::HashMap::new();
+
+        if let Ok(val) = env::var("ACE_LOG") {
+            for part in val.split(',') {
+                let part = part.trim();
+                if let Some((mod_name, level_str)) = part.split_once('=') {
+                    if let Some(level) = parse_level(level_str) {
+                        module_levels.insert(mod_name.trim().to_string(), level);
+                    }
+                } else if let Some(level) = parse_level(part) {
+                    global_level = level;
+                }
+            }
+        }
+
+        LogConfig {
+            global_level,
+            module_levels,
+            is_json,
         }
     })
+}
+
+fn parse_level(s: &str) -> Option<LogLevel> {
+    match s.trim().to_uppercase().as_str() {
+        "TRACE" => Some(LogLevel::Trace),
+        "DEBUG" => Some(LogLevel::Debug),
+        "INFO" => Some(LogLevel::Info),
+        "WARN" => Some(LogLevel::Warn),
+        "ERROR" => Some(LogLevel::Error),
+        _ => None,
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -102,9 +130,22 @@ fn get_logger_sender() -> &'static SyncSender<String> {
 /// Executor base lock-free: formata a mensagem na RAM e dispara pelo canal.
 #[doc(hidden)]
 pub fn _log(level: LogLevel, target: &str, args: std::fmt::Arguments) {
-    if level >= current_log_level() {
-        // Formata a string no Heap da Main Thread
-        let msg = format!("[{}] [{}] {}", level.as_str(), target, args);
+    let config = get_log_config();
+    
+    // Verifica se este módulo tem um level específico, senão usa o global
+    let threshold = config.module_levels.get(target).unwrap_or(&config.global_level);
+    
+    if level >= *threshold {
+        let msg = if config.is_json {
+            // Escapa as aspas duplas na mensagem para JSON válido
+            let escaped_args = format!("{}", args).replace("\"", "\\\"");
+            format!(
+                r#"{{"level":"{}","module":"{}","msg":"{}"}}"#,
+                level.as_str().trim(), target, escaped_args
+            )
+        } else {
+            format!("[{}] [{}] {}", level.as_str(), target, args)
+        };
         
         let tx = get_logger_sender();
         // Dispara de forma Não-Bloqueante (Non-Blocking). Se o terminal for excessivamente lento
