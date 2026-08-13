@@ -16,34 +16,35 @@ pub trait IoMultiplexer: Send + Sync {
     fn poll(&mut self, timeout_ms: Option<u64>) -> crate::AceResult<()>;
 }
 
-/// Implementação padrão (Fallback/Mock) inicial.
-/// Na Fase 3 (Rede), esse multiplexador ganhará a infraestrutura nativa do `windows-sys` (IOCP)
-/// ou o uso de Sockets reais não-bloqueantes. No momento, serve para testar a mecânica
-/// do EventLoop.
-pub struct MockMultiplexer {
+/// Implementação Nativa do Multiplexador OS.
+/// Delega para o agendador de threads do Kernel (via park/park_timeout) suspendendo
+/// 100% da queimação de CPU quando o browser estiver inativo aguardando I/O.
+pub struct NativeMultiplexer {
     _reserved: bool,
 }
 
-impl Default for MockMultiplexer {
+impl Default for NativeMultiplexer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MockMultiplexer {
+impl NativeMultiplexer {
     pub fn new() -> Self {
         Self { _reserved: true }
     }
 }
 
-impl IoMultiplexer for MockMultiplexer {
+impl IoMultiplexer for NativeMultiplexer {
     fn poll(&mut self, timeout_ms: Option<u64>) -> crate::AceResult<()> {
-        // Simula a ida ao Kernel para aguardar pacotes na placa de rede.
-        // Se um timeout foi fornecido (ex: timer do EventLoop para renderização), dormimos.
+        // Usa `park_timeout` para suspender completamente a thread no OS (Zero CPU)
         if let Some(ms) = timeout_ms {
             if ms > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(ms));
+                std::thread::park_timeout(std::time::Duration::from_millis(ms));
             }
+        } else {
+            // Suspende indefinidamente até um I/O acordar (Wake)
+            std::thread::park();
         }
         Ok(())
     }

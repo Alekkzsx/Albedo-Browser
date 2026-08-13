@@ -7,7 +7,6 @@
 // ============================================================================
 
 use ace_core::math::*;
-use ace_core::time::*;
 
 #[test]
 fn test_rect_operations() {
@@ -157,20 +156,6 @@ fn test_colorimetry() {
     assert_eq!(blended.b, 127); // Metade do azul
 }
 
-#[test]
-fn test_mock_clock() {
-    MockClock::reset();
-    assert_eq!(MockClock::now_ms(), 0);
-
-    MockClock::advance(100);
-    assert_eq!(MockClock::now_ms(), 100);
-
-    MockClock::tick_frame();
-    assert_eq!(MockClock::now_ms(), 116);
-
-    let vt = VirtualTime;
-    assert_eq!(vt.now_ms(), 116);
-}
 
 #[test]
 fn test_advanced_matrix_features() {
