@@ -30,6 +30,8 @@ struct SharedState {
     shutdown: AtomicBool,
     /// Mantém o rastro do volume total para evitar bloqueios cegos
     pending_tasks: AtomicUsize,
+    barrier_condvar: Condvar,
+    barrier_mutex: Mutex<()>,
 }
 
 impl SharedState {
@@ -48,6 +50,8 @@ impl SharedState {
             condvar: Condvar::new(),
             shutdown: AtomicBool::new(false),
             pending_tasks: AtomicUsize::new(0),
+            barrier_condvar: Condvar::new(),
+            barrier_mutex: Mutex::new(()),
         }
     }
 }
@@ -88,9 +92,6 @@ impl Worker {
 
                     // 3. EXECUÇÃO
                     if let Some(j) = job {
-                        // Subtrai do contador de pendências globais
-                        shared_state.pending_tasks.fetch_sub(1, Ordering::Relaxed);
-                        
                         let result = catch_unwind(AssertUnwindSafe(j));
                         if let Err(e) = result {
                             let msg = if let Some(s) = e.downcast_ref::<&str>() {
@@ -102,6 +103,14 @@ impl Worker {
                             };
                             crate::ace_error!("Worker {} sofreu Panic Interno: {}", id, msg);
                         }
+                        
+                        // Subtrai do contador de pendências globais DEPOIS de executar
+                        let prev = shared_state.pending_tasks.fetch_sub(1, Ordering::Release);
+                        if prev == 1 {
+                            // Era a última task, acorda quem estiver esperando no wait_for_all
+                            shared_state.barrier_condvar.notify_all();
+                        }
+                        
                         continue; // Evita entrar no fluxo de sleep se tínhamos trabalho
                     }
 
@@ -179,6 +188,22 @@ impl ThreadPool {
         
         // Acorda os workers dormentes
         self.shared_state.condvar.notify_one();
+    }
+    
+    /// Bloqueia a thread atual até que todas as tarefas na fila (globais e locais) 
+    /// sejam concluídas. Fundamental para sincronização de Fases (ex: Sync Layout).
+    pub fn wait_for_all(&self) {
+        let lock = self.shared_state.barrier_mutex.lock().unwrap();
+        
+        // Fast path
+        if self.shared_state.pending_tasks.load(Ordering::Acquire) == 0 {
+            return;
+        }
+        
+        // Aguarda até que as pending_tasks cheguem a 0
+        let _guard = self.shared_state.barrier_condvar.wait_while(lock, |_| {
+            self.shared_state.pending_tasks.load(Ordering::Acquire) > 0
+        }).unwrap();
     }
     
     pub fn join(self) {}

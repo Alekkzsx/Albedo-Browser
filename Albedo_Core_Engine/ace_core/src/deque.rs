@@ -24,6 +24,8 @@ pub struct WorkerDeque<T> {
     buffer: Box<[AtomicPtr<T>]>,
 }
 
+// SAFETY: O design Chase-Lev provê barreira atômica (Acquire/Release) para acesso concorrente seguro,
+// mitigando data races internamente, logo é seguro enviar/compartilhar entre Threads.
 unsafe impl<T: Send> Send for WorkerDeque<T> {}
 unsafe impl<T: Send> Sync for WorkerDeque<T> {}
 
@@ -87,6 +89,7 @@ impl<T> WorkerDeque<T> {
                 
                 if res.is_ok() {
                     // Nós ganhamos a disputa contra os ladrões
+                    // SAFETY: Ganhamos o Lock via CAS. O ponteiro foi criado de um Box, então podemos recriá-lo.
                     return Some(unsafe { *Box::from_raw(ptr) });
                 } else {
                     // Um ladrão roubou o nosso último item!
@@ -94,6 +97,7 @@ impl<T> WorkerDeque<T> {
                 }
             } else {
                 // Vários elementos, sem disputa
+                // SAFETY: Somos o dono exclusivo e não há disputa com ladrões para este índice.
                 return Some(unsafe { *Box::from_raw(ptr) });
             }
         } else {
@@ -120,6 +124,7 @@ impl<T> WorkerDeque<T> {
             // Tenta roubar o item empurrando o top para baixo via CAS
             if self.top.compare_exchange(t, t + 1, Ordering::SeqCst, Ordering::Relaxed).is_ok() {
                 // Sucesso no roubo!
+                // SAFETY: CAS bem sucedido significa que conquistamos a posse deste índice na fila.
                 return Some(unsafe { *Box::from_raw(ptr) });
             }
             // Falhou, outro ladrão ganhou. O loop tenta de novo (Wait-Free/Lock-Free retry).

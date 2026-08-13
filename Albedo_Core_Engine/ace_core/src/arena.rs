@@ -24,6 +24,7 @@ struct Chunk {
 impl Chunk {
     fn new(size: usize) -> Self {
         let layout = Layout::from_size_align(size, mem::align_of::<u64>()).unwrap();
+        // SAFETY: O tamanho e alinhamento são matematicamente corretos e não-zero (assumindo size > 0). O pointeiro de retorno é testado em seguida.
         let ptr = unsafe { alloc(layout) };
         assert!(!ptr.is_null(), "OOM allocating Arena chunk");
         
@@ -37,6 +38,7 @@ impl Chunk {
 
     fn drop_chunk(&mut self) {
         let layout = Layout::from_size_align(self.capacity, mem::align_of::<u64>()).unwrap();
+        // SAFETY: `self.ptr` foi alocado pelo alocador global com o exato mesmo layout.
         unsafe { dealloc(self.ptr.as_ptr(), layout) };
     }
 }
@@ -61,6 +63,8 @@ impl Arena {
     /// A alocação é puramente a soma de um ponteiro e alinhamento matemático.
     #[inline]
     pub fn alloc<T>(&self, value: T) -> &mut T {
+        // SAFETY: O Bump pointer (`offset`) nunca excede `capacity`. O preenchimento (`padding`) e `align` 
+        // garantem que não há writes desalinhados, emulando perfeitamente a semântica nativa do Rust.
         unsafe {
             let layout = Layout::new::<T>();
             let size = layout.size();
@@ -113,6 +117,8 @@ impl Arena {
     /// O chunk atual (que concentra a capacidade do último ciclo) é mantido
     /// e resetado O(1), enquanto chunks antigos são liberados.
     pub fn clear(&self) {
+        // SAFETY: Os nós pertencem estritamente à Arena e formam uma lista ligada isolada.
+        // Dropamos recursivamente e transformamos os pointeiros brutos em Box temporários para liberação.
         unsafe {
             let head_ptr = self.head.get();
             let head = head_ptr.as_ref();
