@@ -108,6 +108,30 @@ impl Arena {
             &mut *ptr_val
         }
     }
+
+    /// Limpa a Arena para reaproveitamento (Phase-Oriented Allocation).
+    /// O chunk atual (que concentra a capacidade do último ciclo) é mantido
+    /// e resetado O(1), enquanto chunks antigos são liberados.
+    pub fn clear(&self) {
+        unsafe {
+            let head_ptr = self.head.get();
+            let head = head_ptr.as_ref();
+            
+            // O(1) reset do chunk atual
+            head.len.set(0);
+            
+            // Libera chunks antigos que sobraram na cauda
+            let mut current = head.next.get();
+            head.next.set(None);
+            
+            while let Some(mut chunk_ptr) = current {
+                let chunk = chunk_ptr.as_mut();
+                current = chunk.next.get();
+                chunk.drop_chunk();
+                let _ = Box::from_raw(chunk_ptr.as_ptr());
+            }
+        }
+    }
 }
 
 impl Drop for Arena {
