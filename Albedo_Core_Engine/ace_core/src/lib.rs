@@ -26,6 +26,7 @@ pub mod arena;
 pub mod alloc;
 pub mod deque;
 pub mod error;
+#[cfg(feature = "gc")]
 pub mod gc;
 pub mod id;
 pub mod intern;
@@ -35,6 +36,7 @@ pub mod ring;
 pub mod scanner;
 pub mod small_vec;
 pub mod sync;
+#[cfg(feature = "debug-tools")]
 pub mod trace;
 
 // (Esses módulos já haviam sido criados por outra sessão, listamos para compilar tudo)
