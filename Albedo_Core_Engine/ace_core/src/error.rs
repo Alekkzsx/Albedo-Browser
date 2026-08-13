@@ -70,9 +70,38 @@ pub enum AceError {
     Unknown { message: Cow<'static, str> },
 }
 
+impl AceError {
+    /// Permite encadear uma mensagem de contexto adicional a um erro existente.
+    pub fn with_context<C: Into<Cow<'static, str>>>(self, ctx: C) -> Self {
+        match self {
+            AceError::Io { source, context } => AceError::Io {
+                source,
+                context: format!("{}: {}", ctx.into(), context).into(),
+            },
+            // Para as demais variantes, envolvemos o erro num Unknown ou 
+            // formatamos a string. Por simplicidade de alocação:
+            _ => {
+                let current_msg = format!("{}", self);
+                AceError::Unknown {
+                    message: format!("{}: {}", ctx.into(), current_msg).into(),
+                }
+            }
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Trait Implementations
 // ----------------------------------------------------------------------------
+
+impl From<std::io::Error> for AceError {
+    fn from(error: std::io::Error) -> Self {
+        AceError::Io {
+            context: Cow::Borrowed("System I/O failure"),
+            source: error,
+        }
+    }
+}
 
 impl fmt::Display for AceError {
     /// Formata a mensagem de erro provendo contexto claro ao usuário ou sistema de log.
