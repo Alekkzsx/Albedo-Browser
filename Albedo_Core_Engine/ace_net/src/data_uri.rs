@@ -35,7 +35,7 @@ fn decode_b64_char(c: u8) -> Result<u8, AceError> {
 pub fn decode_base64(input: &str) -> ace_core::AceResult<Vec<u8>> {
     let bytes = input.as_bytes();
     let mut clean_bytes = Vec::with_capacity(bytes.len());
-    
+
     // Ignora espaços e quebras de linha que são comuns no HTML Base64 (Line wrapping).
     for &b in bytes {
         if b != b' ' && b != b'\n' && b != b'\r' && b != b'\t' {
@@ -61,12 +61,12 @@ pub fn decode_base64(input: &str) -> ace_core::AceResult<Vec<u8>> {
     }
 
     let mut output = Vec::with_capacity((clean_bytes.len() / 4) * 3);
-    
+
     for chunk in clean_bytes.chunks_exact(4) {
         let n = (decode_b64_char(chunk[0])? as u32) << 18
-              | (decode_b64_char(chunk[1])? as u32) << 12
-              | (decode_b64_char(chunk[2])? as u32) << 6
-              | (decode_b64_char(chunk[3])? as u32);
+            | (decode_b64_char(chunk[1])? as u32) << 12
+            | (decode_b64_char(chunk[2])? as u32) << 6
+            | (decode_b64_char(chunk[3])? as u32);
 
         output.push((n >> 16) as u8);
         output.push((n >> 8) as u8);
@@ -90,7 +90,7 @@ pub fn parse_data_uri(uri: &str) -> ace_core::AceResult<DataUri<'_>> {
     }
 
     let rest = &uri[5..];
-    
+
     // Procura pela vírgula que separa os metadados dos dados
     let comma_idx = rest.find(',').ok_or_else(|| AceError::Parse {
         message: Cow::Borrowed("URI data: não contém vírgula separadora"),
@@ -130,18 +130,19 @@ fn url_decode(input: &str) -> ace_core::AceResult<Vec<u8>> {
     let bytes = input.as_bytes();
     let mut output = Vec::with_capacity(bytes.len());
     let mut i = 0;
-    
+
     while i < bytes.len() {
         if bytes[i] == b'%' {
             if i + 2 < bytes.len() {
-                let hex_str = std::str::from_utf8(&bytes[i+1..i+3]).map_err(|_| AceError::Parse {
-                    message: Cow::Borrowed("Sequência URL-encoded inválida (Não é UTF-8)"),
-                })?;
-                
+                let hex_str =
+                    std::str::from_utf8(&bytes[i + 1..i + 3]).map_err(|_| AceError::Parse {
+                        message: Cow::Borrowed("Sequência URL-encoded inválida (Não é UTF-8)"),
+                    })?;
+
                 let byte = u8::from_str_radix(hex_str, 16).map_err(|_| AceError::Parse {
                     message: Cow::Borrowed("Hexadecimal inválido na URL"),
                 })?;
-                
+
                 output.push(byte);
                 i += 3;
             } else {
@@ -154,6 +155,6 @@ fn url_decode(input: &str) -> ace_core::AceResult<Vec<u8>> {
             i += 1;
         }
     }
-    
+
     Ok(output)
 }

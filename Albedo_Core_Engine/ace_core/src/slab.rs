@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Slab Allocator (Memória Dinâmica O(1))
-//! 
+//!
 //! Uma `Arena` (Bump Allocator) é O(1) para alocar, mas os objetos não podem ser
 //! liberados individualmente. O `Slab` resolve isso: um vetor pré-alocado que
 //! encadeia os slots vazios numa *free-list*.
@@ -84,10 +84,10 @@ impl<T> Slab<T> {
     /// Pânico: Se o índice for inválido ou o slot já estiver vazio.
     pub fn remove(&mut self, key: usize) -> T {
         assert!(key < self.entries.len(), "Slab key fora dos limites");
-        
+
         // Troca temporariamente o valor por Vacant para podermos retornar `T` (ownership)
         let old_entry = std::mem::replace(&mut self.entries[key], Entry::Vacant(self.next_free));
-        
+
         match old_entry {
             Entry::Occupied(val) => {
                 // Atualiza a head da free-list
@@ -96,7 +96,10 @@ impl<T> Slab<T> {
                 val
             }
             Entry::Vacant(_) => {
-                panic!("Slab double free: Tentativa de remover slot já vazio no índice {}", key);
+                panic!(
+                    "Slab double free: Tentativa de remover slot já vazio no índice {}",
+                    key
+                );
             }
         }
     }

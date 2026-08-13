@@ -42,7 +42,7 @@ fn test_event_loop_priorities() {
 
     // Encerramento Gracioso
     drop(event_loop);
-    
+
     // O Arc::try_unwrap falha se houver clones pendentes, o que ajuda a provar ausência de vazamentos
     if let Ok(pool) = Arc::try_unwrap(thread_pool) {
         pool.join();

@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Interceptador de Alocação (Memory Profiler)
-//! 
+//!
 //! Para evitar o consumo caótico de memória, comum em navegadores modernos,
 //! o `ace_core` intercepta cada `malloc` e `free`. Todas as estruturas
 //! geradas pelo Rust (como Vectors e Strings) são pesadas.
@@ -21,7 +21,7 @@ pub static ACTIVE_ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
 pub static PEAK_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 /// O Alocador Customizado do Albedo.
-/// Intercepta as chamadas para registrar a contabilidade e delega a memória 
+/// Intercepta as chamadas para registrar a contabilidade e delega a memória
 /// bruta ao alocador do sistema (`System`).
 pub struct AlbedoAllocator;
 
@@ -32,7 +32,7 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
         let current = ALLOCATED_BYTES.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
         PEAK_MEMORY_BYTES.fetch_max(current, Ordering::Relaxed);
         ACTIVE_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-        
+
         // Delega de fato ao OS
         System.alloc(layout)
     }
@@ -42,13 +42,13 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
         // Decrementa as métricas
         ALLOCATED_BYTES.fetch_sub(layout.size(), Ordering::Relaxed);
         ACTIVE_ALLOCATIONS.fetch_sub(1, Ordering::Relaxed);
-        
+
         // Libera no OS
         System.dealloc(ptr, layout)
     }
 }
 
-/// A Instância Global. Ao compilar com a crate ace_core, 
+/// A Instância Global. Ao compilar com a crate ace_core,
 /// toda a memória passa por aqui.
 #[global_allocator]
 static GLOBAL_ALLOCATOR: AlbedoAllocator = AlbedoAllocator;

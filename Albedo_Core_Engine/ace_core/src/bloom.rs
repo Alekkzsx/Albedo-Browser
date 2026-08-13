@@ -7,8 +7,8 @@
 // ============================================================================
 
 //! # Bloom Filter (Rejeição Ultra-Rápida)
-//! 
-//! O WebKit e o Servo usam filtros de Bloom para acelerar drasticamente o 
+//!
+//! O WebKit e o Servo usam filtros de Bloom para acelerar drasticamente o
 //! "Selector Matching". Quando perguntamos "O elemento X tem o ancestral Y?",
 //! o filtro responde:
 //! - "Com certeza não" (Fast-Rejection imediato sem percorrer a árvore DOM)
@@ -49,7 +49,7 @@ impl BloomFilter {
     #[inline]
     pub fn insert(&mut self, hash: u32) {
         let (b1, b2) = Self::get_bit_indices(hash);
-        
+
         self.bits[b1 / 64] |= 1 << (b1 % 64);
         self.bits[b2 / 64] |= 1 << (b2 % 64);
     }
@@ -60,10 +60,10 @@ impl BloomFilter {
     #[inline]
     pub fn might_contain(&self, hash: u32) -> bool {
         let (b1, b2) = Self::get_bit_indices(hash);
-        
+
         let has_b1 = (self.bits[b1 / 64] & (1 << (b1 % 64))) != 0;
         let has_b2 = (self.bits[b2 / 64] & (1 << (b2 % 64))) != 0;
-        
+
         has_b1 && has_b2
     }
 }

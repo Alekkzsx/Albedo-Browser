@@ -16,7 +16,7 @@ const LSB_MASK: usize = usize::from_ne_bytes([0x01; 8]);
 /// Replica o byte `0x80` para todas as 8 posições.
 const MSB_MASK: usize = usize::from_ne_bytes([0x80; 8]);
 
-/// Busca linearmente um byte (needle) num slice, lendo de 8 em 8 bytes 
+/// Busca linearmente um byte (needle) num slice, lendo de 8 em 8 bytes
 /// sempre que possível (64-bits). Em computadores 32-bits, opera de 4 em 4 bytes.
 #[inline]
 pub fn find_byte_fast(haystack: &[u8], needle: u8) -> Option<usize> {
@@ -34,10 +34,10 @@ pub fn find_byte_fast(haystack: &[u8], needle: u8) -> Option<usize> {
         unsafe {
             // Lemos 8 bytes da memória ignorando alinhamento estrito
             let chunk = ptr.add(offset).cast::<usize>().read_unaligned();
-            
+
             // Fazemos um XOR. Onde o chunk for igual ao needle, o resultado do XOR será 0x00.
             let xored = chunk ^ needle_mask;
-            
+
             // Truque clássico de Bitwise (O mesmo usado no glibc memchr):
             // Subtrair 0x01... faz o bit mais significativo (MSB) virar 1 se o byte original era 0.
             let has_zero_byte = (xored.wrapping_sub(LSB_MASK)) & !xored & MSB_MASK;

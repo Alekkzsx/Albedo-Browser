@@ -89,7 +89,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
         // 3. RENDERIZAÇÃO: Controle de Frame Rate (60 FPS = 16.6ms)
         let current_time = MockClock::now_ms() as u64;
         let elapsed = current_time.saturating_sub(self.last_render_time);
-        
+
         if elapsed >= 16 {
             self.last_render_time = current_time;
             // No futuro, isso dispararia o Recalculate Style, Layout e Paint (Fases 6, 7 e 8).
@@ -100,7 +100,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
         // Se houver tarefas nas filas, o poll tem timeout = 0 (apenas espia e volta).
         // Se estivermos ociosos, podemos dormir até o próximo frame de renderização (16ms).
         let time_to_next_frame = 16_u64.saturating_sub(elapsed);
-        
+
         let timeout = if self.macrotasks.is_empty() && self.microtasks.is_empty() {
             Some(time_to_next_frame)
         } else {

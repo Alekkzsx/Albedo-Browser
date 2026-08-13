@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # Hashing de Ultra-Performance
-//! 
+//!
 //! O `FxHash` (Firefox Hash / rustc-hash) é um algoritmo incrivelmente veloz,
 //! otimizado para pequenos vetores e inteiros, rodando via multiplicações matemáticas
 //! constantes sem a complexidade de algoritmos criptográficos como o `SipHash`

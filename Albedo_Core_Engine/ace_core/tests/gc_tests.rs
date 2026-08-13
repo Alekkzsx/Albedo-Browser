@@ -27,23 +27,32 @@ impl Trace for Root {
 #[test]
 fn test_gc_mark_and_sweep() {
     let mut heap = GcHeap::new();
-    
-    let a = heap.allocate(JsObject { value: 1, child: Cell::new(None) });
-    let b = heap.allocate(JsObject { value: 2, child: Cell::new(None) });
-    let c = heap.allocate(JsObject { value: 3, child: Cell::new(None) });
-    
+
+    let a = heap.allocate(JsObject {
+        value: 1,
+        child: Cell::new(None),
+    });
+    let b = heap.allocate(JsObject {
+        value: 2,
+        child: Cell::new(None),
+    });
+    let c = heap.allocate(JsObject {
+        value: 3,
+        child: Cell::new(None),
+    });
+
     // A aponta para B.
     a.child.set(Some(b));
     // C fica isolado e inatingível a partir do root (A).
-    
+
     let root = Root(Some(a));
     let roots: &[&dyn Trace] = &[&root];
-    
+
     let freed = heap.collect(roots);
-    
+
     // O objeto C deve ser coletado (freed = 1)
     assert_eq!(freed, 1);
-    
+
     // Na próxima passada sem raízes, tudo deve morrer (A e B = 2).
     let empty_roots: &[&dyn Trace] = &[];
     let freed_all = heap.collect(empty_roots);

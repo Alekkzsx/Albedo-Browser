@@ -7,7 +7,7 @@
 // ============================================================================
 
 //! # BitSet: Vetor de Bits Compacto
-//! 
+//!
 //! Substitui `Vec<bool>` para garantir um consumo de memória 64x menor.
 //! Permite operações lógicas matemáticas de conjunto em massa (`Union`, `Intersection`)
 //! de forma praticamente instantânea através de instruções SIMD/Bitwise do processador.

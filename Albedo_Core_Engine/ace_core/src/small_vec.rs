@@ -55,7 +55,7 @@ impl<T, const N: usize> SmallVec<T, N> {
                         let inline_ptr = buffer.as_ptr() as *const T;
                         ptr::copy_nonoverlapping(inline_ptr, vec.as_mut_ptr(), N);
                         vec.set_len(N);
-                        
+
                         // O buffer da stack foi esvaziado logicamente.
                         // Agora escrevemos o novo valor.
                         vec.push(value);

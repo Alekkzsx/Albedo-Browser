@@ -7,8 +7,8 @@
 // ============================================================================
 
 use crate::hash::FxHashMap;
-use std::sync::OnceLock;
 use crate::sync::SpinLock;
+use std::sync::OnceLock;
 
 /// Símbolo Internado O(1).
 /// Comparações entre Symbols não comparam a String real, apenas o `u32`,
@@ -33,16 +33,16 @@ impl Interner {
         if let Some(&id) = self.map.get(text) {
             return Symbol(id);
         }
-        
+
         // Se a string não existe, devemos convertê-la em 'static str.
         // Como o interner nunca apaga dados, vazar (leak) a string aqui é o
         // comportamento correto arquiteturalmente para "imortais".
         let id = self.vec.len() as u32;
         let leaked_str: &'static str = Box::leak(text.to_string().into_boxed_str());
-        
+
         self.map.insert(leaked_str, id);
         self.vec.push(leaked_str);
-        
+
         Symbol(id)
     }
 
@@ -52,7 +52,7 @@ impl Interner {
 }
 
 /// Tabela Global da Engine.
-/// Usamos nosso próprio `SpinLock` em vez de um `Mutex` para reduzir a latência de 
+/// Usamos nosso próprio `SpinLock` em vez de um `Mutex` para reduzir a latência de
 /// chamadas ao kernel do SO durante o parsing massivo de HTML/CSS.
 static INTERNER: OnceLock<SpinLock<Interner>> = OnceLock::new();
 
@@ -73,5 +73,3 @@ pub fn resolve(symbol: Symbol) -> Option<&'static str> {
     let lock = global.lock();
     lock.resolve(symbol)
 }
-
-

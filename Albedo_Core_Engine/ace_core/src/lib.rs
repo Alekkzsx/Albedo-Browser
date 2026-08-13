@@ -22,8 +22,8 @@
 // Modules Declaration
 // ----------------------------------------------------------------------------
 
-pub mod arena;
 pub mod alloc;
+pub mod arena;
 pub mod bitset;
 pub mod bloom;
 pub mod deque;
@@ -53,15 +53,15 @@ pub mod time;
 // Public Exports (Facade)
 // ----------------------------------------------------------------------------
 
-pub use error::{AceError, AceResult};
-pub use event_loop::*;
 pub use bitset::*;
 pub use bloom::*;
+pub use error::{AceError, AceResult};
+pub use event_loop::*;
 pub use hash::*;
-pub use slab::*;
 pub use id::*;
 pub use io::*;
 pub use log::*;
 pub use math::*;
+pub use slab::*;
 pub use thread_pool::*;
 pub use time::*;

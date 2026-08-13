@@ -6,10 +6,10 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
+use std::alloc::{alloc, dealloc, Layout};
 use std::cell::Cell;
 use std::mem;
 use std::ptr::{self, NonNull};
-use std::alloc::{alloc, dealloc, Layout};
 
 const CHUNK_SIZE: usize = 64 * 1024; // Páginas de 64KB
 
@@ -27,7 +27,7 @@ impl Chunk {
         // SAFETY: O tamanho e alinhamento são matematicamente corretos e não-zero (assumindo size > 0). O pointeiro de retorno é testado em seguida.
         let ptr = unsafe { alloc(layout) };
         assert!(!ptr.is_null(), "OOM allocating Arena chunk");
-        
+
         Self {
             ptr: NonNull::new(ptr).unwrap(),
             capacity: size,
@@ -44,7 +44,7 @@ impl Chunk {
 }
 
 /// Alocador Linear (Bump-Pointer).
-/// 
+///
 /// Solicita blocos colossais e destrói o conceito de `free` individual.
 /// Toda a memória é liberada O(1) quando a Arena sai de escopo.
 pub struct Arena {
@@ -63,13 +63,13 @@ impl Arena {
     /// A alocação é puramente a soma de um ponteiro e alinhamento matemático.
     #[inline]
     pub fn alloc<T>(&self, value: T) -> &mut T {
-        // SAFETY: O Bump pointer (`offset`) nunca excede `capacity`. O preenchimento (`padding`) e `align` 
+        // SAFETY: O Bump pointer (`offset`) nunca excede `capacity`. O preenchimento (`padding`) e `align`
         // garantem que não há writes desalinhados, emulando perfeitamente a semântica nativa do Rust.
         unsafe {
             let layout = Layout::new::<T>();
             let size = layout.size();
             let align = layout.align();
-            
+
             if size == 0 {
                 // Para Zero-Sized Types, apenas retornamos um ponteiro dangling
                 let ptr = NonNull::<T>::dangling().as_ptr();
@@ -81,7 +81,7 @@ impl Arena {
             let mut start = current_chunk.ptr.as_ptr() as usize + current_chunk.len.get();
             let mut padding = start.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1);
             padding = padding.wrapping_sub(start);
-            
+
             let mut needed = size + padding;
 
             // Se o chunk não suportar a alocação, cria um novo
@@ -89,11 +89,11 @@ impl Arena {
                 let new_cap = std::cmp::max(CHUNK_SIZE, needed);
                 let new_chunk = Box::new(Chunk::new(new_cap));
                 let new_chunk_ptr = NonNull::from(Box::leak(new_chunk));
-                
+
                 // Encadeia e torna o novo chunk como 'head'
                 new_chunk_ptr.as_ref().next.set(Some(self.head.get()));
                 self.head.set(new_chunk_ptr);
-                
+
                 current_chunk = self.head.get().as_ref();
                 start = current_chunk.ptr.as_ptr() as usize;
                 padding = start.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1);
@@ -104,7 +104,7 @@ impl Arena {
             // O Bump em si: O(1) puro
             let offset = current_chunk.len.get();
             let ptr_val = current_chunk.ptr.as_ptr().add(offset + padding) as *mut T;
-            
+
             // Grava o bit na memória
             ptr::write(ptr_val, value);
             current_chunk.len.set(offset + needed);
@@ -122,14 +122,14 @@ impl Arena {
         unsafe {
             let head_ptr = self.head.get();
             let head = head_ptr.as_ref();
-            
+
             // O(1) reset do chunk atual
             head.len.set(0);
-            
+
             // Libera chunks antigos que sobraram na cauda
             let mut current = head.next.get();
             head.next.set(None);
-            
+
             while let Some(mut chunk_ptr) = current {
                 let chunk = chunk_ptr.as_mut();
                 current = chunk.next.get();
@@ -142,7 +142,7 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        // SAFETY: A Arena é a única dona de seus chunks. Liberamos recursivamente 
+        // SAFETY: A Arena é a única dona de seus chunks. Liberamos recursivamente
         // a memória alocada, restaurando a propriedade para o Box destruir o ponteiro.
         unsafe {
             let mut current = Some(self.head.get());
@@ -156,5 +156,3 @@ impl Drop for Arena {
         }
     }
 }
-
-
