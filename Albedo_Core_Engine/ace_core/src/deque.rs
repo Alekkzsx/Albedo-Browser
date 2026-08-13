@@ -67,7 +67,7 @@ impl<T> WorkerDeque<T> {
         let b = self.bottom.load(Ordering::Relaxed) - 1;
         self.bottom.store(b, Ordering::Relaxed);
         
-        std::sync::atomic::compiler_fence(Ordering::SeqCst);
+        std::sync::atomic::fence(Ordering::SeqCst);
         
         let t = self.top.load(Ordering::Relaxed);
         
@@ -107,7 +107,7 @@ impl<T> WorkerDeque<T> {
     pub fn steal(&self) -> Option<T> {
         loop {
             let t = self.top.load(Ordering::Acquire);
-            std::sync::atomic::compiler_fence(Ordering::SeqCst);
+            std::sync::atomic::fence(Ordering::SeqCst);
             let b = self.bottom.load(Ordering::Acquire);
             
             if t >= b {
