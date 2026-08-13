@@ -6,7 +6,6 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::collections::VecDeque;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -64,10 +63,8 @@ impl Worker {
         let thread = builder
             .spawn(move || {
                 loop {
-                    let mut job = None;
-
                     // 1. TENTATIVA LOCAL (LIFO, sem lock, O(1))
-                    job = shared_state.local_queues[id].queue.pop();
+                    let mut job = shared_state.local_queues[id].queue.pop();
 
                     // 2. TENTATIVA DE ROUBO (WORK-STEALING, FIFO, CAS Lock-Free)
                     if job.is_none() {
