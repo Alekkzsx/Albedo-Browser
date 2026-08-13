@@ -804,8 +804,10 @@ impl Mul for Matrix3x3<f32> {
     }
 }
 
-/// Arquitetura Algébrica 4x4 de Transformação Espacial (Homogênea WebGL).
-#[repr(C)]
+/// Matriz de Transformação Homogênea 4x4 (Projeção e Transformação 3D).
+/// Totalmente alinhada em 16-bytes para forçar o backend do LLVM
+/// a emitir instruções SIMD (AVX/SSE) em operações matemáticas de Loop Unrolling.
+#[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Matrix4x4<T> {
     pub data: [T; 16],
