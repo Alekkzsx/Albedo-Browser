@@ -78,7 +78,7 @@ impl AceError {
                 source,
                 context: format!("{}: {}", ctx.into(), context).into(),
             },
-            // Para as demais variantes, envolvemos o erro num Unknown ou 
+            // Para as demais variantes, envolvemos o erro num Unknown ou
             // formatamos a string. Por simplicidade de alocação:
             _ => {
                 let current_msg = format!("{}", self);

@@ -61,8 +61,10 @@ struct LogConfig {
 fn get_log_config() -> &'static LogConfig {
     static CONFIG: OnceLock<LogConfig> = OnceLock::new();
     CONFIG.get_or_init(|| {
-        let is_json = env::var("ACE_LOG_JSON").map(|v| v == "1" || v == "true").unwrap_or(false);
-        
+        let is_json = env::var("ACE_LOG_JSON")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+
         let mut global_level = LogLevel::Info;
         let mut module_levels = std::collections::HashMap::new();
 
@@ -109,7 +111,7 @@ fn get_logger_sender() -> &'static SyncSender<String> {
     SENDER.get_or_init(|| {
         // Criamos uma fila MPMC de alta capacidade para evitar backpressure
         let (tx, rx) = mpsc::sync_channel::<String>(10000);
-        
+
         // Spawna a Thead Operária (I/O)
         thread::Builder::new()
             .name("ACE_Logger".to_string())
@@ -122,7 +124,7 @@ fn get_logger_sender() -> &'static SyncSender<String> {
                 }
             })
             .expect("Falha ao spawnar a Thread de Logs");
-            
+
         tx
     })
 }
@@ -131,22 +133,27 @@ fn get_logger_sender() -> &'static SyncSender<String> {
 #[doc(hidden)]
 pub fn _log(level: LogLevel, target: &str, args: std::fmt::Arguments) {
     let config = get_log_config();
-    
+
     // Verifica se este módulo tem um level específico, senão usa o global
-    let threshold = config.module_levels.get(target).unwrap_or(&config.global_level);
-    
+    let threshold = config
+        .module_levels
+        .get(target)
+        .unwrap_or(&config.global_level);
+
     if level >= *threshold {
         let msg = if config.is_json {
             // Escapa as aspas duplas na mensagem para JSON válido
             let escaped_args = format!("{}", args).replace("\"", "\\\"");
             format!(
                 r#"{{"level":"{}","module":"{}","msg":"{}"}}"#,
-                level.as_str().trim(), target, escaped_args
+                level.as_str().trim(),
+                target,
+                escaped_args
             )
         } else {
             format!("[{}] [{}] {}", level.as_str(), target, args)
         };
-        
+
         let tx = get_logger_sender();
         // Dispara de forma Não-Bloqueante (Non-Blocking). Se o terminal for excessivamente lento
         // e o buffer atingir 10.000, as mensagens seguintes são dropadas até esvaziar,

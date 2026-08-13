@@ -45,10 +45,10 @@ fn test_slab_memory_leak_stress() {
     // a RAM explodiria em um ambiente de produção.
     for i in 0..1_000_000 {
         let slot = i % 100;
-        
+
         let removed = slab.remove(slot as usize);
         assert_eq!(removed, slot);
-        
+
         // Re-insere. Pela matemática do Slab, o ID retornado DEVE ser o mesmo `slot`.
         let new_id = slab.insert(slot);
         assert_eq!(new_id, slot as usize);

@@ -11,17 +11,17 @@ fn read_mock_file() -> Result<(), AceError> {
 #[test]
 fn test_error_propagation_and_context() {
     let result = read_mock_file();
-    
+
     assert!(result.is_err());
-    
+
     let err = result.unwrap_err();
-    
+
     // Adiciona contexto
     let err_with_context = err.with_context("Failed to initialize engine");
-    
+
     // Converte para string para checar o display
     let err_str = format!("{}", err_with_context);
-    
+
     assert!(err_str.contains("Failed to initialize engine"));
     assert!(err_str.contains("System I/O failure"));
 }

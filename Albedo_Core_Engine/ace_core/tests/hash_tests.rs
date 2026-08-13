@@ -1,6 +1,6 @@
 use ace_core::hash::{FxHashMap, FxHashSet};
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
 
 #[test]
 fn test_fxhash_correctness() {

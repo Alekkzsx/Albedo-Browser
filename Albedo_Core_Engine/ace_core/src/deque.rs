@@ -6,8 +6,8 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
 use std::ptr;
+use std::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
 
 /// Capacidade fixa da fila (deve ser uma potência de 2).
 const CAPACITY: isize = 4096;
@@ -47,20 +47,20 @@ impl<T> WorkerDeque<T> {
     pub fn push(&self, task: T) -> Result<(), T> {
         let b = self.bottom.load(Ordering::Relaxed);
         let t = self.top.load(Ordering::Acquire);
-        
+
         // Verifica se a fila está cheia
         if b - t >= CAPACITY {
             return Err(task);
         }
 
         let ptr = Box::into_raw(Box::new(task));
-        
+
         // Armazena no buffer na posição (b % CAPACITY)
         self.buffer[(b & MASK) as usize].store(ptr, Ordering::Relaxed);
-        
+
         // Publica a atualização do bottom com Release semantics.
         self.bottom.store(b + 1, Ordering::Release);
-        
+
         Ok(())
     }
 
@@ -68,25 +68,22 @@ impl<T> WorkerDeque<T> {
     pub fn pop(&self) -> Option<T> {
         let b = self.bottom.load(Ordering::Relaxed) - 1;
         self.bottom.store(b, Ordering::Relaxed);
-        
+
         std::sync::atomic::fence(Ordering::SeqCst);
-        
+
         let t = self.top.load(Ordering::Relaxed);
-        
+
         if t <= b {
             // A fila tem elementos
             let ptr = self.buffer[(b & MASK) as usize].load(Ordering::Relaxed);
-            
+
             if t == b {
                 // Último elemento, precisamos resolver conflito potencial com ladrões
-                let res = self.top.compare_exchange(
-                    t,
-                    t + 1,
-                    Ordering::SeqCst,
-                    Ordering::Relaxed,
-                );
+                let res = self
+                    .top
+                    .compare_exchange(t, t + 1, Ordering::SeqCst, Ordering::Relaxed);
                 self.bottom.store(b + 1, Ordering::Relaxed);
-                
+
                 if res.is_ok() {
                     // Nós ganhamos a disputa contra os ladrões
                     // SAFETY: Ganhamos o Lock via CAS. O ponteiro foi criado de um Box, então podemos recriá-lo.
@@ -113,16 +110,20 @@ impl<T> WorkerDeque<T> {
             let t = self.top.load(Ordering::Acquire);
             std::sync::atomic::fence(Ordering::SeqCst);
             let b = self.bottom.load(Ordering::Acquire);
-            
+
             if t >= b {
                 // Fila vazia
                 return None;
             }
-            
+
             let ptr = self.buffer[(t & MASK) as usize].load(Ordering::Relaxed);
-            
+
             // Tenta roubar o item empurrando o top para baixo via CAS
-            if self.top.compare_exchange(t, t + 1, Ordering::SeqCst, Ordering::Relaxed).is_ok() {
+            if self
+                .top
+                .compare_exchange(t, t + 1, Ordering::SeqCst, Ordering::Relaxed)
+                .is_ok()
+            {
                 // Sucesso no roubo!
                 // SAFETY: CAS bem sucedido significa que conquistamos a posse deste índice na fila.
                 return Some(unsafe { *Box::from_raw(ptr) });

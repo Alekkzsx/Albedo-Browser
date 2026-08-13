@@ -34,14 +34,14 @@ macro_rules! define_id {
 
         impl $name {
             /// Gera um novo ID global e único, acessível de forma concorrente sem locks.
-            /// 
+            ///
             /// **Null Pointer Optimization (NPO):**
-            /// Por baixo dos panos usamos `NonZeroU64`, garantindo que `Option<Id>` 
+            /// Por baixo dos panos usamos `NonZeroU64`, garantindo que `Option<Id>`
             /// gaste os mesmos 8 bytes de um ponteiro cru, cortando o uso de RAM pela metade
             /// em grandes estruturas como o DOM Tree.
             pub fn new() -> Self {
                 static COUNTER: AtomicU64 = AtomicU64::new(1);
-                // SAFETY: fetch_add começa em 1. Um overflow para 0 precisaria de 
+                // SAFETY: fetch_add começa em 1. Um overflow para 0 precisaria de
                 // 584 anos operando a 1 bilhão de IDs por segundo (Impossível fisicamente).
                 let val = COUNTER.fetch_add(1, Ordering::Relaxed);
                 Self(unsafe { NonZeroU64::new_unchecked(val) })

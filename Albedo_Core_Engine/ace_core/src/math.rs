@@ -793,11 +793,11 @@ impl Mul for Matrix3x3<f32> {
         let b = rhs.data;
         let mut res = [0.0; 9];
         // Layout Column-major: índice iterativo r + c * 3
-        for c in 0..3 {
-            for r in 0..3 {
-                res[r + c * 3] = a[r + 0 * 3] * b[0 + c * 3]
-                    + a[r + 1 * 3] * b[1 + c * 3]
-                    + a[r + 2 * 3] * b[2 + c * 3];
+        for r in 0..3 {
+            for c in 0..3 {
+                res[r + c * 3] = a[r] * b[c * 3]
+                    + a[r + 3] * b[1 + c * 3]
+                    + a[r + 6] * b[2 + c * 3];
             }
         }
         Self::new(res)
@@ -926,12 +926,12 @@ impl Mul for Matrix4x4<f32> {
         let a = self.data;
         let b = rhs.data;
         let mut res = [0.0; 16];
-        for c in 0..4 {
-            for r in 0..4 {
-                res[r + c * 4] = a[r + 0 * 4] * b[0 + c * 4]
-                    + a[r + 1 * 4] * b[1 + c * 4]
-                    + a[r + 2 * 4] * b[2 + c * 4]
-                    + a[r + 3 * 4] * b[3 + c * 4];
+        for r in 0..4 {
+            for c in 0..4 {
+                res[r + c * 4] = a[r] * b[c * 4]
+                    + a[r + 4] * b[1 + c * 4]
+                    + a[r + 8] * b[2 + c * 4]
+                    + a[r + 12] * b[3 + c * 4];
             }
         }
         Self::new(res)

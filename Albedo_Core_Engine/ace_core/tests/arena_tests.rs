@@ -5,10 +5,10 @@ fn test_arena_alloc() {
     let arena = Arena::new();
     let a = arena.alloc(42i32);
     let b = arena.alloc(100f64);
-    
+
     assert_eq!(*a, 42);
     assert_eq!(*b, 100.0);
-    
+
     // Modificação mutável in-place
     *a = 50;
     assert_eq!(*a, 50);

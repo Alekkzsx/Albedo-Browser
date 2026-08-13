@@ -7,16 +7,16 @@
 // ============================================================================
 
 //! # SpinLocks Nativo
-//! 
-//! Um `Mutex` bloqueia a Thread chamando o Kernel do SO, o que gasta milhares de 
-//! ciclos de CPU de Overhead. O `SpinLock` gira num loop infinito usando 
-//! Compare-and-Swap (CAS), poupando chamadas de SO para trechos extremamente 
+//!
+//! Um `Mutex` bloqueia a Thread chamando o Kernel do SO, o que gasta milhares de
+//! ciclos de CPU de Overhead. O `SpinLock` gira num loop infinito usando
+//! Compare-and-Swap (CAS), poupando chamadas de SO para trechos extremamente
 //! curtos e críticos de dados.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use core::hint::spin_loop;
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use core::hint::spin_loop;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Bloqueio Ativo (Spin) focado em performance pura e bruta.
 /// *Atenção:* Nunca utilize para aguardar I/O, apenas para gerência de memória Rápida!
@@ -40,12 +40,11 @@ impl<T> SpinLock<T> {
     #[inline]
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
         let mut backoff = 1;
-        while self.locked.compare_exchange_weak(
-            false, 
-            true, 
-            Ordering::Acquire, 
-            Ordering::Relaxed
-        ).is_err() {
+        while self
+            .locked
+            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
             // Se falhou (alguém tem o Lock), gira com exponential backoff
             while self.locked.load(Ordering::Relaxed) {
                 for _ in 0..backoff {
@@ -57,7 +56,7 @@ impl<T> SpinLock<T> {
                 }
             }
         }
-        
+
         SpinLockGuard { lock: self }
     }
 }
@@ -69,7 +68,7 @@ pub struct SpinLockGuard<'a, T> {
 
 impl<T> Deref for SpinLockGuard<'_, T> {
     type Target = T;
-    
+
     #[inline]
     fn deref(&self) -> &T {
         unsafe { &*self.lock.data.get() }

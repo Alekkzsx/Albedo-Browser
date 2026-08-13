@@ -6,11 +6,11 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
+use crate::deque::WorkerDeque;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
-use crate::deque::WorkerDeque;
 
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
 
@@ -42,7 +42,7 @@ impl SharedState {
                 queue: WorkerDeque::new(),
             });
         }
-        
+
         Self {
             global_queue: Mutex::new(std::collections::VecDeque::new()),
             local_queues,
@@ -83,7 +83,8 @@ impl Worker {
                     if job.is_none() {
                         for i in 0..num_workers {
                             let target_id = (id + i + 1) % num_workers;
-                            if let Some(stolen) = shared_state.local_queues[target_id].queue.steal() {
+                            if let Some(stolen) = shared_state.local_queues[target_id].queue.steal()
+                            {
                                 job = Some(stolen);
                                 break;
                             }
@@ -103,14 +104,14 @@ impl Worker {
                             };
                             crate::ace_error!("Worker {} sofreu Panic Interno: {}", id, msg);
                         }
-                        
+
                         // Subtrai do contador de pendências globais DEPOIS de executar
                         let prev = shared_state.pending_tasks.fetch_sub(1, Ordering::Release);
                         if prev == 1 {
                             // Era a última task, acorda quem estiver esperando no wait_for_all
                             shared_state.barrier_condvar.notify_all();
                         }
-                        
+
                         continue; // Evita entrar no fluxo de sleep se tínhamos trabalho
                     }
 
@@ -129,11 +130,13 @@ impl Worker {
                         // Trava o sleep_mutex para aguardar na Condvar
                         let lock = shared_state.sleep_mutex.lock().unwrap();
                         // Checagem dupla para prevenir "Missed Wakeup"
-                        if shared_state.pending_tasks.load(Ordering::Acquire) == 0 && !shared_state.shutdown.load(Ordering::Acquire) {
+                        if shared_state.pending_tasks.load(Ordering::Acquire) == 0
+                            && !shared_state.shutdown.load(Ordering::Acquire)
+                        {
                             drop(shared_state.condvar.wait(lock).unwrap());
                         }
                     } else {
-                        // Se há pending, mas o try_lock falhou, nós cedemos o slice de CPU 
+                        // Se há pending, mas o try_lock falhou, nós cedemos o slice de CPU
                         // para as outras threads destrarem os Mutexes mais rápido.
                         thread::yield_now();
                     }
@@ -177,35 +180,45 @@ impl ThreadPool {
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
-        
+
         // Incrementa ANTES de colocar na fila (evita a thread roubar antes de registrarmos)
-        self.shared_state.pending_tasks.fetch_add(1, Ordering::Release);
-        
+        self.shared_state
+            .pending_tasks
+            .fetch_add(1, Ordering::Release);
+
         // Insere na fila GLOBAL (MPMC)
         // O execute pode ser chamado por Múltiplas Threads concorrentemente,
         // então não podemos usar o Chase-Lev (SPMC) aqui.
-        self.shared_state.global_queue.lock().unwrap().push_back(job);
-        
+        self.shared_state
+            .global_queue
+            .lock()
+            .unwrap()
+            .push_back(job);
+
         // Acorda os workers dormentes
         self.shared_state.condvar.notify_one();
     }
-    
-    /// Bloqueia a thread atual até que todas as tarefas na fila (globais e locais) 
+
+    /// Bloqueia a thread atual até que todas as tarefas na fila (globais e locais)
     /// sejam concluídas. Fundamental para sincronização de Fases (ex: Sync Layout).
     pub fn wait_for_all(&self) {
         let lock = self.shared_state.barrier_mutex.lock().unwrap();
-        
+
         // Fast path
         if self.shared_state.pending_tasks.load(Ordering::Acquire) == 0 {
             return;
         }
-        
+
         // Aguarda até que as pending_tasks cheguem a 0
-        let _guard = self.shared_state.barrier_condvar.wait_while(lock, |_| {
-            self.shared_state.pending_tasks.load(Ordering::Acquire) > 0
-        }).unwrap();
+        let _guard = self
+            .shared_state
+            .barrier_condvar
+            .wait_while(lock, |_| {
+                self.shared_state.pending_tasks.load(Ordering::Acquire) > 0
+            })
+            .unwrap();
     }
-    
+
     pub fn join(self) {}
 }
 

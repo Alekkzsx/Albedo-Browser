@@ -62,9 +62,15 @@ fn matrix3x3_inverse_property() {
     let mut rng = FastLCG::new(9999);
     for _ in 0..5_000 {
         let m = Matrix3x3::new([
-            rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2),
-            rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2),
-            rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
         ]);
 
         if let Some(inv) = m.inverse() {
@@ -78,8 +84,16 @@ fn matrix3x3_inverse_property() {
 fn vec3_cross_orthogonal() {
     let mut rng = FastLCG::new(777);
     for _ in 0..5_000 {
-        let u = Vec3::new(rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2));
-        let v = Vec3::new(rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2), rng.next_f32(-1e2, 1e2));
+        let u = Vec3::new(
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+        );
+        let v = Vec3::new(
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+            rng.next_f32(-1e2, 1e2),
+        );
 
         let cross = u.cross(&v);
 

@@ -16,7 +16,7 @@ pub enum GcColor {
     Black, // Visitado, filhos visitados
 }
 
-/// A Trait fundamental. Qualquer objeto que viva no Heap do GC e aponte para 
+/// A Trait fundamental. Qualquer objeto que viva no Heap do GC e aponte para
 /// outros objetos do GC deve implementar `Trace`.
 pub trait Trace {
     /// O GC chamará este método para que o objeto marque seus filhos como Gray.
@@ -49,7 +49,10 @@ pub struct GcBox<T: Trace + 'static> {
 
 impl<T: Trace + 'static> Clone for GcBox<T> {
     fn clone(&self) -> Self {
-        Self { ptr: self.ptr, _marker: PhantomData }
+        Self {
+            ptr: self.ptr,
+            _marker: PhantomData,
+        }
     }
 }
 impl<T: Trace + 'static> Copy for GcBox<T> {}
@@ -99,8 +102,11 @@ impl GcHeap {
         let ptr = NonNull::from(Box::leak(node));
         self.head = Some(ptr.cast());
         self.bytes_allocated += std::mem::size_of::<GcNode<T>>();
-        
-        GcBox { ptr, _marker: PhantomData }
+
+        GcBox {
+            ptr,
+            _marker: PhantomData,
+        }
     }
 
     /// Executa o ciclo Tri-Color Mark-and-Sweep completo.
@@ -110,7 +116,7 @@ impl GcHeap {
         for root in roots {
             root.trace();
         }
-        
+
         // 2. SWEEP
         let mut bytes_freed = 0;
         let mut current = self.head;
@@ -128,10 +134,10 @@ impl GcHeap {
                     } else {
                         self.head = next;
                     }
-                    
+
                     // Dispara o Destructor customizado salvo no header
                     (node.dropper)(node_ptr.as_ptr() as *mut ());
-                    
+
                     current = next;
                     bytes_freed += 1; // Para simplicidade no retorno. No real, rastreamos size.
                 } else {
@@ -142,7 +148,7 @@ impl GcHeap {
                 }
             }
         }
-        
+
         bytes_freed
     }
 }
@@ -151,7 +157,7 @@ impl GcHeap {
 // Funções Internas Type-Erased
 // ----------------------------------------------------------------------------
 
-// SAFETY: O ponteiro ptr é garantido pelo GC como pertencente a GcNode<T>. A deleção em tempo de execução 
+// SAFETY: O ponteiro ptr é garantido pelo GC como pertencente a GcNode<T>. A deleção em tempo de execução
 // faz cast de volta para o tipo correto e permite o Box desmantelar a estrutura.
 unsafe fn drop_node<T: Trace + 'static>(ptr: *mut ()) {
     let typed_ptr = ptr as *mut GcNode<T>;
@@ -175,7 +181,7 @@ pub fn mark<T: Trace + 'static>(gc_box: &GcBox<T>) {
     // SAFETY: Acessamos o tracer type-erased armazenado no cabeçalho do GcBox para prosseguir na varredura.
     unsafe {
         let node_ptr = gc_box.ptr.as_ptr();
-        ( (*node_ptr).header.tracer )(node_ptr as *mut ());
+        ((*node_ptr).header.tracer)(node_ptr as *mut ());
     }
 }
 
