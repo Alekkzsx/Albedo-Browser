@@ -24,16 +24,19 @@
 
 pub mod arena;
 pub mod alloc;
+pub mod bitset;
 pub mod deque;
 pub mod error;
 #[cfg(feature = "gc")]
 pub mod gc;
+pub mod hash;
 pub mod id;
 pub mod intern;
 pub mod log;
 pub mod math;
 pub mod ring;
 pub mod scanner;
+pub mod slab;
 pub mod small_vec;
 pub mod sync;
 #[cfg(feature = "debug-tools")]
@@ -51,6 +54,9 @@ pub mod time;
 
 pub use error::{AceError, AceResult};
 pub use event_loop::*;
+pub use bitset::*;
+pub use hash::*;
+pub use slab::*;
 pub use id::*;
 pub use io::*;
 pub use log::*;
