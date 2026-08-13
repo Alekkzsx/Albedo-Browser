@@ -1,12 +1,12 @@
 use ace_core::event_loop::{EventLoop, Macrotask};
-use ace_core::io::MockMultiplexer;
+use ace_core::io::NativeMultiplexer;
 use ace_core::thread_pool::ThreadPool;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 #[test]
 fn test_event_loop_priorities() {
-    let multiplexer = MockMultiplexer::new();
+    let multiplexer = NativeMultiplexer::new();
     let thread_pool = Arc::new(ThreadPool::new(4));
     let mut event_loop = EventLoop::new(multiplexer, Arc::clone(&thread_pool));
 

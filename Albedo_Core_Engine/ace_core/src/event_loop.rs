@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::io::IoMultiplexer;
 use crate::thread_pool::{Job, ThreadPool};
-use crate::time::MockClock;
+use crate::time::MonotonicClock;
 
 /// Representa a origem de uma Tarefa pesada (Macrotask).
 /// Segue a taxonomia de filas do WHATWG.
@@ -87,7 +87,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
         }
 
         // 3. RENDERIZAÇÃO: Controle de Frame Rate (60 FPS = 16.6ms)
-        let current_time = MockClock::now_ms();
+        let current_time = MonotonicClock::now_ms();
         let elapsed = current_time.saturating_sub(self.last_render_time);
 
         if elapsed >= 16 {
@@ -109,11 +109,6 @@ impl<I: IoMultiplexer> EventLoop<I> {
 
         // Bloqueia a thread usando chamadas eficientes do SO (epoll/iocp)
         self.multiplexer.poll(timeout)?;
-
-        // Pular o tempo virtual para simulação fluída em testes
-        if timeout.unwrap_or(0) > 0 {
-            MockClock::advance(timeout.unwrap());
-        }
 
         Ok(())
     }
