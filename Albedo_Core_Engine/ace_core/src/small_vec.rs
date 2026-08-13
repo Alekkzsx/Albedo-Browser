@@ -6,7 +6,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::mem::{self, ManuallyDrop, MaybeUninit};
+use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
 use std::slice;
