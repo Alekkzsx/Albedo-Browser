@@ -87,7 +87,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
         }
 
         // 3. RENDERIZAÇÃO: Controle de Frame Rate (60 FPS = 16.6ms)
-        let current_time = MockClock::now_ms() as u64;
+        let current_time = MockClock::now_ms();
         let elapsed = current_time.saturating_sub(self.last_render_time);
 
         if elapsed >= 16 {
@@ -112,7 +112,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
 
         // Pular o tempo virtual para simulação fluída em testes
         if timeout.unwrap_or(0) > 0 {
-            MockClock::advance(timeout.unwrap() as u64);
+            MockClock::advance(timeout.unwrap());
         }
 
         Ok(())

@@ -87,15 +87,15 @@ impl<T> WorkerDeque<T> {
                 if res.is_ok() {
                     // Nós ganhamos a disputa contra os ladrões
                     // SAFETY: Ganhamos o Lock via CAS. O ponteiro foi criado de um Box, então podemos recriá-lo.
-                    return Some(unsafe { *Box::from_raw(ptr) });
+                    Some(unsafe { *Box::from_raw(ptr) })
                 } else {
                     // Um ladrão roubou o nosso último item!
-                    return None;
+                    None
                 }
             } else {
                 // Vários elementos, sem disputa
                 // SAFETY: Somos o dono exclusivo e não há disputa com ladrões para este índice.
-                return Some(unsafe { *Box::from_raw(ptr) });
+                Some(unsafe { *Box::from_raw(ptr) })
             }
         } else {
             // A fila estava vazia

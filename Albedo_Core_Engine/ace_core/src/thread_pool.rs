@@ -154,7 +154,6 @@ impl Worker {
 pub struct ThreadPool {
     workers: Vec<Worker>,
     shared_state: Arc<SharedState>,
-    next_worker: AtomicUsize,
 }
 
 impl ThreadPool {
@@ -171,7 +170,6 @@ impl ThreadPool {
         Self {
             workers,
             shared_state,
-            next_worker: AtomicUsize::new(0),
         }
     }
 
