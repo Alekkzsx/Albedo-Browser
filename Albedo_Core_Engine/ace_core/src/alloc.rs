@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Contadores atômicos globais para tracking massivo sem overhead de Locks.
 pub static ALLOCATED_BYTES: AtomicUsize = AtomicUsize::new(0);
 pub static ACTIVE_ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+pub static PEAK_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 /// O Alocador Customizado do Albedo.
 /// Intercepta as chamadas para registrar a contabilidade e delega a memória 
@@ -28,7 +29,8 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // Incrementa as métricas
-        ALLOCATED_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
+        let current = ALLOCATED_BYTES.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
+        PEAK_MEMORY_BYTES.fetch_max(current, Ordering::Relaxed);
         ACTIVE_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
         
         // Delega de fato ao OS
@@ -65,4 +67,10 @@ pub fn current_memory_usage_bytes() -> usize {
 #[inline]
 pub fn current_active_allocations() -> usize {
     ACTIVE_ALLOCATIONS.load(Ordering::Relaxed)
+}
+
+/// Retorna o pico máximo histórico de bytes consumidos (High-water mark).
+#[inline]
+pub fn peak_memory_usage_bytes() -> usize {
+    PEAK_MEMORY_BYTES.load(Ordering::Relaxed)
 }

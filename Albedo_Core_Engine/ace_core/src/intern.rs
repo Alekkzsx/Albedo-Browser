@@ -6,7 +6,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::collections::HashMap;
+use crate::hash::FxHashMap;
 use std::sync::OnceLock;
 use crate::sync::SpinLock;
 
@@ -17,14 +17,14 @@ use crate::sync::SpinLock;
 pub struct Symbol(pub u32);
 
 struct Interner {
-    map: HashMap<&'static str, u32>,
+    map: FxHashMap<&'static str, u32>,
     vec: Vec<&'static str>,
 }
 
 impl Interner {
     fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            map: FxHashMap::default(),
             vec: Vec::new(),
         }
     }
