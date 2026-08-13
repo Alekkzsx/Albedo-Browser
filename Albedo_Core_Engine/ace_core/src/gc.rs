@@ -61,10 +61,7 @@ impl<T: Trace + 'static> Clone for GcBox<T> {
             _marker: PhantomData,
         }
     }
-}
-impl<T: Trace + 'static> Copy for GcBox<T> {}
-
-thread_local! {
+// (Copy removido porque GcBox agora tem Drop para decrementar ref_count)
     /// O Buffer de Suspeitos do Cycle Collector. Nós órfãos (ref_count diminuiu, mas > 0)
     /// são jogados aqui para serem rastreados por ciclos depois.
     pub static SUSPECT_BUFFER: std::cell::RefCell<Vec<NonNull<GcHeader>>> = std::cell::RefCell::new(Vec::new());
