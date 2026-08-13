@@ -121,3 +121,9 @@ impl<T> Slab<T> {
         }
     }
 }
+
+impl<T> Default for Slab<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}

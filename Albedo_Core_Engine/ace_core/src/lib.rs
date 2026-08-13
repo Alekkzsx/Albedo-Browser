@@ -25,6 +25,7 @@
 pub mod arena;
 pub mod alloc;
 pub mod bitset;
+pub mod bloom;
 pub mod deque;
 pub mod error;
 #[cfg(feature = "gc")]
@@ -55,6 +56,7 @@ pub mod time;
 pub use error::{AceError, AceResult};
 pub use event_loop::*;
 pub use bitset::*;
+pub use bloom::*;
 pub use hash::*;
 pub use slab::*;
 pub use id::*;
