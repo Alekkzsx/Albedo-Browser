@@ -83,20 +83,4 @@ impl OomKiller {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_secure_page_allocation() {
-        let page = SecurePage::allocate_isolated(MemoryPartition::DomTree, 4096).unwrap();
-        assert_eq!(page.partition, MemoryPartition::DomTree);
-        assert!(!page.base_ptr.is_null());
-    }
-
-    #[test]
-    fn test_oom_killer_simulation() {
-        // Garantindo que a função não causa pânico ao ser invocada.
-        OomKiller::trigger_memory_pressure_purge();
-    }
-}
+// Testes movidos para tests/partition_alloc_tests.rs
