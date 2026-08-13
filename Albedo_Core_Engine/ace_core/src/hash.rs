@@ -101,3 +101,12 @@ pub type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
 
 /// `HashSet` otimizado em nível extremo para dados internos da engine.
 pub type FxHashSet<T> = HashSet<T, FxBuildHasher>;
+
+/// Calcula rapidamente um hash de 32 bits usando a lógica do FxHash.
+/// Útil para estruturas que precisam de hashes 32 bits, como o Bloom Filter.
+pub fn fxhash32(bytes: &[u8]) -> u32 {
+    let mut hasher = FxHasher::default();
+    hasher.write(bytes);
+    let h64 = hasher.finish();
+    (h64 as u32) ^ ((h64 >> 32) as u32)
+}
