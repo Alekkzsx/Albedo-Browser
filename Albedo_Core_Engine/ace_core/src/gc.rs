@@ -1,0 +1,183 @@
+// ============================================================================
+// Albedo Core Engine (ACE)
+// File: gc.rs
+// Description: Fundamentos de Garbage Collection (Mark-and-Sweep).
+//              Base para a futura Máquina Virtual JavaScript (Fase 7).
+// Author: Albedo Browser Engineering Team
+// ============================================================================
+
+use std::cell::Cell;
+use std::ptr::NonNull;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcColor {
+    White, // Não visitado (candidato à coleta)
+    Gray,  // Visitado, filhos não visitados
+    Black, // Visitado, filhos visitados
+}
+
+/// A Trait fundamental. Qualquer objeto que viva no Heap do GC e aponte para 
+/// outros objetos do GC deve implementar `Trace`.
+pub trait Trace {
+    /// O GC chamará este método para que o objeto marque seus filhos como Gray.
+    fn trace(&self);
+}
+
+// ----------------------------------------------------------------------------
+// GcBox (O Nó do Heap)
+// ----------------------------------------------------------------------------
+
+/// O cabeçalho escondido antes de cada alocação no GC.
+pub struct GcHeader {
+    color: Cell<GcColor>,
+    next: Option<NonNull<GcHeader>>,
+    /// Um ponteiro de função para fazer o downcast do Drop e Trace.
+    /// Isso é necessário porque o Heap guarda headers genéricos, mas precisa
+    /// destruir os valores concretos T corretos na fase de Sweep.
+    dropper: unsafe fn(*mut ()),
+    tracer: unsafe fn(*mut ()),
+}
+
+/// O Smart Pointer que o usuário interage. Funciona como um `Rc` ou `Box`,
+/// mas a vida é gerenciada pelo Tri-Color Mark-and-Sweep.
+pub struct GcBox<T: Trace + 'static> {
+    ptr: NonNull<GcNode<T>>,
+}
+
+// Nós do GC não são Send nem Sync (como no V8, onde Isolates são Thread-Local)
+impl<T: Trace + 'static> !Send for GcBox<T> {}
+impl<T: Trace + 'static> !Sync for GcBox<T> {}
+
+impl<T: Trace + 'static> Clone for GcBox<T> {
+    fn clone(&self) -> Self {
+        Self { ptr: self.ptr }
+    }
+}
+impl<T: Trace + 'static> Copy for GcBox<T> {}
+
+#[repr(C)]
+struct GcNode<T: Trace + 'static> {
+    header: GcHeader,
+    data: T,
+}
+
+impl<T: Trace + 'static> std::ops::Deref for GcBox<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &self.ptr.as_ref().data }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// GcHeap (O Colecionador)
+// ----------------------------------------------------------------------------
+
+pub struct GcHeap {
+    head: Option<NonNull<GcHeader>>,
+    bytes_allocated: usize,
+}
+
+impl GcHeap {
+    pub fn new() -> Self {
+        Self {
+            head: None,
+            bytes_allocated: 0,
+        }
+    }
+
+    /// Aloca um novo valor no Heap gerenciado pelo GC.
+    pub fn allocate<T: Trace + 'static>(&mut self, value: T) -> GcBox<T> {
+        let node = Box::new(GcNode {
+            header: GcHeader {
+                color: Cell::new(GcColor::White),
+                next: self.head,
+                dropper: drop_node::<T>,
+                tracer: trace_node::<T>,
+            },
+            data: value,
+        });
+
+        let ptr = NonNull::from(Box::leak(node));
+        self.head = Some(ptr.cast());
+        self.bytes_allocated += std::mem::size_of::<GcNode<T>>();
+        
+        GcBox { ptr }
+    }
+
+    /// Executa o ciclo Tri-Color Mark-and-Sweep completo.
+    /// Retorna quantos bytes foram coletados (Sweep).
+    pub fn collect(&mut self, roots: &[&dyn Trace]) -> usize {
+        // 1. MARK (Roots)
+        for root in roots {
+            root.trace();
+        }
+        
+        // 2. SWEEP
+        let mut bytes_freed = 0;
+        let mut current = self.head;
+        let mut prev: Option<NonNull<GcHeader>> = None;
+
+        while let Some(mut node_ptr) = current {
+            unsafe {
+                let node = node_ptr.as_mut();
+                if node.color.get() == GcColor::White {
+                    // Unreachable! Coletar.
+                    let next = node.next;
+                    if let Some(mut p) = prev {
+                        p.as_mut().next = next;
+                    } else {
+                        self.head = next;
+                    }
+                    
+                    // Dispara o Destructor customizado salvo no header
+                    (node.dropper)(node_ptr.as_ptr() as *mut ());
+                    
+                    current = next;
+                    bytes_freed += 1; // Para simplicidade no retorno. No real, rastreamos size.
+                } else {
+                    // Sobrevivente: Reseta a cor para o próximo ciclo
+                    node.color.set(GcColor::White);
+                    prev = Some(node_ptr);
+                    current = node.next;
+                }
+            }
+        }
+        
+        bytes_freed
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Funções Internas Type-Erased
+// ----------------------------------------------------------------------------
+
+unsafe fn drop_node<T: Trace + 'static>(ptr: *mut ()) {
+    let typed_ptr = ptr as *mut GcNode<T>;
+    // Recria o Box para o Rust invocar o Drop de `T` e liberar a memória do Heap
+    let _ = Box::from_raw(typed_ptr);
+}
+
+unsafe fn trace_node<T: Trace + 'static>(ptr: *mut ()) {
+    let typed_ptr = ptr as *mut GcNode<T>;
+    let node = &*typed_ptr;
+    if node.header.color.get() == GcColor::White {
+        node.header.color.set(GcColor::Black);
+        node.data.trace();
+    }
+}
+
+// A função que o usuário deve chamar de dentro dos seus `Trace` impls
+pub fn mark<T: Trace + 'static>(gc_box: &GcBox<T>) {
+    unsafe {
+        let node_ptr = gc_box.ptr.as_ptr();
+        ( (*node_ptr).header.tracer )(node_ptr as *mut ());
+    }
+}
+
+impl<T: Trace + 'static> Drop for GcHeap {
+    fn drop(&mut self) {
+        // Ao destruir o Heap inteiro, força a coleta de tudo
+        let empty_roots: &[&dyn Trace] = &[];
+        self.collect(empty_roots);
+    }
+}
