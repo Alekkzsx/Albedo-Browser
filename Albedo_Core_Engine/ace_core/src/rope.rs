@@ -17,6 +17,7 @@ pub enum RopeNode {
         left: Arc<RopeNode>,
         right: Arc<RopeNode>,
         length: usize, // Cache do comprimento para consultas O(1)
+        depth: usize,  // Monitoramento empírico de profundidade para auto-balanceamento
     },
 }
 
@@ -26,6 +27,14 @@ impl RopeNode {
         match self {
             RopeNode::Leaf(s) => s.len(),
             RopeNode::Concat { length, .. } => *length,
+        }
+    }
+
+    #[inline]
+    pub fn depth(&self) -> usize {
+        match self {
+            RopeNode::Leaf(_) => 1,
+            RopeNode::Concat { depth, .. } => *depth,
         }
     }
 
@@ -80,11 +89,21 @@ impl Rope {
         }
 
         let length = left.len() + right.len();
+        let depth = std::cmp::max(left.root.depth(), right.root.depth()) + 1;
+
+        // Auto-Balanceamento: Previne árvores excessivamente profundas (Degradação O(N))
+        if depth > 64 {
+            let mut buf = String::with_capacity(length);
+            left.collect_to_string(&left.root, &mut buf);
+            right.collect_to_string(&right.root, &mut buf);
+            return Rope::from_str(&buf);
+        }
 
         let new_root = RopeNode::Concat {
             left: left.root.clone(),
             right: right.root.clone(),
             length,
+            depth,
         };
 
         Rope {
