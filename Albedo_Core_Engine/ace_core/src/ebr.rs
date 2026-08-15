@@ -26,6 +26,8 @@ pub struct ThreadState {
     active: AtomicBool,
 }
 
+type DeferredItem = (*mut (), unsafe fn(*mut ()), u64);
+
 thread_local! {
     /// O estado local desta thread. Inicializado na primeira vez que `Guard::pin()` é chamado.
     static LOCAL_STATE: Arc<ThreadState> = {
@@ -38,7 +40,7 @@ thread_local! {
     };
 
     /// Fila de ponteiros adiados: (ponteiro, função de drop, época_de_descarte).
-    static DEFER_QUEUE: std::cell::RefCell<Vec<(*mut (), unsafe fn(*mut ()), u64)>> = std::cell::RefCell::new(Vec::new());
+    static DEFER_QUEUE: std::cell::RefCell<Vec<DeferredItem>> = std::cell::RefCell::new(Vec::new());
 }
 
 /// Um "Guardião" (Guard) sinaliza que a thread atual está ativamente lendo.
