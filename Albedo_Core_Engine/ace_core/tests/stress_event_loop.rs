@@ -5,7 +5,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use ace_core::event_loop::{EventLoop, Macrotask};
+use ace_core::event_loop::EventLoop;
 use ace_core::io::NativeMultiplexer;
 use ace_core::thread_pool::ThreadPool;
 use std::sync::Arc;
