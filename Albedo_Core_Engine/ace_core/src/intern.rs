@@ -9,9 +9,8 @@
 
 use crate::hash::{FxHashMap, FxHasher};
 use crate::string::AceString;
-use crate::sync::SpinLock;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 const SHARD_COUNT: usize = 32;
 const SHARD_MASK: u64 = (SHARD_COUNT - 1) as u64;
@@ -45,6 +44,7 @@ impl Symbol {
     }
 }
 
+#[repr(align(64))]
 struct InternerShard {
     static_map: FxHashMap<AceString, u32>,
     static_vec: Vec<AceString>,
@@ -70,13 +70,13 @@ impl InternerShard {
 }
 
 pub struct GlobalInterner {
-    shards: [SpinLock<InternerShard>; SHARD_COUNT],
+    shards: [RwLock<InternerShard>; SHARD_COUNT],
 }
 
 impl GlobalInterner {
     fn new() -> Self {
         Self {
-            shards: std::array::from_fn(|_| SpinLock::new(InternerShard::new())),
+            shards: std::array::from_fn(|_| RwLock::new(InternerShard::new())),
         }
     }
 
@@ -93,8 +93,15 @@ impl GlobalInterner {
     pub fn intern_static(&self, text: &str) -> Symbol {
         let ace_str = AceString::from_str(text);
         let shard_idx = self.shard_idx(text);
-        let mut shard = self.shards[shard_idx].lock();
 
+        {
+            let shard = self.shards[shard_idx].read().unwrap();
+            if let Some(&id) = shard.static_map.get(&ace_str) {
+                return Symbol((shard_idx as u32) << 26 | id);
+            }
+        }
+
+        let mut shard = self.shards[shard_idx].write().unwrap();
         if let Some(&id) = shard.static_map.get(&ace_str) {
             return Symbol((shard_idx as u32) << 26 | id);
         }
@@ -111,8 +118,15 @@ impl GlobalInterner {
     pub fn intern_dynamic(&self, text: &str) -> Symbol {
         let ace_str = AceString::from_str(text);
         let shard_idx = self.shard_idx(text);
-        let mut shard = self.shards[shard_idx].lock();
 
+        {
+            let shard = self.shards[shard_idx].read().unwrap();
+            if let Some(&id) = shard.dynamic_map.get(&ace_str) {
+                return Symbol(0x80000000 | (shard_idx as u32) << 26 | id);
+            }
+        }
+
+        let mut shard = self.shards[shard_idx].write().unwrap();
         if let Some(&id) = shard.dynamic_map.get(&ace_str) {
             return Symbol(0x80000000 | (shard_idx as u32) << 26 | id);
         }
@@ -134,7 +148,7 @@ impl GlobalInterner {
         let shard_idx = symbol.shard_idx();
         let id = symbol.index();
         
-        let shard = self.shards[shard_idx].lock();
+        let shard = self.shards[shard_idx].read().unwrap();
         if symbol.is_dynamic() {
             shard.dynamic_vec.get(id).map(|ace| ace.to_string())
         } else {
@@ -145,7 +159,7 @@ impl GlobalInterner {
     /// Limpa toda a memória ocupada por strings dinâmicas (Chamado ao fechar abas pesadas).
     pub fn flush_dynamic_strings(&self) {
         for shard_lock in &self.shards {
-            let mut shard = shard_lock.lock();
+            let mut shard = shard_lock.write().unwrap();
             shard.flush_dynamic();
         }
     }
