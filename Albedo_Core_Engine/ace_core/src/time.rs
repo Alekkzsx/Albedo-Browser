@@ -11,7 +11,7 @@
 //! O motor baseia sua renderização (a cada 16.6ms) e as APIs web (`setTimeout`)
 //! em uma fonte de tempo centralizada e real.
 
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 // ----------------------------------------------------------------------------
 // Real OS Monotonic Clock (Strict)
