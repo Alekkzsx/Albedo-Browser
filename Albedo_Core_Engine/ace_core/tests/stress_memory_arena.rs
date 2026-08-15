@@ -19,6 +19,8 @@ fn test_stress_memory_arena_dom_simulation() {
     // Anota o pico de memória antes do teste
     let initial_peak = alloc::peak_memory_usage_bytes();
 
+    let initial_allocations = alloc::current_active_allocations();
+
     // Simulação de 60 frames (DOM Reflow/Relayout)
     for _frame in 0..60 {
         // Aloca 10.000 nós por frame
@@ -32,13 +34,17 @@ fn test_stress_memory_arena_dom_simulation() {
         arena.clear();
     }
 
-    let current_allocations = alloc::current_active_allocations();
     let final_peak = alloc::peak_memory_usage_bytes();
+    
+    // Libera a arena
+    drop(arena);
+
+    let current_allocations = alloc::current_active_allocations();
 
     // O pico não deve crescer absurdamente (linearmente), porque a Arena reaproveita a capacidade do ciclo.
     // 10.000 nós * sizeof(DomNode) ~= 10.000 * 56 bytes = 560KB por frame.
     // Mesmo em 60 frames, a memória usada pela arena não deve passar de ~1MB (CHUNK_SIZE é 64KB, então ele aloca o necessário)
     assert!(final_peak >= initial_peak);
-    // Assegurar que os chunks não vazaram
-    assert!(current_allocations < 100);
+    // Assegurar que os chunks não vazaram. Usamos a diferença porque os testes rodam em paralelo.
+    assert!(current_allocations <= initial_allocations + 100);
 }

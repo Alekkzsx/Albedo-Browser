@@ -36,9 +36,10 @@ fn test_small_vec_drop_strings() {
 
     static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    struct DropTracker(#[allow(dead_code)] String);
+    struct DropTracker(String);
     impl Drop for DropTracker {
         fn drop(&mut self) {
+            let _ = &self.0; // Evita warning de field never read
             DROP_COUNT.fetch_add(1, Ordering::SeqCst);
         }
     }
