@@ -8,16 +8,16 @@
 
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, RwLock, OnceLock};
 
 /// A Época Global. Começa em 1.
 static GLOBAL_EPOCH: AtomicU64 = AtomicU64::new(1);
 
 /// Registro global de todas as threads participantes do EBR.
-static THREAD_REGISTRY: OnceLock<Mutex<Vec<Arc<ThreadState>>>> = OnceLock::new();
+static THREAD_REGISTRY: OnceLock<RwLock<Vec<Arc<ThreadState>>>> = OnceLock::new();
 
-fn registry() -> &'static Mutex<Vec<Arc<ThreadState>>> {
-    THREAD_REGISTRY.get_or_init(|| Mutex::new(Vec::new()))
+fn registry() -> &'static RwLock<Vec<Arc<ThreadState>>> {
+    THREAD_REGISTRY.get_or_init(|| RwLock::new(Vec::new()))
 }
 
 /// Estado de uma única thread participante.
@@ -33,7 +33,7 @@ thread_local! {
             epoch: AtomicU64::new(0),
             active: AtomicBool::new(false),
         });
-        registry().lock().unwrap().push(state.clone());
+        registry().write().unwrap().push(state.clone());
         state
     };
 
@@ -83,7 +83,7 @@ impl Drop for Guard {
 /// Isso só tem sucesso se TODAS as threads ativas estiverem na época atual ou mais novas.
 fn try_advance() {
     let global = GLOBAL_EPOCH.load(Ordering::SeqCst);
-    let reg = registry().lock().unwrap();
+    let reg = registry().read().unwrap();
 
     for state in reg.iter() {
         if state.active.load(Ordering::SeqCst) {
