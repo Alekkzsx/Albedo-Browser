@@ -44,6 +44,7 @@ impl<T> WorkerDeque<T> {
     }
 
     /// Operação LIFO. Somente a thread dona (Worker) pode chamar isso.
+    #[inline(always)]
     pub fn push(&self, task: T) -> Result<(), T> {
         let b = self.bottom.load(Ordering::Relaxed);
         let t = self.top.load(Ordering::Acquire);
@@ -56,7 +57,9 @@ impl<T> WorkerDeque<T> {
         let ptr = Box::into_raw(Box::new(task));
 
         // Armazena no buffer na posição (b % CAPACITY)
-        self.buffer[(b & MASK) as usize].store(ptr, Ordering::Relaxed);
+        unsafe {
+            self.buffer.get_unchecked((b & MASK) as usize).store(ptr, Ordering::Relaxed);
+        }
 
         // Publica a atualização do bottom com Release semantics.
         self.bottom.store(b + 1, Ordering::Release);
@@ -65,6 +68,7 @@ impl<T> WorkerDeque<T> {
     }
 
     /// Operação LIFO. Somente a thread dona pode chamar isso.
+    #[inline(always)]
     pub fn pop(&self) -> Option<T> {
         let b = self.bottom.load(Ordering::Relaxed) - 1;
         self.bottom.store(b, Ordering::Relaxed);
@@ -75,7 +79,7 @@ impl<T> WorkerDeque<T> {
 
         if t <= b {
             // A fila tem elementos
-            let ptr = self.buffer[(b & MASK) as usize].load(Ordering::Relaxed);
+            let ptr = unsafe { self.buffer.get_unchecked((b & MASK) as usize).load(Ordering::Relaxed) };
 
             if t == b {
                 // Último elemento, precisamos resolver conflito potencial com ladrões
@@ -105,6 +109,7 @@ impl<T> WorkerDeque<T> {
     }
 
     /// Operação FIFO. Múltiplas threads (Thieves) podem chamar isso concorrentemente.
+    #[inline(always)]
     pub fn steal(&self) -> Option<T> {
         loop {
             let t = self.top.load(Ordering::Acquire);
@@ -116,7 +121,7 @@ impl<T> WorkerDeque<T> {
                 return None;
             }
 
-            let ptr = self.buffer[(t & MASK) as usize].load(Ordering::Relaxed);
+            let ptr = unsafe { self.buffer.get_unchecked((t & MASK) as usize).load(Ordering::Relaxed) };
 
             // Tenta roubar o item empurrando o top para baixo via CAS
             if self
