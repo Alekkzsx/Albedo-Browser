@@ -51,5 +51,12 @@ fn test_stress_tlac_multithread() {
     // Mostra o throughput. Com o TLAC, isso deve ser absurdamente rápido
     // pois reduzimos a contenção no Atômico Global do `alloc.rs`
     println!("TLAC: {} alocações paralelas completadas em {:?}", total_allocations, elapsed);
-    assert!(elapsed.as_millis() < 5000, "Alocação massiva demorou demais. TLAC falhou em escalar.");
+    
+    let max_allowed_ms = if cfg!(debug_assertions) { 15_000 } else { 3_000 };
+    assert!(
+        elapsed.as_millis() < max_allowed_ms,
+        "Alocação massiva demorou demais ({:?} > {}ms). TLAC falhou em escalar.",
+        elapsed,
+        max_allowed_ms
+    );
 }
