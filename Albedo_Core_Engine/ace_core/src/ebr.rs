@@ -6,7 +6,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::ptr::{self, NonNull};
+use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock, OnceLock};
 
