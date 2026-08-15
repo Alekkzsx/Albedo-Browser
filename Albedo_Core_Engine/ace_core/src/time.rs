@@ -11,23 +11,56 @@
 //! O motor baseia sua renderização (a cada 16.6ms) e as APIs web (`setTimeout`)
 //! em uma fonte de tempo centralizada e real.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 // ----------------------------------------------------------------------------
-// Real OS Monotonic Clock
+// Real OS Monotonic Clock (Strict)
 // ----------------------------------------------------------------------------
 
-/// O Relógio Físico Global. Não há mocks ou emulações, puxa os ciclos de relógio
-/// reais do Hardware e Sistema Operacional.
-pub struct MonotonicClock;
+/// O Relógio Monotônico Estrito.
+/// Em vez de depender do relógio global da parede (`SystemTime`), usa os ciclos contínuos
+/// da máquina física (`Instant`). Imune a NTP drifts e viagens no tempo do SO.
+pub struct StrictMonotonicClock;
 
-impl MonotonicClock {
-    /// Retorna o carimbo de tempo atual em milissegundos a partir da época real.
+impl StrictMonotonicClock {
+    /// O Instante de inicialização da Engine, usado como âncora absoluta Zero.
+    fn epoch() -> Instant {
+        static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        *START.get_or_init(Instant::now)
+    }
+
+    /// Retorna o tempo em milissegundos desde que a Engine iniciou (Estritamente monotônico).
     pub fn now_ms() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
+        Self::epoch().elapsed().as_millis() as u64
+    }
+
+    /// Retorna o tempo com precisão sub-microsegundo (Nanos) para telemetria bruta.
+    pub fn now_ns() -> u64 {
+        Self::epoch().elapsed().as_nanos() as u64
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Hardware Cycle Counter (RDTSC)
+// ----------------------------------------------------------------------------
+
+/// Relógio baseado diretamente na instrução de ciclo do processador físico.
+/// Custo computacional O(0) em syscalls. Vital para micro-benchmarks do layout.
+pub struct CycleClock;
+
+impl CycleClock {
+    /// Obtém o número imediato de ciclos passados pelo pipeline da CPU atual.
+    #[inline(always)]
+    pub fn now_ticks() -> u64 {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::x86_64::_rdtsc()
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            // Fallback para outras arquiteturas usando ns brutos
+            StrictMonotonicClock::now_ns()
+        }
     }
 }
 
@@ -46,6 +79,6 @@ pub struct RealTime;
 
 impl TimeProvider for RealTime {
     fn now_ms(&self) -> u64 {
-        MonotonicClock::now_ms()
+        StrictMonotonicClock::now_ms()
     }
 }
