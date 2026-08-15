@@ -8,9 +8,9 @@
 use ace_core::event_loop::{EventLoop, Macrotask};
 use ace_core::io::NativeMultiplexer;
 use ace_core::thread_pool::ThreadPool;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Instant, Duration};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[test]
 fn test_stress_event_loop_circuit_breaker() {
@@ -40,11 +40,20 @@ fn test_stress_event_loop_circuit_breaker() {
 
     let elapsed = start_time.elapsed();
     let executed = execution_count.load(Ordering::Relaxed);
-    
-    println!("EventLoop: Abortou o ciclo após executar {} microtasks em {:?}", executed, elapsed);
-    
+
+    println!(
+        "EventLoop: Abortou o ciclo após executar {} microtasks em {:?}",
+        executed, elapsed
+    );
+
     // O Circuit Breaker do motor deve interromper o loop em aprox. 5ms!
     // Sem ele, o teste rodaria por >10 segundos (1 milhão * 10 micros).
-    assert!(executed < 1_000_000, "Circuit Breaker falhou! Drenou toda a fila infinita.");
-    assert!(elapsed.as_millis() < 50, "O tempo de quebra estourou os limites do VSync!");
+    assert!(
+        executed < 1_000_000,
+        "Circuit Breaker falhou! Drenou toda a fila infinita."
+    );
+    assert!(
+        elapsed.as_millis() < 50,
+        "O tempo de quebra estourou os limites do VSync!"
+    );
 }

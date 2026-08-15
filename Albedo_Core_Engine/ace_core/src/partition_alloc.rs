@@ -7,8 +7,6 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::ptr;
-
 /// Tipos de partições de memória rigidamente isoladas fisicamente pelo SO.
 /// Isso impede que um Buffer Overflow no decodificador de Imagens invada
 /// o heap da Máquina Virtual JavaScript, mitigando exploits Tier-1.
@@ -46,7 +44,7 @@ mod win_os {
 
 /// Página de alocação protegida pelo Sistema Operacional.
 pub struct SecurePage {
-    partition: MemoryPartition,
+    //  partition: MemoryPartition,
     base_ptr: *mut u8,
     data_size: usize,
 }
@@ -54,7 +52,7 @@ pub struct SecurePage {
 impl SecurePage {
     /// Aloca uma nova página na memória virtual com Guard Pages (Páginas de proteção).
     pub fn allocate_isolated(
-        partition: MemoryPartition,
+        //  partition: MemoryPartition,
         size_in_bytes: usize,
     ) -> Result<Self, &'static str> {
         let page_size = 4096;
@@ -106,7 +104,6 @@ impl SecurePage {
         };
 
         Ok(Self {
-            partition,
             base_ptr,
             data_size: aligned_size,
         })

@@ -13,7 +13,7 @@
 //! o filtro responde:
 //! - "Com certeza não" (Fast-Rejection imediato sem percorrer a árvore DOM)
 //! - "Talvez sim" (Faz a busca na árvore)
-//! Esta estrutura usa 2048 bits (256 bytes) e 2 hashes derivados por seletor.
+//!   Esta estrutura usa 2048 bits (256 bytes) e 2 hashes derivados por seletor.
 
 const FILTER_SIZE_U64: usize = 32; // 32 * 64 = 2048 bits
 

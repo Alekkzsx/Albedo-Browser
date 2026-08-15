@@ -5,8 +5,8 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
+use ace_core::ebr::{defer_drop, AtomicEbr, Guard};
 use ace_core::mpmc::ArrayQueue;
-use ace_core::ebr::{AtomicEbr, Guard, defer_drop};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -21,7 +21,7 @@ fn test_stress_mpmc_extreme_contention() {
     let queue = Arc::new(ArrayQueue::<usize>::new(65536));
     let barrier = Arc::new(Barrier::new(NUM_PRODUCERS + NUM_CONSUMERS));
     let consumed_count = Arc::new(AtomicUsize::new(0));
-    
+
     let mut handles = vec![];
 
     let start = Instant::now();
@@ -70,11 +70,12 @@ fn test_stress_mpmc_extreme_contention() {
     let elapsed = start.elapsed();
     let total_processed = consumed_count.load(Ordering::SeqCst);
     let expected = NUM_PRODUCERS * ITEMS_PER_PRODUCER;
-    
+
     assert_eq!(total_processed, expected, "A Fila MPMC perdeu dados!");
-    println!("MPMC: Processou {} itens em {:?} ({} M/s)", 
-        total_processed, 
-        elapsed, 
+    println!(
+        "MPMC: Processou {} itens em {:?} ({} M/s)",
+        total_processed,
+        elapsed,
         (total_processed as f64 / elapsed.as_secs_f64()) / 1_000_000.0
     );
 }
@@ -96,7 +97,7 @@ fn test_stress_ebr_memory_leak() {
 
     let pointer = Arc::new(AtomicEbr::new(Node { _data: [0; 1024] }));
     let barrier = Arc::new(Barrier::new(16));
-    
+
     let mut handles = vec![];
 
     let start = Instant::now();
@@ -110,12 +111,12 @@ fn test_stress_ebr_memory_leak() {
                 let guard = Guard::pin();
                 // Lê o valor atual
                 let _node = ptr.load(&guard);
-                
+
                 // Algumas threads tentam substituir o ponteiro por um novo
                 if i % 2 == 0 {
                     ptr.swap(Some(Node { _data: [1; 1024] }), &guard);
                 }
-                
+
                 // Força chamadas de flush ocasionais para tentar coletar lixo local
                 if i % 100 == 0 {
                     guard.flush();
@@ -132,8 +133,8 @@ fn test_stress_ebr_memory_leak() {
     let guard = Guard::pin();
     pointer.defer_destroy(&guard);
     drop(guard);
-    
-    // Força o avanço global lendo e pinando repetidamente em uma thread isolada 
+
+    // Força o avanço global lendo e pinando repetidamente em uma thread isolada
     // ou apenas chamando flush várias vezes.
     for _ in 0..10 {
         let guard = Guard::pin();
@@ -143,7 +144,10 @@ fn test_stress_ebr_memory_leak() {
 
     let dropped = DROPPED_COUNT.load(Ordering::SeqCst);
     let elapsed = start.elapsed();
-    
+
     println!("EBR: Limpou {} nós com sucesso em {:?}", dropped, elapsed);
-    assert!(dropped > 10000, "O EBR não descartou memória suficiente! Possível Leak.");
+    assert!(
+        dropped > 10000,
+        "O EBR não descartou memória suficiente! Possível Leak."
+    );
 }

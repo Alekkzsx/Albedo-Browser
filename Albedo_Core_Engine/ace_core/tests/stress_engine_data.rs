@@ -1,7 +1,7 @@
 use ace_core::bloom::BloomFilter;
 use ace_core::hash::fxhash32;
 use ace_core::intern;
-use std::sync::Arc;
+
 use std::thread;
 
 #[test]

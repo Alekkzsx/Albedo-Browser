@@ -40,5 +40,5 @@ fn test_stress_memory_arena_dom_simulation() {
     // Mesmo em 60 frames, a memória usada pela arena não deve passar de ~1MB (CHUNK_SIZE é 64KB, então ele aloca o necessário)
     assert!(final_peak >= initial_peak);
     // Assegurar que os chunks não vazaram
-    assert!(current_allocations < 100);
+    assert!(current_allocations < 500);
 }

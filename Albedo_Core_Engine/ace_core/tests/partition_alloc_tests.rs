@@ -1,8 +1,8 @@
-use ace_core::partition_alloc::{MemoryPartition, OomKiller, SecurePage};
+use ace_core::partition_alloc::{OomKiller, SecurePage};
 
 #[test]
 fn test_secure_page_allocation() {
-    let _page = SecurePage::allocate_isolated(MemoryPartition::DomTree, 4096).unwrap();
+    let _page = SecurePage::allocate_isolated(4096).unwrap();
     // Para acessar campos não-públicos num teste de integração precisamos
     // exportar métodos ou nos testes reais focar em comportamento visível.
     // Como a API garante Drop e Alocação correta, o Result ser Ok() já atesta o comportamento.

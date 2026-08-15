@@ -33,12 +33,12 @@ impl Symbol {
     fn is_dynamic(&self) -> bool {
         (self.0 & 0x80000000) != 0
     }
-    
+
     #[inline(always)]
     fn shard_idx(&self) -> usize {
         ((self.0 >> 26) & 0x1F) as usize
     }
-    
+
     #[inline(always)]
     fn index(&self) -> usize {
         (self.0 & 0x03FFFFFF) as usize
@@ -48,7 +48,7 @@ impl Symbol {
 struct InternerShard {
     static_map: FxHashMap<AceString, u32>,
     static_vec: Vec<AceString>,
-    
+
     dynamic_map: FxHashMap<AceString, u32>,
     dynamic_vec: Vec<AceString>,
 }
@@ -62,7 +62,7 @@ impl InternerShard {
             dynamic_vec: Vec::new(),
         }
     }
-    
+
     fn flush_dynamic(&mut self) {
         self.dynamic_map.clear();
         self.dynamic_vec.clear();
@@ -119,7 +119,10 @@ impl GlobalInterner {
 
         // Defesa OOM (Out of Memory): Se o limite estourar, limpa o cache dinâmico deste shard.
         if shard.dynamic_vec.len() >= MAX_DYNAMIC_PER_SHARD {
-            crate::ace_trace!("Interner Shard {} estourou capacidade de strings dinâmicas. Limpando!", shard_idx);
+            crate::ace_trace!(
+                "Interner Shard {} estourou capacidade de strings dinâmicas. Limpando!",
+                shard_idx
+            );
             shard.flush_dynamic();
         }
 
@@ -133,7 +136,7 @@ impl GlobalInterner {
     pub fn resolve(&self, symbol: Symbol) -> Option<String> {
         let shard_idx = symbol.shard_idx();
         let id = symbol.index();
-        
+
         let shard = self.shards[shard_idx].lock();
         if symbol.is_dynamic() {
             shard.dynamic_vec.get(id).map(|ace| ace.to_string())
@@ -141,7 +144,7 @@ impl GlobalInterner {
             shard.static_vec.get(id).map(|ace| ace.to_string())
         }
     }
-    
+
     /// Limpa toda a memória ocupada por strings dinâmicas (Chamado ao fechar abas pesadas).
     pub fn flush_dynamic_strings(&self) {
         for shard_lock in &self.shards {
@@ -155,7 +158,7 @@ impl GlobalInterner {
 static INTERNER: OnceLock<GlobalInterner> = OnceLock::new();
 
 fn get_interner() -> &'static GlobalInterner {
-    INTERNER.get_or_init(|| GlobalInterner::new())
+    INTERNER.get_or_init(GlobalInterner::new)
 }
 
 /// Interna uma string dinamicamente por padrão (O(1)).

@@ -6,9 +6,10 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::ptr::{self, NonNull};
+use std::ptr::{self};
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+type DeferEntry = (*mut (), unsafe fn(*mut ()), u64);
 
 /// A Época Global. Começa em 1.
 static GLOBAL_EPOCH: AtomicU64 = AtomicU64::new(1);
@@ -38,7 +39,7 @@ thread_local! {
     };
 
     /// Fila de ponteiros adiados: (ponteiro, função de drop, época_de_descarte).
-    static DEFER_QUEUE: std::cell::RefCell<Vec<(*mut (), unsafe fn(*mut ()), u64)>> = std::cell::RefCell::new(Vec::new());
+    static DEFER_QUEUE: std::cell::RefCell<Vec<DeferEntry>> = std::cell::RefCell::new(Vec::new());
 }
 
 /// Um "Guardião" (Guard) sinaliza que a thread atual está ativamente lendo.

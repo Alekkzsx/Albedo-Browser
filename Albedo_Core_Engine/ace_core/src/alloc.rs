@@ -39,37 +39,41 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         ACTIVE_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-        
+
         // Tenta usar o cache local
         let size = layout.size();
         let mut bypass_tlac = true;
-        
+
         REENTRANCY_GUARD.with(|guard| {
             if !guard.get() {
                 guard.set(true);
                 bypass_tlac = false;
-                
+
                 LOCAL_ALLOC_BYTES.with(|local| {
                     let mut current = local.get();
                     current += size;
-                    
+
                     if current >= TLAC_BATCH_SIZE {
                         // Flush batch to global
-                        let total = ALLOCATED_BYTES.fetch_add(current, Ordering::Relaxed) + current;
+                        let total = ALLOCATED_BYTES
+                            .fetch_add(current, Ordering::Relaxed)
+                            .wrapping_add(current);
                         PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
                         local.set(0);
                     } else {
                         local.set(current);
                     }
                 });
-                
+
                 guard.set(false);
             }
         });
 
         if bypass_tlac {
             // Fallback direto no global se houver reentrância (ex: inicialização do thread_local)
-            let total = ALLOCATED_BYTES.fetch_add(size, Ordering::Relaxed) + size;
+            let total = ALLOCATED_BYTES
+                .fetch_add(size, Ordering::Relaxed)
+                .wrapping_add(size);
             PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
         }
 
@@ -80,19 +84,19 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         ACTIVE_ALLOCATIONS.fetch_sub(1, Ordering::Relaxed);
-        
+
         let size = layout.size();
         let mut bypass_tlac = true;
-        
+
         REENTRANCY_GUARD.with(|guard| {
             if !guard.get() {
                 guard.set(true);
                 bypass_tlac = false;
-                
+
                 LOCAL_DEALLOC_BYTES.with(|local| {
                     let mut current = local.get();
                     current += size;
-                    
+
                     if current >= TLAC_BATCH_SIZE {
                         // Flush batch to global
                         ALLOCATED_BYTES.fetch_sub(current, Ordering::Relaxed);
@@ -101,7 +105,7 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
                         local.set(current);
                     }
                 });
-                
+
                 guard.set(false);
             }
         });
