@@ -37,7 +37,7 @@ fn test_stress_mpmc_extreme_contention() {
             // Espera receber itens até o total esperado (NUM_PRODUCERS * ITEMS_PER_PRODUCER)
             let total_expected = NUM_PRODUCERS * ITEMS_PER_PRODUCER;
             while count.load(Ordering::Relaxed) < total_expected {
-                if let Some(_) = q.pop() {
+                if q.pop().is_some() {
                     count.fetch_add(1, Ordering::Relaxed);
                     local_count += 1;
                 }
