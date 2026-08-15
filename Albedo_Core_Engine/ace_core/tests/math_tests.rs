@@ -94,7 +94,7 @@ fn test_math_utils() {
 
     // Tratamento de NaN: no nosso min/max baseado em PartialOrd genérico,
     // NaN geralmente propaga a comparação como false.
-    let nan = std::f32::NAN;
+    let nan = f32::NAN;
     let min_nan = min(10.0, nan); // Depende da implementação, geralmente retorna o primeiro operando válido se a < b falha.
     assert!(!min_nan.is_nan() || min_nan.is_nan()); // Apenas atestando compilação e não crash.
 
