@@ -2,7 +2,7 @@ use ace_core::gc::{mark, GcBox, GcHeap, Trace};
 use std::cell::RefCell;
 
 struct JsObject {
-    value: i32,
+    _value: i32,
     child: RefCell<Option<GcBox<JsObject>>>,
 }
 

@@ -36,7 +36,7 @@ fn test_small_vec_drop_strings() {
 
     static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    struct DropTracker(String);
+    struct DropTracker(#[allow(dead_code)] String);
     impl Drop for DropTracker {
         fn drop(&mut self) {
             DROP_COUNT.fetch_add(1, Ordering::SeqCst);
