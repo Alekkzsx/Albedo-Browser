@@ -169,7 +169,7 @@ impl GlobalInterner {
 static INTERNER: OnceLock<GlobalInterner> = OnceLock::new();
 
 fn get_interner() -> &'static GlobalInterner {
-    INTERNER.get_or_init(|| GlobalInterner::new())
+    INTERNER.get_or_init(GlobalInterner::new)
 }
 
 /// Interna uma string dinamicamente por padrão (O(1)).
