@@ -1,4 +1,4 @@
-use ace_net::{parse_data_uri, DataUri};
+use ace_net::parse_data_uri;
 
 #[test]
 fn test_parse_base64_data_uri() {
