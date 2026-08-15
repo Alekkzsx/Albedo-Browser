@@ -17,6 +17,12 @@ pub enum GcColor {
     Purple, // Suspeito de Ciclo (Refcount diminuiu mas não chegou a zero)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcGeneration {
+    Nursery, // Recém-nascidos (Muitos morrem rápido, Bump Allocation futura)
+    Old,     // Sobreviventes promovidos
+}
+
 /// A Trait fundamental. Qualquer objeto que viva no Heap do GC e aponte para
 /// outros objetos do GC deve implementar `Trace` para percorrer o grafo,
 /// seja para Mark & Sweep ou para Cycle Collection.
@@ -32,6 +38,7 @@ pub trait Trace {
 /// O cabeçalho escondido antes de cada alocação no GC.
 pub struct GcHeader {
     color: Cell<GcColor>,
+    generation: Cell<GcGeneration>,
     ref_count: Cell<usize>, // CCGC: Contagem de referências para detecção de ciclos
     next: Option<NonNull<GcHeader>>,
     /// Um ponteiro de função para fazer o downcast do Drop e Trace.
@@ -109,7 +116,8 @@ impl<T: Trace + 'static> std::ops::Deref for GcBox<T> {
 // ----------------------------------------------------------------------------
 
 pub struct GcHeap {
-    head: Option<NonNull<GcHeader>>,
+    nursery_head: Option<NonNull<GcHeader>>,
+    old_head: Option<NonNull<GcHeader>>,
     bytes_allocated: usize,
     pub suspects: Vec<NonNull<GcHeader>>, // CCGC: Raízes suspeitas de ciclo
 }
@@ -123,7 +131,8 @@ impl Default for GcHeap {
 impl GcHeap {
     pub fn new() -> Self {
         Self {
-            head: None,
+            nursery_head: None,
+            old_head: None,
             bytes_allocated: 0,
             suspects: Vec::new(),
         }
@@ -134,8 +143,9 @@ impl GcHeap {
         let node = Box::new(GcNode {
             header: GcHeader {
                 color: Cell::new(GcColor::White),
+                generation: Cell::new(GcGeneration::Nursery),
                 ref_count: Cell::new(1),
-                next: self.head,
+                next: self.nursery_head,
                 dropper: drop_node::<T>,
                 tracer: trace_node::<T>,
             },
@@ -143,7 +153,7 @@ impl GcHeap {
         });
 
         let ptr = NonNull::from(Box::leak(node));
-        self.head = Some(ptr.cast());
+        self.nursery_head = Some(ptr.cast());
         self.bytes_allocated += std::mem::size_of::<GcNode<T>>();
 
         GcBox {
@@ -160,9 +170,9 @@ impl GcHeap {
             root.trace();
         }
 
-        // 2. SWEEP
+        // 2. SWEEP (Apenas Nursery por enquanto)
         let mut bytes_freed = 0;
-        let mut current = self.head;
+        let mut current = self.nursery_head;
         let mut prev: Option<NonNull<GcHeader>> = None;
 
         while let Some(mut node_ptr) = current {
@@ -175,7 +185,7 @@ impl GcHeap {
                     if let Some(mut p) = prev {
                         p.as_mut().next = next;
                     } else {
-                        self.head = next;
+                        self.nursery_head = next;
                     }
 
                     // Dispara o Destructor customizado salvo no header
@@ -186,6 +196,9 @@ impl GcHeap {
                 } else {
                     // Sobrevivente: Reseta a cor para o próximo ciclo
                     node.color.set(GcColor::White);
+                    // Opcional: Promoveria para `old_head` em um ciclo completo de GC Generacional.
+                    node.generation.set(GcGeneration::Old);
+                    
                     prev = Some(node_ptr);
                     current = node.next;
                 }
