@@ -82,6 +82,7 @@ impl Worker {
 
         let thread = builder
             .spawn(move || {
+                let mut rng_state = ((id as u32).wrapping_add(1)).wrapping_mul(0x9E3779B9);
                 loop {
                     let mut job = None;
 
@@ -99,9 +100,18 @@ impl Worker {
                             break;
                         }
 
-                        // 3. TENTATIVA DE ROUBO (WORK-STEALING, CAS Lock-Free)
+                        // 3. TENTATIVA DE ROUBO (WORK-STEALING RANDOMIZADO, CAS Lock-Free)
+                        // Sorteia ponto de partida pseudo-aleatório via Xorshift para distribuir a contenção
+                        rng_state ^= rng_state << 13;
+                        rng_state ^= rng_state >> 17;
+                        rng_state ^= rng_state << 5;
+                        let start_victim = (rng_state as usize) % num_workers;
+
                         for i in 0..num_workers {
-                            let target_id = (id + i + 1) % num_workers;
+                            let target_id = (start_victim + i) % num_workers;
+                            if target_id == id {
+                                continue;
+                            }
                             if let Some(stolen) =
                                 shared_state.local_queues[target_id].queues[p].steal()
                             {
