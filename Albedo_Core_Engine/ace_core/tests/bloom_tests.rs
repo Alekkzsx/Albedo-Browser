@@ -33,14 +33,14 @@ fn test_bloom_filter_false_positive_rate() {
     // Inserindo 500 elementos únicos simulados com simple LCG
     for i in 0..500 {
         let hash = (i as u32).wrapping_mul(2654435761u32) % 4294967295u32;
-        bloom.insert(hash as u32);
+        bloom.insert(hash);
     }
 
     let mut false_positives = 0;
     // Testando contra outros 10_000 hashes que sabemos que *não* inserimos (espalhados diferentemente)
     for i in 500..10_500 {
         let hash = (i as u32).wrapping_mul(2654435761u32) % 4294967295u32;
-        if bloom.might_contain(hash as u32) {
+        if bloom.might_contain(hash) {
             false_positives += 1;
         }
     }
