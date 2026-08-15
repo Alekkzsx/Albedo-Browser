@@ -55,8 +55,11 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
                     
                     if current >= TLAC_BATCH_SIZE {
                         // Flush batch to global
-                        let total = ALLOCATED_BYTES.fetch_add(current, Ordering::Relaxed) + current;
-                        PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+                        let prev = ALLOCATED_BYTES.fetch_add(current, Ordering::Relaxed);
+                        let total = prev.wrapping_add(current);
+                        if (total as isize) > 0 {
+                            PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+                        }
                         local.set(0);
                     } else {
                         local.set(current);
@@ -69,8 +72,11 @@ unsafe impl GlobalAlloc for AlbedoAllocator {
 
         if bypass_tlac {
             // Fallback direto no global se houver reentrância (ex: inicialização do thread_local)
-            let total = ALLOCATED_BYTES.fetch_add(size, Ordering::Relaxed) + size;
-            PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+            let prev = ALLOCATED_BYTES.fetch_add(size, Ordering::Relaxed);
+            let total = prev.wrapping_add(size);
+            if (total as isize) > 0 {
+                PEAK_MEMORY_BYTES.fetch_max(total, Ordering::Relaxed);
+            }
         }
 
         // Delega de fato ao OS
