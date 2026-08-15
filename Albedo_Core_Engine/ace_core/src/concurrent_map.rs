@@ -18,17 +18,23 @@ const SHARD_MASK: u64 = (SHARD_COUNT - 1) as u64;
 
 type FxBuildHasher = BuildHasherDefault<FxHasher>;
 
+/// Wrapper de alinhamento para forçar distanciamento em cache lines L1 (Prevenção de False Sharing).
+#[repr(align(64))]
+struct Shard<K, V> {
+    inner: SpinLock<HashMap<K, V, FxBuildHasher>>,
+}
+
 /// Um mapa hash concorrente fragmentado.
 /// Múltiplas threads podem ler e escrever simultaneamente desde que não
 /// colidam no mesmo "Shard".
 pub struct ConcurrentMap<K, V> {
-    shards: [SpinLock<HashMap<K, V, FxBuildHasher>>; SHARD_COUNT],
+    shards: [Shard<K, V>; SHARD_COUNT],
 }
 
 impl<K: Eq + Hash + Clone, V: Clone> ConcurrentMap<K, V> {
     pub fn new() -> Self {
         Self {
-            shards: std::array::from_fn(|_| SpinLock::new(HashMap::default())),
+            shards: std::array::from_fn(|_| Shard { inner: SpinLock::new(HashMap::default()) }),
         }
     }
 
@@ -43,14 +49,14 @@ impl<K: Eq + Hash + Clone, V: Clone> ConcurrentMap<K, V> {
     /// Insere uma chave/valor no mapa.
     pub fn insert(&self, key: K, value: V) {
         let idx = self.shard_idx(&key);
-        let mut shard = self.shards[idx].lock();
+        let mut shard = self.shards[idx].inner.lock();
         shard.insert(key, value);
     }
 
     /// Tenta obter o valor associado à chave. Retorna uma cópia do valor se existir.
     pub fn get(&self, key: &K) -> Option<V> {
         let idx = self.shard_idx(key);
-        let shard = self.shards[idx].lock();
+        let shard = self.shards[idx].inner.lock();
         shard.get(key).cloned()
     }
 
@@ -60,7 +66,7 @@ impl<K: Eq + Hash + Clone, V: Clone> ConcurrentMap<K, V> {
         F: FnOnce() -> V,
     {
         let idx = self.shard_idx(&key);
-        let mut shard = self.shards[idx].lock();
+        let mut shard = self.shards[idx].inner.lock();
 
         if let Some(val) = shard.get(&key) {
             return val.clone();
@@ -74,7 +80,7 @@ impl<K: Eq + Hash + Clone, V: Clone> ConcurrentMap<K, V> {
     /// Remove a chave do mapa e retorna o valor antigo, se houver.
     pub fn remove(&self, key: &K) -> Option<V> {
         let idx = self.shard_idx(key);
-        let mut shard = self.shards[idx].lock();
+        let mut shard = self.shards[idx].inner.lock();
         shard.remove(key)
     }
 }
