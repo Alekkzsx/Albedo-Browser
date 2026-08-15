@@ -26,7 +26,7 @@ pub struct SmallVec<T, const N: usize> {
 }
 
 impl<T, const N: usize> SmallVec<T, N> {
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         Self {
             storage: SmallVecStorage::Inline {
@@ -37,7 +37,7 @@ impl<T, const N: usize> SmallVec<T, N> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn push(&mut self, value: T) {
         match &mut self.storage {
             SmallVecStorage::Inline { buffer, len } => {
@@ -69,7 +69,7 @@ impl<T, const N: usize> SmallVec<T, N> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn len(&self) -> usize {
         match &self.storage {
             SmallVecStorage::Inline { len, .. } => *len,
@@ -77,7 +77,7 @@ impl<T, const N: usize> SmallVec<T, N> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -93,6 +93,7 @@ impl<T, const N: usize> Default for SmallVec<T, N> {
 impl<T, const N: usize> Deref for SmallVec<T, N> {
     type Target = [T];
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         match &self.storage {
             // SAFETY: A slice criada mapeia com precisão a área efetivamente preenchida na stack (indicada por len).
@@ -105,6 +106,7 @@ impl<T, const N: usize> Deref for SmallVec<T, N> {
 }
 
 impl<T, const N: usize> DerefMut for SmallVec<T, N> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.storage {
             // SAFETY: A slice criada mapeia com precisão a área mutável efetivamente preenchida na stack.
