@@ -7,7 +7,7 @@
 // Author: Albedo Browser Engineering Team
 // ============================================================================
 
-use std::ptr;
+
 
 /// Tipos de partições de memória rigidamente isoladas fisicamente pelo SO.
 /// Isso impede que um Buffer Overflow no decodificador de Imagens invada
