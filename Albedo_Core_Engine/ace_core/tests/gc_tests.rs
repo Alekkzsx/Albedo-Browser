@@ -1,3 +1,4 @@
+#![cfg(feature = "gc")]
 use ace_core::gc::{mark, GcBox, GcHeap, Trace};
 use std::cell::RefCell;
 
@@ -29,15 +30,15 @@ fn test_gc_mark_and_sweep() {
     let mut heap = GcHeap::new();
 
     let a = heap.allocate(JsObject {
-        value: 1,
+        _value: 1,
         child: RefCell::new(None),
     });
     let b = heap.allocate(JsObject {
-        value: 2,
+        _value: 2,
         child: RefCell::new(None),
     });
     let _c = heap.allocate(JsObject {
-        value: 3,
+        _value: 3,
         child: RefCell::new(None),
     });
 

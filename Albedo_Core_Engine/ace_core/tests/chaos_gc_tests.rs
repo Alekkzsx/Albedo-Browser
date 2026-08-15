@@ -1,3 +1,4 @@
+#![cfg(feature = "gc")]
 use ace_core::gc::{GcHeap, Trace};
 use std::thread;
 

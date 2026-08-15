@@ -117,7 +117,7 @@ impl<T: Trace + 'static> std::ops::Deref for GcBox<T> {
 
 pub struct GcHeap {
     nursery_head: Option<NonNull<GcHeader>>,
-    old_head: Option<NonNull<GcHeader>>,
+    _old_head: Option<NonNull<GcHeader>>,
     bytes_allocated: usize,
     pub suspects: Vec<NonNull<GcHeader>>, // CCGC: Raízes suspeitas de ciclo
 }
@@ -132,7 +132,7 @@ impl GcHeap {
     pub fn new() -> Self {
         Self {
             nursery_head: None,
-            old_head: None,
+            _old_head: None,
             bytes_allocated: 0,
             suspects: Vec::new(),
         }

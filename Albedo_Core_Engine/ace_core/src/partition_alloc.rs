@@ -46,8 +46,7 @@ mod win_os {
 
 /// Página de alocação protegida pelo Sistema Operacional.
 pub struct SecurePage {
-    #[allow(dead_code)]
-    partition: MemoryPartition,
+    _partition: MemoryPartition,
     base_ptr: *mut u8,
     data_size: usize,
 }
@@ -107,7 +106,7 @@ impl SecurePage {
         };
 
         Ok(Self {
-            partition,
+            _partition: partition,
             base_ptr,
             data_size: aligned_size,
         })
