@@ -215,6 +215,24 @@ impl<T: Add<Output = T> + Copy + PartialOrd> Rect<T> {
             && self.y() < other.bottom()
             && self.bottom() > other.y()
     }
+
+    /// Processa interseções de ponto para múltiplos retângulos em bloco (Hit-Testing Batch).
+    /// Altamente propenso à autovetorização (SIMD) pelo LLVM.
+    pub fn contains_batch(rects: &[Rect<T>], p: &Point<T>, results: &mut [bool]) {
+        let len = rects.len().min(results.len());
+        for i in 0..len {
+            results[i] = rects[i].contains(p);
+        }
+    }
+
+    /// Teste Booleano de AABB em Lote (Intersection Batch).
+    /// Processamento em bloco para Painter's Algorithm e culling em massa.
+    pub fn intersects_batch(rects_a: &[Rect<T>], rects_b: &[Rect<T>], results: &mut [bool]) {
+        let len = rects_a.len().min(rects_b.len()).min(results.len());
+        for i in 0..len {
+            results[i] = rects_a[i].intersects(&rects_b[i]);
+        }
+    }
 }
 
 impl<T: Add<Output = T> + Sub<Output = T> + Copy + PartialOrd> Rect<T> {
