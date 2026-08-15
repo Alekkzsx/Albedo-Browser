@@ -46,6 +46,7 @@ mod win_os {
 
 /// Página de alocação protegida pelo Sistema Operacional.
 pub struct SecurePage {
+    #[allow(dead_code)]
     partition: MemoryPartition,
     base_ptr: *mut u8,
     data_size: usize,
