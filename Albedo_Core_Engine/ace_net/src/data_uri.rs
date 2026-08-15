@@ -92,7 +92,7 @@ pub fn parse_data_uri(uri: &str) -> ace_core::AceResult<DataUri<'_>> {
     let rest = &uri[5..];
 
     // Procura pela vírgula que separa os metadados dos dados
-    let comma_idx = rest.find(',').ok_or_else(|| AceError::Parse {
+    let comma_idx = rest.find(',').ok_or(AceError::Parse {
         message: Cow::Borrowed("URI data: não contém vírgula separadora"),
     })?;
 
