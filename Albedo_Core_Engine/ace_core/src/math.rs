@@ -1022,8 +1022,8 @@ impl Matrix4x4<f32> {
         }
 
         let inv_det = 1.0 / det;
-        for i in 0..16 {
-            inv[i] *= inv_det;
+        for val in &mut inv {
+            *val *= inv_det;
         }
 
         Some(Self::new(inv))
