@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::io::IoMultiplexer;
 use crate::thread_pool::{Job, ThreadPool};
-use crate::time::MonotonicClock;
+use crate::time::StrictMonotonicClock;
 
 /// Representa a origem de uma Tarefa pesada (Macrotask).
 /// Segue a taxonomia de filas do WHATWG.
@@ -79,14 +79,14 @@ impl<I: IoMultiplexer> EventLoop<I> {
         // 2. MICROTASKS: O Dreno com Circuit Breaker (Starvation Prevention).
         // Diferente da especificação bruta que trava a aba, aplicamos um orçamento de 5ms
         // para garantir que a Main Thread NUNCA congele (Resiliência Extrema).
-        let microtask_start = MonotonicClock::now_ms();
+        let microtask_start = StrictMonotonicClock::now_ms();
         const MICROTASK_BUDGET_MS: u64 = 5;
 
         while let Some(micro_task) = self.microtasks.pop_front() {
             micro_task();
 
             // Verifica o orçamento a cada iteração
-            let elapsed_micro = MonotonicClock::now_ms().saturating_sub(microtask_start);
+            let elapsed_micro = StrictMonotonicClock::now_ms().saturating_sub(microtask_start);
             if elapsed_micro >= MICROTASK_BUDGET_MS {
                 crate::ace_trace!("EventLoop: Circuit Breaker ativado nas Microtasks após {}ms. Cedendo controle!", elapsed_micro);
                 break;
@@ -94,7 +94,7 @@ impl<I: IoMultiplexer> EventLoop<I> {
         }
 
         // 3. RENDERIZAÇÃO: Controle de Frame Rate (60 FPS = 16.6ms)
-        let current_time = MonotonicClock::now_ms();
+        let current_time = StrictMonotonicClock::now_ms();
         let elapsed = current_time.saturating_sub(self.last_render_time);
 
         if elapsed >= 16 {
