@@ -23,6 +23,11 @@
 
 pub mod error;
 pub mod id;
+pub mod intern;
+pub mod arena;
+pub mod time;
+pub mod task;
+pub mod event_loop;
 
 // Re-exports de crates fundacionais para uso no workspace
 pub use anyhow::{Context, Result};
