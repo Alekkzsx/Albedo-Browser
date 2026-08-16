@@ -36,7 +36,7 @@ fn test_secure_page_guard_page_boundaries() {
 
 #[test]
 fn test_freelist_pointer_obfuscation() {
-    let dummy_ptr = 0x00007FFF12345000 as *mut u8;
+    let dummy_ptr = std::ptr::null_mut::<u8>().wrapping_add(0x7FFF12345000);
     let encoded = encode_freelist_ptr(dummy_ptr);
     assert_ne!(encoded, 0);
     assert_ne!(encoded, dummy_ptr as usize);
@@ -55,20 +55,20 @@ fn test_quarantine_ring_eviction_and_drain() {
 
     // Inserindo 64 elementos (capacidade total)
     for i in 1..=64 {
-        let dummy = i as *mut u8;
+        let dummy = std::ptr::null_mut::<u8>().wrapping_add(i);
         let evicted = ring.push(dummy);
         assert_eq!(evicted, None);
     }
 
     // O 65º elemento deve expulsar o 1º da quarentena
-    let dummy_65 = 65 as *mut u8;
+    let dummy_65 = std::ptr::null_mut::<u8>().wrapping_add(65);
     let evicted = ring.push(dummy_65);
-    assert_eq!(evicted, Some(1 as *mut u8));
+    assert_eq!(evicted, Some(std::ptr::null_mut::<u8>().wrapping_add(1)));
 
     // O 66º elemento deve expulsar o 2º
-    let dummy_66 = 66 as *mut u8;
+    let dummy_66 = std::ptr::null_mut::<u8>().wrapping_add(66);
     let evicted_2 = ring.push(dummy_66);
-    assert_eq!(evicted_2, Some(2 as *mut u8));
+    assert_eq!(evicted_2, Some(std::ptr::null_mut::<u8>().wrapping_add(2)));
 
     // Drain all remaining
     let mut collected = Vec::new();
