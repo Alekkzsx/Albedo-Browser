@@ -1,0 +1,58 @@
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
+
+[bans]
+multiple-versions = "warn"
+highlight = "all"
+workspace-default-features = "warn"
+
+# =====================================================================
+# OS MATA-PROJETOS 
+# =====================================================================
+# É ESTRITAMENTE PROIBIDO que qualquer motor pronto, webview ou motor
+# JavaScript preexistente entre na nossa árvore de dependências.
+# O Albedo forja sua própria Alma (DOM, Layout, Render, JS Engine).
+# =====================================================================
+
+# 1. Motores de Renderização e Webviews 
+[[bans.deny]]
+name = "servo"
+[[bans.deny]]
+name = "wry"
+[[bans.deny]]
+name = "tauri"
+[[bans.deny]]
+name = "webview2-com"
+[[bans.deny]]
+name = "cef"
+
+# 2. Motores JavaScript Prontos
+[[bans.deny]]
+name = "v8"
+[[bans.deny]]
+name = "rusty_v8"
+[[bans.deny]]
+name = "boa_engine"
+[[bans.deny]]
+name = "quickjs"
+
+# 3. Parsers HTML/CSS e Layouts "bala de prata"
+# Nós implementaremos os parsers WHATWG e W3C nós mesmos para ter 
+# controle absoluto sobre a integração com nosso GC e estruturas de memória.
+[[bans.deny]]
+name = "html5ever"
+[[bans.deny]]
+name = "cssparser"
+[[bans.deny]]
+name = "taffy"
+
+[licenses]
+unlicensed = "deny"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "MPL-2.0",
+    "Zlib"
+]

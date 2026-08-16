@@ -1,18 +1,33 @@
-# ADR 0000: Título (Ex: adoção de edição Rust 2024)
+# ADR 0000: Título da Decisão Arquitetural
 
-## Contexto
-Qual o problema e as forças em jogo? Por que estamos tomando essa decisão no Albedo Browser?
+- **Status:** [Proposto | Aceito | Rejeitado | Obsoleto]
+- **Data:** YYYY-MM-DD
+- **Autores:** [Nomes]
+
+## Contexto e Problema
+
+Descreva o contexto técnico e o problema arquitetural que precisa ser resolvido. Qual é o escopo e por que isso importa agora?
 
 ## Opções Consideradas
-* Opção 1 (com prós e contras)
-* Opção 2 (com prós e contras)
+
+1. **Opção A:** Descrição
+2. **Opção B:** Descrição
+3. **Opção C:** Descrição
 
 ## Decisão
-Qual a decisão final? (Ser pragmático e respeitar as regras do projeto, como Zero-Dependency)
+
+Descreva a decisão tomada. Qual opção foi escolhida e por que ela é a melhor para o **Albedo Engine** no momento?
 
 ## Consequências
-* Positivas
-* Negativas / Trade-offs que precisaremos lidar no futuro
+
+### Positivas
+- Benefício 1
+- Benefício 2
+
+### Negativas / Riscos
+- Risco 1 (e como será mitigado)
+- Risco 2
 
 ## Referências
-* Links para specs da W3C, WHATWG, ECMAScript ou literatura de engenharia.
+
+- Links para PRs, issues ou specs relevantes (WHATWG, W3C, ECMA).
