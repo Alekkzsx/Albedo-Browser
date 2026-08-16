@@ -130,8 +130,6 @@ impl<T> ArrayQueue<T> {
 
 impl<T> Drop for ArrayQueue<T> {
     fn drop(&mut self) {
-        while let Some(_) = self.pop() {
-            // value is dropped here
-        }
+        while self.pop().is_some() {}
     }
 }
