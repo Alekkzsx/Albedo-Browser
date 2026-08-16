@@ -39,7 +39,6 @@ use core::num::NonZeroU64;
 /// (otimização de *niche*). Isso é crítico: o DOM armazena milhões de ponteiros
 /// opcionais (`parent`, `first_child`, `next_sibling`, ...), e dobrar o tamanho de cada
 /// um custaria gigabytes de RAM.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ArenaId<T> {
     /// Chave empacotada: `(versão << 32) | índice`. Sempre diferente de zero.
     key: NonZeroU64,
@@ -82,6 +81,45 @@ impl<T> ArenaId<T> {
     #[must_use]
     pub(crate) const fn version(self) -> u32 {
         (self.key.get() >> 32) as u32
+    }
+}
+
+impl<T> Clone for ArenaId<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for ArenaId<T> {}
+
+impl<T> PartialEq for ArenaId<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl<T> Eq for ArenaId<T> {}
+
+impl<T> core::hash::Hash for ArenaId<T> {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.key.hash(state)
+    }
+}
+
+impl<T> PartialOrd for ArenaId<T> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for ArenaId<T> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.key.cmp(&other.key)
     }
 }
 
