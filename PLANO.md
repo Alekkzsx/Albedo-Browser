@@ -101,6 +101,14 @@ A arquitetura segue uma pirâmide de camadas (visão vertical), onde cada camada
 
 A comunicação entre camadas é feita via interfaces públicas bem definidas, com tipos de erro específicos (`AceError`) que encapsulam o contexto sem dependências externas.
 
+### Matriz de Maturidade (Módulos Base)
+Para garantir a transição segura entre fases, componentes críticos recebem tags de maturidade:
+- **`Experimental`**: Passa em testes de unidade e estresse básicos. Aguarda validação via Miri, Loom ou Fuzzing. Proibido em produção.
+  - *Módulos atuais:* `gc`, `ebr`, `deque`, `mpmc`, `arena`, `partition_alloc`, `small_vec`, `thread_pool`.
+- **`Validated`**: Invariantes testadas com provas e ferramentas avançadas. APIs estabilizadas.
+  - *Módulos atuais:* `math`, `bitset`, `slab`.
+- **`Production-Candidate`**: Auditado, otimizado e pronto para integração final.
+
 ---
 
 ## 2. A Metodologia da Engenharia Tridimensional (3D)
