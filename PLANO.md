@@ -1,9 +1,9 @@
 # 🗺️ Plano Mestre de Engenharia — ACE (Albedo Core Engine) & Browser
 
-> **Versão:** 4.6 — *O Ecossistema Vivo*  
-> **Última atualização:** 2026-08-10  
-> **Propósito:** Roteiro exaustivo, técnico e imutável para a construção de um navegador web completo e soberano — 100% código próprio, sem uma única dependência externa.  
-> **Filosofia:** O ACE (Albedo Core Engine) não usa bibliotecas. Cada parser, cada algoritmo de layout, cada decodificador de imagem, cada byte de criptografia, cada pixel rasterizado, **cada instrução de máquina emitida pelo JIT** é forjado internamente. A única concessão são os bindings brutos para chamadas de sistema (`libc` no Unix, `windows-sys` no Windows) — pois não há como falar com o kernel sem pedir permissão.
+> **Versão:** 5.0 — *O Paradigma Pragmático*  
+> **Última atualização:** 2026-08-16  
+> **Propósito:** Roteiro exaustivo e técnico para a construção de um navegador web completo e competitivo, focado em inovação arquitetural de alto nível.  
+> **Filosofia:** O ACE (Albedo Core Engine) constrói seu diferencial competitivo do zero — a árvore DOM/CSSOM, os complexos algoritmos de layout (Flex/Grid), a arquitetura multi-processo e o pipeline de renderização. Contudo, para infraestrutura fundacional (Criptografia, I/O Assíncrono, Unicode, Concorrência), **recusamos o princípio "Not Invented Here"** e orquestramos as bibliotecas (crates) mais maduras e testadas em batalha do ecossistema Rust.
 
 ---
 
@@ -40,38 +40,31 @@
 
 ## 0. Constituição do Projeto — Regras de Ouro
 
-**Regra 1 — Zero Dependências Externas.**  
-A seção `[dependencies]` de qualquer `Cargo.toml` do workspace pode conter **apenas** bindings de syscall do SO. Nenhuma crate de terceiros — por mais "primitiva" que pareça — é permitida.
+**Regra 1 — O Motor é Nosso, A Fundação é Compartilhada.**  
+Não utilizamos motores de navegação pré-prontos (Blink, WebKit, Gecko, Servo) nem frameworks que ofusquem o controle do ciclo de vida da página (como CEF ou WebViews de sistema). A arquitetura central do navegador, o Layout e o DOM são 100% escritos e orquestrados por nós. No entanto, **utilizamos ativamente bibliotecas (crates) fundacionais e auditadas do ecossistema Rust**.
 
-Lista de bloqueio permanente (exemplos, não exaustiva):
-- **Async/Runtime:** `tokio`, `async-std`, `smol`, `rayon`
-- **Serialização:** `serde`, `serde_json`, `bincode`, `protobuf`, `rmp`
-- **Rede:** `reqwest`, `hyper`, `rustls`, `native-tls`, `hickory-dns`, `quinn`
-- **Parsing Web:** `html5ever`, `cssparser`, `selectors`, `markup5ever`
-- **GPU/Gráficos:** `wgpu`, `skia-safe`, `tiny-skia`, `vello`, `glutin`, `glow`
-- **Tipografia:** `rustybuzz`, `harfrust`, `swash`, `fontdue`, `skrifa`, `parley`
-- **Imagens:** `image`, `png`, `jpeg-decoder`, `resvg`
-- **JavaScript e JIT:** `rusty_v8`, `boa_engine`, `rquickjs`, `deno_core`, **`cranelift`**, **`llvm`** (proibidos!)
-- **Windowing:** `winit`, `glfw`, `sdl2`, `tao`
-- **UI:** `egui`, `iced`, `druid`, `slint`
-- **Erros/Logging:** `thiserror`, `anyhow`, `eyre`, `tracing`, `log`, `env_logger`
-- **Utilitários:** `regex`, `url`, `encoding_rs`, `unicode-bidi`, `unicode-linebreak`
-- **Navegadores/Webviews:** `wry`, `webview`, `cef`, `sciter-rs`, `ultralight-rs`
+**✅ O que usamos e encorajamos (As Fundações):**
+- **Async & Concorrência:** `tokio`, `rayon`, `crossbeam`, `mio`
+- **Rede & Segurança:** `rustls`, `hyper`, `url`, `reqwest` (baixo nível)
+- **Tipografia & Unicode:** `icu4x`, `harfbuzz`, `rustybuzz`
+- **Gráficos e Mídia:** `wgpu`, decodificadores de imagem padrão da comunidade.
+- **Estruturas de Dados:** HashMaps seguros e estruturas lock-free validadas pelo `loom`.
 
-**Exceção única:** `libc` (Linux/macOS) e `windows-sys` (Windows) para chamadas de sistema brutas (criar janelas, sockets, threads de SO, etc.).
+**❌ O que é Estritamente Proibido (Os "Mata-Projetos" ou Motores Prontos):**
+- **Motores Inteiros Embutidos:** WebView2, WKWebView, Wry, Tauri, CEF.
+- **Engines Prontas de Layout:** Projetos que resolvam o layout web, a cascata CSS ou a árvore DOM completa por nós de forma opinativa. Nós implementamos a lógica W3C de renderização.
 
-**Regra 2 — Tudo é do ACE.**  
-Arquitetura, DOM, CSSOM, algoritmos de layout, pipeline de pintura, motor JavaScript, parser HTTP, decodificador de imagens, rasterizador de fontes, gerência de threads/processos, modelo de segurança, UI nativa e **compilador JIT** — **tudo é código próprio, sem exceção.** O JIT não utiliza LLVM, Cranelift ou qualquer biblioteca de geração de código; ele emite bytes de máquina (x86_64/ARM64) diretamente em buffers de memória executável.
+**Regra 2 — Foco na Inovação Arquitetural (O Core Engine).**  
+O diferencial do Albedo está em como orquestramos o layout, a pintura paralela e a interação com o usuário. Construir um parser TLS do zero não agrega valor ao browser, apenas introduz vulnerabilidades crônicas; porém, construir um Layout Engine massivamente paralelo que evita repaints desnecessários muda completamente a performance. Focaremos nossa engenharia naquilo que impacta a *Render Tree* e a UI.
 
 **Regra 3 — Toda decisão arquitetural importante vira um ADR (Architecture Decision Record) versionado em `docs/adr/`.**
 
 **Regra 4 — Checklist para qualquer código novo:**
-- [ ] Usa apenas `std` e bindings de syscall aprovados?
-- [ ] Tem testes unitários com cobertura mínima de 80% (linhas e branches)?
+- [ ] Está usando a melhor crate disponível para o trabalho "chato/inseguro" (em vez de reinventar a roda)?
+- [ ] Tem testes unitários com cobertura mínima de 80%?
 - [ ] Passa em `cargo clippy -- -D warnings` (sem exceções)?
-- [ ] Está documentado com `///` doc comments (todos os itens públicos)?
-- [ ] Inclui pelo menos um exemplo de uso (em doc-test ou em `examples/`)?
-- [ ] Foi revisado por pelo menos um outro engenheiro do time?
+- [ ] Está documentado com `///` doc comments?
+- [ ] Foi revisado por pares?
 
 ---
 

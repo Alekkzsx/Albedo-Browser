@@ -36,17 +36,17 @@ Criar um motor moderno não significa reescrever parsers primitivos, drivers de 
 * **Layout & Geometry Tree**: Computação de geometria e fluxo de tela isolados em pipelines paralelos tirando proveito do modelo de concorrência destemida (*Fearless Concurrency*) do Rust.
 * **GPU Rendering (Skia / wgpu)**: A pintura dos pixels na tela ignora os pipelines legados de CPU. Os comandos de renderização são entregues diretamente à GPU utilizando backends modernos (Vulkan, Metal, Direct3D 12) via infraestrutura gráfica de ponta em Rust.
 
-### 🧩 Filosofia: Bibliotecas Sim, Motor Pronto Jamais
-O Albedo estabelece uma fronteira clara: **utiliza bibliotecas primitivas do ecossistema Rust (crates) para tarefas pontuais de baixo nível, mas NÃO utiliza nenhum motor de navegação ou renderizador pré-pronto.**
+### 🧩 Filosofia: Fundações Maduras Sim, Motor Pronto Jamais
+O Albedo estabelece uma fronteira clara e pragmática: **utilizamos as melhores bibliotecas (crates) do ecossistema Rust para infraestrutura base e segurança, mas NÃO terceirizamos a alma do navegador.**
 
-* **O que reutilizamos:** Bibliotecas especializadas e testadas em batalha para primitivas isoladas (ex: parsers de texto HTML/CSS, drivers de rede HTTP/3, matemática vetorial e primitivas de GPU como `wgpu`).
-* **O que construímos do zero:** Toda a **arquitetura do motor (Albedo Engine)**, a **árvore DOM/CSSOM**, os **algoritmos de layout e geometria**, o **pipeline de renderização paralelo**, a **gerência de threads/processos** e a **interface gráfica nativa do navegador**.
+* **O que usamos (As Fundações):** Bibliotecas testadas em batalha para primitivas isoladas, concorrência e segurança. Exemplos: `tokio` e `crossbeam` (para não reinventar event loops e filas lock-free inseguras), `rustls` (criptografia auditada), `url`, e primitivas de GPU como `wgpu`. Herdar essa segurança é obrigatório.
+* **O que construímos do zero (A Alma):** Toda a **arquitetura orquestradora (Albedo Engine)**, a **árvore estrutural do DOM/CSSOM**, os **algoritmos matemáticos de layout (BFC, Flex, Grid)**, o **pipeline de renderização massivamente paralelo** e a **interface nativa**.
 
 ### O que o Albedo NÃO é:
 - **Não é um fork nem wrapper:** Zero dependência de monólitos como Chromium (Blink), WebKit ou Gecko.
 - **Não é um encapsulador de Webview:** Não utiliza engines prontas ou webviews de sistema (como WebView2, WKWebView, WebKitGTK ou Wry/Tauri) para exibir páginas web.
-- **Não é um navegador de terminal:** Possui uma interface gráfica (UI) visual rica, acelerada por GPU e completa.
-- **Não deforma a web:** O peso é reduzido eliminando *bloatware* de telemetria, código espaguete e extensões invasivas legadas, e não sacrificando os padrões W3C ou a usabilidade das páginas.
+- **Não é uma engine pronta:** Não usamos bibliotecas "bala de prata" que resolvem o layout web inteiro por nós (como o motor Servo original). Nós construímos o nosso próprio motor.
+- **Não sofre de "Not Invented Here":** Focamos a genialidade do nosso time de engenharia na renderização, layout e UI, e não em reescrever parsers de TLS e filas concorrentes já perfeitamente resolvidas pela comunidade.
 
 ---
 
