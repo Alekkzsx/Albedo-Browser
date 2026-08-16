@@ -1,63 +1,32 @@
-// ============================================================================
-// Albedo Core Engine (ACE)
-// File: id.rs
-// Description: Definidor de Identificadores Base (Newtypes) de uso global,
-//              utilizando AtomicU64 para isolamento e thread-safety.
-// Author: Albedo Browser Engineering Team
-// ============================================================================
-
-//! # Identificadores Primários da Engine
-//!
-//! Para garantir total rastreabilidade (sem misturar u64 soltos pela codebase)
-//! e segurança contra concorrência massiva de processos, o Albedo define um modelo
-//! rigoroso de NewTypes (`TabId`, `NodeId`, etc.) baseados num gerador atômico seguro.
-
-use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::fmt;
 
-// ----------------------------------------------------------------------------
-// Generator Macro
-// ----------------------------------------------------------------------------
+/// Gera um novo ID único globalmente durante a execução do processo.
+fn next_global_id() -> u64 {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
 
-/// Macro interna para padronizar a criação de tipos fortemente tipados (Newtypes).
-///
-/// Implementa as traits fundamentais (`Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `Hash`)
-/// e os métodos essenciais para uso thread-safe e inter-processo.
-macro_rules! define_id {
-    (
-        $(#[$meta:meta])*
-        $name:ident
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub struct $name(NonZeroU64);
+macro_rules! define_id_type {
+    ($name:ident, $doc:expr) => {
+        #[doc = $doc]
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(u64);
 
         impl $name {
-            /// Gera um novo ID global e único, acessível de forma concorrente sem locks.
-            ///
-            /// **Null Pointer Optimization (NPO):**
-            /// Por baixo dos panos usamos `NonZeroU64`, garantindo que `Option<Id>`
-            /// gaste os mesmos 8 bytes de um ponteiro cru, cortando o uso de RAM pela metade
-            /// em grandes estruturas como o DOM Tree.
+            /// Cria um novo ID único.
             pub fn new() -> Self {
-                static COUNTER: AtomicU64 = AtomicU64::new(1);
-                // SAFETY: fetch_add começa em 1. Um overflow para 0 precisaria de
-                // 584 anos operando a 1 bilhão de IDs por segundo (Impossível fisicamente).
-                let val = COUNTER.fetch_add(1, Ordering::Relaxed);
-                Self(unsafe { NonZeroU64::new_unchecked(val) })
+                Self(next_global_id())
+            }
+            
+            /// Cria um ID a partir de um valor bruto (apenas para deserialização/testes).
+            pub const fn from_raw(id: u64) -> Self {
+                Self(id)
             }
 
-            /// Cria um ID diretamente a partir de um valor cru primitivo.
-            ///
-            /// ⚠️ **Uso Restrito:** Deve ser usado primariamente no módulo IPC durante
-            /// a deserialização de pacotes binários entre processos do SO.
-            pub fn from_raw(id: u64) -> Option<Self> {
-                NonZeroU64::new(id).map(Self)
-            }
-
-            /// Recupera o valor primário int para fins de logs ou serialização.
-            pub fn raw(&self) -> u64 {
-                self.0.get()
+            /// Retorna o valor bruto do ID.
+            pub const fn raw(&self) -> u64 {
+                self.0
             }
         }
 
@@ -66,39 +35,22 @@ macro_rules! define_id {
                 Self::new()
             }
         }
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}({})", stringify!($name), self.0)
+            }
+        }
+        
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
     };
 }
 
-// ----------------------------------------------------------------------------
-// ID Definitions
-// ----------------------------------------------------------------------------
-
-define_id!(
-    /// Identificador global absoluto de uma Janela ou Aba no aplicativo nativo.
-    TabId
-);
-
-define_id!(
-    /// Identificador rastreável de Requisições de Rede (Resource Fetch).
-    RequestId
-);
-
-define_id!(
-    /// Identificador único para cada nó dentro do modelo em memória (DOM e Render Tree).
-    NodeId
-);
-
-define_id!(
-    /// Identificador do Processo em sandboxing a nível de SO (PIDs virtuais do Albedo).
-    ProcessId
-);
-
-define_id!(
-    /// Identificador persistente em memórias flash / disco para Cookies.
-    CookieId
-);
-
-define_id!(
-    /// Chave identificadora para operações atômicas de Key/Value Store.
-    StorageKey
-);
+define_id_type!(NodeId, "Identificador único para um nó na árvore DOM ou Render Tree.");
+define_id_type!(TabId, "Identificador único para uma aba (Tab) do navegador.");
+define_id_type!(ProcessId, "Identificador único para um processo do navegador.");
+define_id_type!(RequestId, "Identificador único para uma requisição de rede.");
