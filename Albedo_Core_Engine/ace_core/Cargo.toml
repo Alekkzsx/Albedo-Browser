@@ -4,10 +4,27 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Async & Concurrency
+tokio = { version = "1.37", features = ["full"] }
+rayon = "1.10"
+crossbeam = "0.8"
+parking_lot = "0.12"
+
+# Data Structures
+dashmap = "5.5"
+bumpalo = "3.16"
+rustc-hash = "1.1"
+smol_str = "0.2"
+ropey = "1.6"
+
+# Math & Geometry
+euclid = "0.22"
+
+# Observability & Errors
+tracing = "0.1"
+thiserror = "1.0"
+anyhow = "1.0"
 
 [features]
 default = []
-# Ativa ferramentas pesadas de log, tracing de perfilamento e asserts rigorosos.
 debug-tools = []
-# Habilita o subsistema de GC (que pode ter impacto no tempo de compilação/runtime se não necessário ainda)
-gc = []
