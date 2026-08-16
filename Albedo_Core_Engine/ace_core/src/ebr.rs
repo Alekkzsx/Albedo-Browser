@@ -85,15 +85,28 @@ impl Drop for Guard {
 /// Isso só tem sucesso se TODAS as threads ativas estiverem na época atual ou mais novas.
 fn try_advance() {
     let global = GLOBAL_EPOCH.load(Ordering::SeqCst);
-    let reg = registry().read().unwrap();
+    let mut needs_cleanup = false;
 
-    for state in reg.iter() {
-        if state.active.load(Ordering::SeqCst) {
-            let thread_epoch = state.epoch.load(Ordering::SeqCst);
-            if thread_epoch < global {
-                // Alguma thread ativa ainda está presa no passado.
-                return;
+    {
+        let reg = registry().read().unwrap();
+        for state in reg.iter() {
+            if Arc::strong_count(state) == 1 {
+                needs_cleanup = true;
+                continue;
             }
+            if state.active.load(Ordering::SeqCst) {
+                let thread_epoch = state.epoch.load(Ordering::SeqCst);
+                if thread_epoch < global {
+                    // Alguma thread ativa ainda está presa no passado.
+                    return;
+                }
+            }
+        }
+    }
+
+    if needs_cleanup {
+        if let Ok(mut reg) = registry().try_write() {
+            reg.retain(|state| Arc::strong_count(state) > 1);
         }
     }
 
