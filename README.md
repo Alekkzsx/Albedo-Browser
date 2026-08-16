@@ -52,10 +52,10 @@ O Albedo estabelece uma fronteira clara: **utiliza bibliotecas primitivas do eco
 
 ## 🏗️ Princípios da Arquitetura
 
-1. **Memory Safety First:** Desenvolvido em Rust `2021 Edition`, o Albedo Engine bane por completo as categorias clássicas de vulnerabilidades da web (Buffer Overflows, Use-After-Free).
+1. **Memory Safety First:** Desenvolvido em Rust, o Albedo Engine mitiga significativamente as categorias clássicas de vulnerabilidades da web (Buffer Overflows, Use-After-Free).
 2. **Modularidade via Crates:** Cada componente do motor (Rede, DOM, Layout, GPU, UI) é isolado em módulos e bibliotecas bem delimitadas, garantindo reuso e manutenção desacoplada.
 3. **Zero-Cost Abstractions:** Toda a ponte entre o DOM e o Renderizador Gráfico evita alocações desnecessárias (heap allocations) usando lifetimes e empréstimos estritos (`borrowing`).
-4. **Enterprise Governance:** O desenvolvimento deste motor é blindado por verificações CI rigorosas, análise estática de arquitetura e Linter de IA, garantindo que o código nunca se torne o monólito espaguete que seus concorrentes se tornaram.
+4. **Governança:** O desenvolvimento deste motor adota verificações de CI e análise estática progressiva para garantir a manutenibilidade a longo prazo.
 
 ---
 
