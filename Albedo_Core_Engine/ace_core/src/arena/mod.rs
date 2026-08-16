@@ -67,7 +67,7 @@ pub use stats::ArenaStats;
 /// se referenciar por ID estável (por isso a [`Arena`] geracional), enquanto os
 /// **payloads** — strings de atributos, valores do parser — só precisam viver tanto
 /// quanto a página (por isso a [`BumpArena`]).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DomArena<N> {
     /// Armazenamento dos nós, referenciados por [`ArenaId<N>`].
     nodes: Arena<N>,
