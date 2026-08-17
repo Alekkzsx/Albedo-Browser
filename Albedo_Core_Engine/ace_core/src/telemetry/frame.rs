@@ -109,8 +109,21 @@ pub struct FrameRecorder {
 }
 
 impl FrameRecorder {
+    /// Retorna o número deste quadro.
+    #[inline]
+    pub const fn frame_number(&self) -> u64 {
+        self.frame_number
+    }
+
+    /// Retorna o orçamento deste quadro.
+    #[inline]
+    pub const fn budget_ms(&self) -> f32 {
+        self.budget_ms
+    }
+
     /// Registra a duração de um estágio específico.
     pub fn record_stage(&mut self, stage: FrameStage, duration_ms: f32) {
         self.stages_ms[stage as usize] = duration_ms;
     }
 }
+

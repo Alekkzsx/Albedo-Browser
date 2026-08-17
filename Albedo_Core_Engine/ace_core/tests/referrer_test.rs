@@ -2,7 +2,7 @@ use ace_core::security::{compute_referrer, Origin, ReferrerPolicy};
 
 #[test]
 fn test_referrer_policy_same_origin() {
-    let origin = Origin::try_from_url("https://example.com/page.html").unwrap();
+    let origin = Origin::parse("https://example.com/page.html").unwrap();
     let current_url = "https://example.com/page.html#heading";
     let same_target = "https://example.com/api/data";
     let cross_target = "https://other.com/api/data";
@@ -16,7 +16,7 @@ fn test_referrer_policy_same_origin() {
 
 #[test]
 fn test_referrer_policy_downgrade_protection() {
-    let origin = Origin::try_from_url("https://secure.com").unwrap();
+    let origin = Origin::parse("https://secure.com").unwrap();
     let current_url = "https://secure.com/checkout";
     let insecure_target = "http://insecure.com/tracker";
 
@@ -31,7 +31,7 @@ fn test_referrer_policy_downgrade_protection() {
 
 #[test]
 fn test_referrer_policy_origin_only() {
-    let origin = Origin::try_from_url("https://example.com").unwrap();
+    let origin = Origin::parse("https://example.com").unwrap();
     let current_url = "https://example.com/private/path?secret=123";
     let cross_target = "https://cdn.example.org/image.png";
 
