@@ -19,7 +19,9 @@ pub mod cursor;
 pub mod diagnostics;
 pub mod error;
 pub mod event_loop;
+pub mod events;
 pub mod features;
+
 pub mod flags;
 pub mod id;
 pub mod intern;
