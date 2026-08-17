@@ -19,7 +19,10 @@ fn test_generic_font_family_keywords() {
 
 #[test]
 fn test_font_weight_parsing() {
-    assert_eq!(FontWeight::from_css_value("normal"), Some(FontWeight::NORMAL));
+    assert_eq!(
+        FontWeight::from_css_value("normal"),
+        Some(FontWeight::NORMAL)
+    );
     assert_eq!(FontWeight::from_css_value("bold"), Some(FontWeight::BOLD));
     assert_eq!(FontWeight::from_css_value("700"), Some(FontWeight(700)));
     assert_eq!(FontWeight::from_css_value("950"), Some(FontWeight(950)));
@@ -38,7 +41,10 @@ fn test_font_stretch_parsing() {
         FontStretch::from_css_value("expanded"),
         Some(FontStretch::Expanded)
     );
-    assert_eq!(FontStretch::from_css_value("normal"), Some(FontStretch::Normal));
+    assert_eq!(
+        FontStretch::from_css_value("normal"),
+        Some(FontStretch::Normal)
+    );
 }
 
 #[test]
