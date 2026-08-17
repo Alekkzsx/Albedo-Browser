@@ -82,6 +82,35 @@ impl<T> ArenaId<T> {
     pub(crate) const fn version(self) -> u32 {
         (self.key.get() >> 32) as u32
     }
+
+    /// Retorna a representação compacta bruta de 64 bits do identificador.
+    #[inline]
+    #[must_use]
+    pub const fn raw(self) -> u64 {
+        self.key.get()
+    }
+
+    /// Reconstrói um `ArenaId` a partir de um valor bruto de 64 bits.
+    /// Retorna `None` se o valor for zero.
+    #[inline]
+    pub fn from_raw(raw: u64) -> Option<Self> {
+        NonZeroU64::new(raw).map(|key| Self {
+            key,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Converte este `ArenaId` no identificador global `NodeId` para IPC e telemetria.
+    #[inline]
+    pub fn to_node_id(self) -> crate::id::NodeId {
+        crate::id::NodeId::from_raw(self.raw())
+    }
+
+    /// Converte um `NodeId` global de volta em `ArenaId`, se válido.
+    #[inline]
+    pub fn from_node_id(node_id: crate::id::NodeId) -> Option<Self> {
+        Self::from_raw(node_id.raw())
+    }
 }
 
 impl<T> Clone for ArenaId<T> {
