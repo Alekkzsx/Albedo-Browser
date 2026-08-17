@@ -1,5 +1,5 @@
 use ace_core::math::{
-    point2, rect, size2, DpiScale, EdgeInsets, Point, Rect2D, RectExt, Size, Transform,
+    point2, DpiScale, EdgeInsets, Point, Rect2D, RectExt, Size, Transform,
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn test_rect_ext_inflate_deflate() {
 #[test]
 fn test_dpi_scaling_conversion() {
     let scale = DpiScale::new(1.5); // 150% Display Scaling
-    let css_rect = rect(10.0, 20.0, 200.0, 100.0);
+    let css_rect = Rect2D::new(Point::new(10.0, 20.0), Size::new(200.0, 100.0));
 
     let dev_rect = css_rect.to_device_rect(scale);
     assert_eq!(dev_rect.origin.x, 15.0);
@@ -61,18 +61,18 @@ fn test_affine_transform_2d() {
 
 #[test]
 fn test_rect_intersection_and_union() {
-    let r1 = rect(0.0, 0.0, 100.0, 100.0);
-    let r2 = rect(50.0, 50.0, 100.0, 100.0);
+    let r1 = Rect2D::new(Point::new(0.0, 0.0), Size::new(100.0, 100.0));
+    let r2 = Rect2D::new(Point::new(50.0, 50.0), Size::new(100.0, 100.0));
 
     // Interseção
     let inter = r1.intersection(&r2).unwrap();
-    assert_eq!(inter, rect(50.0, 50.0, 50.0, 50.0));
+    assert_eq!(inter, Rect2D::new(Point::new(50.0, 50.0), Size::new(50.0, 50.0)));
 
     // União
     let union = r1.union(&r2);
-    assert_eq!(union, rect(0.0, 0.0, 150.0, 150.0));
+    assert_eq!(union, Rect2D::new(Point::new(0.0, 0.0), Size::new(150.0, 150.0)));
 
     // Retângulos disjuntos
-    let r3 = rect(200.0, 200.0, 50.0, 50.0);
+    let r3 = Rect2D::new(Point::new(200.0, 200.0), Size::new(50.0, 50.0));
     assert_eq!(r1.intersection(&r3), None);
 }
