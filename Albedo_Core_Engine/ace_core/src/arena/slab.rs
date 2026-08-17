@@ -209,15 +209,12 @@ impl<T> Arena<T> {
     /// Este é o ponto de integração com o coletor de ciclos do `ace_js` (Fase 10).
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (ArenaId<T>, &T)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, entry)| {
-                entry
-                    .value
-                    .as_ref()
-                    .map(|v| (ArenaId::new(i as u32, entry.version), v))
-            })
+        self.entries.iter().enumerate().filter_map(|(i, entry)| {
+            entry
+                .value
+                .as_ref()
+                .map(|v| (ArenaId::new(i as u32, entry.version), v))
+        })
     }
 
     /// Itera sobre os pares `(identificador, &mut valor)` de todos os valores vivos.
@@ -279,4 +276,3 @@ fn next_version(current: u32) -> u32 {
         next
     }
 }
-

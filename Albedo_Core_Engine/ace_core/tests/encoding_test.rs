@@ -18,8 +18,14 @@ fn test_bom_detection() {
 #[test]
 fn test_web_encoding_labels() {
     assert_eq!(WebEncoding::from_label("utf-8"), Some(WebEncoding::Utf8));
-    assert_eq!(WebEncoding::from_label("latin1"), Some(WebEncoding::Iso8859_1));
-    assert_eq!(WebEncoding::from_label("windows-1252"), Some(WebEncoding::Windows1252));
+    assert_eq!(
+        WebEncoding::from_label("latin1"),
+        Some(WebEncoding::Iso8859_1)
+    );
+    assert_eq!(
+        WebEncoding::from_label("windows-1252"),
+        Some(WebEncoding::Windows1252)
+    );
     assert_eq!(WebEncoding::from_label("sjis"), Some(WebEncoding::ShiftJis));
     assert_eq!(WebEncoding::from_label("invalid_encoding"), None);
 }

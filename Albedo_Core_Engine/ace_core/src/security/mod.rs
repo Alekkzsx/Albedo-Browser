@@ -12,4 +12,3 @@ pub use origin::{Host, Origin, Scheme};
 pub use site::SchemefulSite;
 pub use token::UnguessableToken;
 pub use utils::{is_potentially_trustworthy_origin, matches_domain_pattern};
-

@@ -64,7 +64,10 @@ pub fn percent_decode(input: &str) -> String {
 /// Valida se um esquema de protocolo é seguro e padrão para navegação na web.
 #[inline]
 pub fn is_safe_url_scheme(scheme: &str) -> bool {
-    matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https" | "data" | "blob" | "about" | "file")
+    matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "http" | "https" | "data" | "blob" | "about" | "file"
+    )
 }
 
 #[inline]

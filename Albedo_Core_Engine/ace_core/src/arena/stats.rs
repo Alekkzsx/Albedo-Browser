@@ -52,7 +52,12 @@ impl std::fmt::Display for ArenaStats {
         write!(
             f,
             "ArenaStats {{ live: {}, cap: {}, allocs: {}, freed: {}, reuses: {}, bytes: {} }}",
-            self.live, self.capacity, self.total_allocated, self.total_freed, self.slot_reuses, self.bytes_allocated
+            self.live,
+            self.capacity,
+            self.total_allocated,
+            self.total_freed,
+            self.slot_reuses,
+            self.bytes_allocated
         )
     }
-}
+}

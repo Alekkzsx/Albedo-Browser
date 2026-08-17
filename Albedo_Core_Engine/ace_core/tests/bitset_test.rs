@@ -68,7 +68,11 @@ fn test_atomic_bitset_concurrent_access() {
     }
 
     for bit in 0..240 {
-        assert!(bitset.get(bit, Ordering::SeqCst), "Bit {} deve estar ativo", bit);
+        assert!(
+            bitset.get(bit, Ordering::SeqCst),
+            "Bit {} deve estar ativo",
+            bit
+        );
     }
     assert!(!bitset.get(245, Ordering::SeqCst));
 

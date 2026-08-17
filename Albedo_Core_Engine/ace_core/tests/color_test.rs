@@ -6,18 +6,36 @@ fn test_hex_colors() {
     assert_eq!(Color::from_hex("#f00").unwrap(), Color::from_rgb(255, 0, 0));
     assert_eq!(Color::from_hex("#0f0").unwrap(), Color::from_rgb(0, 255, 0));
     assert_eq!(Color::from_hex("#00f").unwrap(), Color::from_rgb(0, 0, 255));
-    assert_eq!(Color::from_hex("#fff").unwrap(), Color::from_rgb(255, 255, 255));
+    assert_eq!(
+        Color::from_hex("#fff").unwrap(),
+        Color::from_rgb(255, 255, 255)
+    );
 
     // #RGBA
-    assert_eq!(Color::from_hex("#f00f").unwrap(), Color::from_rgba(255, 0, 0, 255));
-    assert_eq!(Color::from_hex("#f008").unwrap(), Color::from_rgba(255, 0, 0, 136));
+    assert_eq!(
+        Color::from_hex("#f00f").unwrap(),
+        Color::from_rgba(255, 0, 0, 255)
+    );
+    assert_eq!(
+        Color::from_hex("#f008").unwrap(),
+        Color::from_rgba(255, 0, 0, 136)
+    );
 
     // #RRGGBB
-    assert_eq!(Color::from_hex("#ff8800").unwrap(), Color::from_rgb(255, 136, 0));
-    assert_eq!(Color::from_hex("#123456").unwrap(), Color::from_rgb(18, 52, 86));
+    assert_eq!(
+        Color::from_hex("#ff8800").unwrap(),
+        Color::from_rgb(255, 136, 0)
+    );
+    assert_eq!(
+        Color::from_hex("#123456").unwrap(),
+        Color::from_rgb(18, 52, 86)
+    );
 
     // #RRGGBBAA
-    assert_eq!(Color::from_hex("#ff880080").unwrap(), Color::from_rgba(255, 136, 0, 128));
+    assert_eq!(
+        Color::from_hex("#ff880080").unwrap(),
+        Color::from_rgba(255, 136, 0, 128)
+    );
 
     // Invalid hex
     assert!(Color::from_hex("#zzz").is_err());
@@ -33,9 +51,18 @@ fn test_css_functional_colors() {
     assert_eq!(Color::parse_css("rgb(0 255 0)").unwrap(), Color::LIME);
 
     // rgba()
-    assert_eq!(Color::parse_css("rgba(0, 0, 255, 1.0)").unwrap(), Color::BLUE);
-    assert_eq!(Color::parse_css("rgba(0, 0, 255, 0.5)").unwrap(), Color::from_rgba(0, 0, 255, 128));
-    assert_eq!(Color::parse_css("rgba(0, 0, 255, 50%)").unwrap(), Color::from_rgba(0, 0, 255, 128));
+    assert_eq!(
+        Color::parse_css("rgba(0, 0, 255, 1.0)").unwrap(),
+        Color::BLUE
+    );
+    assert_eq!(
+        Color::parse_css("rgba(0, 0, 255, 0.5)").unwrap(),
+        Color::from_rgba(0, 0, 255, 128)
+    );
+    assert_eq!(
+        Color::parse_css("rgba(0, 0, 255, 50%)").unwrap(),
+        Color::from_rgba(0, 0, 255, 128)
+    );
 
     // hsl()
     let red_hsl = Color::parse_css("hsl(0, 100%, 50%)").unwrap();
@@ -48,9 +75,15 @@ fn test_css_functional_colors() {
     assert_eq!(blue_hsl, Color::BLUE);
 
     // Named colors
-    assert_eq!(Color::parse_css("rebeccapurple").unwrap(), Color::from_rgb(102, 51, 153));
+    assert_eq!(
+        Color::parse_css("rebeccapurple").unwrap(),
+        Color::from_rgb(102, 51, 153)
+    );
     assert_eq!(Color::parse_css("transparent").unwrap(), Color::TRANSPARENT);
-    assert_eq!(Color::parse_css("cornflowerblue").unwrap(), Color::from_rgb(100, 149, 237));
+    assert_eq!(
+        Color::parse_css("cornflowerblue").unwrap(),
+        Color::from_rgb(100, 149, 237)
+    );
 }
 
 #[test]

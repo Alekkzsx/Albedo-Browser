@@ -21,7 +21,9 @@ pub use idle::{IdleDeadline, IdleTaskFn, IdleTaskQueue, ScheduledIdleTask};
 pub use scope::{ScopedTaskQueue, TaskScope};
 pub use source::TaskSource;
 pub use task::{Task, TaskFn};
-pub use utils::{compute_deadline, duration_to_ms, fps_to_interval, is_deadline_passed, ms_to_duration};
+pub use utils::{
+    compute_deadline, duration_to_ms, fps_to_interval, is_deadline_passed, ms_to_duration,
+};
 
 use crate::error::AceError;
 use crate::id::TaskId;
@@ -59,7 +61,6 @@ pub struct TaskQueue {
     /// Relógio de referência para resolução de prazos.
     clock: Arc<dyn Clock>,
 }
-
 
 impl TaskQueue {
     /// Enfileira uma macrotask associada a uma fonte específica da spec WHATWG.
@@ -216,7 +217,6 @@ impl EventLoop {
         }
     }
 
-
     /// Retorna o relógio utilizado por este Event Loop.
     #[inline]
     pub fn clock(&self) -> &dyn Clock {
@@ -248,7 +248,10 @@ impl EventLoop {
 
         let count = expired.len();
         for timer in expired {
-            if !timer.is_cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            if !timer
+                .is_cancelled
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
                 (timer.func)();
             }
         }
@@ -310,7 +313,6 @@ impl EventLoop {
         }
         executed
     }
-
 
     /// Drena exaustivamente a fila de microtasks (Promises).
     pub fn drain_microtasks(&self) -> usize {

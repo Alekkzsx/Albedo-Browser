@@ -3,7 +3,7 @@
 //! A comparação de strings é o calcanhar de Aquiles de qualquer parser HTML/CSS.
 //! No Albedo, representamos tags (`div`, `span`), atributos (`class`, `id`) e propriedades CSS (`color`)
 //! como "Atoms" (átomos).
-//! 
+//!
 //! Quando um Atom é criado, a string é internada em um pool global.
 //! Comparar dois Atoms custa 1 ciclo de CPU, pois apenas o identificador numérico interno é comparado.
 

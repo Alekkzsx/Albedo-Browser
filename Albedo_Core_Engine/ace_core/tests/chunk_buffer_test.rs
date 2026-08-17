@@ -21,6 +21,9 @@ fn test_chunk_buffer_streaming_and_slicing() {
     let mut remaining = vec![0u8; 100];
     let rem_count = buffer.read_bytes(&mut remaining);
     assert_eq!(rem_count, 43);
-    assert_eq!(&remaining[..rem_count], b" This is a long stream of data for testing.");
+    assert_eq!(
+        &remaining[..rem_count],
+        b" This is a long stream of data for testing."
+    );
     assert!(buffer.is_empty());
 }

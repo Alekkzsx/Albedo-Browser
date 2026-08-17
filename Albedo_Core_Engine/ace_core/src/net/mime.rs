@@ -113,8 +113,16 @@ impl MimeType {
         let main_part = parts.next().unwrap_or("").trim();
 
         let mut type_subtype = main_part.splitn(2, '/');
-        let type_ = type_subtype.next().unwrap_or("").trim().to_ascii_lowercase();
-        let subtype = type_subtype.next().unwrap_or("").trim().to_ascii_lowercase();
+        let type_ = type_subtype
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let subtype = type_subtype
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
 
         if type_.is_empty() || subtype.is_empty() {
             return Err(AceError::invalid_op(format!(
@@ -166,8 +174,14 @@ impl MimeType {
     /// Retorna `true` se este MIME type representar código JavaScript.
     #[inline]
     pub fn is_javascript(&self) -> bool {
-        (self.type_ == "application" && (self.subtype == "javascript" || self.subtype == "x-javascript" || self.subtype == "ecmascript"))
-            || (self.type_ == "text" && (self.subtype == "javascript" || self.subtype == "ecmascript" || self.subtype == "jscript"))
+        (self.type_ == "application"
+            && (self.subtype == "javascript"
+                || self.subtype == "x-javascript"
+                || self.subtype == "ecmascript"))
+            || (self.type_ == "text"
+                && (self.subtype == "javascript"
+                    || self.subtype == "ecmascript"
+                    || self.subtype == "jscript"))
     }
 
     /// Retorna `true` se este MIME type representar uma imagem suportada.
@@ -179,7 +193,9 @@ impl MimeType {
     /// Retorna `true` se este MIME type representar uma fonte web (WOFF, WOFF2, TTF, OTF).
     #[inline]
     pub fn is_font(&self) -> bool {
-        self.type_ == "font" || (self.type_ == "application" && (self.subtype.starts_with("font-") || self.subtype == "font-woff"))
+        self.type_ == "font"
+            || (self.type_ == "application"
+                && (self.subtype.starts_with("font-") || self.subtype == "font-woff"))
     }
 
     /// Retorna `true` se este MIME type representar dados JSON.
@@ -251,7 +267,9 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
         return "video/mp4";
     }
-    if bytes.starts_with(b"ID3") || (bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0) {
+    if bytes.starts_with(b"ID3")
+        || (bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0)
+    {
         return "audio/mpeg";
     }
 
@@ -271,7 +289,9 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         return "text/html";
     }
 
-    if sample_lower.starts_with("<svg") || (sample_lower.starts_with("<?xml") && sample_lower.contains("<svg")) {
+    if sample_lower.starts_with("<svg")
+        || (sample_lower.starts_with("<?xml") && sample_lower.contains("<svg"))
+    {
         return "image/svg+xml";
     }
 

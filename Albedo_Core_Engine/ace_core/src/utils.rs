@@ -37,6 +37,12 @@ pub fn hexdump(data: &[u8], max_bytes: usize) -> String {
 /// Remove caracteres de controle não imprimíveis de uma string ASCII/UTF-8.
 pub fn sanitize_ascii(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_control() && c != '\n' && c != '\t' && c != '\r' { ' ' } else { c })
+        .map(|c| {
+            if c.is_ascii_control() && c != '\n' && c != '\t' && c != '\r' {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect()
 }

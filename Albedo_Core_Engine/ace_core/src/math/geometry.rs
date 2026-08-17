@@ -4,10 +4,11 @@
 
 use super::units::{CssPixel, DevicePixel, DpiScale};
 pub use euclid::{
-    default::{Point2D as RawPoint2D, Rect as RawRect, Size2D as RawSize2D, Transform2D as RawTransform2D},
-    point2, rect, size2, vec2, vec3,
-    Box2D, Length, Point2D, Point3D, Rect, SideOffsets2D, Size2D, Transform2D, Transform3D,
-    Vector2D, Vector3D,
+    default::{
+        Point2D as RawPoint2D, Rect as RawRect, Size2D as RawSize2D, Transform2D as RawTransform2D,
+    },
+    point2, rect, size2, vec2, vec3, Box2D, Length, Point2D, Point3D, Rect, SideOffsets2D, Size2D,
+    Transform2D, Transform3D, Vector2D, Vector3D,
 };
 
 /// Ponto 2D no espaço de coordenadas CSS (`f32`).

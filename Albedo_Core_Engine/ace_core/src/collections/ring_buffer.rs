@@ -70,11 +70,7 @@ impl<T, const N: usize> RingBuffer<T, N> {
             return None;
         }
 
-        let start = if self.len < N {
-            0
-        } else {
-            self.head
-        };
+        let start = if self.len < N { 0 } else { self.head };
 
         let actual_idx = (start + index) % N;
         self.data[actual_idx].as_ref()

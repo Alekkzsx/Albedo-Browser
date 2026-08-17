@@ -43,12 +43,24 @@ fn test_mime_sniffing() {
     assert_eq!(sniff_mime_type(b"\x00\x00\x00\x18ftypisom"), "video/mp4");
     assert_eq!(sniff_mime_type(b"\x1A\x45\xDF\xA3\x01\x00"), "video/webm");
     assert_eq!(sniff_mime_type(b"ID3\x04\x00\x00"), "audio/mpeg");
-    assert_eq!(sniff_mime_type(b"RIFF\x00\x00\x00\x00WAVEfmt "), "audio/wav");
+    assert_eq!(
+        sniff_mime_type(b"RIFF\x00\x00\x00\x00WAVEfmt "),
+        "audio/wav"
+    );
 
     // Sniffing de texto/HTML/SVG
-    assert_eq!(sniff_mime_type(b"<!DOCTYPE html><html><body></body></html>"), "text/html");
+    assert_eq!(
+        sniff_mime_type(b"<!DOCTYPE html><html><body></body></html>"),
+        "text/html"
+    );
     assert_eq!(sniff_mime_type(b"  \n\t <html lang=\"en\">"), "text/html");
-    assert_eq!(sniff_mime_type(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"), "image/svg+xml");
-    assert_eq!(sniff_mime_type(b"<?xml version=\"1.0\"?>"), "application/xml");
+    assert_eq!(
+        sniff_mime_type(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"),
+        "image/svg+xml"
+    );
+    assert_eq!(
+        sniff_mime_type(b"<?xml version=\"1.0\"?>"),
+        "application/xml"
+    );
     assert_eq!(sniff_mime_type(b"Hello plain text world"), "text/plain");
 }

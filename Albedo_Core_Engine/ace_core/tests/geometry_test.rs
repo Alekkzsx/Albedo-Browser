@@ -1,5 +1,6 @@
 use ace_core::math::{
-    point2, size2, DpiScale, EdgeInsets, EdgeInsetsExt, Point, PointExt, Rect2D, RectExt, Size, SizeExt, Transform,
+    point2, size2, DpiScale, EdgeInsets, EdgeInsetsExt, Point, PointExt, Rect2D, RectExt, Size,
+    SizeExt, Transform,
 };
 
 #[test]
@@ -10,7 +11,7 @@ fn test_rect_ext_inflate_deflate() {
     // Inflate
     let inflated = r.inflate_edges(insets);
     assert_eq!(inflated.origin.x, -10.0); // 10 - 20
-    assert_eq!(inflated.origin.y, 15.0);  // 20 - 5
+    assert_eq!(inflated.origin.y, 15.0); // 20 - 5
     assert_eq!(inflated.size.width, 130.0); // 100 + 20 + 10
     assert_eq!(inflated.size.height, 70.0); // 50 + 5 + 15
 
@@ -84,11 +85,17 @@ fn test_rect_intersection_and_union() {
 
     // Interseção
     let inter = r1.intersection(&r2).unwrap();
-    assert_eq!(inter, Rect2D::new(Point::new(50.0, 50.0), Size::new(50.0, 50.0)));
+    assert_eq!(
+        inter,
+        Rect2D::new(Point::new(50.0, 50.0), Size::new(50.0, 50.0))
+    );
 
     // União
     let union = r1.union(&r2);
-    assert_eq!(union, Rect2D::new(Point::new(0.0, 0.0), Size::new(150.0, 150.0)));
+    assert_eq!(
+        union,
+        Rect2D::new(Point::new(0.0, 0.0), Size::new(150.0, 150.0))
+    );
 
     // Retângulos disjuntos
     let r3 = Rect2D::new(Point::new(200.0, 200.0), Size::new(50.0, 50.0));
