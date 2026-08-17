@@ -3,7 +3,8 @@
 //! Implementação canônica da política de controle de envio do cabeçalho HTTP `Referer`
 //! para proteção de privacidade contra vazamento de URLs entre origens distintas.
 
-use crate::security::origin::{Origin, Scheme};
+use crate::security::origin::Origin;
+
 
 /// Políticas de Referrer padronizadas pelo W3C.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

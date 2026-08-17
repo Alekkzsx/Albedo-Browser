@@ -1,12 +1,12 @@
 //! # Geometria de Polígonos Convexos e Quadriláteros Transformados (`Quad2D`)
 //!
-//! Representação de 4 vértices planares projetados através de matrizes de transformação 2D/3D (CSS Transforms)
+//! Representação de 4 vértices planares projetados através de matrizes de transformação 2D (CSS Transforms)
 //! com cálculo de AABB (*Axis-Aligned Bounding Box*) e detecção de inclusão de ponto para Hit-Testing.
 
-use crate::math::geometry::{point2, rect, size2, Point, Rect2D, Transform};
+use crate::math::geometry::rect;
 use crate::math::layout_unit::LayoutUnit;
 use crate::math::units::{CssPixel, DevicePixel, LayoutPixel};
-use euclid::{Point2D, Rect};
+use euclid::{Point2D, Rect, Transform2D};
 
 /// Quadrilátero planar definido por 4 vértices $[p_0, p_1, p_2, p_3]$ no sentido horário.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -25,7 +25,7 @@ impl<T: Copy, U> Quad2D<T, U> {
     }
 }
 
-impl<U> Quad2D<f32, U> {
+impl<U: Copy> Quad2D<f32, U> {
     /// Constrói um quadrilátero a partir de um retângulo alinhado aos eixos.
     pub fn from_rect(r: &Rect<f32, U>) -> Self {
         let tl = r.origin;
@@ -35,13 +35,13 @@ impl<U> Quad2D<f32, U> {
         Self::new(tl, tr, br, bl)
     }
 
-    /// Projeta os 4 vértices de um retângulo através de uma matriz de transformação afim/3D.
-    pub fn from_transformed_rect(r: &Rect<f32, U>, transform: &Transform<f32, U, U>) -> Self {
+    /// Projeta os 4 vértices de um retângulo através de uma matriz de transformação afim.
+    pub fn from_transformed_rect(r: &Rect<f32, U>, transform: &Transform2D<f32, U, U>) -> Self {
         let base_quad = Self::from_rect(r);
-        let p0 = transform.transform_point2d(base_quad.points[0]).unwrap_or(base_quad.points[0]);
-        let p1 = transform.transform_point2d(base_quad.points[1]).unwrap_or(base_quad.points[1]);
-        let p2 = transform.transform_point2d(base_quad.points[2]).unwrap_or(base_quad.points[2]);
-        let p3 = transform.transform_point2d(base_quad.points[3]).unwrap_or(base_quad.points[3]);
+        let p0 = transform.transform_point(base_quad.points[0]);
+        let p1 = transform.transform_point(base_quad.points[1]);
+        let p2 = transform.transform_point(base_quad.points[2]);
+        let p3 = transform.transform_point(base_quad.points[3]);
 
         Self::new(p0, p1, p2, p3)
     }

@@ -1,7 +1,7 @@
-use ace_core::math::geometry::{point2, rect, Matrix4D, Point, Transform};
+use ace_core::math::geometry::{point2, rect};
 use ace_core::math::quad::CssQuad;
 use ace_core::math::units::CssPixel;
-use euclid::Point2D;
+use euclid::{Angle, Transform2D};
 
 #[test]
 fn test_quad_from_rect_and_bounding_box() {
@@ -30,8 +30,9 @@ fn test_quad_contains_point_basic() {
 fn test_quad_transformed_rotated_hit_testing() {
     let r = rect(-50.0, -50.0, 100.0, 100.0);
     // Rotação de 45 graus em torno da origem (0,0)
-    let rot = Transform::<f32, CssPixel, CssPixel>::rotation(0.0, 0.0, euclid::Angle::degrees(45.0));
+    let rot = Transform2D::<f32, CssPixel, CssPixel>::rotation(Angle::degrees(45.0));
     let quad = CssQuad::from_transformed_rect(&r, &rot);
+
 
     // O ponto central está contido
     assert!(quad.contains_point(&point2(0.0, 0.0)));
