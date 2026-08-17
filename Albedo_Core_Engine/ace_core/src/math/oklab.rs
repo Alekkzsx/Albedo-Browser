@@ -3,7 +3,10 @@
 //! Implementação matemática de alta precisão para os espaços perceptuais uniformes
 //! Oklab e Oklch conforme a formulação canônica de Björn Ottosson e especificação W3C.
 
+#![allow(clippy::excessive_precision)]
+
 use std::f32::consts::PI;
+
 use std::fmt;
 
 /// Representação no espaço de cor perceptual Oklab.
@@ -156,7 +159,11 @@ impl fmt::Display for Oklab {
         if (self.alpha - 1.0).abs() < 0.001 {
             write!(f, "oklab({:.3} {:.3} {:.3})", self.l, self.a, self.b)
         } else {
-            write!(f, "oklab({:.3} {:.3} {:.3} / {:.2})", self.l, self.a, self.b, self.alpha)
+            write!(
+                f,
+                "oklab({:.3} {:.3} {:.3} / {:.2})",
+                self.l, self.a, self.b, self.alpha
+            )
         }
     }
 }
@@ -166,7 +173,11 @@ impl fmt::Display for Oklch {
         if (self.alpha - 1.0).abs() < 0.001 {
             write!(f, "oklch({:.3} {:.3} {:.1}deg)", self.l, self.c, self.h)
         } else {
-            write!(f, "oklch({:.3} {:.3} {:.1}deg / {:.2})", self.l, self.c, self.h, self.alpha)
+            write!(
+                f,
+                "oklch({:.3} {:.3} {:.1}deg / {:.2})",
+                self.l, self.c, self.h, self.alpha
+            )
         }
     }
 }
