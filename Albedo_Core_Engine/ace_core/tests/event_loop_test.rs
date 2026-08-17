@@ -1,6 +1,8 @@
 use ace_core::event_loop::EventLoop;
+use ace_core::time::MockClock;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[test]
 fn test_event_loop_order_and_microtask_checkpoint() {
@@ -80,6 +82,35 @@ fn test_task_cancellation() {
     assert!(el.step());
     // A tarefa foi descartada e não executou seu corpo
     assert!(!was_executed.load(Ordering::SeqCst));
+}
+
+#[test]
+fn test_scheduled_timers_with_mock_clock() {
+    let mock_clock = Arc::new(MockClock::new(1_000));
+    let el = EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let q = el.handle();
+
+    let timer_executed = Arc::new(AtomicBool::new(false));
+    let te_clone = Arc::clone(&timer_executed);
+
+    // Agenda timer para +500ms (disparará em t = 1500ms)
+    q.schedule_timer(Duration::from_millis(500), move || {
+        te_clone.store(true, Ordering::SeqCst);
+    });
+
+    // Em t = 1000ms: timer ainda não expirou
+    assert!(!el.step());
+    assert!(!timer_executed.load(Ordering::SeqCst));
+
+    // Avança 300ms (t = 1300ms): timer ainda não expirou
+    mock_clock.advance(Duration::from_millis(300));
+    assert!(!el.step());
+    assert!(!timer_executed.load(Ordering::SeqCst));
+
+    // Avança 250ms (t = 1550ms): timer expirou!
+    mock_clock.advance(Duration::from_millis(250));
+    assert!(el.step());
+    assert!(timer_executed.load(Ordering::SeqCst));
 }
 
 #[test]
