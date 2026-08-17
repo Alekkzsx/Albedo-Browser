@@ -189,3 +189,48 @@ impl<T: fmt::Debug, const N: usize> fmt::Debug for InlineVec<T, N> {
         f.debug_list().entries(self.as_slice()).finish()
     }
 }
+
+impl<T, const N: usize> FromIterator<T> for InlineVec<T, N> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut vec = Self::new();
+        for item in iter {
+            vec.push(item);
+        }
+        vec
+    }
+}
+
+impl<T, const N: usize> Extend<T> for InlineVec<T, N> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            self.push(item);
+        }
+    }
+}
+
+impl<T, const N: usize> From<Vec<T>> for InlineVec<T, N> {
+    fn from(vec: Vec<T>) -> Self {
+        if vec.len() <= N {
+            let mut inline = Self::new();
+            for item in vec {
+                inline.push(item);
+            }
+            inline
+        } else {
+            Self {
+                storage: InlineVecStorage::Heap(vec),
+            }
+        }
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for InlineVec<T, N> {
+    fn from(arr: [T; N]) -> Self {
+        let mut inline = Self::new();
+        for item in arr {
+            inline.push(item);
+        }
+        inline
+    }
+}
+
