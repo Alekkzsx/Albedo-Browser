@@ -123,6 +123,17 @@ impl Origin {
         }
     }
 
+    /// Converte esta origem em um `SchemefulSite` (esquema + eTLD+1).
+    pub fn to_site(&self) -> crate::security::site::SchemefulSite {
+        crate::security::site::SchemefulSite::from_origin(self)
+    }
+
+    /// Verifica se duas origens compartilham o mesmo Site (Same-Site).
+    pub fn is_same_site(&self, other: &Self) -> bool {
+        self.to_site().same_site(&other.to_site())
+    }
+
+
     /// Converte a origem em sua serialização ASCII padrão (RFC 6454 Section 6.2).
     /// Ex: `"https://example.com:443"`, `"http://localhost:8080"` ou `"null"` para opacas.
     pub fn ascii_serialization(&self) -> String {
