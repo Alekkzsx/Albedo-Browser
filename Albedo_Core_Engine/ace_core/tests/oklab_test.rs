@@ -1,6 +1,5 @@
 use ace_core::math::color::Color;
 
-
 #[test]
 fn test_oklab_from_and_to_srgb_roundtrip() {
     let red = Color::RED;
