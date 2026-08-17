@@ -10,7 +10,8 @@ pub mod color;
 pub use units::{CssPixel, DevicePixel, LayoutPixel, ScreenPixel, DpiScale};
 pub use geometry::{
     Point, Size, Rect2D, Vec2, Vec3, Vec4, Transform, Matrix4D,
-    DevicePoint, DeviceSize, DeviceRect, EdgeInsets, RectExt,
+    DevicePoint, DeviceSize, DeviceRect, DeviceEdgeInsets, EdgeInsets,
+    PointExt, SizeExt, EdgeInsetsExt, RectExt,
     point2, rect, size2, vec2, vec3,
 };
 pub use color::Color;
