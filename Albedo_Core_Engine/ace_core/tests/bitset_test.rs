@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::thread;
 
 #[test]
-fn test_fixed_bitset_operations() {
+fn test_fixed_bitset_operations_and_bitwise() {
     let mut bitset = FixedBitSet::<2>::new(); // 128 bits
     assert!(bitset.is_empty());
     assert_eq!(bitset.count_ones(), 0);
@@ -22,9 +22,28 @@ fn test_fixed_bitset_operations() {
     assert!(!bitset.get(65));
     assert_eq!(bitset.count_ones(), 4);
 
-    bitset.set(63, false);
-    assert!(!bitset.get(63));
-    assert_eq!(bitset.count_ones(), 3);
+    // Iterador ones()
+    let active_bits: Vec<usize> = bitset.ones().collect();
+    assert_eq!(active_bits, vec![0, 63, 64, 127]);
+
+    // Operações bitwise
+    let mut other = FixedBitSet::<2>::new();
+    other.set(0, true);
+    other.set(10, true);
+
+    let and_result = bitset & other;
+    assert_eq!(and_result.count_ones(), 1);
+    assert!(and_result.get(0));
+    assert!(!and_result.get(10));
+
+    let or_result = bitset | other;
+    assert_eq!(or_result.count_ones(), 5);
+    assert!(or_result.get(10));
+
+    let xor_result = bitset ^ other;
+    assert_eq!(xor_result.count_ones(), 4);
+    assert!(!xor_result.get(0)); // 1 ^ 1 = 0
+    assert!(xor_result.get(10)); // 0 ^ 1 = 1
 
     bitset.clear();
     assert!(bitset.is_empty());
