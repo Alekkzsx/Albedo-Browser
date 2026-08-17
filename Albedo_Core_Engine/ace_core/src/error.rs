@@ -297,3 +297,20 @@ impl AceError {
         }
     }
 }
+
+impl From<std::string::FromUtf8Error> for AceError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        Self::Encoding {
+            message: err.to_string(),
+        }
+    }
+}
+
+impl From<std::str::Utf8Error> for AceError {
+    fn from(err: std::str::Utf8Error) -> Self {
+        Self::Encoding {
+            message: err.to_string(),
+        }
+    }
+}
+
