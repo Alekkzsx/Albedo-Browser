@@ -25,6 +25,9 @@ fn test_percent_encode_query_and_path() {
 
 #[test]
 fn test_percent_encode_byte_lookup() {
-    assert_eq!(percent_encode_byte(b' ', PercentEncodeSet::Query), Some([b'%', b'2', b'0']));
+    assert_eq!(
+        percent_encode_byte(b' ', PercentEncodeSet::Query),
+        Some(*b"%20")
+    );
     assert_eq!(percent_encode_byte(b'a', PercentEncodeSet::Query), None);
 }

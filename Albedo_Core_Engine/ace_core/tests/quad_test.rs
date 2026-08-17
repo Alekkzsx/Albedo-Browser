@@ -33,7 +33,6 @@ fn test_quad_transformed_rotated_hit_testing() {
     let rot = Transform2D::<f32, CssPixel, CssPixel>::rotation(Angle::degrees(45.0));
     let quad = CssQuad::from_transformed_rect(&r, &rot);
 
-
     // O ponto central está contido
     assert!(quad.contains_point(&point2(0.0, 0.0)));
 

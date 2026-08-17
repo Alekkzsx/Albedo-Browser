@@ -18,7 +18,12 @@ pub struct Quad2D<T, U> {
 impl<T: Copy, U> Quad2D<T, U> {
     /// Cria um novo `Quad2D` a partir de 4 pontos explícitos.
     #[inline]
-    pub const fn new(p0: Point2D<T, U>, p1: Point2D<T, U>, p2: Point2D<T, U>, p3: Point2D<T, U>) -> Self {
+    pub const fn new(
+        p0: Point2D<T, U>,
+        p1: Point2D<T, U>,
+        p2: Point2D<T, U>,
+        p3: Point2D<T, U>,
+    ) -> Self {
         Self {
             points: [p0, p1, p2, p3],
         }
@@ -54,10 +59,18 @@ impl<U: Copy> Quad2D<f32, U> {
         let mut max_y = self.points[0].y;
 
         for p in &self.points[1..] {
-            if p.x < min_x { min_x = p.x; }
-            if p.x > max_x { max_x = p.x; }
-            if p.y < min_y { min_y = p.y; }
-            if p.y > max_y { max_y = p.y; }
+            if p.x < min_x {
+                min_x = p.x;
+            }
+            if p.x > max_x {
+                max_x = p.x;
+            }
+            if p.y < min_y {
+                min_y = p.y;
+            }
+            if p.y > max_y {
+                max_y = p.y;
+            }
         }
 
         rect(min_x, min_y, max_x - min_x, max_y - min_y)

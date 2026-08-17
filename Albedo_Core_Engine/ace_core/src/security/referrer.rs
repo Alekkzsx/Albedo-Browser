@@ -5,7 +5,6 @@
 
 use crate::security::origin::Origin;
 
-
 /// Políticas de Referrer padronizadas pelo W3C.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ReferrerPolicy {
