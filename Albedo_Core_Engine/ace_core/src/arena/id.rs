@@ -103,7 +103,7 @@ impl<T> ArenaId<T> {
     /// Converte este `ArenaId` no identificador global `NodeId` para IPC e telemetria.
     #[inline]
     pub fn to_node_id(self) -> crate::id::NodeId {
-        crate::id::NodeId::from_raw(self.raw())
+        crate::id::NodeId::from_non_zero(self.key)
     }
 
     /// Converte um `NodeId` global de volta em `ArenaId`, se válido.
