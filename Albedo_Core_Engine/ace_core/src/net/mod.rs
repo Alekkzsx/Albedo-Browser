@@ -9,4 +9,3 @@ pub mod utils;
 pub use data_url::{parse_data_url, DataUrlRecord};
 pub use mime::{sniff_mime_type, MimeType};
 pub use utils::{is_safe_url_scheme, parse_data_uri, percent_decode};
-
