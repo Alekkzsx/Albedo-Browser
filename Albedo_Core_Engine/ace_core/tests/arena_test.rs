@@ -100,3 +100,16 @@ fn cyclic_references_are_safe() {
     let p = arena.get(c.parent.unwrap()).unwrap();
     assert_eq!(p.first_child, Some(child));
 }
+
+#[test]
+fn test_arena_id_node_id_conversion() {
+    let mut arena: Arena<u32> = Arena::new();
+    let id = arena.alloc(1234);
+
+    let node_id = id.to_node_id();
+    assert_eq!(node_id.raw(), id.raw());
+
+    let restored_id = ArenaId::<u32>::from_node_id(node_id).unwrap();
+    assert_eq!(restored_id, id);
+    assert_eq!(arena.get(restored_id), Some(&1234));
+}
