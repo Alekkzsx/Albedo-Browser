@@ -1,22 +1,23 @@
 //! # Matemática, Geometria e Cores
 //!
 //! Fundação gráfica e matemática do Albedo Browser, provendo sistemas de coordenadas
-//! tipados, transformações afins 2D/3D (sobre `euclid`), aritmética de layout em ponto fixo (`LayoutUnit`)
-//! e manipulação de cores CSS.
+//! tipados, transformações afins 2D/3D (sobre `euclid`), aritmética de layout em ponto fixo (`LayoutUnit`),
+//! raios de borda W3C (`BorderRadii`) e manipulação de cores CSS.
 
-pub mod units;
-pub mod geometry;
+pub mod border_radii;
 pub mod color;
+pub mod geometry;
 pub mod layout_unit;
+pub mod units;
 pub mod utils;
 
-pub use units::{CssPixel, DevicePixel, LayoutPixel, ScreenPixel, DpiScale};
-pub use geometry::{
-    Point, Size, Rect2D, Vec2, Vec3, Vec4, Transform, Matrix4D,
-    DevicePoint, DeviceSize, DeviceRect, DeviceEdgeInsets, EdgeInsets,
-    PointExt, SizeExt, EdgeInsetsExt, RectExt,
-    point2, rect, size2, vec2, vec3,
-};
+pub use border_radii::{BorderRadii, CornerRadius};
 pub use color::Color;
+pub use geometry::{
+    point2, rect, size2, vec2, vec3, DeviceEdgeInsets, DevicePoint, DeviceRect, DeviceSize,
+    DpiScale, EdgeInsets, EdgeInsetsExt, Matrix4D, Point, PointExt, Rect2D, RectExt, Size, SizeExt,
+    Transform, Vec2, Vec3, Vec4,
+};
 pub use layout_unit::LayoutUnit;
-pub use utils::{lerp, clamp, saturate, almost_equal, snap_to_pixel, deg_to_rad, rad_to_deg};
+pub use units::{CssPixel, DevicePixel, LayoutPixel, ScreenPixel};
+pub use utils::{almost_equal, clamp, deg_to_rad, lerp, rad_to_deg, saturate, snap_to_pixel};
