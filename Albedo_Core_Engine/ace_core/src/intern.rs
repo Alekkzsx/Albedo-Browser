@@ -156,8 +156,11 @@ impl fmt::Display for Atom {
 macro_rules! lazy_atom {
     ($name:ident, $str:expr) => {
         #[allow(non_snake_case)]
+        #[inline]
         pub fn $name() -> $crate::intern::Atom {
-            $crate::intern::Atom::new($str)
+            static ATOM: std::sync::LazyLock<$crate::intern::Atom> =
+                std::sync::LazyLock::new(|| $crate::intern::Atom::new($str));
+            ATOM.clone()
         }
     };
 }
