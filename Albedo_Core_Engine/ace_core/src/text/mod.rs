@@ -19,4 +19,3 @@ pub use unicode::{
     utf16_offset_to_utf8_byte, utf8_byte_to_utf16_offset,
 };
 pub use utils::{escape_css_identifier, escape_html, is_ascii_case_insensitive_equal};
-
