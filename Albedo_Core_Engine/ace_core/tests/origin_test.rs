@@ -1,4 +1,4 @@
-use ace_core::security::{Host, Origin, Scheme};
+use ace_core::security::Origin;
 
 #[test]
 fn test_origin_same_origin_policy() {

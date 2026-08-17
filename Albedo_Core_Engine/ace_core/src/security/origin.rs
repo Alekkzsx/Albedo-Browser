@@ -139,44 +139,33 @@ impl Origin {
         }
     }
 
-    /// Analisa uma string de URL simplificada para extrair sua origem.
+    /// Analisa uma string de URL conforme a especificação WHATWG URL para extrair sua origem canônica.
     pub fn parse(url_str: &str) -> Result<Self, AceError> {
         let trimmed = url_str.trim();
         if trimmed.starts_with("data:") || trimmed == "about:blank" {
             return Ok(Self::new_opaque());
         }
 
-        let parts: Vec<&str> = trimmed.splitn(2, "://").collect();
-        if parts.len() < 2 {
-            return Err(AceError::security("SOP", "URL malformada sem esquema"));
-        }
+        let parsed_url = url::Url::parse(trimmed)
+            .map_err(|e| AceError::security("SOP", format!("URL inválida para extração de origem: {}", e)))?;
 
-        let scheme = match parts[0].to_ascii_lowercase().as_str() {
+        let scheme = match parsed_url.scheme() {
             "http" => Scheme::Http,
             "https" => Scheme::Https,
             "file" => Scheme::File,
             other => Scheme::Custom(SmolStr::new(other)),
         };
 
-        let rest = parts[1];
-        let host_port_part = rest.split('/').next().unwrap_or("");
-        
-        let (host_str, port_opt) = if let Some(idx) = host_port_part.rfind(':') {
-            let h = &host_port_part[..idx];
-            let p_str = &host_port_part[idx + 1..];
-            let p = p_str.parse::<u16>().ok();
-            (h, p)
-        } else {
-            (host_port_part, None)
+        let host = match parsed_url.host() {
+            Some(url::Host::Domain(d)) => Host::Domain(SmolStr::new(d)),
+            Some(url::Host::Ipv4(ip)) => Host::Ip(IpAddr::V4(ip)),
+            Some(url::Host::Ipv6(ip)) => Host::Ip(IpAddr::V6(ip)),
+            None => Host::Opaque,
         };
 
-        let host = if let Ok(ip) = host_str.parse::<IpAddr>() {
-            Host::Ip(ip)
-        } else {
-            Host::Domain(SmolStr::new(host_str.to_ascii_lowercase()))
-        };
+        let port = parsed_url.port();
 
-        Ok(Self::tuple(scheme, host, port_opt))
+        Ok(Self::tuple(scheme, host, port))
     }
 }
 
