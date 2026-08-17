@@ -68,6 +68,20 @@ impl From<String> for Atom {
     }
 }
 
+impl From<smol_str::SmolStr> for Atom {
+    #[inline]
+    fn from(s: smol_str::SmolStr) -> Self {
+        Self::new(s.as_str())
+    }
+}
+
+impl From<Atom> for smol_str::SmolStr {
+    #[inline]
+    fn from(atom: Atom) -> Self {
+        smol_str::SmolStr::new(atom.as_str())
+    }
+}
+
 impl From<DefaultAtom> for Atom {
     #[inline]
     fn from(atom: DefaultAtom) -> Self {
