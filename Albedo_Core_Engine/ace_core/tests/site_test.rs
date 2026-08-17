@@ -1,4 +1,4 @@
-use ace_core::security::{Origin, SchemefulSite};
+use ace_core::security::Origin;
 
 #[test]
 fn test_schemeful_site_from_standard_origin() {
