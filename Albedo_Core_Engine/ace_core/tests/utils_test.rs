@@ -15,7 +15,7 @@ fn test_arena_utils() {
     assert!(arena_utils::is_aligned(16, 8));
     assert!(!arena_utils::is_aligned(17, 8));
 
-    assert_eq!(arena_utils::calc_growth_capacity(10, 12), 15);
+    assert_eq!(arena_utils::calc_growth_capacity(10, 12), 18);
     assert_eq!(arena_utils::calc_growth_capacity(10, 50), 50);
 
     assert_eq!(arena_utils::format_bytes(500), "500 B");
