@@ -1,5 +1,5 @@
 use ace_core::math::{
-    point2, DpiScale, EdgeInsets, Point, Rect2D, RectExt, Size, Transform,
+    point2, size2, DpiScale, EdgeInsets, EdgeInsetsExt, Point, PointExt, Rect2D, RectExt, Size, SizeExt, Transform,
 };
 
 #[test]
@@ -32,6 +32,24 @@ fn test_dpi_scaling_conversion() {
     assert_eq!(dev_rect.origin.y, 30.0);
     assert_eq!(dev_rect.size.width, 300.0);
     assert_eq!(dev_rect.size.height, 150.0);
+
+    // PointExt & SizeExt & EdgeInsetsExt
+    let p = point2(10.0, 20.0);
+    let dev_p = p.to_device_point(scale);
+    assert_eq!(dev_p.x, 15.0);
+    assert_eq!(dev_p.y, 30.0);
+
+    let s = size2(100.0, 50.0);
+    let dev_s = s.to_device_size(scale);
+    assert_eq!(dev_s.width, 150.0);
+    assert_eq!(dev_s.height, 75.0);
+
+    let insets = EdgeInsets::new(10.0, 20.0, 30.0, 40.0);
+    let dev_insets = insets.to_device_insets(scale);
+    assert_eq!(dev_insets.top, 15.0);
+    assert_eq!(dev_insets.right, 30.0);
+    assert_eq!(dev_insets.bottom, 45.0);
+    assert_eq!(dev_insets.left, 60.0);
 
     assert_eq!(scale.to_css_pixels(300.0), 200.0);
 }
