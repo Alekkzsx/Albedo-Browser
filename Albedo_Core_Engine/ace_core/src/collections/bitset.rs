@@ -71,12 +71,9 @@ impl<const WORDS: usize> FixedBitSet<WORDS> {
         self.words.iter().map(|w| w.count_ones() as usize).sum()
     }
 
-    /// Itera sobre os índices de todos os bits ativos (`1`).
-    pub fn ones(&self) -> OnesIter<'_, WORDS> {
-        OnesIter {
-            bitset: self,
-            current_bit: 0,
-        }
+    /// Itera sobre os índices de todos os bits ativos (`1`) em tempo O(popcount) via instruções de CPU `trailing_zeros`.
+    pub fn ones(&self) -> OnesIter<WORDS> {
+        OnesIter::new(self)
     }
 }
 
@@ -187,25 +184,44 @@ impl From<u64> for FixedBitSet<1> {
     }
 }
 
-
-/// Iterador sobre os índices de bits ativos em um `FixedBitSet`.
-pub struct OnesIter<'a, const WORDS: usize> {
-    bitset: &'a FixedBitSet<WORDS>,
-    current_bit: usize,
+/// Iterador sobre os índices de bits ativos em um `FixedBitSet` (otimizado via hardware intrinsics `trailing_zeros`).
+pub struct OnesIter<const WORDS: usize> {
+    words: [u64; WORDS],
+    current_word_idx: usize,
+    current_word: u64,
 }
 
-impl<'a, const WORDS: usize> Iterator for OnesIter<'a, WORDS> {
+impl<const WORDS: usize> OnesIter<WORDS> {
+    fn new(bitset: &FixedBitSet<WORDS>) -> Self {
+        let current_word = if WORDS > 0 { bitset.words[0] } else { 0 };
+        Self {
+            words: bitset.words,
+            current_word_idx: 0,
+            current_word,
+        }
+    }
+}
+
+impl<const WORDS: usize> Iterator for OnesIter<WORDS> {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while self.current_bit < FixedBitSet::<WORDS>::capacity() {
-            let bit = self.current_bit;
-            self.current_bit += 1;
-            if self.bitset.get(bit) {
-                return Some(bit);
+        while self.current_word == 0 {
+            self.current_word_idx += 1;
+            if self.current_word_idx >= WORDS {
+                return None;
             }
+            self.current_word = self.words[self.current_word_idx];
         }
-        None
+
+        let bit_in_word = self.current_word.trailing_zeros() as usize;
+        let global_bit = self.current_word_idx * 64 + bit_in_word;
+
+        // Limpa o bit menos significativo ativo (1 ciclo de clock: w &= w - 1)
+        self.current_word &= self.current_word.wrapping_sub(1);
+
+        Some(global_bit)
     }
 }
 
