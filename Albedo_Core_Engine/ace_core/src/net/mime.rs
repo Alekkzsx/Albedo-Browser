@@ -47,7 +47,6 @@ impl MimeType {
 
     // --- Constantes de Conveniência ---
     pub fn text_html() -> Self {
-
         Self::new("text", "html")
     }
 
