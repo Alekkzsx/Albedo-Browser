@@ -162,7 +162,43 @@ impl Color {
             return parse_hsl_functional(&s);
         }
 
+        if s.starts_with("oklab(") {
+            return parse_oklab_functional(&s);
+        }
+
+        if s.starts_with("oklch(") {
+            return parse_oklch_functional(&s);
+        }
+
         Err(invalid_color(input))
+    }
+
+    /// Converte esta cor sRGB para o espaço de cor perceptual Oklab.
+    #[inline]
+    pub fn to_oklab(self) -> super::oklab::Oklab {
+        let (r, g, b, a) = self.to_rgba_f32();
+        super::oklab::Oklab::from_srgb(r, g, b, a)
+    }
+
+    /// Cria uma cor a partir de uma representação Oklab.
+    #[inline]
+    pub fn from_oklab(oklab: super::oklab::Oklab) -> Self {
+        let (r, g, b, a) = oklab.to_srgb();
+        Self::from_rgba_f32(r, g, b, a)
+    }
+
+    /// Converte esta cor sRGB para o espaço de cor cilíndrico Oklch.
+    #[inline]
+    pub fn to_oklch(self) -> super::oklab::Oklch {
+        let (r, g, b, a) = self.to_rgba_f32();
+        super::oklab::Oklch::from_srgb(r, g, b, a)
+    }
+
+    /// Cria uma cor a partir de uma representação Oklch.
+    #[inline]
+    pub fn from_oklch(oklch: super::oklab::Oklch) -> Self {
+        let (r, g, b, a) = oklch.to_srgb();
+        Self::from_rgba_f32(r, g, b, a)
     }
 
     /// Composição alfa padrão Porter-Duff (`source-over`): mistura `self` (fonte) sobre `dst` (fundo).
@@ -183,7 +219,7 @@ impl Color {
         Self::from_rgba_f32(out_r, out_g, out_b, out_a)
     }
 
-    /// Interpolação linear entre duas cores (`t` entre 0.0 e 1.0).
+    /// Interpolação linear sRGB padrão entre duas cores (`t` entre 0.0 e 1.0).
     #[inline]
     pub fn lerp(self, other: Self, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
@@ -197,7 +233,44 @@ impl Color {
             a1 + (a2 - a1) * t,
         )
     }
+
+    /// Interpolação perceptual uniforme no espaço Oklab (elimina aberrações de saturação em gradientes).
+    pub fn lerp_oklab(self, other: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let lab1 = self.to_oklab();
+        let lab2 = other.to_oklab();
+
+        let l = lab1.l + (lab2.l - lab1.l) * t;
+        let a = lab1.a + (lab2.a - lab1.a) * t;
+        let b = lab1.b + (lab2.b - lab1.b) * t;
+        let alpha = lab1.alpha + (lab2.alpha - lab1.alpha) * t;
+
+        Self::from_oklab(super::oklab::Oklab::new(l, a, b, alpha))
+    }
+
+    /// Interpolação perceptual no espaço polar Oklch com interpolação de menor arco angular de matiz.
+    pub fn lerp_oklch(self, other: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let lch1 = self.to_oklch();
+        let lch2 = other.to_oklch();
+
+        let l = lch1.l + (lch2.l - lch1.l) * t;
+        let c = lch1.c + (lch2.c - lch1.c) * t;
+        let alpha = lch1.alpha + (lch2.alpha - lch1.alpha) * t;
+
+        // Interpolação angular de menor arco para matiz
+        let mut d_h = (lch2.h - lch1.h) % 360.0;
+        if d_h > 180.0 {
+            d_h -= 360.0;
+        } else if d_h < -180.0 {
+            d_h += 360.0;
+        }
+        let h = (lch1.h + d_h * t + 360.0) % 360.0;
+
+        Self::from_oklch(super::oklab::Oklch::new(l, c, h, alpha))
+    }
 }
+
 
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
