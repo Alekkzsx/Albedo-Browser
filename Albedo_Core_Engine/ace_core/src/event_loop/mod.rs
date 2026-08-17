@@ -9,13 +9,15 @@
 //! 4. (Opcional) Executa o ciclo de renderização (`requestAnimationFrame`, recalc style, layout pass).
 //! 5. Repete.
 
+pub mod coalescer;
 pub mod source;
 pub mod task;
 pub mod utils;
 
+pub use coalescer::{CoalescedMovement, InputEventCoalescer};
 pub use source::TaskSource;
 pub use task::{Task, TaskFn};
-pub use utils::{fps_to_interval, ms_to_duration, duration_to_ms, compute_deadline, is_deadline_passed};
+pub use utils::{compute_deadline, duration_to_ms, fps_to_interval, is_deadline_passed, ms_to_duration};
 
 use crate::error::AceError;
 use crate::id::TaskId;
