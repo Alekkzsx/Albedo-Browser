@@ -1,58 +1,74 @@
-//! Identificadores globais e fracamente acoplados (Newtypes).
+//! # Identificadores Globais Fortemente Tipados com Niche Optimization
 //!
-//! Este módulo provê tipos fortemente tipados para identificar recursos únicos
-//! dentro do navegador (ex: nós do DOM, requisições de rede). 
-//! O uso de "Newtypes" (`struct Nome(u64)`) previne que um ID de Aba seja acidentalmente
-//! passado para uma função que espera um ID de Nó, garantindo segurança estrita no tempo de compilação.
+//! Este módulo provê Newtypes atômicos fortemente tipados baseados em `NonZeroU64`.
+//! O uso de `NonZeroU64` garante **Discriminant Elision (Niche Optimization)**:
+//! `Option<NodeId>`, `Option<TabId>`, etc., ocupam **exatos 8 bytes** na memória em vez de 16 bytes,
+//! reduzindo pela metade o consumo de memória de ponteiros na árvore DOM e no grafo de Render.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::fmt;
+use std::num::NonZeroU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Função interna para geração lock-free de IDs únicos globais.
-/// Utiliza operações atômicas relaxadas para máxima performance, 
-/// garantindo que nenhum ID seja gerado duas vezes na mesma execução do navegador.
+/// Função interna para geração lock-free de IDs únicos globais garantidamente não nulos.
 #[inline]
-fn next_global_id() -> u64 {
-    // Inicializamos em 1 para reservar o 0 como possível valor "nulo" no futuro, se necessário.
+fn next_global_id() -> NonZeroU64 {
     static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    match NonZeroU64::new(id) {
+        Some(nz) => nz,
+        None => NonZeroU64::MIN,
+    }
 }
 
-/// Macro utilitária para gerar structs Newtype de IDs com toda a infraestrutura necessária.
-/// 
-/// O macro implementa automaticamente os traits `Clone`, `Copy`, `PartialEq`, `Eq`, 
-/// `PartialOrd`, `Ord`, `Hash`, `Debug` e `Display`, tornando o ID completamente
-/// interoperável com coleções do Rust (como `HashMap` e `BTreeMap`).
+/// Macro utilitária para gerar structs Newtype de IDs com Niche Optimization e conversões automáticas.
 macro_rules! define_id_type {
     ($name:ident, $doc:expr) => {
         #[doc = $doc]
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $name(u64);
+        pub struct $name(std::num::NonZeroU64);
 
         impl $name {
             /// Cria um novo identificador garantidamente único durante a vida do processo.
-            /// 
-            /// # Performance
-            /// Ocupa apenas o tempo de uma instrução atômica rápida (`fetch_add`).
             #[inline]
             #[allow(clippy::new_without_default)]
             pub fn new() -> Self {
                 Self(next_global_id())
             }
-            
-            /// Restaura um identificador a partir de um valor de 64 bits.
-            /// 
-            /// **Atenção:** Só deve ser utilizado para processos de deserialização (ex: serialização IPC) 
-            /// ou mockagem determinística em testes unitários.
+
+            /// Cria o identificador a partir de um `NonZeroU64`.
             #[inline]
-            pub const fn from_raw(id: u64) -> Self {
+            pub const fn from_non_zero(id: std::num::NonZeroU64) -> Self {
                 Self(id)
             }
 
+            /// Restaura um identificador a partir de um valor bruto de 64 bits.
+            /// Retorna `None` se o valor for zero.
+            #[inline]
+            pub const fn from_raw(id: u64) -> Option<Self> {
+                match std::num::NonZeroU64::new(id) {
+                    Some(nz) => Some(Self(nz)),
+                    None => None,
+                }
+            }
+
+            /// Restaura um identificador a partir de um valor bruto, convertendo zero para `NonZeroU64::MIN`.
+            #[inline]
+            pub const fn from_raw_unchecked(id: u64) -> Self {
+                match std::num::NonZeroU64::new(id) {
+                    Some(nz) => Self(nz),
+                    None => Self(std::num::NonZeroU64::MIN),
+                }
+            }
+
             /// Extrai a representação primária de 64 bits do identificador.
-            /// Útil para roteamento em FFI, serialização IPC ou logs binários.
             #[inline]
             pub const fn raw(&self) -> u64 {
+                self.0.get()
+            }
+
+            /// Extrai o `NonZeroU64` interno.
+            #[inline]
+            pub const fn non_zero(&self) -> std::num::NonZeroU64 {
                 self.0
             }
         }
@@ -64,10 +80,17 @@ macro_rules! define_id_type {
             }
         }
 
+        impl From<std::num::NonZeroU64> for $name {
+            #[inline]
+            fn from(id: std::num::NonZeroU64) -> Self {
+                Self::from_non_zero(id)
+            }
+        }
+
         impl From<u64> for $name {
             #[inline]
             fn from(id: u64) -> Self {
-                Self::from_raw(id)
+                Self::from_raw_unchecked(id)
             }
         }
 
@@ -78,15 +101,22 @@ macro_rules! define_id_type {
             }
         }
 
-        impl fmt::Debug for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{}({})", stringify!($name), self.0)
+        impl From<$name> for std::num::NonZeroU64 {
+            #[inline]
+            fn from(id: $name) -> Self {
+                id.non_zero()
             }
         }
-        
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}({})", stringify!($name), self.0.get())
+            }
+        }
+
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{}", self.0)
+                write!(f, "{}", self.0.get())
             }
         }
     };
