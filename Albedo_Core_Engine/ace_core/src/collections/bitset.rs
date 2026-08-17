@@ -166,6 +166,28 @@ impl<const WORDS: usize> Not for FixedBitSet<WORDS> {
     }
 }
 
+impl<const WORDS: usize> From<[u64; WORDS]> for FixedBitSet<WORDS> {
+    #[inline]
+    fn from(words: [u64; WORDS]) -> Self {
+        Self { words }
+    }
+}
+
+impl<const WORDS: usize> From<FixedBitSet<WORDS>> for [u64; WORDS] {
+    #[inline]
+    fn from(bitset: FixedBitSet<WORDS>) -> Self {
+        bitset.words
+    }
+}
+
+impl From<u64> for FixedBitSet<1> {
+    #[inline]
+    fn from(val: u64) -> Self {
+        Self { words: [val] }
+    }
+}
+
+
 /// Iterador sobre os índices de bits ativos em um `FixedBitSet`.
 pub struct OnesIter<'a, const WORDS: usize> {
     bitset: &'a FixedBitSet<WORDS>,
