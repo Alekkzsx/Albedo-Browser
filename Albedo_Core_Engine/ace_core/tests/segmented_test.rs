@@ -2,7 +2,7 @@ use ace_core::text::SegmentedString;
 
 #[test]
 fn test_segmented_string_basic_advance() {
-    let mut s = SegmentedString::from_str("hello world");
+    let mut s = SegmentedString::from_static_str("hello world");
     assert_eq!(s.peek(), Some('h'));
     assert_eq!(s.advance(), Some('h'));
     assert_eq!(s.advance(), Some('e'));
