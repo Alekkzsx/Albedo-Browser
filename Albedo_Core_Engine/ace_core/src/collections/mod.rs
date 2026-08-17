@@ -11,3 +11,4 @@ pub use bitset::{FixedBitSet, AtomicBitSet};
 pub use bloom_filter::BloomFilter;
 pub use inline_vec::InlineVec;
 pub use utils::{next_power_of_two, popcount_u64, has_single_bit, chunk_slice};
+pub use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
