@@ -82,6 +82,7 @@ impl fmt::Display for Atom {
 /// Macro auxiliar para definir átomos pré-computados com lazy initialization global.
 macro_rules! lazy_atom {
     ($name:ident, $str:expr) => {
+        #[allow(non_snake_case)]
         pub fn $name() -> $crate::intern::Atom {
             $crate::intern::Atom::new($str)
         }
