@@ -137,6 +137,16 @@ impl fmt::Display for MimeType {
     }
 }
 
+impl std::str::FromStr for MimeType {
+    type Err = AceError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+
 /// Identifica (sniff) o MIME type provável a partir dos bytes iniciais do recurso (Magic Numbers / WHATWG Sniffing).
 pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     if bytes.is_empty() {
