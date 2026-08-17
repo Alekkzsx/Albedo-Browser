@@ -30,9 +30,10 @@ fn test_atom_equality_and_static_atoms() {
     // Deref para &str
     assert_eq!(&*atoms::BODY(), "body");
 
-    // Uso com HashMap e Borrow<str> (lookup sem alocação)
+    // Uso com HashMap (lookup O(1) por Atom ID)
     let mut map = HashMap::new();
     map.insert(atoms::DIV(), 42);
-    assert_eq!(map.get("div"), Some(&42));
-    assert_eq!(map.get("span"), None);
+    assert_eq!(map.get(&atoms::DIV()), Some(&42));
+    assert_eq!(map.get(&Atom::from("div")), Some(&42));
+    assert_eq!(map.get(&atoms::SPAN()), None);
 }
