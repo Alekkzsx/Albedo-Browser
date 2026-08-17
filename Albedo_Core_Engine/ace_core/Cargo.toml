@@ -10,20 +10,24 @@ rayon = "1.10"
 crossbeam = "0.8"
 parking_lot = "0.12"
 
-# Data Structures
-dashmap = "5.5"
+# Data Structures & Collections
+dashmap = "6.1"
 bumpalo = "3.16"
-rustc-hash = "1.1"
-smol_str = "0.2"
+rustc-hash = "2.1"
+smol_str = "0.3"
 ropey = "1.6"
 string_cache = "0.8"
+bitflags = "2.6"
+
+# Web Standards & URLs
+url = "2.5"
 
 # Math & Geometry
 euclid = "0.22"
 
 # Observability & Errors
 tracing = "0.1"
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 [features]
