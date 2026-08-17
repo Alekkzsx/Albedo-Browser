@@ -28,6 +28,30 @@ impl Atom {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Retorna `true` se o átomo for uma string vazia.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.as_str().is_empty()
+    }
+
+    /// Retorna o tamanho em bytes do átomo.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.as_str().len()
+    }
+
+    /// Retorna a fatia de bytes do átomo.
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        self.as_str().as_bytes()
+    }
+
+    /// Compara se o átomo é igual a uma string ignorando maiúsculas/minúsculas ASCII.
+    #[inline]
+    pub fn eq_ignore_ascii_case(&self, other: &str) -> bool {
+        self.as_str().eq_ignore_ascii_case(other)
+    }
 }
 
 impl From<&str> for Atom {
@@ -64,6 +88,48 @@ impl AsRef<str> for Atom {
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl std::borrow::Borrow<str> for Atom {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl PartialEq<str> for Atom {
+    #[inline]
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for Atom {
+    #[inline]
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<Atom> for &str {
+    #[inline]
+    fn eq(&self, other: &Atom) -> bool {
+        *self == other.as_str()
+    }
+}
+
+impl PartialEq<String> for Atom {
+    #[inline]
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl PartialEq<Atom> for String {
+    #[inline]
+    fn eq(&self, other: &Atom) -> bool {
+        self.as_str() == other.as_str()
     }
 }
 
