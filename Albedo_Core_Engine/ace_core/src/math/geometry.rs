@@ -59,6 +59,59 @@ pub type DeviceRect = Rect<f32, DevicePixel>;
 /// Margens, paddings e borders (top, right, bottom, left) no espaço CSS.
 pub type EdgeInsets = SideOffsets2D<f32, CssPixel>;
 
+/// Margens, paddings e borders em pixels físicos do dispositivo.
+pub type DeviceEdgeInsets = SideOffsets2D<f32, DevicePixel>;
+
+/// Extensões utilitárias para `Point`.
+pub trait PointExt {
+    /// Converte o ponto CSS para coordenadas de pixel de hardware.
+    fn to_device_point(&self, scale: DpiScale) -> DevicePoint;
+}
+
+impl PointExt for Point {
+    #[inline]
+    fn to_device_point(&self, scale: DpiScale) -> DevicePoint {
+        DevicePoint::new(
+            scale.to_device_pixels(self.x),
+            scale.to_device_pixels(self.y),
+        )
+    }
+}
+
+/// Extensões utilitárias para `Size`.
+pub trait SizeExt {
+    /// Converte o tamanho CSS para dimensões físicas de hardware.
+    fn to_device_size(&self, scale: DpiScale) -> DeviceSize;
+}
+
+impl SizeExt for Size {
+    #[inline]
+    fn to_device_size(&self, scale: DpiScale) -> DeviceSize {
+        DeviceSize::new(
+            scale.to_device_pixels(self.width),
+            scale.to_device_pixels(self.height),
+        )
+    }
+}
+
+/// Extensões utilitárias para `EdgeInsets`.
+pub trait EdgeInsetsExt {
+    /// Converte as bordas CSS para pixels de hardware.
+    fn to_device_insets(&self, scale: DpiScale) -> DeviceEdgeInsets;
+}
+
+impl EdgeInsetsExt for EdgeInsets {
+    #[inline]
+    fn to_device_insets(&self, scale: DpiScale) -> DeviceEdgeInsets {
+        DeviceEdgeInsets::new(
+            scale.to_device_pixels(self.top),
+            scale.to_device_pixels(self.right),
+            scale.to_device_pixels(self.bottom),
+            scale.to_device_pixels(self.left),
+        )
+    }
+}
+
 /// Trait de extensões ergonômicas para manipulação de retângulos em motores de layout.
 pub trait RectExt {
     /// Expande o retângulo aplicando insets externos (ex: margens/paddings).
