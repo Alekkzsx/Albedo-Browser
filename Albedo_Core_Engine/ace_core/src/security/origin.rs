@@ -174,3 +174,13 @@ impl fmt::Display for Origin {
         write!(f, "{}", self.ascii_serialization())
     }
 }
+
+impl std::str::FromStr for Origin {
+    type Err = AceError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
