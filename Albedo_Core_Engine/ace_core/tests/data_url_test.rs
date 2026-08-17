@@ -7,7 +7,10 @@ fn test_parse_simple_text_data_url() {
 
     assert_eq!(record.mime_type.essence(), "text/plain");
     assert_eq!(record.mime_type.get_param("charset"), Some("utf-8"));
-    assert_eq!(String::from_utf8(record.body).unwrap(), "Hello Albedo Browser!");
+    assert_eq!(
+        String::from_utf8(record.body).unwrap(),
+        "Hello Albedo Browser!"
+    );
     assert!(!record.is_base64);
 }
 
