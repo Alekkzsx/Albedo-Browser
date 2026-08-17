@@ -9,6 +9,7 @@ pub mod checked;
 pub mod color;
 pub mod geometry;
 pub mod layout_unit;
+pub mod logical;
 pub mod units;
 pub mod utils;
 
@@ -21,5 +22,11 @@ pub use geometry::{
     Transform, Vec2, Vec3, Vec4,
 };
 pub use layout_unit::LayoutUnit;
+pub use logical::{
+    CssLogicalPoint, CssLogicalRect, CssLogicalSides, CssLogicalSize, Direction, LayoutPoint,
+    LayoutRect, LayoutSize, LogicalLayoutPoint, LogicalLayoutRect, LogicalLayoutSides,
+    LogicalLayoutSize, LogicalPoint, LogicalRect, LogicalSides, LogicalSize, WritingMode,
+};
 pub use units::{CssPixel, DevicePixel, DpiScale, LayoutPixel, ScreenPixel};
 pub use utils::{almost_equal, clamp, deg_to_rad, lerp, rad_to_deg, saturate, snap_to_pixel};
+
