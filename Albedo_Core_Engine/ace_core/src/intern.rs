@@ -91,13 +91,6 @@ impl AsRef<str> for Atom {
     }
 }
 
-impl std::borrow::Borrow<str> for Atom {
-    #[inline]
-    fn borrow(&self) -> &str {
-        self.as_str()
-    }
-}
-
 impl PartialEq<str> for Atom {
     #[inline]
     fn eq(&self, other: &str) -> bool {
