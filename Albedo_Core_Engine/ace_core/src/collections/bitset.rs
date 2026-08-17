@@ -3,6 +3,7 @@
 //! Estruturas de manipulação de bits em stack (zero alocações no heap) para rastreamento
 //! ultra-rápido de propriedades sujas (dirty layout/style) e pseudo-classes de nós do DOM.
 
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// BitSet de tamanho fixo em stack, parametrizado pelo número de palavras `u64`.
@@ -69,12 +70,120 @@ impl<const WORDS: usize> FixedBitSet<WORDS> {
     pub fn count_ones(&self) -> usize {
         self.words.iter().map(|w| w.count_ones() as usize).sum()
     }
+
+    /// Itera sobre os índices de todos os bits ativos (`1`).
+    pub fn ones(&self) -> OnesIter<'_, WORDS> {
+        OnesIter {
+            bitset: self,
+            current_bit: 0,
+        }
+    }
 }
 
 impl<const WORDS: usize> Default for FixedBitSet<WORDS> {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<const WORDS: usize> BitAnd for FixedBitSet<WORDS> {
+    type Output = Self;
+
+    #[inline]
+    fn bitand(self, rhs: Self) -> Self::Output {
+        let mut result = Self::new();
+        for i in 0..WORDS {
+            result.words[i] = self.words[i] & rhs.words[i];
+        }
+        result
+    }
+}
+
+impl<const WORDS: usize> BitAndAssign for FixedBitSet<WORDS> {
+    #[inline]
+    fn bitand_assign(&mut self, rhs: Self) {
+        for i in 0..WORDS {
+            self.words[i] &= rhs.words[i];
+        }
+    }
+}
+
+impl<const WORDS: usize> BitOr for FixedBitSet<WORDS> {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        let mut result = Self::new();
+        for i in 0..WORDS {
+            result.words[i] = self.words[i] | rhs.words[i];
+        }
+        result
+    }
+}
+
+impl<const WORDS: usize> BitOrAssign for FixedBitSet<WORDS> {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        for i in 0..WORDS {
+            self.words[i] |= rhs.words[i];
+        }
+    }
+}
+
+impl<const WORDS: usize> BitXor for FixedBitSet<WORDS> {
+    type Output = Self;
+
+    #[inline]
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let mut result = Self::new();
+        for i in 0..WORDS {
+            result.words[i] = self.words[i] ^ rhs.words[i];
+        }
+        result
+    }
+}
+
+impl<const WORDS: usize> BitXorAssign for FixedBitSet<WORDS> {
+    #[inline]
+    fn bitxor_assign(&mut self, rhs: Self) {
+        for i in 0..WORDS {
+            self.words[i] ^= rhs.words[i];
+        }
+    }
+}
+
+impl<const WORDS: usize> Not for FixedBitSet<WORDS> {
+    type Output = Self;
+
+    #[inline]
+    fn not(self) -> Self::Output {
+        let mut result = Self::new();
+        for i in 0..WORDS {
+            result.words[i] = !self.words[i];
+        }
+        result
+    }
+}
+
+/// Iterador sobre os índices de bits ativos em um `FixedBitSet`.
+pub struct OnesIter<'a, const WORDS: usize> {
+    bitset: &'a FixedBitSet<WORDS>,
+    current_bit: usize,
+}
+
+impl<'a, const WORDS: usize> Iterator for OnesIter<'a, WORDS> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_bit < FixedBitSet::<WORDS>::capacity() {
+            let bit = self.current_bit;
+            self.current_bit += 1;
+            if self.bitset.get(bit) {
+                return Some(bit);
+            }
+        }
+        None
     }
 }
 
@@ -89,7 +198,6 @@ impl<const WORDS: usize> AtomicBitSet<WORDS> {
     /// Cria um BitSet atômico vazio.
     pub fn new() -> Self {
         Self {
-            // Inicializa o array de AtomicU64
             words: std::array::from_fn(|_| AtomicU64::new(0)),
         }
     }
