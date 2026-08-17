@@ -10,6 +10,7 @@ pub mod color;
 pub mod geometry;
 pub mod layout_unit;
 pub mod logical;
+pub mod oklab;
 pub mod units;
 pub mod utils;
 
@@ -27,5 +28,7 @@ pub use logical::{
     LayoutRect, LayoutSize, LogicalLayoutPoint, LogicalLayoutRect, LogicalLayoutSides,
     LogicalLayoutSize, LogicalPoint, LogicalRect, LogicalSides, LogicalSize, WritingMode,
 };
+pub use oklab::{Oklab, Oklch};
 pub use units::{CssPixel, DevicePixel, DpiScale, LayoutPixel, ScreenPixel};
 pub use utils::{almost_equal, clamp, deg_to_rad, lerp, rad_to_deg, saturate, snap_to_pixel};
+
