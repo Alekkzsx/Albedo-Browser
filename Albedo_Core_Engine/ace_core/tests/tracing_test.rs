@@ -53,6 +53,7 @@ fn test_root_set_and_gc_root_lifecycle() {
             Arc::clone(&root_set),
         );
         assert_eq!(root_set.len(), 1);
+        assert_eq!(root1.get().node_id, node1_id);
 
         let root2 = GCRoot::new(
             DomElement {
@@ -62,6 +63,7 @@ fn test_root_set_and_gc_root_lifecycle() {
             Arc::clone(&root_set),
         );
         assert_eq!(root_set.len(), 2);
+        assert_eq!(root2.get().node_id, node2_id);
 
         let mut visitor = MockVisitor {
             visited_nodes: Vec::new(),
