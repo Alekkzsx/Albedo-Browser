@@ -452,3 +452,28 @@ fn named_color(name: &str) -> Option<Color> {
         _ => None,
     }
 }
+
+impl fmt::Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.a == 255 {
+            write!(f, "rgb({}, {}, {})", self.r, self.g, self.b)
+        } else {
+            write!(f, "rgba({}, {}, {}, {:.2})", self.r, self.g, self.b, self.a as f32 / 255.0)
+        }
+    }
+}
+
+impl From<(u8, u8, u8)> for Color {
+    #[inline]
+    fn from((r, g, b): (u8, u8, u8)) -> Self {
+        Self::from_rgb(r, g, b)
+    }
+}
+
+impl From<(u8, u8, u8, u8)> for Color {
+    #[inline]
+    fn from((r, g, b, a): (u8, u8, u8, u8)) -> Self {
+        Self::from_rgba(r, g, b, a)
+    }
+}
+
