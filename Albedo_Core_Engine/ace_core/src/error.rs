@@ -255,4 +255,45 @@ impl AceError {
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::NotFound(message.into())
     }
+
+    /// Retorna `true` se o erro for recuperável segundo as especificações do WHATWG/W3C.
+    #[inline]
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            Self::Parse { is_recoverable, .. } => *is_recoverable,
+            _ => false,
+        }
+    }
+
+    /// Retorna a localização no código-fonte onde a falha ocorreu, se aplicável.
+    #[inline]
+    pub fn source_location(&self) -> Option<&SourceLocation> {
+        match self {
+            Self::Parse { location, .. } => Some(location),
+            _ => None,
+        }
+    }
+
+    /// Retorna o nome do subsistema de origem deste erro.
+    #[inline]
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "io",
+            Self::Parse { .. } => "parse",
+            Self::Network { .. } => "network",
+            Self::Security { .. } => "security",
+            Self::Dom { .. } => "dom",
+            Self::Style { .. } => "style",
+            Self::Layout { .. } => "layout",
+            Self::Render { .. } => "render",
+            Self::Js { .. } => "js",
+            Self::Storage { .. } => "storage",
+            Self::Ipc { .. } => "ipc",
+            Self::Encoding { .. } => "encoding",
+            Self::Timeout { .. } => "timeout",
+            Self::Aborted => "aborted",
+            Self::NotFound(_) => "not_found",
+            Self::InvalidOperation(_) => "invalid_operation",
+        }
+    }
 }
