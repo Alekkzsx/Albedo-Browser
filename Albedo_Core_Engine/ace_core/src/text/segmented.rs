@@ -41,13 +41,14 @@ impl SegmentedString {
     }
 
     /// Cria uma `SegmentedString` a partir de uma fatia de texto estática.
-    pub fn from_str(text: &str) -> Self {
+    pub fn from_static_str(text: &str) -> Self {
         let mut s = Self::new();
         if !text.is_empty() {
             s.chunks.push_back(SmolStr::new(text));
         }
         s
     }
+
 
     /// Associa uma URL de documento para rastreabilidade de erros.
     pub fn with_url(mut self, url: impl Into<String>) -> Self {
