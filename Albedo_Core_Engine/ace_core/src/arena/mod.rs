@@ -52,6 +52,7 @@ mod bump;
 mod id;
 mod slab;
 mod stats;
+pub mod utils;
 
 pub use bump::BumpArena;
 pub use id::ArenaId;
