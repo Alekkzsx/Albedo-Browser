@@ -15,12 +15,17 @@
 
 pub mod arena;
 pub mod collections;
+pub mod cursor;
 pub mod error;
 pub mod event_loop;
 pub mod features;
+pub mod flags;
 pub mod id;
 pub mod intern;
 pub mod math;
+pub mod net;
+pub mod observer;
+pub mod performance;
 pub mod security;
 pub mod task;
 pub mod text;
