@@ -33,8 +33,21 @@ impl MimeType {
         format!("{}/{}", self.type_, self.subtype)
     }
 
+    /// Retorna o valor de um parâmetro opcional (ex: "charset").
+    pub fn get_parameter(&self, name: &str) -> Option<&str> {
+        let key: SmolStr = name.to_ascii_lowercase().into();
+        self.parameters.get(&key).map(|v| v.as_str())
+    }
+
+    /// Alias conveniente para `get_parameter`.
+    #[inline]
+    pub fn get_param(&self, name: &str) -> Option<&str> {
+        self.get_parameter(name)
+    }
+
     // --- Constantes de Conveniência ---
     pub fn text_html() -> Self {
+
         Self::new("text", "html")
     }
 
