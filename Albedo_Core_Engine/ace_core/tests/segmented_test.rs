@@ -17,7 +17,7 @@ fn test_segmented_string_basic_advance() {
 
 #[test]
 fn test_segmented_string_unconsume_push_front() {
-    let mut s = SegmentedString::from_str("bar");
+    let mut s = SegmentedString::from_static_str("bar");
     assert_eq!(s.advance(), Some('b'));
     assert_eq!(s.advance(), Some('a'));
 
@@ -33,7 +33,7 @@ fn test_segmented_string_unconsume_push_front() {
 
 #[test]
 fn test_segmented_string_push_front_str() {
-    let mut s = SegmentedString::from_str("world");
+    let mut s = SegmentedString::from_static_str("world");
     s.push_front_str("hello ");
 
     let consumed = s.consume_while(|_| true);
@@ -69,7 +69,7 @@ fn test_segmented_string_streaming_chunks() {
 
 #[test]
 fn test_segmented_string_source_location_tracking() {
-    let mut s = SegmentedString::from_str("line 1\nline 2\nline 3").with_url("https://example.com");
+    let mut s = SegmentedString::from_static_str("line 1\nline 2\nline 3").with_url("https://example.com");
 
     let loc = s.location();
     assert_eq!(loc.line, 1);
@@ -85,7 +85,7 @@ fn test_segmented_string_source_location_tracking() {
 
 #[test]
 fn test_segmented_string_peek_at() {
-    let s = SegmentedString::from_str("abcdef");
+    let s = SegmentedString::from_static_str("abcdef");
     assert_eq!(s.peek_at(0), Some('a'));
     assert_eq!(s.peek_at(1), Some('b'));
     assert_eq!(s.peek_at(5), Some('f'));
