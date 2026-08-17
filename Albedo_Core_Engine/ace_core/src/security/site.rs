@@ -79,11 +79,12 @@ fn extract_registrable_domain(host: &str) -> SmolStr {
     }
 
     // Sufixos públicos comuns de segundo nível (eTLD composto)
-    let is_multipart_tld = match (parts[parts.len() - 2], parts[parts.len() - 1]) {
-        ("co" | "com" | "org" | "net" | "edu" | "gov" | "mil", "uk" | "br" | "au" | "nz" | "za" | "jp") => true,
-        ("ac" | "gov" | "edu", _) => true,
-        _ => false,
-    };
+    let is_multipart_tld = matches!(
+        (parts[parts.len() - 2], parts[parts.len() - 1]),
+        ("co" | "com" | "org" | "net" | "edu" | "gov" | "mil", "uk" | "br" | "au" | "nz" | "za" | "jp")
+            | ("ac" | "gov" | "edu", _)
+    );
+
 
     if is_multipart_tld && parts.len() >= 3 {
         let domain_parts = &parts[parts.len() - 3..];
