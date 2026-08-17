@@ -15,9 +15,9 @@ pub use border_radii::{BorderRadii, CornerRadius};
 pub use color::Color;
 pub use geometry::{
     point2, rect, size2, vec2, vec3, DeviceEdgeInsets, DevicePoint, DeviceRect, DeviceSize,
-    DpiScale, EdgeInsets, EdgeInsetsExt, Matrix4D, Point, PointExt, Rect2D, RectExt, Size, SizeExt,
+    EdgeInsets, EdgeInsetsExt, Matrix4D, Point, PointExt, Rect2D, RectExt, Size, SizeExt,
     Transform, Vec2, Vec3, Vec4,
 };
 pub use layout_unit::LayoutUnit;
-pub use units::{CssPixel, DevicePixel, LayoutPixel, ScreenPixel};
+pub use units::{CssPixel, DevicePixel, DpiScale, LayoutPixel, ScreenPixel};
 pub use utils::{almost_equal, clamp, deg_to_rad, lerp, rad_to_deg, saturate, snap_to_pixel};
