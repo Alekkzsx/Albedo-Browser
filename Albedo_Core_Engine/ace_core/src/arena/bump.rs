@@ -82,6 +82,13 @@ impl BumpArena {
         self.bump.alloc_slice_copy(slice)
     }
 
+    /// Aloca uma cópia de uma fatia de tipos que implementam `Clone`.
+    #[inline]
+    pub fn alloc_slice_clone<U: Clone>(&self, slice: &[U]) -> &mut [U] {
+        self.allocations.fetch_add(1, Ordering::Relaxed);
+        self.bump.alloc_slice_clone(slice)
+    }
+
     /// Descarta todas as alocações de uma só vez, reaproveitando a memória dos blocos.
     pub fn reset(&mut self) {
         self.bump.reset();
