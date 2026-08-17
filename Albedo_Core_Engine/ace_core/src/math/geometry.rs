@@ -7,7 +7,7 @@ pub use euclid::{
     default::{Point2D as RawPoint2D, Rect as RawRect, Size2D as RawSize2D, Transform2D as RawTransform2D},
     point2, rect, size2, vec2, vec3,
     Box2D, Length, Point2D, Point3D, Rect, SideOffsets2D, Size2D, Transform2D, Transform3D,
-    Vector2D, Vector3D, Vector4D,
+    Vector2D, Vector3D,
 };
 
 /// Ponto 2D no espaço de coordenadas CSS (`f32`).
@@ -26,7 +26,20 @@ pub type Vec2 = Vector2D<f32, CssPixel>;
 pub type Vec3 = Vector3D<f32, CssPixel>;
 
 /// Vetor 4D / Coordenadas Homogêneas (`f32`).
-pub type Vec4 = Vector4D<f32, CssPixel>;
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vec4 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
+impl Vec4 {
+    #[inline]
+    pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+        Self { x, y, z, w }
+    }
+}
 
 /// Transformação afim 2D (matriz 3x3) no espaço CSS.
 pub type Transform = Transform2D<f32, CssPixel, CssPixel>;
