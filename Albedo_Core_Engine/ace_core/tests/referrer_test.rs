@@ -7,10 +7,20 @@ fn test_referrer_policy_same_origin() {
     let same_target = "https://example.com/api/data";
     let cross_target = "https://other.com/api/data";
 
-    let ref_same = compute_referrer(&origin, current_url, same_target, ReferrerPolicy::SameOrigin);
+    let ref_same = compute_referrer(
+        &origin,
+        current_url,
+        same_target,
+        ReferrerPolicy::SameOrigin,
+    );
     assert_eq!(ref_same, Some("https://example.com/page.html".to_string()));
 
-    let ref_cross = compute_referrer(&origin, current_url, cross_target, ReferrerPolicy::SameOrigin);
+    let ref_cross = compute_referrer(
+        &origin,
+        current_url,
+        cross_target,
+        ReferrerPolicy::SameOrigin,
+    );
     assert_eq!(ref_cross, None);
 }
 

@@ -14,4 +14,3 @@ pub use referrer::{compute_referrer, ReferrerPolicy};
 pub use site::SchemefulSite;
 pub use token::UnguessableToken;
 pub use utils::{is_potentially_trustworthy_origin, matches_domain_pattern};
-

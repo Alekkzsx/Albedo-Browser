@@ -126,4 +126,3 @@ impl FrameRecorder {
         self.stages_ms[stage as usize] = duration_ms;
     }
 }
-

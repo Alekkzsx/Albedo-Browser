@@ -7,4 +7,3 @@ pub mod histogram;
 
 pub use frame::{FrameBudgetTracker, FrameMetrics, FrameStage};
 pub use histogram::{Histogram, HistogramSnapshot};
-
