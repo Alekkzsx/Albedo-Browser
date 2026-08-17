@@ -64,6 +64,20 @@ macro_rules! define_id_type {
             }
         }
 
+        impl From<u64> for $name {
+            #[inline]
+            fn from(id: u64) -> Self {
+                Self::from_raw(id)
+            }
+        }
+
+        impl From<$name> for u64 {
+            #[inline]
+            fn from(id: $name) -> Self {
+                id.raw()
+            }
+        }
+
         impl fmt::Debug for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{}({})", stringify!($name), self.0)
