@@ -227,3 +227,33 @@ impl fmt::Display for LayoutUnit {
         write!(f, "{:.2}px", self.to_f32_px())
     }
 }
+
+impl From<i32> for LayoutUnit {
+    #[inline]
+    fn from(v: i32) -> Self {
+        Self::from_px(v)
+    }
+}
+
+impl From<f32> for LayoutUnit {
+    #[inline]
+    fn from(v: f32) -> Self {
+        Self::from_f32_px(v)
+    }
+}
+
+impl From<LayoutUnit> for f32 {
+    #[inline]
+    fn from(v: LayoutUnit) -> Self {
+        v.to_f32_px()
+    }
+}
+
+impl From<LayoutUnit> for i32 {
+    #[inline]
+    fn from(v: LayoutUnit) -> Self {
+        v.round_px()
+    }
+}
+
+
