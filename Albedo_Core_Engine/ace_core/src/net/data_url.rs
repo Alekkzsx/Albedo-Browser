@@ -21,12 +21,20 @@ pub struct DataUrlRecord {
 pub fn parse_data_url(input: &str) -> Result<DataUrlRecord, AceError> {
     let trimmed = input.trim();
     if !trimmed.starts_with("data:") {
-        return Err(AceError::network("data:", "URL não inicia com o esquema data:", None));
+        return Err(AceError::network(
+            "data:",
+            "URL não inicia com o esquema data:",
+            None,
+        ));
     }
 
     let raw_content = &trimmed[5..]; // Pula "data:"
     let comma_idx = raw_content.find(',').ok_or_else(|| {
-        AceError::network("data:", "URL data: inválida (vírgula delimitadora não encontrada)", None)
+        AceError::network(
+            "data:",
+            "URL data: inválida (vírgula delimitadora não encontrada)",
+            None,
+        )
     })?;
 
     let mut metadata = &raw_content[..comma_idx];
@@ -42,8 +50,7 @@ pub fn parse_data_url(input: &str) -> Result<DataUrlRecord, AceError> {
         MimeType::parse("text/plain;charset=US-ASCII")
             .unwrap_or_else(|_| MimeType::new("text", "plain"))
     } else {
-        MimeType::parse(metadata)
-            .unwrap_or_else(|_| MimeType::new("text", "plain"))
+        MimeType::parse(metadata).unwrap_or_else(|_| MimeType::new("text", "plain"))
     };
 
     let body = if is_base64 {
@@ -81,7 +88,11 @@ fn decode_base64_whatwg(input: &str) -> Result<Vec<u8>, AceError> {
         }
 
         let val = decode_base64_char(byte).ok_or_else(|| {
-            AceError::network("data:", format!("Caractere Base64 inválido: '{}'", byte as char), None)
+            AceError::network(
+                "data:",
+                format!("Caractere Base64 inválido: '{}'", byte as char),
+                None,
+            )
         })?;
 
         buffer = (buffer << 6) | (val as u32);
@@ -117,7 +128,9 @@ fn decode_percent_encoded(input: &str) -> Vec<u8> {
 
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(h1), Some(h2)) = (from_hex_digit(bytes[i + 1]), from_hex_digit(bytes[i + 2])) {
+            if let (Some(h1), Some(h2)) =
+                (from_hex_digit(bytes[i + 1]), from_hex_digit(bytes[i + 2]))
+            {
                 output.push((h1 << 4) | h2);
                 i += 3;
                 continue;

@@ -173,6 +173,12 @@ impl Color {
         Err(invalid_color(input))
     }
 
+    /// Alias conveniente para `parse_css`.
+    #[inline]
+    pub fn parse(input: &str) -> Result<Self, AceError> {
+        Self::parse_css(input)
+    }
+
     /// Converte esta cor sRGB para o espaço de cor perceptual Oklab.
     #[inline]
     pub fn to_oklab(self) -> super::oklab::Oklab {
@@ -271,7 +277,6 @@ impl Color {
     }
 }
 
-
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.a == 255 {
@@ -353,6 +358,73 @@ fn parse_hsl_functional(s: &str) -> Result<Color, AceError> {
     };
 
     Ok(Color::from_hsla(h, s_val, l_val, a))
+}
+
+fn parse_oklab_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("oklab(").trim_end_matches(')').trim();
+
+    let parts: Vec<&str> = if inner.contains('/') {
+        let mut split = inner.split('/');
+        let main = split.next().unwrap_or("");
+        let alpha = split.next().unwrap_or("");
+        let mut p: Vec<&str> = main.split_whitespace().collect();
+        if !alpha.trim().is_empty() {
+            p.push(alpha.trim());
+        }
+        p
+    } else {
+        inner.split_whitespace().collect()
+    };
+
+    if parts.len() < 3 || parts.len() > 4 {
+        return Err(invalid_color(s));
+    }
+
+    let l = parse_percentage(parts[0])?;
+    let a: f32 = parts[1].parse().map_err(|_| invalid_color(s))?;
+    let b: f32 = parts[2].parse().map_err(|_| invalid_color(s))?;
+    let alpha = if parts.len() == 4 {
+        parse_alpha(parts[3])?
+    } else {
+        1.0
+    };
+
+    Ok(Color::from_oklab(super::oklab::Oklab::new(l, a, b, alpha)))
+}
+
+fn parse_oklch_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("oklch(").trim_end_matches(')').trim();
+
+    let parts: Vec<&str> = if inner.contains('/') {
+        let mut split = inner.split('/');
+        let main = split.next().unwrap_or("");
+        let alpha = split.next().unwrap_or("");
+        let mut p: Vec<&str> = main.split_whitespace().collect();
+        if !alpha.trim().is_empty() {
+            p.push(alpha.trim());
+        }
+        p
+    } else {
+        inner.split_whitespace().collect()
+    };
+
+    if parts.len() < 3 || parts.len() > 4 {
+        return Err(invalid_color(s));
+    }
+
+    let l = parse_percentage(parts[0])?;
+    let c: f32 = parts[1].parse().map_err(|_| invalid_color(s))?;
+    let h: f32 = parts[2]
+        .trim_end_matches("deg")
+        .parse()
+        .map_err(|_| invalid_color(s))?;
+    let alpha = if parts.len() == 4 {
+        parse_alpha(parts[3])?
+    } else {
+        1.0
+    };
+
+    Ok(Color::from_oklch(super::oklab::Oklch::new(l, c, h, alpha)))
 }
 
 fn parse_component(s: &str, max: f32) -> Result<f32, AceError> {
