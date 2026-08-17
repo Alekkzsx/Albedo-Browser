@@ -53,7 +53,6 @@ pub fn parse_i32(cursor: &mut CharCursor) -> Option<i32> {
 
 /// Extrai e consome um número float `f32` diretamente do fluxo do cursor (ex: `12.5`, `-0.75`).
 pub fn parse_f32(cursor: &mut CharCursor) -> Option<f32> {
-    let start_pos = cursor.byte_offset();
     let mut is_negative = false;
 
     if let Some(c) = cursor.peek() {
