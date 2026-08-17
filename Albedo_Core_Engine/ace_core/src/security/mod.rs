@@ -4,5 +4,7 @@
 //! Same-Origin Policy (SOP) e políticas de isolamento de contextos.
 
 pub mod origin;
+pub mod utils;
 
 pub use origin::{Host, Origin, Scheme};
+pub use utils::{is_potentially_trustworthy_origin, matches_domain_pattern};
