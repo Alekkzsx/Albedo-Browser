@@ -22,6 +22,7 @@ pub mod intern;
 pub mod math;
 pub mod task;
 pub mod time;
+pub mod utils;
 
 // Re-exports estratégicos para uso em todo o workspace Albedo
 pub use anyhow::{Context, Result};
