@@ -10,11 +10,15 @@
 //! 5. Repete.
 
 pub mod coalescer;
+pub mod idle;
+pub mod scope;
 pub mod source;
 pub mod task;
 pub mod utils;
 
 pub use coalescer::{CoalescedMovement, InputEventCoalescer};
+pub use idle::{IdleDeadline, IdleTaskFn, IdleTaskQueue, ScheduledIdleTask};
+pub use scope::{ScopedTaskQueue, TaskScope};
 pub use source::TaskSource;
 pub use task::{Task, TaskFn};
 pub use utils::{compute_deadline, duration_to_ms, fps_to_interval, is_deadline_passed, ms_to_duration};
@@ -48,11 +52,14 @@ pub struct TaskQueue {
     microtask_queue: Arc<SegQueue<TaskFn>>,
     /// Fila de tarefas de renderização (requestAnimationFrame).
     raf_queue: Arc<SegQueue<TaskFn>>,
+    /// Fila de tarefas ociosas (requestIdleCallback).
+    idle_queue: Arc<IdleTaskQueue>,
     /// Lista de temporizadores agendados.
     timers: Arc<Mutex<Vec<ScheduledTimer>>>,
     /// Relógio de referência para resolução de prazos.
     clock: Arc<dyn Clock>,
 }
+
 
 impl TaskQueue {
     /// Enfileira uma macrotask associada a uma fonte específica da spec WHATWG.
@@ -131,6 +138,21 @@ impl TaskQueue {
         self.raf_queue.push(Box::new(f));
     }
 
+    /// Enfileira uma tarefa ociosa (`requestIdleCallback`) com timeout opcional.
+    pub fn post_idle_task<F>(&self, timeout: Option<Duration>, f: F) -> (TaskId, Arc<AtomicBool>)
+    where
+        F: FnOnce(IdleDeadline) + Send + 'static,
+    {
+        self.idle_queue.post_idle_task(timeout, &*self.clock, f)
+    }
+
+    /// Cria um novo `TaskScope` vinculado a esta fila para gerenciamento de ciclo de vida de abas/frames.
+    pub fn create_scope(&self) -> (TaskScope, ScopedTaskQueue) {
+        let scope = TaskScope::new();
+        let scoped_queue = scope.wrap_queue(self.clone());
+        (scope, scoped_queue)
+    }
+
     /// Despacha uma tarefa intensiva de CPU para execução paralela resiliente (`spawn_safe`)
     /// e encaminha o resultado de volta como uma macrotask no Event Loop.
     pub fn spawn_cpu_task<F, R, C>(&self, cpu_work: F, on_complete: C)
@@ -154,6 +176,7 @@ pub struct EventLoop {
     task_rx: Mutex<mpsc::UnboundedReceiver<Task>>,
     microtask_queue: Arc<SegQueue<TaskFn>>,
     raf_queue: Arc<SegQueue<TaskFn>>,
+    idle_queue: Arc<IdleTaskQueue>,
     timers: Arc<Mutex<Vec<ScheduledTimer>>>,
     clock: Arc<dyn Clock>,
     queue_handle: TaskQueue,
@@ -170,12 +193,14 @@ impl EventLoop {
         let (tx, rx) = mpsc::unbounded_channel();
         let microtask_queue = Arc::new(SegQueue::new());
         let raf_queue = Arc::new(SegQueue::new());
+        let idle_queue = Arc::new(IdleTaskQueue::new());
         let timers = Arc::new(Mutex::new(Vec::new()));
 
         let handle = TaskQueue {
             task_tx: tx,
             microtask_queue: Arc::clone(&microtask_queue),
             raf_queue: Arc::clone(&raf_queue),
+            idle_queue: Arc::clone(&idle_queue),
             timers: Arc::clone(&timers),
             clock: Arc::clone(&clock),
         };
@@ -184,11 +209,13 @@ impl EventLoop {
             task_rx: Mutex::new(rx),
             microtask_queue,
             raf_queue,
+            idle_queue,
             timers,
             clock,
             queue_handle: handle,
         }
     }
+
 
     /// Retorna o relógio utilizado por este Event Loop.
     #[inline]
@@ -272,6 +299,18 @@ impl EventLoop {
         self.drain_microtasks();
         count
     }
+
+    /// Processa tarefas ociosas (`requestIdleCallback`) respeitando um orçamento máximo de tempo.
+    pub fn process_idle_tasks(&self, max_budget: Duration) -> usize {
+        let executed = self
+            .idle_queue
+            .process_idle_tasks(Arc::clone(&self.clock), max_budget);
+        if executed > 0 {
+            self.drain_microtasks();
+        }
+        executed
+    }
+
 
     /// Drena exaustivamente a fila de microtasks (Promises).
     pub fn drain_microtasks(&self) -> usize {
