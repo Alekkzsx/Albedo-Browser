@@ -1,4 +1,4 @@
-use ace_core::event_loop::{EventLoop, TaskSource};
+use ace_core::event_loop::EventLoop;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
