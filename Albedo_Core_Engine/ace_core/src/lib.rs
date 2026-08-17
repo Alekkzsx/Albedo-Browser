@@ -23,6 +23,7 @@ pub mod flags;
 pub mod id;
 pub mod intern;
 pub mod math;
+pub mod memory;
 pub mod net;
 pub mod observer;
 pub mod performance;
