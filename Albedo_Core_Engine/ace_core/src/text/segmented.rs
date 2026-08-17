@@ -215,3 +215,18 @@ impl SegmentedString {
         }
     }
 }
+
+impl From<&str> for SegmentedString {
+    fn from(s: &str) -> Self {
+        Self::from_static_str(s)
+    }
+}
+
+impl std::str::FromStr for SegmentedString {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from_static_str(s))
+    }
+}
+
