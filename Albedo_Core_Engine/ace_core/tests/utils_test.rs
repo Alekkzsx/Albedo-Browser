@@ -1,7 +1,17 @@
 use ace_core::arena::utils as arena_utils;
 use ace_core::collections::utils as col_utils;
+use ace_core::cursor::utils as cursor_utils;
+use ace_core::cursor::CharCursor;
 use ace_core::event_loop::utils as el_utils;
+use ace_core::features::utils as feature_utils;
+use ace_core::features::Feature;
+use ace_core::flags::utils as flag_utils;
+use ace_core::flags::{NodeFlags, StyleChangeHint};
 use ace_core::math::utils as math_utils;
+use ace_core::net::utils as net_utils;
+use ace_core::performance::utils as perf_utils;
+use ace_core::security::utils as sec_utils;
+use ace_core::text::utils as text_utils;
 use ace_core::utils as root_utils;
 use std::time::Duration;
 
@@ -34,7 +44,6 @@ fn test_math_utils() {
     assert_eq!(math_utils::deg_to_rad(180.0), std::f32::consts::PI);
     assert_eq!(math_utils::rad_to_deg(std::f32::consts::PI), 180.0);
 
-    // Pixel snapping com 1.5x scaling
     assert_eq!(math_utils::snap_to_pixel(10.333, 1.0), 10.0);
     assert_eq!(math_utils::snap_to_pixel(10.666, 1.0), 11.0);
 
@@ -74,6 +83,70 @@ fn test_event_loop_utils() {
     assert!(!el_utils::is_deadline_passed(1499, deadline));
     assert!(el_utils::is_deadline_passed(1500, deadline));
     assert!(el_utils::is_deadline_passed(1501, deadline));
+}
+
+#[test]
+fn test_cursor_utils() {
+    let mut c = CharCursor::new("  \t\n -42 12.75 #FFA0");
+    assert_eq!(cursor_utils::skip_ascii_whitespace(&mut c), 5);
+    assert_eq!(cursor_utils::parse_i32(&mut c), Some(-42));
+    assert_eq!(cursor_utils::skip_ascii_whitespace(&mut c), 1);
+    assert_eq!(cursor_utils::parse_f32(&mut c), Some(12.75));
+    assert_eq!(cursor_utils::skip_ascii_whitespace(&mut c), 1);
+    assert_eq!(c.advance(), Some('#'));
+    assert_eq!(cursor_utils::parse_hex_u32(&mut c, 4), Some(0xFFA0));
+}
+
+#[test]
+fn test_net_utils() {
+    let data_uri = "data:text/plain;base64,SGVsbG8gV29ybGQ=";
+    let (mime, bytes) = net_utils::parse_data_uri(data_uri).unwrap();
+    assert_eq!(mime.essence(), "text/plain");
+    assert_eq!(String::from_utf8(bytes).unwrap(), "Hello World");
+
+    assert_eq!(net_utils::percent_decode("Hello%20Albedo%21"), "Hello Albedo!");
+    assert!(net_utils::is_safe_url_scheme("https"));
+    assert!(!net_utils::is_safe_url_scheme("javascript"));
+}
+
+#[test]
+fn test_security_utils() {
+    assert!(sec_utils::matches_domain_pattern("*.example.com", "api.example.com"));
+    assert!(sec_utils::matches_domain_pattern("*.example.com", "example.com"));
+    assert!(!sec_utils::matches_domain_pattern("*.example.com", "other.org"));
+    assert!(sec_utils::matches_domain_pattern("*", "anything.io"));
+}
+
+#[test]
+fn test_text_utils() {
+    assert_eq!(text_utils::escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+    assert_eq!(text_utils::escape_css_identifier("btn:primary"), "btn\\:primary");
+    assert!(text_utils::is_ascii_case_insensitive_equal("Content-Type", "content-type"));
+}
+
+#[test]
+fn test_performance_utils() {
+    let samples = [10.0, 20.0, 30.0, 40.0, 50.0];
+    let p = perf_utils::calculate_percentiles(&samples).unwrap();
+    assert_eq!(p.min, 10.0);
+    assert_eq!(p.max, 50.0);
+    assert_eq!(p.mean, 30.0);
+    assert_eq!(p.p50, 30.0);
+
+    assert_eq!(perf_utils::format_duration_human(1500.0), "1.50 s");
+    assert_eq!(perf_utils::format_duration_human(12.5), "12.50 ms");
+    assert_eq!(perf_utils::format_duration_human(0.45), "450.00 µs");
+}
+
+#[test]
+fn test_feature_and_flag_utils() {
+    let overrides = feature_utils::parse_feature_overrides("CssSubgrid,-WebAssembly");
+    assert_eq!(overrides, vec![(Feature::CssSubgrid, true), (Feature::WebAssembly, false)]);
+
+    let hint = StyleChangeHint::REFLOW_LAYOUT;
+    let flags = flag_utils::style_hint_to_node_flags(hint);
+    assert!(flags.contains(NodeFlags::DIRTY_LAYOUT));
+    assert!(flag_utils::is_node_dirty(flags));
 }
 
 #[test]
