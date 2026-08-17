@@ -63,9 +63,9 @@ impl<T, const N: usize> InlineVec<T, N> {
                 } else {
                     // Transição para o Heap: migra os N elementos inline para um Vec
                     let mut heap_vec = Vec::with_capacity(N * 2 + 1);
-                    for i in 0..*len {
-                        // SAFETY: Os índices 0..*len foram inicializados
-                        let val = unsafe { data[i].assume_init_read() };
+                    for slot in data.iter().take(*len) {
+                        // SAFETY: Os slots 0..*len foram inicializados
+                        let val = unsafe { slot.assume_init_read() };
                         heap_vec.push(val);
                     }
                     heap_vec.push(item);
@@ -122,9 +122,9 @@ impl<T, const N: usize> InlineVec<T, N> {
     pub fn clear(&mut self) {
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
-                for i in 0..*len {
+                for slot in data.iter_mut().take(*len) {
                     unsafe {
-                        data[i].assume_init_drop();
+                        slot.assume_init_drop();
                     }
                 }
                 *len = 0;
