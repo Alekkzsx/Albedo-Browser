@@ -1,12 +1,11 @@
-use ace_core::math::geometry::{point2, rect, size2};
+use ace_core::math::geometry::size2;
 use ace_core::math::layout_unit::LayoutUnit;
 use ace_core::math::logical::{
-    Direction, LayoutEdgeInsets, LayoutPoint, LayoutRect, LayoutSize, LogicalLayoutPoint,
-    LogicalLayoutRect, LogicalLayoutSides, LogicalLayoutSize, LogicalPoint, LogicalRect,
-    LogicalSides, LogicalSize, WritingMode,
+    Direction, LayoutRect, LayoutSize, LogicalLayoutRect, LogicalPoint, LogicalRect, LogicalSides,
+    LogicalSize, WritingMode,
 };
-use ace_core::math::units::{CssPixel, LayoutPixel};
-use euclid::{Point2D, Rect, SideOffsets2D, Size2D};
+use ace_core::math::units::CssPixel;
+use euclid::{SideOffsets2D, Size2D};
 
 #[test]
 fn test_logical_point_and_size_creation() {
@@ -114,17 +113,17 @@ fn test_logical_sides_to_physical() {
 
 #[test]
 fn test_layout_unit_fixed_point_logical_rect() {
-    let container_size: LayoutSize = Size2D::new(LayoutUnit::from_pixels(100), LayoutUnit::from_pixels(100));
+    let container_size: LayoutSize = Size2D::new(LayoutUnit::from_px(100), LayoutUnit::from_px(100));
     let logical = LogicalLayoutRect::new(
-        LayoutUnit::from_pixels(10),
-        LayoutUnit::from_pixels(20),
-        LayoutUnit::from_pixels(50),
-        LayoutUnit::from_pixels(30),
+        LayoutUnit::from_px(10),
+        LayoutUnit::from_px(20),
+        LayoutUnit::from_px(50),
+        LayoutUnit::from_px(30),
     );
 
     let physical: LayoutRect = logical.to_physical(WritingMode::HorizontalTb, Direction::Ltr, container_size);
-    assert_eq!(physical.origin.x, LayoutUnit::from_pixels(10));
-    assert_eq!(physical.origin.y, LayoutUnit::from_pixels(20));
-    assert_eq!(physical.size.width, LayoutUnit::from_pixels(50));
-    assert_eq!(physical.size.height, LayoutUnit::from_pixels(30));
+    assert_eq!(physical.origin.x, LayoutUnit::from_px(10));
+    assert_eq!(physical.origin.y, LayoutUnit::from_px(20));
+    assert_eq!(physical.size.width, LayoutUnit::from_px(50));
+    assert_eq!(physical.size.height, LayoutUnit::from_px(30));
 }
