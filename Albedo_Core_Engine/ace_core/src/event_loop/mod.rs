@@ -11,9 +11,11 @@
 
 pub mod source;
 pub mod task;
+pub mod utils;
 
 pub use source::TaskSource;
 pub use task::{Task, TaskFn};
+pub use utils::{fps_to_interval, ms_to_duration, duration_to_ms, compute_deadline, is_deadline_passed};
 
 use crate::error::AceError;
 use crate::id::TaskId;
