@@ -21,12 +21,12 @@ pub struct DataUrlRecord {
 pub fn parse_data_url(input: &str) -> Result<DataUrlRecord, AceError> {
     let trimmed = input.trim();
     if !trimmed.starts_with("data:") {
-        return Err(AceError::net("DataUrl", "URL não inicia com o esquema data:"));
+        return Err(AceError::network("data:", "URL não inicia com o esquema data:", None));
     }
 
     let raw_content = &trimmed[5..]; // Pula "data:"
     let comma_idx = raw_content.find(',').ok_or_else(|| {
-        AceError::net("DataUrl", "URL data: inválida (vírgula delimitadora não encontrada)")
+        AceError::network("data:", "URL data: inválida (vírgula delimitadora não encontrada)", None)
     })?;
 
     let mut metadata = &raw_content[..comma_idx];
@@ -40,10 +40,10 @@ pub fn parse_data_url(input: &str) -> Result<DataUrlRecord, AceError> {
 
     let mime_type = if metadata.trim().is_empty() {
         MimeType::parse("text/plain;charset=US-ASCII")
-            .unwrap_or_else(|| MimeType::new("text", "plain"))
+            .unwrap_or_else(|_| MimeType::new("text", "plain"))
     } else {
         MimeType::parse(metadata)
-            .unwrap_or_else(|| MimeType::new("text", "plain"))
+            .unwrap_or_else(|_| MimeType::new("text", "plain"))
     };
 
     let body = if is_base64 {
@@ -81,7 +81,7 @@ fn decode_base64_whatwg(input: &str) -> Result<Vec<u8>, AceError> {
         }
 
         let val = decode_base64_char(byte).ok_or_else(|| {
-            AceError::net("DataUrl", format!("Caractere Base64 inválido: '{}'", byte as char))
+            AceError::network("data:", format!("Caractere Base64 inválido: '{}'", byte as char), None)
         })?;
 
         buffer = (buffer << 6) | (val as u32);
