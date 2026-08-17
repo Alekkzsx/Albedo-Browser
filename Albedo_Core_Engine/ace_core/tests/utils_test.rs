@@ -74,7 +74,10 @@ fn test_collections_utils() {
 
 #[test]
 fn test_event_loop_utils() {
-    assert_eq!(el_utils::fps_to_interval(60), Duration::from_nanos(16_666_666));
+    assert_eq!(
+        el_utils::fps_to_interval(60),
+        Duration::from_nanos(16_666_666)
+    );
     assert_eq!(el_utils::ms_to_duration(100), Duration::from_millis(100));
     assert_eq!(el_utils::duration_to_ms(Duration::from_millis(250)), 250);
 
@@ -104,24 +107,45 @@ fn test_net_utils() {
     assert_eq!(mime.essence(), "text/plain");
     assert_eq!(String::from_utf8(bytes).unwrap(), "Hello World");
 
-    assert_eq!(net_utils::percent_decode("Hello%20Albedo%21"), "Hello Albedo!");
+    assert_eq!(
+        net_utils::percent_decode("Hello%20Albedo%21"),
+        "Hello Albedo!"
+    );
     assert!(net_utils::is_safe_url_scheme("https"));
     assert!(!net_utils::is_safe_url_scheme("javascript"));
 }
 
 #[test]
 fn test_security_utils() {
-    assert!(sec_utils::matches_domain_pattern("*.example.com", "api.example.com"));
-    assert!(sec_utils::matches_domain_pattern("*.example.com", "example.com"));
-    assert!(!sec_utils::matches_domain_pattern("*.example.com", "other.org"));
+    assert!(sec_utils::matches_domain_pattern(
+        "*.example.com",
+        "api.example.com"
+    ));
+    assert!(sec_utils::matches_domain_pattern(
+        "*.example.com",
+        "example.com"
+    ));
+    assert!(!sec_utils::matches_domain_pattern(
+        "*.example.com",
+        "other.org"
+    ));
     assert!(sec_utils::matches_domain_pattern("*", "anything.io"));
 }
 
 #[test]
 fn test_text_utils() {
-    assert_eq!(text_utils::escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
-    assert_eq!(text_utils::escape_css_identifier("btn:primary"), "btn\\:primary");
-    assert!(text_utils::is_ascii_case_insensitive_equal("Content-Type", "content-type"));
+    assert_eq!(
+        text_utils::escape_html("<script>alert('xss')</script>"),
+        "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+    );
+    assert_eq!(
+        text_utils::escape_css_identifier("btn:primary"),
+        "btn\\:primary"
+    );
+    assert!(text_utils::is_ascii_case_insensitive_equal(
+        "Content-Type",
+        "content-type"
+    ));
 }
 
 #[test]
@@ -141,7 +165,10 @@ fn test_performance_utils() {
 #[test]
 fn test_feature_and_flag_utils() {
     let overrides = feature_utils::parse_feature_overrides("CssSubgrid,-WebAssembly");
-    assert_eq!(overrides, vec![(Feature::CssSubgrid, true), (Feature::WebAssembly, false)]);
+    assert_eq!(
+        overrides,
+        vec![(Feature::CssSubgrid, true), (Feature::WebAssembly, false)]
+    );
 
     let hint = StyleChangeHint::REFLOW_LAYOUT;
     let flags = flag_utils::style_hint_to_node_flags(hint);

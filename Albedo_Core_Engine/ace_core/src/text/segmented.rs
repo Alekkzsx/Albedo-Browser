@@ -49,7 +49,6 @@ impl SegmentedString {
         s
     }
 
-
     /// Associa uma URL de documento para rastreabilidade de erros.
     pub fn with_url(mut self, url: impl Into<String>) -> Self {
         self.url = Some(url.into());
@@ -191,7 +190,9 @@ impl SegmentedString {
 
     /// Retorna `true` se o stream estiver completamente vazio e sem chunks pendentes.
     pub fn is_eof(&self) -> bool {
-        self.pushed_back.is_empty() && (self.chunks.is_empty() || (self.chunks.len() == 1 && self.current_chunk_offset >= self.chunks[0].len()))
+        self.pushed_back.is_empty()
+            && (self.chunks.is_empty()
+                || (self.chunks.len() == 1 && self.current_chunk_offset >= self.chunks[0].len()))
     }
 
     /// Retorna a localização de código-fonte atual (`SourceLocation`).
@@ -229,4 +230,3 @@ impl std::str::FromStr for SegmentedString {
         Ok(Self::from_static_str(s))
     }
 }
-

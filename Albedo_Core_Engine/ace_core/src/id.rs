@@ -126,12 +126,36 @@ define_id_type!(NodeId, "Identificador único global para um nó na Árvore DOM 
 define_id_type!(TabId, "Identificador de alto nível para uma Aba (Contexto de Navegação Top-Level) na interface do navegador.");
 define_id_type!(ProcessId, "Identificador para rastrear processos filhos na arquitetura multiprocesso isolada (Network Process, GPU Process, etc).");
 define_id_type!(RequestId, "Rastreia unicamente o ciclo de vida de um fetch na rede, desde o DNS até o recebimento dos bytes finais do body.");
-define_id_type!(FrameId, "Identificador único para um frame ou iframe dentro da hierarquia da janela.");
-define_id_type!(LayerId, "Identificador para uma camada de pintura isolada no Compositor de GPU.");
-define_id_type!(ScriptId, "Identificador de um script ECMAScript compilado ou em execução.");
-define_id_type!(StyleSheetId, "Identificador único para uma folha de estilos CSS parsed na Render Tree.");
+define_id_type!(
+    FrameId,
+    "Identificador único para um frame ou iframe dentro da hierarquia da janela."
+);
+define_id_type!(
+    LayerId,
+    "Identificador para uma camada de pintura isolada no Compositor de GPU."
+);
+define_id_type!(
+    ScriptId,
+    "Identificador de um script ECMAScript compilado ou em execução."
+);
+define_id_type!(
+    StyleSheetId,
+    "Identificador único para uma folha de estilos CSS parsed na Render Tree."
+);
 define_id_type!(TaskId, "Identificador de tarefa ou timer agendado no Event Loop (usado para cancelamento via clearTimeout).");
-define_id_type!(CookieId, "Identificador único de entrada persistente no Cookie Jar.");
-define_id_type!(StorageKeyId, "Identificador de chave de particionamento para LocalStorage/SessionStorage.");
-define_id_type!(ContextId, "Identificador de contexto de renderização (Canvas2D / WebGL / Surface).");
-define_id_type!(ChannelId, "Identificador único de canal bidirecional no protocolo IPC.");
+define_id_type!(
+    CookieId,
+    "Identificador único de entrada persistente no Cookie Jar."
+);
+define_id_type!(
+    StorageKeyId,
+    "Identificador de chave de particionamento para LocalStorage/SessionStorage."
+);
+define_id_type!(
+    ContextId,
+    "Identificador de contexto de renderização (Canvas2D / WebGL / Surface)."
+);
+define_id_type!(
+    ChannelId,
+    "Identificador único de canal bidirecional no protocolo IPC."
+);

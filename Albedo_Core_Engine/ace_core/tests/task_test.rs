@@ -1,5 +1,5 @@
-use ace_core::task::spawn_safe;
 use ace_core::error::AceError;
+use ace_core::task::spawn_safe;
 
 #[test]
 fn test_spawn_safe_catches_panics() {
@@ -11,7 +11,7 @@ fn test_spawn_safe_catches_panics() {
     let failed = spawn_safe(|| {
         panic!("Divisão por zero no layout CSS simulada!");
     });
-    
+
     assert!(failed.is_err());
     let err = failed.unwrap_err();
     match err {

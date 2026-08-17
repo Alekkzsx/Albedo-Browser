@@ -137,7 +137,10 @@ impl BorderRadii {
                     self.bottom_right.x * f,
                     self.bottom_right.y * f,
                 ),
-                bottom_left: CornerRadius::elliptical(self.bottom_left.x * f, self.bottom_left.y * f),
+                bottom_left: CornerRadius::elliptical(
+                    self.bottom_left.x * f,
+                    self.bottom_left.y * f,
+                ),
             }
         } else {
             *self

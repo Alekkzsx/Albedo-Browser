@@ -6,7 +6,8 @@ use std::time::Duration;
 #[test]
 fn test_performance_timeline_marks_and_measures() {
     let mock_clock = Arc::new(MockClock::new(1000));
-    let timeline = PerformanceTimeline::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let timeline =
+        PerformanceTimeline::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
 
     // Registra mark 1 em t = 1000ms
     let m1 = timeline.mark("parse_start");
@@ -18,7 +19,9 @@ fn test_performance_timeline_marks_and_measures() {
     assert_eq!(m2.start_time_ms, 1250.0);
 
     // Mede intervalo
-    let measure = timeline.measure("HTML Parse", "parse_start", "parse_end").unwrap();
+    let measure = timeline
+        .measure("HTML Parse", "parse_start", "parse_end")
+        .unwrap();
     assert_eq!(measure.start_time_ms, 1000.0);
     assert_eq!(measure.duration_ms, 250.0);
 }
@@ -26,7 +29,8 @@ fn test_performance_timeline_marks_and_measures() {
 #[test]
 fn test_scoped_raii_measure() {
     let mock_clock = Arc::new(MockClock::new(2000));
-    let timeline = PerformanceTimeline::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let timeline =
+        PerformanceTimeline::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
 
     {
         let _guard = timeline.scoped_measure("Style Recalc");

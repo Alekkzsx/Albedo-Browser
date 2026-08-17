@@ -172,7 +172,12 @@ impl<T> LogicalSides<T> {
 impl<T: Copy + Add<Output = T> + Sub<Output = T>> LogicalRect<T> {
     /// Converte este retângulo lógico para um retângulo físico (`Rect`), considerando
     /// o modo de escrita, a direção e o tamanho do contêiner pai.
-    pub fn to_physical<U>(&self, wm: WritingMode, dir: Direction, container_size: Size2D<T, U>) -> Rect<T, U> {
+    pub fn to_physical<U>(
+        &self,
+        wm: WritingMode,
+        dir: Direction,
+        container_size: Size2D<T, U>,
+    ) -> Rect<T, U> {
         match wm {
             WritingMode::HorizontalTb => {
                 let x = if dir == Direction::Ltr {
@@ -181,7 +186,10 @@ impl<T: Copy + Add<Output = T> + Sub<Output = T>> LogicalRect<T> {
                     container_size.width - self.inline_start - self.inline_size
                 };
                 let y = self.block_start;
-                Rect::new(Point2D::new(x, y), Size2D::new(self.inline_size, self.block_size))
+                Rect::new(
+                    Point2D::new(x, y),
+                    Size2D::new(self.inline_size, self.block_size),
+                )
             }
             WritingMode::VerticalRl | WritingMode::SidewaysRl => {
                 let x = container_size.width - self.block_start - self.block_size;
@@ -190,7 +198,10 @@ impl<T: Copy + Add<Output = T> + Sub<Output = T>> LogicalRect<T> {
                 } else {
                     container_size.height - self.inline_start - self.inline_size
                 };
-                Rect::new(Point2D::new(x, y), Size2D::new(self.block_size, self.inline_size))
+                Rect::new(
+                    Point2D::new(x, y),
+                    Size2D::new(self.block_size, self.inline_size),
+                )
             }
             WritingMode::VerticalLr | WritingMode::SidewaysLr => {
                 let x = self.block_start;
@@ -199,13 +210,21 @@ impl<T: Copy + Add<Output = T> + Sub<Output = T>> LogicalRect<T> {
                 } else {
                     container_size.height - self.inline_start - self.inline_size
                 };
-                Rect::new(Point2D::new(x, y), Size2D::new(self.block_size, self.inline_size))
+                Rect::new(
+                    Point2D::new(x, y),
+                    Size2D::new(self.block_size, self.inline_size),
+                )
             }
         }
     }
 
     /// Converte um retângulo físico (`Rect`) para o espaço lógico correspondente.
-    pub fn from_physical<U>(rect: Rect<T, U>, wm: WritingMode, dir: Direction, container_size: Size2D<T, U>) -> Self {
+    pub fn from_physical<U>(
+        rect: Rect<T, U>,
+        wm: WritingMode,
+        dir: Direction,
+        container_size: Size2D<T, U>,
+    ) -> Self {
         match wm {
             WritingMode::HorizontalTb => {
                 let inline_start = if dir == Direction::Ltr {

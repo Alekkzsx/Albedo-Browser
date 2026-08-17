@@ -36,7 +36,12 @@ fn test_horizontal_tb_ltr_conversion() {
     assert_eq!(physical.size.width, 300.0);
     assert_eq!(physical.size.height, 150.0);
 
-    let back_to_logical = LogicalRect::from_physical(physical, WritingMode::HorizontalTb, Direction::Ltr, container_size);
+    let back_to_logical = LogicalRect::from_physical(
+        physical,
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        container_size,
+    );
     assert_eq!(back_to_logical, logical);
 }
 
@@ -52,7 +57,12 @@ fn test_horizontal_tb_rtl_conversion() {
     assert_eq!(physical.size.width, 300.0);
     assert_eq!(physical.size.height, 150.0);
 
-    let back_to_logical = LogicalRect::from_physical(physical, WritingMode::HorizontalTb, Direction::Rtl, container_size);
+    let back_to_logical = LogicalRect::from_physical(
+        physical,
+        WritingMode::HorizontalTb,
+        Direction::Rtl,
+        container_size,
+    );
     assert_eq!(back_to_logical, logical);
 }
 
@@ -72,7 +82,12 @@ fn test_vertical_rl_conversion() {
     assert_eq!(physical.size.width, 200.0);
     assert_eq!(physical.size.height, 400.0);
 
-    let back_to_logical = LogicalRect::from_physical(physical, WritingMode::VerticalRl, Direction::Ltr, container_size);
+    let back_to_logical = LogicalRect::from_physical(
+        physical,
+        WritingMode::VerticalRl,
+        Direction::Ltr,
+        container_size,
+    );
     assert_eq!(back_to_logical, logical);
 }
 
@@ -92,7 +107,12 @@ fn test_vertical_lr_conversion() {
     assert_eq!(physical.size.width, 200.0);
     assert_eq!(physical.size.height, 400.0);
 
-    let back_to_logical = LogicalRect::from_physical(physical, WritingMode::VerticalLr, Direction::Ltr, container_size);
+    let back_to_logical = LogicalRect::from_physical(
+        physical,
+        WritingMode::VerticalLr,
+        Direction::Ltr,
+        container_size,
+    );
     assert_eq!(back_to_logical, logical);
 }
 
@@ -100,20 +120,23 @@ fn test_vertical_lr_conversion() {
 fn test_logical_sides_to_physical() {
     let sides: LogicalSides<f32> = LogicalSides::new(10.0, 20.0, 30.0, 40.0);
 
-    let insets_htb_ltr: SideOffsets2D<f32, CssPixel> = sides.to_physical(WritingMode::HorizontalTb, Direction::Ltr);
+    let insets_htb_ltr: SideOffsets2D<f32, CssPixel> =
+        sides.to_physical(WritingMode::HorizontalTb, Direction::Ltr);
     assert_eq!(insets_htb_ltr.top, 30.0); // block_start
     assert_eq!(insets_htb_ltr.right, 20.0); // inline_end
     assert_eq!(insets_htb_ltr.bottom, 40.0); // block_end
     assert_eq!(insets_htb_ltr.left, 10.0); // inline_start
 
-    let insets_htb_rtl: SideOffsets2D<f32, CssPixel> = sides.to_physical(WritingMode::HorizontalTb, Direction::Rtl);
+    let insets_htb_rtl: SideOffsets2D<f32, CssPixel> =
+        sides.to_physical(WritingMode::HorizontalTb, Direction::Rtl);
     assert_eq!(insets_htb_rtl.left, 20.0); // inline_end vira left
     assert_eq!(insets_htb_rtl.right, 10.0); // inline_start vira right
 }
 
 #[test]
 fn test_layout_unit_fixed_point_logical_rect() {
-    let container_size: LayoutSize = Size2D::new(LayoutUnit::from_px(100), LayoutUnit::from_px(100));
+    let container_size: LayoutSize =
+        Size2D::new(LayoutUnit::from_px(100), LayoutUnit::from_px(100));
     let logical = LogicalLayoutRect::new(
         LayoutUnit::from_px(10),
         LayoutUnit::from_px(20),
@@ -121,7 +144,8 @@ fn test_layout_unit_fixed_point_logical_rect() {
         LayoutUnit::from_px(30),
     );
 
-    let physical: LayoutRect = logical.to_physical(WritingMode::HorizontalTb, Direction::Ltr, container_size);
+    let physical: LayoutRect =
+        logical.to_physical(WritingMode::HorizontalTb, Direction::Ltr, container_size);
     assert_eq!(physical.origin.x, LayoutUnit::from_px(10));
     assert_eq!(physical.origin.y, LayoutUnit::from_px(20));
     assert_eq!(physical.size.width, LayoutUnit::from_px(50));

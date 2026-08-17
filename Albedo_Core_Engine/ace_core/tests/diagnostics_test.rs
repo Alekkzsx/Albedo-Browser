@@ -6,7 +6,10 @@ fn test_crash_key_registry() {
     registry.set_key("url", "https://example.com/login");
     registry.set_key("script_id", "42");
 
-    assert_eq!(registry.get_key("url"), Some("https://example.com/login".to_string()));
+    assert_eq!(
+        registry.get_key("url"),
+        Some("https://example.com/login".to_string())
+    );
     assert_eq!(registry.get_key("script_id"), Some("42".to_string()));
 
     let summary = registry.dump_summary();

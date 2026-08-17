@@ -68,7 +68,12 @@ impl IdleTaskQueue {
     }
 
     /// Enfileira uma nova tarefa ociosa com timeout opcional (`requestIdleCallback`).
-    pub fn post_idle_task<F>(&self, timeout: Option<Duration>, clock: &dyn Clock, f: F) -> (TaskId, Arc<AtomicBool>)
+    pub fn post_idle_task<F>(
+        &self,
+        timeout: Option<Duration>,
+        clock: &dyn Clock,
+        f: F,
+    ) -> (TaskId, Arc<AtomicBool>)
     where
         F: FnOnce(IdleDeadline) + Send + 'static,
     {
@@ -98,10 +103,7 @@ impl IdleTaskQueue {
                 continue;
             }
 
-            let timed_out = task
-                .target_timeout_ms
-                .map(|t| now_ms >= t)
-                .unwrap_or(false);
+            let timed_out = task.target_timeout_ms.map(|t| now_ms >= t).unwrap_or(false);
 
             let current_time_ms = clock.now_highres();
             let has_time_remaining = current_time_ms < deadline_ms;

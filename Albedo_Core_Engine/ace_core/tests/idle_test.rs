@@ -7,7 +7,8 @@ use std::time::Duration;
 #[test]
 fn test_idle_task_execution_within_budget() {
     let mock_clock = Arc::new(MockClock::new(1000));
-    let event_loop = EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let event_loop =
+        EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
     let task_queue = event_loop.handle();
 
     let executed = Arc::new(AtomicBool::new(false));
@@ -27,7 +28,8 @@ fn test_idle_task_execution_within_budget() {
 #[test]
 fn test_idle_task_timeout_forced_execution() {
     let mock_clock = Arc::new(MockClock::new(1000));
-    let event_loop = EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let event_loop =
+        EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
     let task_queue = event_loop.handle();
 
     let executed = Arc::new(AtomicBool::new(false));

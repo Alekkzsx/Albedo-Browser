@@ -69,7 +69,8 @@ fn test_segmented_string_streaming_chunks() {
 
 #[test]
 fn test_segmented_string_source_location_tracking() {
-    let mut s = SegmentedString::from_static_str("line 1\nline 2\nline 3").with_url("https://example.com");
+    let mut s =
+        SegmentedString::from_static_str("line 1\nline 2\nline 3").with_url("https://example.com");
 
     let loc = s.location();
     assert_eq!(loc.line, 1);

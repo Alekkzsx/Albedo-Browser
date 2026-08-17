@@ -27,7 +27,8 @@ impl UnguessableToken {
 
         // Mix 128 bits usando FxHash round
         let high = crate::utils::fast_hash(&(nanos as u64, count, 0x517cc1b727220a95u64));
-        let low = crate::utils::fast_hash(&((nanos >> 64) as u64, count, high, 0x4f1bbcdcbfa54005u64));
+        let low =
+            crate::utils::fast_hash(&((nanos >> 64) as u64, count, high, 0x4f1bbcdcbfa54005u64));
 
         Self { high, low }
     }

@@ -103,9 +103,7 @@ impl Origin {
     /// Retorna `true` se este contexto for considerado um Contexto Seguro (HTTPS ou Localhost).
     pub fn is_secure(&self) -> bool {
         match self {
-            Self::Tuple { scheme, host, .. } => {
-                *scheme == Scheme::Https || host.is_localhost()
-            }
+            Self::Tuple { scheme, host, .. } => *scheme == Scheme::Https || host.is_localhost(),
             Self::Opaque(_) => false,
         }
     }
@@ -116,8 +114,16 @@ impl Origin {
     pub fn same_origin(&self, other: &Self) -> bool {
         match (self, other) {
             (
-                Self::Tuple { scheme: s1, host: h1, port: p1 },
-                Self::Tuple { scheme: s2, host: h2, port: p2 },
+                Self::Tuple {
+                    scheme: s1,
+                    host: h1,
+                    port: p1,
+                },
+                Self::Tuple {
+                    scheme: s2,
+                    host: h2,
+                    port: p2,
+                },
             ) => s1 == s2 && h1 == h2 && p1 == p2,
             _ => false,
         }
@@ -132,7 +138,6 @@ impl Origin {
     pub fn is_same_site(&self, other: &Self) -> bool {
         self.to_site().same_site(&other.to_site())
     }
-
 
     /// Converte a origem em sua serialização ASCII padrão (RFC 6454 Section 6.2).
     /// Ex: `"https://example.com:443"`, `"http://localhost:8080"` ou `"null"` para opacas.
@@ -157,8 +162,12 @@ impl Origin {
             return Ok(Self::new_opaque());
         }
 
-        let parsed_url = url::Url::parse(trimmed)
-            .map_err(|e| AceError::security("SOP", format!("URL inválida para extração de origem: {}", e)))?;
+        let parsed_url = url::Url::parse(trimmed).map_err(|e| {
+            AceError::security(
+                "SOP",
+                format!("URL inválida para extração de origem: {}", e),
+            )
+        })?;
 
         let scheme = match parsed_url.scheme() {
             "http" => Scheme::Http,
@@ -206,4 +215,3 @@ impl std::str::FromStr for Origin {
         Self::parse(s)
     }
 }
-

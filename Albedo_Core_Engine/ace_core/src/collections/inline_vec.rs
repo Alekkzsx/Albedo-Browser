@@ -233,4 +233,3 @@ impl<T, const N: usize> From<[T; N]> for InlineVec<T, N> {
         inline
     }
 }
-

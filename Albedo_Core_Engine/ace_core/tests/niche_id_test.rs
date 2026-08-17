@@ -1,4 +1,4 @@
-use ace_core::id::{NodeId, TabId, ProcessId, RequestId, FrameId};
+use ace_core::id::{FrameId, NodeId, ProcessId, RequestId, TabId};
 use std::mem::size_of;
 
 #[test]

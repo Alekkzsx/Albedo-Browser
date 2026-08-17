@@ -267,7 +267,10 @@ fn parse_hsl_functional(s: &str) -> Result<Color, AceError> {
         return Err(invalid_color(s));
     }
 
-    let h: f32 = parts[0].trim_end_matches("deg").parse().map_err(|_| invalid_color(s))?;
+    let h: f32 = parts[0]
+        .trim_end_matches("deg")
+        .parse()
+        .map_err(|_| invalid_color(s))?;
     let s_val = parse_percentage(parts[1])?;
     let l_val = parse_percentage(parts[2])?;
     let a = if parts.len() == 4 {
@@ -466,5 +469,3 @@ impl From<(u8, u8, u8, u8)> for Color {
         Self::from_rgba(r, g, b, a)
     }
 }
-
-

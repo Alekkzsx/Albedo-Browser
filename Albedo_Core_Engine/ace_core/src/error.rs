@@ -32,7 +32,12 @@ impl SourceLocation {
     }
 
     /// Cria uma localização com a URL do arquivo de origem.
-    pub fn with_url(url: impl Into<String>, line: usize, column: usize, byte_offset: usize) -> Self {
+    pub fn with_url(
+        url: impl Into<String>,
+        line: usize,
+        column: usize,
+        byte_offset: usize,
+    ) -> Self {
         Self {
             url: Some(url.into()),
             line,
@@ -45,9 +50,17 @@ impl SourceLocation {
 impl fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref url) = self.url {
-            write!(f, "{}:{}:{} (byte {})", url, self.line, self.column, self.byte_offset)
+            write!(
+                f,
+                "{}:{}:{} (byte {})",
+                url, self.line, self.column, self.byte_offset
+            )
         } else {
-            write!(f, "{}:{} (byte {})", self.line, self.column, self.byte_offset)
+            write!(
+                f,
+                "{}:{} (byte {})",
+                self.line, self.column, self.byte_offset
+            )
         }
     }
 }
@@ -171,7 +184,11 @@ pub enum AceError {
 
 impl AceError {
     /// Construtor ergonômico para erros de parsing.
-    pub fn parse(message: impl Into<String>, location: SourceLocation, is_recoverable: bool) -> Self {
+    pub fn parse(
+        message: impl Into<String>,
+        location: SourceLocation,
+        is_recoverable: bool,
+    ) -> Self {
         Self::Parse {
             location,
             message: message.into(),
@@ -180,7 +197,11 @@ impl AceError {
     }
 
     /// Construtor ergonômico para erros de rede.
-    pub fn network(url: impl Into<String>, message: impl Into<String>, status_code: Option<u16>) -> Self {
+    pub fn network(
+        url: impl Into<String>,
+        message: impl Into<String>,
+        status_code: Option<u16>,
+    ) -> Self {
         Self::Network {
             url: url.into(),
             status_code,
@@ -313,4 +334,3 @@ impl From<std::str::Utf8Error> for AceError {
         }
     }
 }
-

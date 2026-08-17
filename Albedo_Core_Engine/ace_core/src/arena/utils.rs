@@ -5,7 +5,10 @@
 /// Arredonda um endereço ou tamanho para o próximo múltiplo da potência de 2 especificada em `align`.
 #[inline]
 pub const fn align_up(val: usize, align: usize) -> usize {
-    debug_assert!(align.is_power_of_two(), "O alinhamento deve ser uma potência de 2");
+    debug_assert!(
+        align.is_power_of_two(),
+        "O alinhamento deve ser uma potência de 2"
+    );
     (val + align - 1) & !(align - 1)
 }
 
