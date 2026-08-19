@@ -127,3 +127,35 @@ fn test_premultiplied_f32() {
     assert!((g - expected_a).abs() < 1e-4);
     assert!((b - expected_a).abs() < 1e-4);
 }
+
+#[test]
+fn test_css_color_level_4_and_5() {
+    // color(display-p3 ...)
+    let p3_red = Color::parse("color(display-p3 1 0 0)").unwrap();
+    assert_eq!(p3_red.r, 255);
+    assert_eq!(p3_red.a, 255);
+
+    let p3_alpha = Color::parse("color(display-p3 0 1 0 / 0.5)").unwrap();
+    assert_eq!(p3_alpha.g, 255);
+    assert_eq!(p3_alpha.a, 128);
+
+    // hwb()
+    let hwb_green = Color::parse("hwb(120deg 0% 0%)").unwrap();
+    assert_eq!(hwb_green, Color::LIME);
+
+    // light-dark()
+    let light = Color::parse("light-dark(white, black)").unwrap();
+    assert_eq!(light, Color::WHITE);
+
+    // color-mix(in srgb, ...)
+    let mixed_srgb = Color::parse("color-mix(in srgb, red 50%, blue 50%)").unwrap();
+    assert_eq!(mixed_srgb.r, 128);
+    assert_eq!(mixed_srgb.b, 128);
+    assert_eq!(mixed_srgb.g, 0);
+
+    // color-mix(in oklab, ...)
+    let mixed_oklab = Color::parse("color-mix(in oklab, red, blue)").unwrap();
+    assert!(mixed_oklab.r > 100);
+    assert!(mixed_oklab.b > 100);
+}
+
