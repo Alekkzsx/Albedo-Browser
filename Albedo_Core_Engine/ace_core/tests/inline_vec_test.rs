@@ -38,3 +38,31 @@ fn test_inline_vec_stack_and_spill_to_heap() {
     vec.clear();
     assert!(vec.is_empty());
 }
+
+#[test]
+fn test_inline_vec_drain_and_truncate() {
+    let mut vec: InlineVec<i32, 4> = InlineVec::new();
+    vec.extend([10, 20, 30, 40]);
+
+    assert_eq!(vec.first(), Some(&10));
+    assert_eq!(vec.last(), Some(&40));
+    assert_eq!(vec.get(2), Some(&30));
+
+    // Drain partial range
+    let drained = vec.drain(1..3);
+    assert_eq!(drained, vec![20, 30]);
+    assert_eq!(vec.as_slice(), &[10, 40]);
+
+    // Truncate
+    vec.truncate(1);
+    assert_eq!(vec.as_slice(), &[10]);
+    assert_eq!(vec.len(), 1);
+
+    // Spill to heap and drain
+    vec.extend([20, 30, 40, 50]);
+    assert!(!vec.is_inline());
+    let drained_heap = vec.drain(1..4);
+    assert_eq!(drained_heap, vec![20, 30, 40]);
+    assert_eq!(vec.as_slice(), &[10, 50]);
+}
+

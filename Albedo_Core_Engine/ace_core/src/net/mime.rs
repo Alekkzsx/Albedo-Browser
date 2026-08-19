@@ -86,6 +86,22 @@ impl MimeType {
         Self::new("image", "webp")
     }
 
+    pub fn image_avif() -> Self {
+        Self::new("image", "avif")
+    }
+
+    pub fn image_bmp() -> Self {
+        Self::new("image", "bmp")
+    }
+
+    pub fn image_ico() -> Self {
+        Self::new("image", "x-icon")
+    }
+
+    pub fn image_tiff() -> Self {
+        Self::new("image", "tiff")
+    }
+
     pub fn image_svg() -> Self {
         Self::new("image", "svg+xml")
     }
@@ -96,6 +112,14 @@ impl MimeType {
 
     pub fn font_woff2() -> Self {
         Self::new("font", "woff2")
+    }
+
+    pub fn font_ttf() -> Self {
+        Self::new("font", "ttf")
+    }
+
+    pub fn font_otf() -> Self {
+        Self::new("font", "otf")
     }
 
     pub fn video_mp4() -> Self {
@@ -261,6 +285,21 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         return "image/webp";
     }
+    if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+    {
+        return "image/avif";
+    }
+    if bytes.starts_with(b"\x00\x00\x01\x00") || bytes.starts_with(b"\x00\x00\x02\x00") {
+        return "image/x-icon";
+    }
+    if bytes.starts_with(b"BM") {
+        return "image/bmp";
+    }
+    if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
+        return "image/tiff";
+    }
     if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
         return "audio/wav";
     }
@@ -269,6 +308,15 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     }
     if bytes.starts_with(b"wOF2") {
         return "font/woff2";
+    }
+    if bytes.starts_with(b"\x00\x01\x00\x00")
+        || bytes.starts_with(b"true")
+        || bytes.starts_with(b"typ1")
+    {
+        return "font/ttf";
+    }
+    if bytes.starts_with(b"OTTO") {
+        return "font/otf";
     }
     if bytes.starts_with(b"%PDF-") {
         return "application/pdf";
@@ -301,7 +349,8 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         return "text/html";
     }
 
-    if sample_lower.starts_with("<svg")
+    if sample_lower.contains("<svg")
+        || sample_lower.contains("<!doctype svg")
         || (sample_lower.starts_with("<?xml") && sample_lower.contains("<svg"))
     {
         return "image/svg+xml";
