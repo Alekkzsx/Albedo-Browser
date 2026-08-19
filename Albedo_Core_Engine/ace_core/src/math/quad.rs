@@ -76,32 +76,58 @@ impl<U: Copy> Quad2D<f32, U> {
         rect(min_x, min_y, max_x - min_x, max_y - min_y)
     }
 
-    /// Testa se um ponto bidimensional está contido no interior do quadrilátero convexo
-    /// utilizando o algoritmo de orientação por produto vetorial 2D (*Cross-Product Sign Test*).
-    pub fn contains_point(&self, point: &Point2D<f32, U>) -> bool {
-        let mut has_positive = false;
-        let mut has_negative = false;
+    /// Retorna o número de enrolamento (*Winding Number*) do quadrilátero em relação a um ponto.
+    pub fn winding_number(&self, point: &Point2D<f32, U>) -> i32 {
+        let mut wn = 0;
+        let px = point.x;
+        let py = point.y;
 
         for i in 0..4 {
             let p1 = self.points[i];
             let p2 = self.points[(i + 1) % 4];
 
-            // Produto vetorial 2D do segmento de borda com o vetor até o ponto alvo
-            let cross = (p2.x - p1.x) * (point.y - p1.y) - (p2.y - p1.y) * (point.x - p1.x);
-
-            if cross > 0.0001 {
-                has_positive = true;
-            } else if cross < -0.0001 {
-                has_negative = true;
+            if p1.y <= py {
+                if p2.y > py {
+                    let is_left = (p2.x - p1.x) * (py - p1.y) - (px - p1.x) * (p2.y - p1.y);
+                    if is_left > 0.0 {
+                        wn += 1;
+                    }
+                }
+            } else if p2.y <= py {
+                let is_left = (p2.x - p1.x) * (py - p1.y) - (px - p1.x) * (p2.y - p1.y);
+                if is_left < 0.0 {
+                    wn -= 1;
+                }
             }
+        }
+        wn
+    }
 
-            // Se cruzou bordas com sinais opostos, o ponto está do lado de fora
-            if has_positive && has_negative {
-                return false;
+    /// Testa se um ponto bidimensional está contido no interior do quadrilátero
+    /// utilizando o algoritmo de Ray-Casting (Even-Odd / Jordan Curve Theorem),
+    /// suportando quadriláteros convexos, côncavos, rotacionados ou projetados por matrizes 3D.
+    pub fn contains_point(&self, point: &Point2D<f32, U>) -> bool {
+        let mut inside = false;
+        let px = point.x;
+        let py = point.y;
+
+        for i in 0..4 {
+            let j = (i + 3) % 4;
+            let pi = self.points[i];
+            let pj = self.points[j];
+
+            let dy = pj.y - pi.y;
+            if dy.abs() > 1e-6 {
+                let intersect = ((pi.y > py) != (pj.y > py))
+                    && (px < (pj.x - pi.x) * (py - pi.y) / dy + pi.x);
+
+                if intersect {
+                    inside = !inside;
+                }
             }
         }
 
-        true
+        inside
     }
 }
 
