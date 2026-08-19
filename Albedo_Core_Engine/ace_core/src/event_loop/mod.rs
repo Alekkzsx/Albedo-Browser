@@ -30,34 +30,106 @@ use crate::id::TaskId;
 use crate::time::{Clock, MonotonicClock};
 use crossbeam::queue::SegQueue;
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicBool;
+use std::collections::BinaryHeap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tracing::{debug, trace, warn};
 
-/// Representa um temporizador agendado (`setTimeout` / `setInterval`) com prazo em milissegundos.
+/// Número total de fontes de tarefas padronizadas no WHATWG HTML.
+const NUM_TASK_SOURCES: usize = 7;
+
+/// Representa um temporizador agendado (`setTimeout` / `setInterval`) ordenado por prazo.
 struct ScheduledTimer {
-    #[allow(dead_code)]
     id: TaskId,
     target_ms: u64,
+    #[allow(dead_code)]
+    nesting_level: usize,
     is_cancelled: Arc<AtomicBool>,
     func: TaskFn,
+}
+
+impl PartialEq for ScheduledTimer {
+    fn eq(&self, other: &Self) -> bool {
+        self.target_ms == other.target_ms && self.id == other.id
+    }
+}
+
+impl Eq for ScheduledTimer {}
+
+impl PartialOrd for ScheduledTimer {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScheduledTimer {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Min-Heap: menor target_ms tem maior prioridade de desempilhamento
+        other
+            .target_ms
+            .cmp(&self.target_ms)
+            .then_with(|| other.id.raw().cmp(&self.id.raw()))
+    }
+}
+
+/// Conjunto de filas concorrentes dedicadas por fonte de tarefas WHATWG.
+struct TaskSourceQueues {
+    queues: [SegQueue<Task>; NUM_TASK_SOURCES],
+}
+
+impl TaskSourceQueues {
+    fn new() -> Self {
+        Self {
+            queues: [
+                SegQueue::new(), // UserInteraction (0)
+                SegQueue::new(), // DomManipulation (1)
+                SegQueue::new(), // Rendering (2)
+                SegQueue::new(), // HistoryTraversal (3)
+                SegQueue::new(), // Networking (4)
+                SegQueue::new(), // Timer (5)
+                SegQueue::new(), // Internal (6)
+            ],
+        }
+    }
+
+    #[inline]
+    fn push(&self, task: Task) {
+        let idx = task.source.priority() as usize;
+        if idx < NUM_TASK_SOURCES {
+            self.queues[idx].push(task);
+        } else {
+            self.queues[NUM_TASK_SOURCES - 1].push(task);
+        }
+    }
+
+    /// Seleciona a próxima tarefa prioritária respeitando a especificação WHATWG.
+    #[inline]
+    fn pop_highest_priority(&self) -> Option<Task> {
+        for q in &self.queues {
+            if let Some(task) = q.pop() {
+                return Some(task);
+            }
+        }
+        None
+    }
 }
 
 /// Handle clonável para submissão de tarefas e microtasks a partir de qualquer thread.
 #[derive(Clone)]
 pub struct TaskQueue {
-    /// Canal de macrotasks categorizadas.
-    task_tx: mpsc::UnboundedSender<Task>,
+    /// Filas concorrentes dedicadas por `TaskSource`.
+    task_queues: Arc<TaskSourceQueues>,
     /// Fila concorrente dinâmica ilimitada para microtasks (zero perda de promises).
     microtask_queue: Arc<SegQueue<TaskFn>>,
     /// Fila de tarefas de renderização (requestAnimationFrame).
     raf_queue: Arc<SegQueue<TaskFn>>,
     /// Fila de tarefas ociosas (requestIdleCallback).
     idle_queue: Arc<IdleTaskQueue>,
-    /// Lista de temporizadores agendados.
-    timers: Arc<Mutex<Vec<ScheduledTimer>>>,
+    /// Heap mínima de temporizadores agendados ($O(\log n)$).
+    timers: Arc<Mutex<BinaryHeap<ScheduledTimer>>>,
+    /// Flag para throttling de abas em segundo plano (min 1000ms para timers).
+    background_throttling: Arc<AtomicBool>,
     /// Relógio de referência para resolução de prazos.
     clock: Arc<dyn Clock>,
 }
@@ -71,7 +143,7 @@ impl TaskQueue {
     {
         let (task, cancel_handle) = Task::new(source, f);
         let id = task.id;
-        let _ = self.task_tx.send(task);
+        self.task_queues.push(task);
         (id, cancel_handle)
     }
 
@@ -83,12 +155,36 @@ impl TaskQueue {
         self.queue_task(TaskSource::UserInteraction, f)
     }
 
+    /// Enfileira uma tarefa de manipulação de DOM.
+    pub fn queue_dom<F>(&self, f: F) -> (TaskId, Arc<AtomicBool>)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::DomManipulation, f)
+    }
+
     /// Enfileira uma tarefa de rede (`fetch`, websockets, callbacks HTTP).
     pub fn queue_network<F>(&self, f: F) -> (TaskId, Arc<AtomicBool>)
     where
         F: FnOnce() + Send + 'static,
     {
         self.queue_task(TaskSource::Networking, f)
+    }
+
+    /// Enfileira uma tarefa de navegação / histórico.
+    pub fn queue_history<F>(&self, f: F) -> (TaskId, Arc<AtomicBool>)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::HistoryTraversal, f)
+    }
+
+    /// Enfileira uma tarefa de pipeline de renderização.
+    pub fn queue_rendering<F>(&self, f: F) -> (TaskId, Arc<AtomicBool>)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::Rendering, f)
     }
 
     /// Enfileira uma tarefa de temporizador imediato.
@@ -100,24 +196,61 @@ impl TaskQueue {
     }
 
     /// Agenda um temporizador para disparar após um atraso (`delay`) no Event Loop (`setTimeout`).
-    /// Utiliza o `Clock` configurado para suportar relógios determinísticos (`MockClock`) em testes.
+    /// Aplica regras de clamping da WHATWG HTML (nível de aninhamento >= 5 exige min 4ms).
     pub fn schedule_timer<F>(&self, delay: Duration, f: F) -> (TaskId, Arc<AtomicBool>)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.schedule_timer_with_nesting(delay, 1, f)
+    }
+
+    /// Agenda um temporizador com nível de aninhamento explícito para clamping conforme a spec.
+    pub fn schedule_timer_with_nesting<F>(
+        &self,
+        delay: Duration,
+        nesting_level: usize,
+        f: F,
+    ) -> (TaskId, Arc<AtomicBool>)
     where
         F: FnOnce() + Send + 'static,
     {
         let id = TaskId::new();
         let is_cancelled = Arc::new(AtomicBool::new(false));
-        let target_ms = self.clock.now_ms() + delay.as_millis() as u64;
+
+        let mut effective_delay_ms = delay.as_millis() as u64;
+
+        // Clamping WHATWG HTML 8.5.2: Timers com aninhamento >= 5 são limitados a no mínimo 4ms
+        if nesting_level >= 5 && effective_delay_ms < 4 {
+            effective_delay_ms = 4;
+        }
+
+        // Throttling de abas em segundo plano: timers limitados a no mínimo 1000ms
+        if self.background_throttling.load(Ordering::Relaxed) && effective_delay_ms < 1000 {
+            effective_delay_ms = 1000;
+        }
+
+        let target_ms = self.clock.now_ms() + effective_delay_ms;
 
         let timer = ScheduledTimer {
             id,
             target_ms,
+            nesting_level,
             is_cancelled: Arc::clone(&is_cancelled),
             func: Box::new(f),
         };
 
         self.timers.lock().push(timer);
         (id, is_cancelled)
+    }
+
+    /// Ativa ou desativa o modo de throttling de segundo plano para esta fila de tarefas.
+    pub fn set_background_throttling(&self, enabled: bool) {
+        self.background_throttling.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Retorna `true` se o throttling em segundo plano estiver ativo.
+    pub fn is_background_throttling(&self) -> bool {
+        self.background_throttling.load(Ordering::Relaxed)
     }
 
     /// Enfileira uma microtask (Promises, `queueMicrotask`, MutationObserver).
@@ -174,11 +307,13 @@ impl TaskQueue {
 
 /// O processador do Event Loop de uma aba ou contexto de navegação.
 pub struct EventLoop {
-    task_rx: Mutex<mpsc::UnboundedReceiver<Task>>,
+    task_queues: Arc<TaskSourceQueues>,
     microtask_queue: Arc<SegQueue<TaskFn>>,
     raf_queue: Arc<SegQueue<TaskFn>>,
     idle_queue: Arc<IdleTaskQueue>,
-    timers: Arc<Mutex<Vec<ScheduledTimer>>>,
+    timers: Arc<Mutex<BinaryHeap<ScheduledTimer>>>,
+    background_throttling: Arc<AtomicBool>,
+    is_running: Arc<AtomicBool>,
     clock: Arc<dyn Clock>,
     queue_handle: TaskQueue,
 }
@@ -191,27 +326,32 @@ impl EventLoop {
 
     /// Inicializa um Event Loop acoplado a uma implementação customizada de `Clock` (ex: `MockClock` para testes).
     pub fn with_clock(clock: Arc<dyn Clock>) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let task_queues = Arc::new(TaskSourceQueues::new());
         let microtask_queue = Arc::new(SegQueue::new());
         let raf_queue = Arc::new(SegQueue::new());
         let idle_queue = Arc::new(IdleTaskQueue::new());
-        let timers = Arc::new(Mutex::new(Vec::new()));
+        let timers = Arc::new(Mutex::new(BinaryHeap::new()));
+        let background_throttling = Arc::new(AtomicBool::new(false));
+        let is_running = Arc::new(AtomicBool::new(false));
 
         let handle = TaskQueue {
-            task_tx: tx,
+            task_queues: Arc::clone(&task_queues),
             microtask_queue: Arc::clone(&microtask_queue),
             raf_queue: Arc::clone(&raf_queue),
             idle_queue: Arc::clone(&idle_queue),
             timers: Arc::clone(&timers),
+            background_throttling: Arc::clone(&background_throttling),
             clock: Arc::clone(&clock),
         };
 
         Self {
-            task_rx: Mutex::new(rx),
+            task_queues,
             microtask_queue,
             raf_queue,
             idle_queue,
             timers,
+            background_throttling,
+            is_running,
             clock,
             queue_handle: handle,
         }
@@ -229,19 +369,25 @@ impl EventLoop {
         self.queue_handle.clone()
     }
 
-    /// Processa todos os temporizadores agendados cujo prazo já expirou.
+    /// Ativa ou desativa o throttling de timers para abas em segundo plano.
+    pub fn set_background_throttling(&self, enabled: bool) {
+        self.background_throttling.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Processa todos os temporizadores agendados cujo prazo já expirou utilizando a Min-Heap ($O(k \log n)$).
     pub fn process_expired_timers(&self) -> usize {
         let now = self.clock.now_ms();
         let mut expired = Vec::new();
 
         {
             let mut timers = self.timers.lock();
-            let mut i = 0;
-            while i < timers.len() {
-                if timers[i].target_ms <= now {
-                    expired.push(timers.remove(i));
+            while let Some(timer) = timers.peek() {
+                if timer.target_ms <= now {
+                    if let Some(t) = timers.pop() {
+                        expired.push(t);
+                    }
                 } else {
-                    i += 1;
+                    break;
                 }
             }
         }
@@ -270,13 +416,8 @@ impl EventLoop {
             executed_something = true;
         }
 
-        // 2. Pega e executa uma Macrotask se houver
-        let task_opt = {
-            let mut rx = self.task_rx.lock();
-            rx.try_recv().ok()
-        };
-
-        if let Some(task) = task_opt {
+        // 2. Seleciona e executa a Macrotask de maior prioridade disponível
+        if let Some(task) = self.task_queues.pop_highest_priority() {
             trace!("Executando Macrotask [{:?}] ID: {}", task.source, task.id);
             task.execute();
             executed_something = true;
@@ -331,26 +472,20 @@ impl EventLoop {
         executed
     }
 
-    /// Inicia a execução contínua bloqueando a thread atual até o canal ser fechado.
+    /// Solicita o encerramento do Event Loop contínuo.
+    pub fn stop(&self) {
+        self.is_running.store(false, Ordering::SeqCst);
+    }
+
+    /// Inicia a execução contínua bloqueando a thread atual até `stop()` ser chamado.
     pub fn run_sync(&self) {
         debug!("Iniciando Event Loop WHATWG...");
-        loop {
-            self.process_expired_timers();
+        self.is_running.store(true, Ordering::SeqCst);
 
-            let task_opt = {
-                let mut rx = self.task_rx.lock();
-                rx.blocking_recv()
-            };
-
-            match task_opt {
-                Some(task) => {
-                    task.execute();
-                    self.drain_microtasks();
-                }
-                None => {
-                    // Canal desconectado
-                    break;
-                }
+        while self.is_running.load(Ordering::SeqCst) {
+            let processed = self.step();
+            if !processed {
+                std::thread::yield_now();
             }
         }
         debug!("Event Loop finalizado.");
