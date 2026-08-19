@@ -22,6 +22,9 @@ bitflags = "2.6"
 # Web Standards & URLs
 url = "2.5"
 
+# Cryptography & Security
+getrandom = "0.2"
+
 # Math & Geometry
 euclid = "0.22"
 

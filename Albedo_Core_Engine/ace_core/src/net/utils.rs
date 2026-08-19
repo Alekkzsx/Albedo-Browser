@@ -39,27 +39,28 @@ pub fn parse_data_uri(data_uri: &str) -> Option<(MimeType, Vec<u8>)> {
     Some((mime, decoded_bytes))
 }
 
-/// Decodifica uma sequência codificada por percentual (ex: `Hello%20World` -> `Hello World`).
+/// Decodifica uma sequência codificada por percentual (ex: `Hello%20World` -> `Hello World`),
+/// preservando bytes em sequências com `%` malformado (ex: `100%_concluido` -> `100%_concluido`).
 pub fn percent_decode(input: &str) -> String {
-    let mut bytes = Vec::with_capacity(input.len());
-    let mut chars = input.bytes();
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut i = 0;
 
-    while let Some(b) = chars.next() {
-        if b == b'%' {
-            let h1 = chars.next();
-            let h2 = chars.next();
-            if let (Some(c1), Some(c2)) = (h1, h2) {
-                if let (Some(d1), Some(d2)) = (hex_digit(c1), hex_digit(c2)) {
-                    bytes.push((d1 << 4) | d2);
-                    continue;
-                }
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(d1), Some(d2)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+                output.push((d1 << 4) | d2);
+                i += 3;
+                continue;
             }
         }
-        bytes.push(b);
+        output.push(bytes[i]);
+        i += 1;
     }
 
-    String::from_utf8_lossy(&bytes).into_owned()
+    String::from_utf8_lossy(&output).into_owned()
 }
+
 
 /// Valida se um esquema de protocolo é seguro e padrão para navegação na web.
 #[inline]

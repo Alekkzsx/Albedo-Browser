@@ -59,7 +59,7 @@ impl ReferrerPolicy {
     }
 }
 
-/// Computa o valor canônico do cabeçalho `Referer` conforme a especificação W3C Referrer Policy.
+/// Computa o valor canônico do cabeçalho `Referer` conforme a especificação W3C Referrer Policy (RFC 9110 §10.1.4).
 pub fn compute_referrer(
     current_origin: &Origin,
     current_url: &str,
@@ -70,20 +70,26 @@ pub fn compute_referrer(
         return None;
     }
 
+    let parsed_current = url::Url::parse(current_url).ok()?;
+    let parsed_target = url::Url::parse(target_url).ok()?;
+
     // Apenas esquemas HTTP/HTTPS são elegíveis para envio de Referer
-    if !current_url.starts_with("http://") && !current_url.starts_with("https://") {
+    if parsed_current.scheme() != "http" && parsed_current.scheme() != "https" {
         return None;
     }
 
-    let is_current_https = current_url.starts_with("https://");
-    let is_target_https = target_url.starts_with("https://");
-    let is_downgrade = is_current_https && !is_target_https;
+    let is_downgrade = parsed_current.scheme() == "https" && parsed_target.scheme() != "https";
+    let target_origin = Origin::parse(target_url).ok()?;
+    let is_same_origin = current_origin.same_origin(&target_origin);
 
-    // Remove fragmentos (#...) e dados de autenticação sensíveis da URL atual
-    let sanitized_current_url = strip_url_fragment(current_url);
+    // Sanitiza: remove fragmentos (#...) e dados de autenticação sensíveis (userinfo)
+    let mut sanitized_url = parsed_current.clone();
+    sanitized_url.set_fragment(None);
+    let _ = sanitized_url.set_username("");
+    let _ = sanitized_url.set_password(None);
+    let sanitized_current_url = sanitized_url.to_string();
+
     let origin_string = current_origin.ascii_serialization();
-
-    let is_same_origin = target_url.starts_with(&origin_string);
 
     match policy {
         ReferrerPolicy::NoReferrer => None,
@@ -129,11 +135,3 @@ pub fn compute_referrer(
     }
 }
 
-/// Remove fragmentos (`#...`) da URL para evitar vazamento de estado de âncora.
-fn strip_url_fragment(url: &str) -> String {
-    if let Some(idx) = url.find('#') {
-        url[..idx].to_string()
-    } else {
-        url.to_string()
-    }
-}

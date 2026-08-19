@@ -117,20 +117,36 @@ fn test_net_utils() {
 
 #[test]
 fn test_security_utils() {
+    // Subdomínios casam com wildcard
     assert!(sec_utils::matches_domain_pattern(
         "*.example.com",
         "api.example.com"
     ));
     assert!(sec_utils::matches_domain_pattern(
         "*.example.com",
+        "sub.api.example.com"
+    ));
+    // Conforme W3C CSP3 §6.7.2, *.example.com NÃO casa com o domínio ápice
+    assert!(!sec_utils::matches_domain_pattern(
+        "*.example.com",
         "example.com"
+    ));
+    assert!(!sec_utils::matches_domain_pattern(
+        "*.example.com",
+        "notexample.com"
     ));
     assert!(!sec_utils::matches_domain_pattern(
         "*.example.com",
         "other.org"
     ));
+    // Case-insensitivity
+    assert!(sec_utils::matches_domain_pattern(
+        "*.EXAMPLE.COM",
+        "api.example.com"
+    ));
     assert!(sec_utils::matches_domain_pattern("*", "anything.io"));
 }
+
 
 #[test]
 fn test_text_utils() {

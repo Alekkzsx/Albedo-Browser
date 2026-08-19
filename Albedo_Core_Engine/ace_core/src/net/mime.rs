@@ -333,11 +333,23 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         return "audio/mpeg";
     }
 
-    // Sniffing de texto/HTML/SVG (ignora espaços iniciais)
-    let sample = match std::str::from_utf8(&bytes[..bytes.len().min(512)]) {
+    // Sniffing de texto/HTML/SVG (ignora espaços iniciais) com proteção de fronteira UTF-8 em 512 bytes
+    let slice = &bytes[..bytes.len().min(512)];
+    let sample = match std::str::from_utf8(slice) {
         Ok(s) => s.trim_start(),
-        Err(_) => return "application/octet-stream",
+        Err(e) => {
+            let valid_len = e.valid_up_to();
+            if valid_len > 0 {
+                match std::str::from_utf8(&slice[..valid_len]) {
+                    Ok(s) => s.trim_start(),
+                    Err(_) => return "application/octet-stream",
+                }
+            } else {
+                return "application/octet-stream";
+            }
+        }
     };
+
 
     let sample_lower = sample.to_ascii_lowercase();
     if sample_lower.starts_with("<!doctype html")

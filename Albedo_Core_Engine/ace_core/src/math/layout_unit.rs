@@ -179,6 +179,30 @@ impl LayoutUnit {
             self.0 as f32 / other.0 as f32
         }
     }
+
+    /// Executa o Box Snapping (arredondamento de caixa) com eliminação de fendas (pixel cracking).
+    ///
+    /// Garante algebricamente que para caixas adjacentes B1=(origem, tam1) e B2=(origem+tam1, tam2),
+    /// a borda direita de B1 coincidirá exatamente com a borda esquerda de B2 (`right_1 == left_2`).
+    ///
+    /// Retorna `(snapped_origin, snapped_size)`.
+    #[inline]
+    pub fn snap_box(self, size: Self) -> (i32, i32) {
+        snap_box(self, size)
+    }
+}
+
+/// Executa o Box Snapping de uma dimensão 1D (origem e tamanho) garantindo zero pixel cracking.
+///
+/// Fórmula:
+/// - `snapped_origin = round(origin)`
+/// - `snapped_size = round(origin + size) - round(origin)`
+#[inline]
+pub fn snap_box(origin: LayoutUnit, size: LayoutUnit) -> (i32, i32) {
+    let snapped_origin = origin.round_px();
+    let snapped_end = (origin + size).round_px();
+    let snapped_size = snapped_end - snapped_origin;
+    (snapped_origin, snapped_size)
 }
 
 impl Add for LayoutUnit {
