@@ -4,6 +4,7 @@
 # Ignora a pasta target na raiz e em qualquer sub-diretório de workspaces
 /target/
 **/target/
+.agents
 
 # Ferramentas de Profiling, Cobertura e Benchmarking do ecossistema Rust
 *.profraw
