@@ -42,3 +42,27 @@ fn test_quad_transformed_rotated_hit_testing() {
     // Um ponto no canto do bounding box original fora do losango
     assert!(!quad.contains_point(&point2(60.0, 60.0)));
 }
+
+#[test]
+fn test_quad_winding_number_and_concave() {
+    let r = rect(0.0, 0.0, 100.0, 100.0);
+    let quad = CssQuad::from_rect(&r);
+
+    // Ponto interno deve ter winding number não nulo
+    assert_ne!(quad.winding_number(&point2(50.0, 50.0)), 0);
+    // Ponto externo tem winding number 0
+    assert_eq!(quad.winding_number(&point2(150.0, 50.0)), 0);
+
+    // Quadrilátero em formato de ponta de flecha (côncavo)
+    let p0 = point2(0.0, 0.0);
+    let p1 = point2(100.0, 50.0);
+    let p2 = point2(0.0, 100.0);
+    let p3 = point2(30.0, 50.0);
+    let arrow_quad = CssQuad::new(p0, p1, p2, p3);
+
+    // Ponto dentro da ponta
+    assert!(arrow_quad.contains_point(&point2(50.0, 50.0)));
+    // Ponto no recuo (fora da flecha)
+    assert!(!arrow_quad.contains_point(&point2(15.0, 50.0)));
+}
+
