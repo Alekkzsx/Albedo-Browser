@@ -1,4 +1,4 @@
-use ace_core::text::SegmentedString;
+﻿use ace_core::text::SegmentedString;
 
 #[test]
 fn test_segmented_string_basic_advance() {
@@ -64,6 +64,32 @@ fn test_segmented_string_streaming_chunks() {
     assert_eq!(val, "main");
     assert_eq!(s.advance(), Some('"'));
     assert_eq!(s.advance(), Some('>'));
+    assert!(s.is_eof());
+}
+
+#[test]
+fn test_segmented_string_peek_multiple_chunks_offset_bugfix() {
+    let mut s = SegmentedString::new();
+    s.append_chunk("ab");
+    s.append_chunk("cd");
+
+    assert_eq!(s.advance(), Some('a'));
+    // Agora o offset no chunk 0 é 1 ('b'). Ao fazer peek em 'b' ou avançar:
+    assert_eq!(s.peek(), Some('b'));
+    assert_eq!(s.advance(), Some('b'));
+
+    // Chunk 0 exaurido, próximo chunk 'cd' deve ter peek em 'c' sem pânico de offset
+    assert_eq!(s.peek(), Some('c'));
+    assert_eq!(s.advance(), Some('c'));
+    assert_eq!(s.advance(), Some('d'));
+    assert!(s.is_eof());
+}
+
+#[test]
+fn test_segmented_string_whatwg_preprocessing() {
+    let mut s = SegmentedString::from_preprocessed_str("line1\r\nline2\rline3\0end");
+    let text = s.consume_while(|_| true);
+    assert_eq!(text, "line1\nline2\nline3\u{FFFD}end");
     assert!(s.is_eof());
 }
 
