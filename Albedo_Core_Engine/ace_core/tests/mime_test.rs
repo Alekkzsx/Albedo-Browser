@@ -63,4 +63,17 @@ fn test_mime_sniffing() {
         "application/xml"
     );
     assert_eq!(sniff_mime_type(b"Hello plain text world"), "text/plain");
+
+    // Novos formatos de imagem e fontes
+    assert_eq!(sniff_mime_type(b"\x00\x00\x00\x1cftypavif"), "image/avif");
+    assert_eq!(sniff_mime_type(b"\x00\x00\x01\x00\x01\x00"), "image/x-icon");
+    assert_eq!(sniff_mime_type(b"BM\x36\x00\x00\x00"), "image/bmp");
+    assert_eq!(sniff_mime_type(b"II*\x00\x08\x00"), "image/tiff");
+    assert_eq!(sniff_mime_type(b"\x00\x01\x00\x00\x00"), "font/ttf");
+    assert_eq!(sniff_mime_type(b"OTTO\x00\x01"), "font/otf");
+    assert_eq!(
+        sniff_mime_type(b"<!-- comment --><svg></svg>"),
+        "image/svg+xml"
+    );
 }
+
