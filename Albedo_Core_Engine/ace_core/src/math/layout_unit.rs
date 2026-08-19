@@ -135,6 +135,50 @@ impl LayoutUnit {
     pub const fn saturating_mul(self, factor: i32) -> Self {
         Self(self.0.saturating_mul(factor))
     }
+
+    /// Multiplicação fracionária segura com acumulador temporário `i64`:
+    /// calcula `(self * numerator) / denominator` sem estouro intermediário de 32 bits.
+    #[inline]
+    pub fn mul_div(self, numerator: i32, denominator: i32) -> Self {
+        if denominator == 0 {
+            return if (self.0 >= 0) == (numerator >= 0) {
+                MAX
+            } else {
+                MIN
+            };
+        }
+        let result = (self.0 as i64 * numerator as i64) / denominator as i64;
+        let clamped = result.clamp(i32::MIN as i64, i32::MAX as i64);
+        Self(clamped as i32)
+    }
+
+    /// Multiplicação fracionária segura por uma fração (numerador, denominador).
+    #[inline]
+    pub fn mul_fraction(self, num: i32, den: i32) -> Self {
+        self.mul_div(num, den)
+    }
+
+    /// Multiplica duas grandezas `LayoutUnit` preservando a escala (dividindo pela base `UNITS_PER_PIXEL`).
+    #[inline]
+    pub fn mul_layout_unit(self, other: Self) -> Self {
+        let result = (self.0 as i64 * other.0 as i64) / UNITS_PER_PIXEL as i64;
+        let clamped = result.clamp(i32::MIN as i64, i32::MAX as i64);
+        Self(clamped as i32)
+    }
+
+    /// Divide duas grandezas `LayoutUnit` retornando a razão como `f32`.
+    #[inline]
+    pub fn div_layout_unit(self, other: Self) -> f32 {
+        if other.0 == 0 {
+            if self.0 >= 0 {
+                f32::INFINITY
+            } else {
+                f32::NEG_INFINITY
+            }
+        } else {
+            self.0 as f32 / other.0 as f32
+        }
+    }
 }
 
 impl Add for LayoutUnit {

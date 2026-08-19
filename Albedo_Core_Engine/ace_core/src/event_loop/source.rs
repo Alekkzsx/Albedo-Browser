@@ -10,12 +10,14 @@ pub enum TaskSource {
     UserInteraction,
     /// Mutações e eventos do DOM.
     DomManipulation,
+    /// Tarefas do pipeline de renderização (`requestAnimationFrame`, recalc de layout/estilo).
+    Rendering,
+    /// Navegação e histórico de sessões (History Traversal).
+    HistoryTraversal,
     /// Respostas de requisições de rede (`fetch`, HTTP/HTTPS, WebSockets, DNS).
     Networking,
     /// Temporizadores agendados (`setTimeout`, `setInterval`).
     Timer,
-    /// Tarefas do pipeline de renderização (`requestAnimationFrame`, recalc de layout/estilo).
-    Rendering,
     /// Tarefas internas do motor Albedo (IPC, GC cycle collector, profiling).
     Internal,
 }
@@ -28,9 +30,21 @@ impl TaskSource {
             Self::UserInteraction => 0,
             Self::DomManipulation => 1,
             Self::Rendering => 2,
-            Self::Networking => 3,
-            Self::Timer => 4,
-            Self::Internal => 5,
+            Self::HistoryTraversal => 3,
+            Self::Networking => 4,
+            Self::Timer => 5,
+            Self::Internal => 6,
         }
     }
+
+    /// Lista todas as fontes de tarefas em ordem de prioridade padrão WHATWG.
+    pub const ALL_SOURCES: [TaskSource; 7] = [
+        Self::UserInteraction,
+        Self::DomManipulation,
+        Self::Rendering,
+        Self::HistoryTraversal,
+        Self::Networking,
+        Self::Timer,
+        Self::Internal,
+    ];
 }

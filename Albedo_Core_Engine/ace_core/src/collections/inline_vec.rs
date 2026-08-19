@@ -1,4 +1,4 @@
-﻿//! # Vetor Híbrido Stack/Heap (Small-Vector Optimization)
+//! # Vetor Híbrido Stack/Heap (Small-Vector Optimization)
 //!
 //! Armazena até `N` elementos diretamente no corpo da struct (stack ou arena).
 //! Se a capacidade inline for excedida, transiciona transparentemente para o heap (`Vec<T>`).
@@ -220,19 +220,106 @@ impl<T, const N: usize> InlineVec<T, N> {
         }
     }
 
-    /// Drena todos os elementos do vetor como um iterador `Vec<T>`.
-    pub fn drain<R>(&mut self, _range: R) -> Vec<T> {
-        let mut out = Vec::with_capacity(self.len());
+    /// Retorna a capacidade atual do vetor (N se inline, ou a capacidade do heap).
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        match &self.storage {
+            InlineVecStorage::Inline { .. } => N,
+            InlineVecStorage::Heap(vec) => vec.capacity(),
+        }
+    }
+
+    /// Obtém uma referência ao elemento no índice especificado.
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.as_slice().get(index)
+    }
+
+    /// Obtém uma referência mutável ao elemento no índice especificado.
+    #[inline]
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.as_mut_slice().get_mut(index)
+    }
+
+    /// Retorna uma referência ao primeiro elemento, se houver.
+    #[inline]
+    pub fn first(&self) -> Option<&T> {
+        self.as_slice().first()
+    }
+
+    /// Retorna uma referência mutável ao primeiro elemento, se houver.
+    #[inline]
+    pub fn first_mut(&mut self) -> Option<&mut T> {
+        self.as_mut_slice().first_mut()
+    }
+
+    /// Retorna uma referência ao último elemento, se houver.
+    #[inline]
+    pub fn last(&self) -> Option<&T> {
+        self.as_slice().last()
+    }
+
+    /// Retorna uma referência mutável ao último elemento, se houver.
+    #[inline]
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.as_mut_slice().last_mut()
+    }
+
+    /// Reduz o comprimento do vetor para `new_len`, descartando os elementos excedentes.
+    pub fn truncate(&mut self, new_len: usize) {
+        if new_len >= self.len() {
+            return;
+        }
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
-                let count = *len;
-                *len = 0;
-                for slot in data.iter_mut().take(count) {
-                    out.push(unsafe { slot.assume_init_read() });
+                let to_drop = *len - new_len;
+                for slot in data.iter_mut().skip(new_len).take(to_drop) {
+                    unsafe { slot.assume_init_drop() };
                 }
+                *len = new_len;
             }
             InlineVecStorage::Heap(vec) => {
-                out.append(vec);
+                vec.truncate(new_len);
+            }
+        }
+    }
+
+    /// Drena os elementos especificados pelo intervalo como um `Vec<T>`.
+    pub fn drain<R>(&mut self, range: R) -> Vec<T>
+    where
+        R: std::ops::RangeBounds<usize>,
+    {
+        let len = self.len();
+        let start = match range.start_bound() {
+            std::ops::Bound::Included(&n) => n,
+            std::ops::Bound::Excluded(&n) => n + 1,
+            std::ops::Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            std::ops::Bound::Included(&n) => n + 1,
+            std::ops::Bound::Excluded(&n) => n,
+            std::ops::Bound::Unbounded => len,
+        };
+        assert!(start <= end && end <= len, "intervalo de drain fora dos limites");
+
+        let count = end - start;
+        let mut out = Vec::with_capacity(count);
+
+        match &mut self.storage {
+            InlineVecStorage::Inline { len: inline_len, data } => {
+                for slot in data.iter_mut().skip(start).take(count) {
+                    out.push(unsafe { slot.assume_init_read() });
+                }
+                // Desloca os elementos remanescentes
+                let tail_count = *inline_len - end;
+                for i in 0..tail_count {
+                    let next = unsafe { data[end + i].assume_init_read() };
+                    data[start + i].write(next);
+                }
+                *inline_len -= count;
+            }
+            InlineVecStorage::Heap(vec) => {
+                out.extend(vec.drain(start..end));
             }
         }
         out
