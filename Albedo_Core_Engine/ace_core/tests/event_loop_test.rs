@@ -133,3 +133,109 @@ fn test_request_animation_frame() {
     assert_eq!(executed, 2);
     assert_eq!(raf_counter.load(Ordering::SeqCst), 2);
 }
+
+#[test]
+fn test_task_source_prioritization() {
+    let el = EventLoop::new();
+    let q = el.handle();
+    let execution_order = Arc::new(parking_lot::Mutex::new(Vec::new()));
+
+    let eo1 = Arc::clone(&execution_order);
+    let eo2 = Arc::clone(&execution_order);
+    let eo3 = Arc::clone(&execution_order);
+
+    // Enfileira networking primeiro, depois DOM, depois UserInteraction
+    q.queue_network(move || {
+        eo1.lock().push("network");
+    });
+    q.queue_dom(move || {
+        eo2.lock().push("dom");
+    });
+    q.queue_user_interaction(move || {
+        eo3.lock().push("user");
+    });
+
+    // O event loop deve executar UserInteraction primeiro, depois DOM, depois Network!
+    assert!(el.step());
+    assert_eq!(*execution_order.lock(), vec!["user"]);
+
+    assert!(el.step());
+    assert_eq!(*execution_order.lock(), vec!["user", "dom"]);
+
+    assert!(el.step());
+    assert_eq!(*execution_order.lock(), vec!["user", "dom", "network"]);
+}
+
+#[test]
+fn test_timer_min_heap_ordering() {
+    let mock_clock = Arc::new(MockClock::new(0));
+    let el = EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let q = el.handle();
+    let fired_timers = Arc::new(parking_lot::Mutex::new(Vec::new()));
+
+    let f1 = Arc::clone(&fired_timers);
+    let f2 = Arc::clone(&fired_timers);
+    let f3 = Arc::clone(&fired_timers);
+
+    // Agenda 300ms primeiro, depois 100ms, depois 200ms
+    q.schedule_timer(Duration::from_millis(300), move || {
+        f1.lock().push(300);
+    });
+    q.schedule_timer(Duration::from_millis(100), move || {
+        f2.lock().push(100);
+    });
+    q.schedule_timer(Duration::from_millis(200), move || {
+        f3.lock().push(200);
+    });
+
+    // Em t = 150ms: apenas o de 100ms deve ter expirado
+    mock_clock.advance_millis(150);
+    assert_eq!(el.process_expired_timers(), 1);
+    assert_eq!(*fired_timers.lock(), vec![100]);
+
+    // Em t = 350ms: os de 200ms e 300ms expiram na ordem correta
+    mock_clock.advance_millis(200);
+    assert_eq!(el.process_expired_timers(), 2);
+    assert_eq!(*fired_timers.lock(), vec![100, 200, 300]);
+}
+
+#[test]
+fn test_timer_clamping_and_background_throttling() {
+    let mock_clock = Arc::new(MockClock::new(0));
+    let el = EventLoop::with_clock(Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>);
+    let q = el.handle();
+    let fired = Arc::new(AtomicBool::new(false));
+
+    // Nível de aninhamento >= 5 com delay 0ms deve ser clampado para 4ms
+    let f1 = Arc::clone(&fired);
+    q.schedule_timer_with_nesting(Duration::from_millis(0), 5, move || {
+        f1.store(true, Ordering::SeqCst);
+    });
+
+    // Em t = 2ms: ainda não disparou por causa do clamp de 4ms
+    mock_clock.advance_millis(2);
+    assert_eq!(el.process_expired_timers(), 0);
+    assert!(!fired.load(Ordering::SeqCst));
+
+    // Em t = 4ms: dispara
+    mock_clock.advance_millis(2);
+    assert_eq!(el.process_expired_timers(), 1);
+    assert!(fired.load(Ordering::SeqCst));
+
+    // Throttling em background (mínimo 1000ms)
+    q.set_background_throttling(true);
+    let bg_fired = Arc::new(AtomicBool::new(false));
+    let bg_clone = Arc::clone(&bg_fired);
+    q.schedule_timer(Duration::from_millis(10), move || {
+        bg_clone.store(true, Ordering::SeqCst);
+    });
+
+    mock_clock.advance_millis(500);
+    assert_eq!(el.process_expired_timers(), 0);
+    assert!(!bg_fired.load(Ordering::SeqCst));
+
+    mock_clock.advance_millis(500);
+    assert_eq!(el.process_expired_timers(), 1);
+    assert!(bg_fired.load(Ordering::SeqCst));
+}
+
