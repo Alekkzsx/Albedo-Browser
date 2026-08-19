@@ -3,6 +3,8 @@
 //! Implementação completa de cores para o CSSOM e Pipeline de Pintura GPU,
 //! incluindo parsing de especificações CSS3/CSS4 e composição alfa Porter-Duff.
 
+#![allow(clippy::excessive_precision)]
+
 use crate::error::AceError;
 use std::fmt;
 
@@ -17,6 +19,56 @@ pub struct Color {
     pub b: u8,
     /// Canal Alfa de transparência (0 = Totalmente Transparente, 255 = Totalmente Opaco).
     pub a: u8,
+}
+
+/// Espaços de cores suportados conforme as especificações CSS Color Module Level 4 e Level 5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorSpace {
+    /// sRGB padrão da Web.
+    Srgb,
+    /// sRGB linear (sem correção gamma).
+    SrgbLinear,
+    /// Display-P3 (Wide-Gamut D65).
+    DisplayP3,
+    /// Adobe RGB (1998).
+    A98Rgb,
+    /// ProPhoto RGB.
+    ProPhotoRgb,
+    /// ITU-R BT.2020.
+    Rec2020,
+    /// Espaço perceptual cartesiano Oklab.
+    Oklab,
+    /// Espaço perceptual polar Oklch.
+    Oklch,
+    /// CIE L*a*b* (D50).
+    Lab,
+    /// CIE L*C*h (D50).
+    Lch,
+    /// HSL (Hue, Saturation, Lightness).
+    Hsl,
+    /// HWB (Hue, Whiteness, Blackness).
+    Hwb,
+}
+
+impl ColorSpace {
+    /// Analisa o nome de um espaço de cor CSS.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "srgb" => Some(Self::Srgb),
+            "srgb-linear" => Some(Self::SrgbLinear),
+            "display-p3" => Some(Self::DisplayP3),
+            "a98-rgb" => Some(Self::A98Rgb),
+            "prophoto-rgb" => Some(Self::ProPhotoRgb),
+            "rec2020" => Some(Self::Rec2020),
+            "oklab" => Some(Self::Oklab),
+            "oklch" => Some(Self::Oklch),
+            "lab" => Some(Self::Lab),
+            "lch" => Some(Self::Lch),
+            "hsl" => Some(Self::Hsl),
+            "hwb" => Some(Self::Hwb),
+            _ => None,
+        }
+    }
 }
 
 impl Color {
@@ -142,32 +194,49 @@ impl Color {
         }
     }
 
-    /// Parser universal de especificações de cores CSS (hex, `rgb()`, `rgba()`, `hsl()`, `hsla()` e cores nomeadas).
+    /// Parser universal de especificações de cores CSS (hex, `rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `oklab()`, `oklch()`, `color()`, `color-mix()`, `light-dark()` e cores nomeadas).
     pub fn parse_css(input: &str) -> Result<Self, AceError> {
-        let s = input.trim().to_ascii_lowercase();
+        let s = input.trim();
+        let s_lower = s.to_ascii_lowercase();
 
-        if s.starts_with('#') {
-            return Self::from_hex(&s);
+        if s_lower.starts_with('#') {
+            return Self::from_hex(&s_lower);
         }
 
-        if let Some(color) = named_color(&s) {
+        if let Some(color) = named_color(&s_lower) {
             return Ok(color);
         }
 
-        if s.starts_with("rgb(") || s.starts_with("rgba(") {
-            return parse_rgb_functional(&s);
+        if s_lower.starts_with("rgb(") || s_lower.starts_with("rgba(") {
+            return parse_rgb_functional(&s_lower);
         }
 
-        if s.starts_with("hsl(") || s.starts_with("hsla(") {
-            return parse_hsl_functional(&s);
+        if s_lower.starts_with("hsl(") || s_lower.starts_with("hsla(") {
+            return parse_hsl_functional(&s_lower);
         }
 
-        if s.starts_with("oklab(") {
-            return parse_oklab_functional(&s);
+        if s_lower.starts_with("hwb(") {
+            return parse_hwb_functional(&s_lower);
         }
 
-        if s.starts_with("oklch(") {
-            return parse_oklch_functional(&s);
+        if s_lower.starts_with("oklab(") {
+            return parse_oklab_functional(&s_lower);
+        }
+
+        if s_lower.starts_with("oklch(") {
+            return parse_oklch_functional(&s_lower);
+        }
+
+        if s_lower.starts_with("color(") {
+            return parse_color_functional(&s_lower);
+        }
+
+        if s_lower.starts_with("color-mix(") {
+            return parse_color_mix_functional(&s_lower);
+        }
+
+        if s_lower.starts_with("light-dark(") {
+            return parse_light_dark_functional(&s_lower);
         }
 
         Err(invalid_color(input))
@@ -425,6 +494,329 @@ fn parse_oklch_functional(s: &str) -> Result<Color, AceError> {
     };
 
     Ok(Color::from_oklch(super::oklab::Oklch::new(l, c, h, alpha)))
+}
+
+fn parse_hwb_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("hwb(").trim_end_matches(')').trim();
+
+    let parts: Vec<&str> = if inner.contains('/') {
+        let mut split = inner.split('/');
+        let main = split.next().unwrap_or("");
+        let alpha = split.next().unwrap_or("");
+        let mut p: Vec<&str> = main.split_whitespace().collect();
+        if !alpha.trim().is_empty() {
+            p.push(alpha.trim());
+        }
+        p
+    } else if inner.contains(',') {
+        inner.split(',').map(str::trim).collect()
+    } else {
+        inner.split_whitespace().collect()
+    };
+
+    if parts.len() < 3 || parts.len() > 4 {
+        return Err(invalid_color(s));
+    }
+
+    let h: f32 = parts[0]
+        .trim_end_matches("deg")
+        .parse()
+        .map_err(|_| invalid_color(s))?;
+    let w = parse_percentage(parts[1])?;
+    let b = parse_percentage(parts[2])?;
+    let a = if parts.len() == 4 {
+        parse_alpha(parts[3])?
+    } else {
+        1.0
+    };
+
+    let (r, g, b_val, a_val) = hwb_to_srgb(h, w, b, a);
+    Ok(Color::from_rgba_f32(r, g, b_val, a_val))
+}
+
+fn parse_color_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("color(").trim_end_matches(')').trim();
+
+    let (main, alpha_str) = if let Some((m, a)) = inner.split_once('/') {
+        (m.trim(), Some(a.trim()))
+    } else {
+        (inner, None)
+    };
+
+    let parts: Vec<&str> = main.split_whitespace().collect();
+    if parts.len() < 4 {
+        return Err(invalid_color(s));
+    }
+
+    let space_str = parts[0];
+    let space = ColorSpace::parse(space_str).ok_or_else(|| invalid_color(s))?;
+
+    let r = parse_percentage(parts[1])?;
+    let g = parse_percentage(parts[2])?;
+    let b = parse_percentage(parts[3])?;
+    let a = if let Some(a_str) = alpha_str {
+        parse_alpha(a_str)?
+    } else {
+        1.0
+    };
+
+    match space {
+        ColorSpace::DisplayP3 => {
+            let (sr, sg, sb, sa) = display_p3_to_srgb(r, g, b, a);
+            Ok(Color::from_rgba_f32(sr, sg, sb, sa))
+        }
+        ColorSpace::Srgb => Ok(Color::from_rgba_f32(r, g, b, a)),
+        ColorSpace::SrgbLinear => Ok(Color::from_rgba_f32(
+            linear_to_srgb(r),
+            linear_to_srgb(g),
+            linear_to_srgb(b),
+            a,
+        )),
+        _ => Ok(Color::from_rgba_f32(r, g, b, a)),
+    }
+}
+
+fn parse_light_dark_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s
+        .trim_start_matches("light-dark(")
+        .trim_end_matches(')')
+        .trim();
+    let parts = split_top_level_commas(inner);
+    if parts.len() != 2 {
+        return Err(invalid_color(s));
+    }
+    // Avalia o ramo claro por padrão
+    Color::parse_css(parts[0])
+}
+
+fn parse_color_mix_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s
+        .trim_start_matches("color-mix(")
+        .trim_end_matches(')')
+        .trim();
+    let parts = split_top_level_commas(inner);
+    if parts.len() != 3 {
+        return Err(invalid_color(s));
+    }
+
+    let in_part = parts[0].trim();
+    let space_str = in_part
+        .strip_prefix("in ")
+        .ok_or_else(|| invalid_color(s))?
+        .trim();
+    let space = ColorSpace::parse(space_str).ok_or_else(|| invalid_color(s))?;
+
+    let (c1, p1) = parse_color_with_percentage(parts[1])?;
+    let (c2, p2) = parse_color_with_percentage(parts[2])?;
+
+    mix_colors(space, c1, p1, c2, p2)
+}
+
+fn parse_color_with_percentage(s: &str) -> Result<(Color, Option<f32>), AceError> {
+    let trimmed = s.trim();
+    if let Some(last_space_idx) = trimmed.rfind(' ') {
+        let (color_part, pct_part) = (
+            trimmed[..last_space_idx].trim(),
+            trimmed[last_space_idx + 1..].trim(),
+        );
+        if pct_part.ends_with('%') {
+            if let Ok(pct) = parse_percentage(pct_part) {
+                if let Ok(color) = Color::parse_css(color_part) {
+                    return Ok((color, Some(pct)));
+                }
+            }
+        }
+    }
+    let color = Color::parse_css(trimmed)?;
+    Ok((color, None))
+}
+
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0;
+    let mut start = 0;
+
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
+            ',' if depth == 0 => {
+                parts.push(s[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < s.len() {
+        let remainder = s[start..].trim();
+        if !remainder.is_empty() {
+            parts.push(remainder);
+        }
+    }
+    parts
+}
+
+/// Converte Display-P3 (R, G, B floats 0..1 com curva sRGB) para sRGB (R, G, B, A floats 0..1).
+pub fn display_p3_to_srgb(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
+    let r_lin = srgb_to_linear(r);
+    let g_lin = srgb_to_linear(g);
+    let b_lin = srgb_to_linear(b);
+
+    let r_srgb_lin = 1.22494018 * r_lin - 0.22474048 * g_lin;
+    let g_srgb_lin = -0.04205696 * r_lin + 1.04205696 * g_lin;
+    let b_srgb_lin = -0.01963756 * r_lin - 0.07863605 * g_lin + 1.09827360 * b_lin;
+
+    (
+        linear_to_srgb(r_srgb_lin).clamp(0.0, 1.0),
+        linear_to_srgb(g_srgb_lin).clamp(0.0, 1.0),
+        linear_to_srgb(b_srgb_lin).clamp(0.0, 1.0),
+        a.clamp(0.0, 1.0),
+    )
+}
+
+/// Converte sRGB (R, G, B floats 0..1) para Display-P3 (R, G, B, A floats 0..1).
+pub fn srgb_to_display_p3(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
+    let r_lin = srgb_to_linear(r);
+    let g_lin = srgb_to_linear(g);
+    let b_lin = srgb_to_linear(b);
+
+    let r_p3_lin = 0.822462 * r_lin + 0.177538 * g_lin;
+    let g_p3_lin = 0.033194 * r_lin + 0.966806 * g_lin;
+    let b_p3_lin = 0.017083 * r_lin + 0.072397 * g_lin + 0.910520 * b_lin;
+
+    (
+        linear_to_srgb(r_p3_lin).clamp(0.0, 1.0),
+        linear_to_srgb(g_p3_lin).clamp(0.0, 1.0),
+        linear_to_srgb(b_p3_lin).clamp(0.0, 1.0),
+        a.clamp(0.0, 1.0),
+    )
+}
+
+/// Converte HWB para sRGB.
+pub fn hwb_to_srgb(h: f32, w: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
+    let w = w.clamp(0.0, 1.0);
+    let b = b.clamp(0.0, 1.0);
+    if w + b >= 1.0 {
+        let gray = w / (w + b);
+        return (gray, gray, gray, a.clamp(0.0, 1.0));
+    }
+    let (r, g, b_val, _) = Color::from_hsla(h, 1.0, 0.5, 1.0).to_rgba_f32();
+    let factor = 1.0 - w - b;
+    (
+        (r * factor + w).clamp(0.0, 1.0),
+        (g * factor + w).clamp(0.0, 1.0),
+        (b_val * factor + w).clamp(0.0, 1.0),
+        a.clamp(0.0, 1.0),
+    )
+}
+
+/// Resolve `color-mix()` no espaço de cor solicitado com cálculo preciso de pesos.
+pub fn mix_colors(
+    space: ColorSpace,
+    c1: Color,
+    p1: Option<f32>,
+    c2: Color,
+    p2: Option<f32>,
+) -> Result<Color, AceError> {
+    let (w1, w2, alpha_mult) = match (p1, p2) {
+        (Some(p1), Some(p2)) => {
+            let sum = p1 + p2;
+            if sum <= 0.0 {
+                return Ok(Color::TRANSPARENT);
+            }
+            (p1 / sum, p2 / sum, sum.clamp(0.0, 1.0))
+        }
+        (Some(p1), None) => {
+            let p1 = p1.clamp(0.0, 1.0);
+            (p1, 1.0 - p1, 1.0)
+        }
+        (None, Some(p2)) => {
+            let p2 = p2.clamp(0.0, 1.0);
+            (1.0 - p2, p2, 1.0)
+        }
+        (None, None) => (0.5, 0.5, 1.0),
+    };
+
+    let mixed = match space {
+        ColorSpace::Oklab => {
+            let lab1 = c1.to_oklab();
+            let lab2 = c2.to_oklab();
+            let l = lab1.l * w1 + lab2.l * w2;
+            let a = lab1.a * w1 + lab2.a * w2;
+            let b = lab1.b * w1 + lab2.b * w2;
+            let alpha = (lab1.alpha * w1 + lab2.alpha * w2) * alpha_mult;
+            Color::from_oklab(crate::math::oklab::Oklab::new(l, a, b, alpha))
+        }
+        ColorSpace::Oklch => {
+            let lch1 = c1.to_oklch();
+            let lch2 = c2.to_oklch();
+            let l = lch1.l * w1 + lch2.l * w2;
+            let c = lch1.c * w1 + lch2.c * w2;
+            let alpha = (lch1.alpha * w1 + lch2.alpha * w2) * alpha_mult;
+            let mut dh = (lch2.h - lch1.h) % 360.0;
+            if dh > 180.0 {
+                dh -= 360.0;
+            } else if dh < -180.0 {
+                dh += 360.0;
+            }
+            let h = (lch1.h + dh * w2 + 360.0) % 360.0;
+            Color::from_oklch(crate::math::oklab::Oklch::new(l, c, h, alpha))
+        }
+        ColorSpace::SrgbLinear => {
+            let (r1, g1, b1, a1) = c1.to_rgba_f32();
+            let (r2, g2, b2, a2) = c2.to_rgba_f32();
+            let r = srgb_to_linear(r1) * w1 + srgb_to_linear(r2) * w2;
+            let g = srgb_to_linear(g1) * w1 + srgb_to_linear(g2) * w2;
+            let b = srgb_to_linear(b1) * w1 + srgb_to_linear(b2) * w2;
+            let a = (a1 * w1 + a2 * w2) * alpha_mult;
+            Color::from_rgba_f32(linear_to_srgb(r), linear_to_srgb(g), linear_to_srgb(b), a)
+        }
+        ColorSpace::DisplayP3 => {
+            let (r1, g1, b1, a1) = c1.to_rgba_f32();
+            let (r2, g2, b2, a2) = c2.to_rgba_f32();
+            let (p1_r, p1_g, p1_b, _) = srgb_to_display_p3(r1, g1, b1, a1);
+            let (p2_r, p2_g, p2_b, _) = srgb_to_display_p3(r2, g2, b2, a2);
+            let r = p1_r * w1 + p2_r * w2;
+            let g = p1_g * w1 + p2_g * w2;
+            let b = p1_b * w1 + p2_b * w2;
+            let a = (a1 * w1 + a2 * w2) * alpha_mult;
+            let (sr, sg, sb, sa) = display_p3_to_srgb(r, g, b, a);
+            Color::from_rgba_f32(sr, sg, sb, sa)
+        }
+        _ => {
+            let (r1, g1, b1, a1) = c1.to_rgba_f32();
+            let (r2, g2, b2, a2) = c2.to_rgba_f32();
+            Color::from_rgba_f32(
+                r1 * w1 + r2 * w2,
+                g1 * w1 + g2 * w2,
+                b1 * w1 + b2 * w2,
+                (a1 * w1 + a2 * w2) * alpha_mult,
+            )
+        }
+    };
+    Ok(mixed)
+}
+
+#[inline]
+fn srgb_to_linear(v: f32) -> f32 {
+    if v <= 0.04045 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+#[inline]
+fn linear_to_srgb(v: f32) -> f32 {
+    if v <= 0.0031308 {
+        12.92 * v
+    } else {
+        1.055 * v.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 fn parse_component(s: &str, max: f32) -> Result<f32, AceError> {
