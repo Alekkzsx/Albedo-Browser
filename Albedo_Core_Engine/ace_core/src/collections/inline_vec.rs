@@ -1,4 +1,4 @@
-//! # Vetor Híbrido Stack/Heap (Small-Vector Optimization)
+﻿//! # Vetor Híbrido Stack/Heap (Small-Vector Optimization)
 //!
 //! Armazena até `N` elementos diretamente no corpo da struct (stack ou arena).
 //! Se a capacidade inline for excedida, transiciona transparentemente para o heap (`Vec<T>`).
@@ -53,7 +53,7 @@ impl<T, const N: usize> InlineVec<T, N> {
         matches!(self.storage, InlineVecStorage::Inline { .. })
     }
 
-    /// Adiciona um elemento ao final do vetor.
+    /// Adiciona um elemento ao final do vetor (com proteção contra pânico durante realocação).
     pub fn push(&mut self, item: T) {
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
@@ -63,8 +63,10 @@ impl<T, const N: usize> InlineVec<T, N> {
                 } else {
                     // Transição para o Heap: migra os N elementos inline para um Vec
                     let mut heap_vec = Vec::with_capacity(N * 2 + 1);
-                    for slot in data.iter().take(*len) {
-                        // SAFETY: Os slots 0..*len foram inicializados
+                    let count = *len;
+                    *len = 0; // Se houver pânico, data já é considerado drenado
+                    for slot in data.iter_mut().take(count) {
+                        // SAFETY: Os slots 0..count foram inicializados e *len agora é 0
                         let val = unsafe { slot.assume_init_read() };
                         heap_vec.push(val);
                     }
@@ -75,6 +77,49 @@ impl<T, const N: usize> InlineVec<T, N> {
             InlineVecStorage::Heap(vec) => {
                 vec.push(item);
             }
+        }
+    }
+
+    /// Insere um elemento em uma posição específica.
+    pub fn insert(&mut self, index: usize, item: T) {
+        assert!(index <= self.len(), "índice de inserção fora dos limites");
+        if self.is_inline() && self.len() < N {
+            if let InlineVecStorage::Inline { len, data } = &mut self.storage {
+                for i in (*len..index).rev() {
+                    let prev = unsafe { data[i - 1].assume_init_read() };
+                    data[i].write(prev);
+                }
+                data[index].write(item);
+                *len += 1;
+                return;
+            }
+        }
+
+        // Se estiver cheio ou no heap, garante que vire Heap
+        if self.is_inline() {
+            let mut heap = Vec::with_capacity(self.len() + 1);
+            heap.extend(self.drain(..));
+            heap.insert(index, item);
+            self.storage = InlineVecStorage::Heap(heap);
+        } else if let InlineVecStorage::Heap(vec) = &mut self.storage {
+            vec.insert(index, item);
+        }
+    }
+
+    /// Remove e retorna o elemento no índice especificado.
+    pub fn remove(&mut self, index: usize) -> T {
+        assert!(index < self.len(), "índice de remoção fora dos limites");
+        match &mut self.storage {
+            InlineVecStorage::Inline { len, data } => {
+                let removed = unsafe { data[index].assume_init_read() };
+                for i in index..(*len - 1) {
+                    let next = unsafe { data[i + 1].assume_init_read() };
+                    data[i].write(next);
+                }
+                *len -= 1;
+                removed
+            }
+            InlineVecStorage::Heap(vec) => vec.remove(index),
         }
     }
 
@@ -91,6 +136,45 @@ impl<T, const N: usize> InlineVec<T, N> {
                 }
             }
             InlineVecStorage::Heap(vec) => vec.pop(),
+        }
+    }
+
+    /// Retém apenas os elementos que satisfazem o predicado.
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&T) -> bool,
+    {
+        let len = self.len();
+        let mut del = 0;
+        for i in 0..len {
+            if !f(&self[i]) {
+                del += 1;
+            } else if del > 0 {
+                // Desloca para frente
+                let idx = i - del;
+                if self.is_inline() {
+                    if let InlineVecStorage::Inline { data, .. } = &mut self.storage {
+                        let item = unsafe { data[i].assume_init_read() };
+                        unsafe { data[idx].assume_init_drop() };
+                        data[idx].write(item);
+                    }
+                } else if let InlineVecStorage::Heap(vec) = &mut self.storage {
+                    vec.swap(i, idx);
+                }
+            }
+        }
+        if del > 0 {
+            match &mut self.storage {
+                InlineVecStorage::Inline { len, data } => {
+                    for slot in data.iter_mut().skip(*len - del).take(del) {
+                        unsafe { slot.assume_init_drop() };
+                    }
+                    *len -= del;
+                }
+                InlineVecStorage::Heap(vec) => {
+                    vec.truncate(len - del);
+                }
+            }
         }
     }
 
@@ -122,17 +206,36 @@ impl<T, const N: usize> InlineVec<T, N> {
     pub fn clear(&mut self) {
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
-                for slot in data.iter_mut().take(*len) {
+                let count = *len;
+                *len = 0;
+                for slot in data.iter_mut().take(count) {
                     unsafe {
                         slot.assume_init_drop();
                     }
                 }
-                *len = 0;
             }
             InlineVecStorage::Heap(vec) => {
                 vec.clear();
             }
         }
+    }
+
+    /// Drena todos os elementos do vetor como um iterador `Vec<T>`.
+    pub fn drain<R>(&mut self, _range: R) -> Vec<T> {
+        let mut out = Vec::with_capacity(self.len());
+        match &mut self.storage {
+            InlineVecStorage::Inline { len, data } => {
+                let count = *len;
+                *len = 0;
+                for slot in data.iter_mut().take(count) {
+                    out.push(unsafe { slot.assume_init_read() });
+                }
+            }
+            InlineVecStorage::Heap(vec) => {
+                out.append(vec);
+            }
+        }
+        out
     }
 }
 
