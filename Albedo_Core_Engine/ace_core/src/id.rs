@@ -1,4 +1,4 @@
-//! # Identificadores Globais Fortemente Tipados com Niche Optimization
+﻿//! # Identificadores Globais Fortemente Tipados com Niche Optimization
 //!
 //! Este módulo provê Newtypes atômicos fortemente tipados baseados em `NonZeroU64`.
 //! O uso de `NonZeroU64` garante **Discriminant Elision (Niche Optimization)**:
@@ -20,7 +20,7 @@ fn next_global_id() -> NonZeroU64 {
     }
 }
 
-/// Macro utilitária para gerar structs Newtype de IDs com Niche Optimization e conversões automáticas.
+/// Macro utilitária para gerar structs Newtype de IDs com Niche Optimization e conversões seguras.
 macro_rules! define_id_type {
     ($name:ident, $doc:expr) => {
         #[doc = $doc]
@@ -51,15 +51,6 @@ macro_rules! define_id_type {
                 }
             }
 
-            /// Restaura um identificador a partir de um valor bruto, convertendo zero para `NonZeroU64::MIN`.
-            #[inline]
-            pub const fn from_raw_unchecked(id: u64) -> Self {
-                match std::num::NonZeroU64::new(id) {
-                    Some(nz) => Self(nz),
-                    None => Self(std::num::NonZeroU64::MIN),
-                }
-            }
-
             /// Extrai a representação primária de 64 bits do identificador.
             #[inline]
             pub const fn raw(&self) -> u64 {
@@ -87,10 +78,18 @@ macro_rules! define_id_type {
             }
         }
 
-        impl From<u64> for $name {
+        impl TryFrom<u64> for $name {
+            type Error = $crate::error::AceError;
+
             #[inline]
-            fn from(id: u64) -> Self {
-                Self::from_raw_unchecked(id)
+            fn try_from(id: u64) -> Result<Self, Self::Error> {
+                Self::from_raw(id).ok_or_else(|| {
+                    $crate::error::AceError::invalid_op(concat!(
+                        "Não é possível converter 0 para ",
+                        stringify!($name),
+                        " (requer valor positivo não-nulo)"
+                    ))
+                })
             }
         }
 
