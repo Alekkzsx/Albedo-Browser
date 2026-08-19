@@ -23,6 +23,9 @@ pub enum TaskSource {
 }
 
 impl TaskSource {
+    /// Total de fontes de tarefas padronizadas no WHATWG HTML.
+    pub const COUNT: usize = 7;
+
     /// Retorna o nível de prioridade numérica (menor número = maior prioridade de despacho).
     #[inline]
     pub const fn priority(self) -> u8 {
@@ -37,6 +40,21 @@ impl TaskSource {
         }
     }
 
+    /// Retorna a fonte de tarefas correspondente a um índice numérico de prioridade (0..=6).
+    #[inline]
+    pub const fn from_priority(p: u8) -> Option<Self> {
+        match p {
+            0 => Some(Self::UserInteraction),
+            1 => Some(Self::DomManipulation),
+            2 => Some(Self::Rendering),
+            3 => Some(Self::HistoryTraversal),
+            4 => Some(Self::Networking),
+            5 => Some(Self::Timer),
+            6 => Some(Self::Internal),
+            _ => None,
+        }
+    }
+
     /// Lista todas as fontes de tarefas em ordem de prioridade padrão WHATWG.
     pub const ALL_SOURCES: [TaskSource; 7] = [
         Self::UserInteraction,
@@ -48,3 +66,4 @@ impl TaskSource {
         Self::Internal,
     ];
 }
+

@@ -29,5 +29,8 @@ pub fn style_hint_to_node_flags(hint: StyleChangeHint) -> NodeFlags {
     {
         flags |= NodeFlags::DIRTY_STYLE | NodeFlags::DIRTY_LAYOUT | NodeFlags::DIRTY_PAINT;
     }
+    if hint.contains(StyleChangeHint::SUBTREE_RECALC) {
+        flags |= NodeFlags::SUBTREE_DIRTY | NodeFlags::DIRTY_STYLE;
+    }
     flags
 }

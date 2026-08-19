@@ -16,6 +16,29 @@ enum InlineVecStorage<T, const N: usize> {
     Heap(Vec<T>),
 }
 
+/// Guard para garantir que em caso de pânico no predicado de `retain`,
+/// todos os elementos não processados sejam descartados e o comprimento
+/// reflita com precisão os elementos já retidos.
+struct RetainGuard<'a, T, const N: usize> {
+    data: &'a mut [MaybeUninit<T>; N],
+    len: &'a mut usize,
+    processed: usize,
+    retained: usize,
+    original_len: usize,
+}
+
+impl<'a, T, const N: usize> Drop for RetainGuard<'a, T, N> {
+    fn drop(&mut self) {
+        // Se houver desenrolamento por pânico no predicado, descarta os elementos restantes não processados
+        for slot in &mut self.data[self.processed..self.original_len] {
+            unsafe {
+                slot.assume_init_drop();
+            }
+        }
+        *self.len = self.retained;
+    }
+}
+
 /// Vetor híbrido com armazenamento local de até `N` elementos antes de alocar no heap.
 pub struct InlineVec<T, const N: usize> {
     storage: InlineVecStorage<T, N>,
@@ -80,25 +103,42 @@ impl<T, const N: usize> InlineVec<T, N> {
         }
     }
 
-    /// Insere um elemento em uma posição específica.
+    /// Insere um elemento em uma posição específica deslocando os elementos à direita.
     pub fn insert(&mut self, index: usize, item: T) {
-        assert!(index <= self.len(), "índice de inserção fora dos limites");
-        if self.is_inline() && self.len() < N {
+        let current_len = self.len();
+        assert!(index <= current_len, "índice de inserção fora dos limites");
+
+        if self.is_inline() && current_len < N {
             if let InlineVecStorage::Inline { len, data } = &mut self.storage {
-                for i in (*len..index).rev() {
-                    let prev = unsafe { data[i - 1].assume_init_read() };
-                    data[i].write(prev);
+                let p = data.as_mut_ptr();
+                let count = *len - index;
+                if count > 0 {
+                    // SAFETY: p.add(index) contém `count` elementos inicializados válidos.
+                    // p.add(index + 1) tem capacidade para `count` elementos porque *len < N.
+                    // ptr::copy trata com segurança regiões de memória sobrepostas (memmove).
+                    unsafe {
+                        std::ptr::copy(p.add(index), p.add(index + 1), count);
+                    }
                 }
-                data[index].write(item);
+                // SAFETY: A posição `index` está livre para receber o novo item.
+                unsafe {
+                    p.add(index).write(MaybeUninit::new(item));
+                }
                 *len += 1;
                 return;
             }
         }
 
-        // Se estiver cheio ou no heap, garante que vire Heap
+        // Se estiver cheio ou já no heap, garante transição segura para Heap
         if self.is_inline() {
-            let mut heap = Vec::with_capacity(self.len() + 1);
-            heap.extend(self.drain(..));
+            let mut heap = Vec::with_capacity(N * 2 + 1);
+            let count = self.len();
+            if let InlineVecStorage::Inline { len, data } = &mut self.storage {
+                *len = 0; // Panic guard
+                for slot in data.iter_mut().take(count) {
+                    heap.push(unsafe { slot.assume_init_read() });
+                }
+            }
             heap.insert(index, item);
             self.storage = InlineVecStorage::Heap(heap);
         } else if let InlineVecStorage::Heap(vec) = &mut self.storage {
@@ -111,10 +151,13 @@ impl<T, const N: usize> InlineVec<T, N> {
         assert!(index < self.len(), "índice de remoção fora dos limites");
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
-                let removed = unsafe { data[index].assume_init_read() };
-                for i in index..(*len - 1) {
-                    let next = unsafe { data[i + 1].assume_init_read() };
-                    data[i].write(next);
+                let p = data.as_mut_ptr();
+                let removed = unsafe { p.add(index).read().assume_init() };
+                let count = *len - 1 - index;
+                if count > 0 {
+                    unsafe {
+                        std::ptr::copy(p.add(index + 1), p.add(index), count);
+                    }
                 }
                 *len -= 1;
                 removed
@@ -140,40 +183,50 @@ impl<T, const N: usize> InlineVec<T, N> {
     }
 
     /// Retém apenas os elementos que satisfazem o predicado.
+    ///
+    /// Garante segurança estrita contra Double Free (CWE-415) e vazamentos
+    /// de memória mesmo se o predicado emitir um pânico durante a execução.
     pub fn retain<F>(&mut self, mut f: F)
     where
         F: FnMut(&T) -> bool,
     {
-        let len = self.len();
-        let mut del = 0;
-        for i in 0..len {
-            if !f(&self[i]) {
-                del += 1;
-            } else if del > 0 {
-                // Desloca para frente
-                let idx = i - del;
-                if self.is_inline() {
-                    if let InlineVecStorage::Inline { data, .. } = &mut self.storage {
-                        let item = unsafe { data[i].assume_init_read() };
-                        unsafe { data[idx].assume_init_drop() };
-                        data[idx].write(item);
+        match &mut self.storage {
+            InlineVecStorage::Inline { len, data } => {
+                let original_len = *len;
+                let mut guard = RetainGuard {
+                    data,
+                    len,
+                    processed: 0,
+                    retained: 0,
+                    original_len,
+                };
+
+                for i in 0..original_len {
+                    guard.processed = i;
+                    let keep = f(unsafe { guard.data[i].assume_init_ref() });
+                    guard.processed = i + 1;
+
+                    if keep {
+                        if guard.retained != i {
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    guard.data.as_ptr().add(i),
+                                    guard.data.as_mut_ptr().add(guard.retained),
+                                    1,
+                                );
+                            }
+                        }
+                        guard.retained += 1;
+                    } else {
+                        unsafe {
+                            guard.data[i].assume_init_drop();
+                        }
                     }
-                } else if let InlineVecStorage::Heap(vec) = &mut self.storage {
-                    vec.swap(i, idx);
                 }
+                // RetainGuard::drop é invocado aqui, atualizando *len = guard.retained
             }
-        }
-        if del > 0 {
-            match &mut self.storage {
-                InlineVecStorage::Inline { len, data } => {
-                    for slot in data.iter_mut().skip(*len - del).take(del) {
-                        unsafe { slot.assume_init_drop() };
-                    }
-                    *len -= del;
-                }
-                InlineVecStorage::Heap(vec) => {
-                    vec.truncate(len - del);
-                }
+            InlineVecStorage::Heap(vec) => {
+                vec.retain(f);
             }
         }
     }
@@ -307,14 +360,16 @@ impl<T, const N: usize> InlineVec<T, N> {
 
         match &mut self.storage {
             InlineVecStorage::Inline { len: inline_len, data } => {
-                for slot in data.iter_mut().skip(start).take(count) {
-                    out.push(unsafe { slot.assume_init_read() });
+                let p = data.as_mut_ptr();
+                for i in start..end {
+                    out.push(unsafe { p.add(i).read().assume_init() });
                 }
                 // Desloca os elementos remanescentes
                 let tail_count = *inline_len - end;
-                for i in 0..tail_count {
-                    let next = unsafe { data[end + i].assume_init_read() };
-                    data[start + i].write(next);
+                if tail_count > 0 {
+                    unsafe {
+                        std::ptr::copy(p.add(end), p.add(start), tail_count);
+                    }
                 }
                 *inline_len -= count;
             }

@@ -42,6 +42,7 @@ fn clear_invalidates_all_ids() {
     arena.clear();
 
     assert!(arena.is_empty());
+    assert_eq!(arena.len(), 0);
     assert_eq!(arena.get(a), None);
     assert_eq!(arena.get(b), None);
 
@@ -49,6 +50,78 @@ fn clear_invalidates_all_ids() {
     let c = arena.alloc(3);
     assert_eq!(arena.get(a), None);
     assert_eq!(arena.get(c), Some(&3));
+    assert_eq!(arena.len(), 1);
+}
+
+#[test]
+fn clear_idempotent_multiple_calls_no_duplicates() {
+    let mut arena = Arena::new();
+    let _a = arena.alloc(10);
+    let _b = arena.alloc(20);
+    let _c = arena.alloc(30);
+
+    assert_eq!(arena.len(), 3);
+
+    // Primeiro clear
+    arena.clear();
+    assert_eq!(arena.len(), 0);
+    assert!(arena.is_empty());
+
+    // Segundo clear consecutivo em arena vazia
+    arena.clear();
+    assert_eq!(arena.len(), 0);
+    assert!(arena.is_empty());
+
+    // Terceiro clear
+    arena.clear();
+    assert_eq!(arena.len(), 0);
+    assert!(arena.is_empty());
+
+    // Re-aloca 3 itens e confirma que nenhum slot foi duplicado
+    let id1 = arena.alloc(100);
+    let id2 = arena.alloc(200);
+    let id3 = arena.alloc(300);
+
+    assert_eq!(arena.len(), 3);
+    assert_eq!(arena.get(id1), Some(&100));
+    assert_eq!(arena.get(id2), Some(&200));
+    assert_eq!(arena.get(id3), Some(&300));
+}
+
+#[test]
+fn clear_with_interleaved_removals_and_reallocs() {
+    let mut arena = Arena::new();
+    let mut ids = Vec::new();
+    for i in 0..10 {
+        ids.push(arena.alloc(i));
+    }
+    assert_eq!(arena.len(), 10);
+
+    // Remove alguns itens antes do clear
+    arena.remove(ids[1]);
+    arena.remove(ids[4]);
+    arena.remove(ids[8]);
+    assert_eq!(arena.len(), 7);
+
+    // Limpa a arena
+    arena.clear();
+    assert_eq!(arena.len(), 0);
+
+    // Todos os IDs anteriores devem estar inválidos
+    for id in ids {
+        assert_eq!(arena.get(id), None);
+    }
+
+    // Aloca novos itens
+    let mut new_ids = Vec::new();
+    for i in 0..5 {
+        new_ids.push(arena.alloc(i * 10));
+    }
+    assert_eq!(arena.len(), 5);
+
+    for (i, &id) in new_ids.iter().enumerate() {
+        assert_eq!(arena.get(id), Some(&(i * 10)));
+    }
 }
 
 #[test]

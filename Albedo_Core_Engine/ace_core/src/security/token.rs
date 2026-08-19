@@ -4,10 +4,6 @@
 //! prevenção de *Origin Confusion Attacks* e autenticação de canais de comunicação.
 
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-static TOKEN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Token de 128 bits criptograficamente inadivinhável para limites de segurança e IPC.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -17,20 +13,18 @@ pub struct UnguessableToken {
 }
 
 impl UnguessableToken {
-    /// Cria um novo token único de 128 bits gerado a partir de entropia temporal e contadores atômicos.
+    /// Cria um novo token único de 128 bits gerado a partir de CSPRNG do sistema operacional.
     pub fn new() -> Self {
-        let count = TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-
-        // Mix 128 bits usando FxHash round
-        let high = crate::utils::fast_hash(&(nanos as u64, count, 0x517cc1b727220a95u64));
-        let low =
-            crate::utils::fast_hash(&((nanos >> 64) as u64, count, high, 0x4f1bbcdcbfa54005u64));
-
-        Self { high, low }
+        loop {
+            let mut bytes = [0u8; 16];
+            getrandom::getrandom(&mut bytes)
+                .expect("Falha crítica ao obter entropia CSPRNG do sistema operacional");
+            let high = u64::from_ne_bytes(bytes[0..8].try_into().unwrap());
+            let low = u64::from_ne_bytes(bytes[8..16].try_into().unwrap());
+            if high != 0 || low != 0 {
+                return Self { high, low };
+            }
+        }
     }
 
     /// Cria um token a partir de suas partes brutas de 64 bits (ex: para deserialização IPC).
@@ -51,9 +45,9 @@ impl UnguessableToken {
         self.low
     }
 
-    /// Retorna a representação formatada em hexadecimal de 32 caracteres.
+    /// Retorna a representação formatada em hexadecimal minúsculo de 32 caracteres.
     pub fn to_hex(&self) -> String {
-        format!("{:016X}{:016X}", self.high, self.low)
+        format!("{:016x}{:016x}", self.high, self.low)
     }
 
     /// Retorna `true` se o token for nulo (todos os bits zerados).
@@ -74,3 +68,4 @@ impl fmt::Display for UnguessableToken {
         write!(f, "{}", self.to_hex())
     }
 }
+

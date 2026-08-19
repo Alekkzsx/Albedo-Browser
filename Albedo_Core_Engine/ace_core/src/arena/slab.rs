@@ -1,4 +1,4 @@
-﻿//! # Arena Homogênea Geracional (SlotMap Pattern)
+//! # Arena Homogênea Geracional (SlotMap Pattern)
 //!
 //! Implementação de armazenamento denso e contíguo para nós DOM e árvores de Layout.
 //! Cada elemento é referenciado por um [`ArenaId<T>`] composto por `(índice, versão)`.
@@ -27,7 +27,7 @@ pub struct Arena<T> {
     free_list: Vec<u32>,
     /// Total de alocações ao longo da vida da arena.
     total_allocated: u64,
-    /// Total de liberações explícitas via [`remove`](Arena::remove).
+    /// Total de liberações explícitas via [`remove`](Arena::remove) ou [`clear`](Arena::clear).
     total_freed: u64,
     /// Quantas vezes reutilizamos um slot livre em vez de crescer o `Vec`.
     slot_reuses: u64,
@@ -141,15 +141,20 @@ impl<T> Arena<T> {
         self.len() == 0
     }
 
-    /// Descarta todos os valores e invalida todos os identificadores previamente emitidos.
+    /// Descarta todos os valores, invalida todos os identificadores previamente emitidos
+    /// e reconstrói a lista de slots livres de forma determinística sem duplicações.
     pub fn clear(&mut self) {
-        for (i, entry) in self.entries.iter_mut().enumerate() {
+        let mut freed = 0u64;
+        for entry in &mut self.entries {
             if entry.value.is_some() {
                 entry.value = None;
                 entry.version = next_version(entry.version);
-                self.free_list.push(i as u32);
+                freed += 1;
             }
         }
+        self.total_freed += freed;
+        self.free_list.clear();
+        self.free_list.extend((0..self.entries.len() as u32).rev());
     }
 
     /// Reserva capacidade para ao menos `additional` novos valores.

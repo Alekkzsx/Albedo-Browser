@@ -145,7 +145,7 @@ impl Origin {
         match self {
             Self::Tuple { scheme, host, port } => {
                 let default_port = scheme.default_port();
-                if default_port == Some(*port) {
+                if *port == 0 || default_port == Some(*port) {
                     format!("{}://{}", scheme.as_str(), host.as_str())
                 } else {
                     format!("{}://{}:{}", scheme.as_str(), host.as_str(), port)
@@ -154,6 +154,7 @@ impl Origin {
             Self::Opaque(_) => "null".to_string(),
         }
     }
+
 
     /// Analisa uma string de URL conforme a especificação WHATWG URL para extrair sua origem canônica.
     pub fn parse(url_str: &str) -> Result<Self, AceError> {

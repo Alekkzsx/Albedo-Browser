@@ -71,6 +71,33 @@ impl ColorSpace {
     }
 }
 
+/// Métodos de interpolação de matiz (ângulo polar) conforme CSS Color Module Level 4 §12.4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HueInterpolation {
+    /// Arco mais curto no círculo trigonométrico (padrão do CSS Color 4).
+    #[default]
+    Shorter,
+    /// Arco mais longo no círculo trigonométrico.
+    Longer,
+    /// Sentido anti-horário (ângulos crescentes).
+    Increasing,
+    /// Sentido horário (ângulos decrescentes).
+    Decreasing,
+}
+
+impl HueInterpolation {
+    /// Analisa o nome de um método de interpolação de matiz CSS.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "shorter" | "shorter hue" => Some(Self::Shorter),
+            "longer" | "longer hue" => Some(Self::Longer),
+            "increasing" | "increasing hue" => Some(Self::Increasing),
+            "decreasing" | "decreasing hue" => Some(Self::Decreasing),
+            _ => None,
+        }
+    }
+}
+
 impl Color {
     pub const TRANSPARENT: Self = Self::from_rgba(0, 0, 0, 0);
     pub const BLACK: Self = Self::from_rgb(0, 0, 0);
@@ -154,6 +181,45 @@ impl Color {
         Self::from_rgba_f32(r_prime + m, g_prime + m, b_prime + m, a)
     }
 
+    /// Retorna a representação HSLA desta cor `(h, s, l, a)`:
+    /// * `h`: Matiz em graus (0.0 ..= 360.0).
+    /// * `s`: Saturação (0.0 ..= 1.0).
+    /// * `l`: Luminosidade (0.0 ..= 1.0).
+    /// * `a`: Alfa (0.0 ..= 1.0).
+    pub fn to_hsla(self) -> (f32, f32, f32, f32) {
+        let (r, g, b, a) = self.to_rgba_f32();
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
+        let l = (max + min) / 2.0;
+
+        if delta < 1e-5 {
+            return (0.0, 0.0, l, a);
+        }
+
+        let s = if l > 0.5 {
+            delta / (2.0 - max - min)
+        } else {
+            delta / (max + min)
+        };
+
+        let mut h = if (max - r).abs() < 1e-5 {
+            ((g - b) / delta + if g < b { 6.0 } else { 0.0 }) * 60.0
+        } else if (max - g).abs() < 1e-5 {
+            ((b - r) / delta + 2.0) * 60.0
+        } else {
+            ((r - g) / delta + 4.0) * 60.0
+        };
+
+        if h < 0.0 {
+            h += 360.0;
+        } else if h >= 360.0 {
+            h -= 360.0;
+        }
+
+        (h, s, l, a)
+    }
+
     /// Parser de strings hexadecimais (`#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`).
     pub fn from_hex(hex: &str) -> Result<Self, AceError> {
         let s = hex.trim().strip_prefix('#').unwrap_or(hex.trim());
@@ -227,6 +293,14 @@ impl Color {
             return parse_oklch_functional(&s_lower);
         }
 
+        if s_lower.starts_with("lab(") {
+            return parse_lab_functional(&s_lower);
+        }
+
+        if s_lower.starts_with("lch(") {
+            return parse_lch_functional(&s_lower);
+        }
+
         if s_lower.starts_with("color(") {
             return parse_color_functional(&s_lower);
         }
@@ -276,6 +350,55 @@ impl Color {
         Self::from_rgba_f32(r, g, b, a)
     }
 
+    /// Converte esta cor sRGB para o espaço CIE L*a*b* (D50) via Adaptação Cromática Bradford.
+    #[inline]
+    pub fn to_lab(self) -> (f32, f32, f32, f32) {
+        let (r, g, b, a) = self.to_rgba_f32();
+        let r_lin = srgb_to_linear(r);
+        let g_lin = srgb_to_linear(g);
+        let b_lin = srgb_to_linear(b);
+        let (x, y, z) = linear_srgb_to_xyz_d50(r_lin, g_lin, b_lin);
+        let (l, a_val, b_val) = xyz_d50_to_lab(x, y, z);
+        (l, a_val, b_val, a)
+    }
+
+    /// Cria uma cor a partir do espaço CIE L*a*b* (D50) via Adaptação Cromática Bradford inversa.
+    #[inline]
+    pub fn from_lab(l: f32, a: f32, b: f32, alpha: f32) -> Self {
+        let (x, y, z) = lab_to_xyz_d50(l, a, b);
+        let (r_lin, g_lin, b_lin) = xyz_d50_to_linear_srgb(x, y, z);
+        let r = linear_to_srgb(r_lin).clamp(0.0, 1.0);
+        let g = linear_to_srgb(g_lin).clamp(0.0, 1.0);
+        let b = linear_to_srgb(b_lin).clamp(0.0, 1.0);
+        Self::from_rgba_f32(r, g, b, alpha.clamp(0.0, 1.0))
+    }
+
+    /// Converte esta cor sRGB para o espaço CIE L*C*h (D50).
+    #[inline]
+    pub fn to_lch(self) -> (f32, f32, f32, f32) {
+        let (l, a, b, alpha) = self.to_lab();
+        let (l, c, h) = lab_to_lch(l, a, b);
+        (l, c, h, alpha)
+    }
+
+    /// Cria uma cor a partir do espaço CIE L*C*h (D50).
+    #[inline]
+    pub fn from_lch(l: f32, c: f32, h: f32, alpha: f32) -> Self {
+        let (l, a, b) = lch_to_lab(l, c, h);
+        Self::from_lab(l, a, b, alpha)
+    }
+
+    /// Calcula a diferença de cor perceptual CIE Delta E (CIE76) entre duas cores no espaço Lab.
+    #[inline]
+    pub fn delta_e_76(self, other: Self) -> f32 {
+        let (l1, a1, b1, _) = self.to_lab();
+        let (l2, a2, b2, _) = other.to_lab();
+        let dl = l1 - l2;
+        let da = a1 - a2;
+        let db = b1 - b2;
+        (dl * dl + da * da + db * db).sqrt()
+    }
+
     /// Composição alfa padrão Porter-Duff (`source-over`): mistura `self` (fonte) sobre `dst` (fundo).
     #[inline]
     pub fn blend_source_over(self, dst: Self) -> Self {
@@ -309,40 +432,148 @@ impl Color {
         )
     }
 
-    /// Interpolação perceptual uniforme no espaço Oklab (elimina aberrações de saturação em gradientes).
+    /// Interpolação linear no espaço cartesiano CIE Lab com premultiplicação alfa.
+    pub fn lerp_lab(self, other: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let (l1, a1, b1, alpha1) = self.to_lab();
+        let (l2, a2, b2, alpha2) = other.to_lab();
+
+        let alpha1 = alpha1.clamp(0.0, 1.0);
+        let alpha2 = alpha2.clamp(0.0, 1.0);
+        let out_a = alpha1 * (1.0 - t) + alpha2 * t;
+        if out_a <= 1e-6 {
+            return Self::TRANSPARENT;
+        }
+
+        let l = (l1 * alpha1 * (1.0 - t) + l2 * alpha2 * t) / out_a;
+        let a = (a1 * alpha1 * (1.0 - t) + a2 * alpha2 * t) / out_a;
+        let b = (b1 * alpha1 * (1.0 - t) + b2 * alpha2 * t) / out_a;
+
+        Self::from_lab(l, a, b, out_a)
+    }
+
+    /// Interpolação perceptual uniforme no espaço Oklab com premultiplicação alfa.
     pub fn lerp_oklab(self, other: Self, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
         let lab1 = self.to_oklab();
         let lab2 = other.to_oklab();
 
-        let l = lab1.l + (lab2.l - lab1.l) * t;
-        let a = lab1.a + (lab2.a - lab1.a) * t;
-        let b = lab1.b + (lab2.b - lab1.b) * t;
-        let alpha = lab1.alpha + (lab2.alpha - lab1.alpha) * t;
+        let a1 = lab1.alpha.clamp(0.0, 1.0);
+        let a2 = lab2.alpha.clamp(0.0, 1.0);
+        let out_a = a1 * (1.0 - t) + a2 * t;
+        if out_a <= 1e-6 {
+            return Self::TRANSPARENT;
+        }
 
-        Self::from_oklab(super::oklab::Oklab::new(l, a, b, alpha))
+        let l = (lab1.l * a1 * (1.0 - t) + lab2.l * a2 * t) / out_a;
+        let a = (lab1.a * a1 * (1.0 - t) + lab2.a * a2 * t) / out_a;
+        let b = (lab1.b * a1 * (1.0 - t) + lab2.b * a2 * t) / out_a;
+
+        Self::from_oklab(super::oklab::Oklab::new(l, a, b, out_a))
     }
 
-    /// Interpolação perceptual no espaço polar Oklch com interpolação de menor arco angular de matiz.
+    /// Interpolação perceptual no espaço polar Oklch (método padrão shorter hue).
+    #[inline]
     pub fn lerp_oklch(self, other: Self, t: f32) -> Self {
+        self.interpolate_oklch(other, t, HueInterpolation::Shorter)
+    }
+
+    /// Interpolação perceptual no espaço polar Oklch com suporte aos 4 métodos de matiz, powerless e premultiplicação alfa.
+    pub fn interpolate_oklch(self, other: Self, t: f32, method: HueInterpolation) -> Self {
         let t = t.clamp(0.0, 1.0);
         let lch1 = self.to_oklch();
         let lch2 = other.to_oklch();
 
-        let l = lch1.l + (lch2.l - lch1.l) * t;
-        let c = lch1.c + (lch2.c - lch1.c) * t;
-        let alpha = lch1.alpha + (lch2.alpha - lch1.alpha) * t;
-
-        // Interpolação angular de menor arco para matiz
-        let mut d_h = (lch2.h - lch1.h) % 360.0;
-        if d_h > 180.0 {
-            d_h -= 360.0;
-        } else if d_h < -180.0 {
-            d_h += 360.0;
+        let a1 = lch1.alpha.clamp(0.0, 1.0);
+        let a2 = lch2.alpha.clamp(0.0, 1.0);
+        let out_a = a1 * (1.0 - t) + a2 * t;
+        if out_a <= 1e-6 {
+            return Self::TRANSPARENT;
         }
-        let h = (lch1.h + d_h * t + 360.0) % 360.0;
 
-        Self::from_oklch(super::oklab::Oklch::new(l, c, h, alpha))
+        let l = (lch1.l * a1 * (1.0 - t) + lch2.l * a2 * t) / out_a;
+        let c = (lch1.c * a1 * (1.0 - t) + lch2.c * a2 * t) / out_a;
+
+        let h1_powerless = lch1.c < 1e-4;
+        let h2_powerless = lch2.c < 1e-4;
+        let (h1, h2) = match (h1_powerless, h2_powerless) {
+            (true, false) => (lch2.h, lch2.h),
+            (false, true) => (lch1.h, lch1.h),
+            (true, true) => (0.0, 0.0),
+            (false, false) => (lch1.h, lch2.h),
+        };
+
+        let h = interpolate_hue(h1, h2, t, method);
+        Self::from_oklch(crate::math::oklab::Oklch::new(l, c, h, out_a))
+    }
+
+    /// Interpolação no espaço polar CIE Lch com suporte aos 4 métodos de matiz, powerless e premultiplicação alfa.
+    pub fn interpolate_lch(self, other: Self, t: f32, method: HueInterpolation) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let (l1, c1, h1_raw, a1) = self.to_lch();
+        let (l2, c2, h2_raw, a2) = other.to_lch();
+
+        let a1 = a1.clamp(0.0, 1.0);
+        let a2 = a2.clamp(0.0, 1.0);
+        let out_a = a1 * (1.0 - t) + a2 * t;
+        if out_a <= 1e-6 {
+            return Self::TRANSPARENT;
+        }
+
+        let l = (l1 * a1 * (1.0 - t) + l2 * a2 * t) / out_a;
+        let c = (c1 * a1 * (1.0 - t) + c2 * a2 * t) / out_a;
+
+        let h1_powerless = c1 < 1e-4;
+        let h2_powerless = c2 < 1e-4;
+        let (h1, h2) = match (h1_powerless, h2_powerless) {
+            (true, false) => (h2_raw, h2_raw),
+            (false, true) => (h1_raw, h1_raw),
+            (true, true) => (0.0, 0.0),
+            (false, false) => (h1_raw, h2_raw),
+        };
+
+        let h = interpolate_hue(h1, h2, t, method);
+        Self::from_lch(l, c, h, out_a)
+    }
+
+    /// Interpolação no espaço polar HSL com suporte aos 4 métodos de matiz, powerless e premultiplicação alfa.
+    pub fn interpolate_hsl(self, other: Self, t: f32, method: HueInterpolation) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let (h1_raw, s1, l1, a1) = self.to_hsla();
+        let (h2_raw, s2, l2, a2) = other.to_hsla();
+
+        let a1 = a1.clamp(0.0, 1.0);
+        let a2 = a2.clamp(0.0, 1.0);
+        let out_a = a1 * (1.0 - t) + a2 * t;
+        if out_a <= 1e-6 {
+            return Self::TRANSPARENT;
+        }
+
+        let s = (s1 * a1 * (1.0 - t) + s2 * a2 * t) / out_a;
+        let l = (l1 * a1 * (1.0 - t) + l2 * a2 * t) / out_a;
+
+        let h1_powerless = s1 < 1e-4;
+        let h2_powerless = s2 < 1e-4;
+        let (h1, h2) = match (h1_powerless, h2_powerless) {
+            (true, false) => (h2_raw, h2_raw),
+            (false, true) => (h1_raw, h1_raw),
+            (true, true) => (0.0, 0.0),
+            (false, false) => (h1_raw, h2_raw),
+        };
+
+        let h = interpolate_hue(h1, h2, t, method);
+        Self::from_hsla(h, s, l, out_a)
+    }
+
+    /// Interpolação polar genérica (Oklch, Lch, Hsl) no espaço e método especificados.
+    #[inline]
+    pub fn interpolate_polar(self, other: Self, t: f32, space: ColorSpace, method: HueInterpolation) -> Self {
+        match space {
+            ColorSpace::Oklch => self.interpolate_oklch(other, t, method),
+            ColorSpace::Lch => self.interpolate_lch(other, t, method),
+            ColorSpace::Hsl => self.interpolate_hsl(other, t, method),
+            _ => self.interpolate_oklch(other, t, method),
+        }
     }
 }
 
@@ -473,6 +704,8 @@ fn parse_oklch_functional(s: &str) -> Result<Color, AceError> {
             p.push(alpha.trim());
         }
         p
+    } else if inner.contains(',') {
+        inner.split(',').map(str::trim).collect()
     } else {
         inner.split_whitespace().collect()
     };
@@ -483,10 +716,7 @@ fn parse_oklch_functional(s: &str) -> Result<Color, AceError> {
 
     let l = parse_percentage(parts[0])?;
     let c: f32 = parts[1].parse().map_err(|_| invalid_color(s))?;
-    let h: f32 = parts[2]
-        .trim_end_matches("deg")
-        .parse()
-        .map_err(|_| invalid_color(s))?;
+    let h = parse_hue_angle(parts[2])?;
     let alpha = if parts.len() == 4 {
         parse_alpha(parts[3])?
     } else {
@@ -494,6 +724,74 @@ fn parse_oklch_functional(s: &str) -> Result<Color, AceError> {
     };
 
     Ok(Color::from_oklch(super::oklab::Oklch::new(l, c, h, alpha)))
+}
+
+fn parse_lab_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("lab(").trim_end_matches(')').trim();
+
+    let parts: Vec<&str> = if inner.contains('/') {
+        let mut split = inner.split('/');
+        let main = split.next().unwrap_or("");
+        let alpha = split.next().unwrap_or("");
+        let mut p: Vec<&str> = main.split_whitespace().collect();
+        if !alpha.trim().is_empty() {
+            p.push(alpha.trim());
+        }
+        p
+    } else if inner.contains(',') {
+        inner.split(',').map(str::trim).collect()
+    } else {
+        inner.split_whitespace().collect()
+    };
+
+    if parts.len() < 3 || parts.len() > 4 {
+        return Err(invalid_color(s));
+    }
+
+    let l = parse_lab_percentage(parts[0], 100.0)?;
+    let a = parse_lab_percentage(parts[1], 125.0)?;
+    let b = parse_lab_percentage(parts[2], 125.0)?;
+    let alpha = if parts.len() == 4 {
+        parse_alpha(parts[3])?
+    } else {
+        1.0
+    };
+
+    Ok(Color::from_lab(l, a, b, alpha))
+}
+
+fn parse_lch_functional(s: &str) -> Result<Color, AceError> {
+    let inner = s.trim_start_matches("lch(").trim_end_matches(')').trim();
+
+    let parts: Vec<&str> = if inner.contains('/') {
+        let mut split = inner.split('/');
+        let main = split.next().unwrap_or("");
+        let alpha = split.next().unwrap_or("");
+        let mut p: Vec<&str> = main.split_whitespace().collect();
+        if !alpha.trim().is_empty() {
+            p.push(alpha.trim());
+        }
+        p
+    } else if inner.contains(',') {
+        inner.split(',').map(str::trim).collect()
+    } else {
+        inner.split_whitespace().collect()
+    };
+
+    if parts.len() < 3 || parts.len() > 4 {
+        return Err(invalid_color(s));
+    }
+
+    let l = parse_lab_percentage(parts[0], 100.0)?;
+    let c = parse_lab_percentage(parts[1], 150.0)?;
+    let h = parse_hue_angle(parts[2])?;
+    let alpha = if parts.len() == 4 {
+        parse_alpha(parts[3])?
+    } else {
+        1.0
+    };
+
+    Ok(Color::from_lch(l, c, h, alpha))
 }
 
 fn parse_hwb_functional(s: &str) -> Result<Color, AceError> {
@@ -518,10 +816,7 @@ fn parse_hwb_functional(s: &str) -> Result<Color, AceError> {
         return Err(invalid_color(s));
     }
 
-    let h: f32 = parts[0]
-        .trim_end_matches("deg")
-        .parse()
-        .map_err(|_| invalid_color(s))?;
+    let h = parse_hue_angle(parts[0])?;
     let w = parse_percentage(parts[1])?;
     let b = parse_percentage(parts[2])?;
     let a = if parts.len() == 4 {
@@ -600,16 +895,32 @@ fn parse_color_mix_functional(s: &str) -> Result<Color, AceError> {
     }
 
     let in_part = parts[0].trim();
-    let space_str = in_part
+    let header = in_part
         .strip_prefix("in ")
         .ok_or_else(|| invalid_color(s))?
         .trim();
-    let space = ColorSpace::parse(space_str).ok_or_else(|| invalid_color(s))?;
+
+    let (space, hue_method) = parse_mix_space_and_hue(header).ok_or_else(|| invalid_color(s))?;
 
     let (c1, p1) = parse_color_with_percentage(parts[1])?;
     let (c2, p2) = parse_color_with_percentage(parts[2])?;
 
-    mix_colors(space, c1, p1, c2, p2)
+    mix_colors_with_hue(space, hue_method, c1, p1, c2, p2)
+}
+
+fn parse_mix_space_and_hue(s: &str) -> Option<(ColorSpace, HueInterpolation)> {
+    let tokens: Vec<&str> = s.split_whitespace().collect();
+    if tokens.is_empty() {
+        return None;
+    }
+    let space = ColorSpace::parse(tokens[0])?;
+    let hue_method = if tokens.len() >= 2 {
+        let hue_str = tokens[1..].join(" ");
+        HueInterpolation::parse(&hue_str).unwrap_or(HueInterpolation::Shorter)
+    } else {
+        HueInterpolation::Shorter
+    };
+    Some((space, hue_method))
 }
 
 fn parse_color_with_percentage(s: &str) -> Result<(Color, Option<f32>), AceError> {
@@ -714,9 +1025,10 @@ pub fn hwb_to_srgb(h: f32, w: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
     )
 }
 
-/// Resolve `color-mix()` no espaço de cor solicitado com cálculo preciso de pesos.
-pub fn mix_colors(
+/// Resolve `color-mix()` no espaço de cor solicitado com suporte a interpolação polar de matiz e premultiplicação alfa.
+pub fn mix_colors_with_hue(
     space: ColorSpace,
+    hue_method: HueInterpolation,
     c1: Color,
     p1: Option<f32>,
     c2: Color,
@@ -741,68 +1053,270 @@ pub fn mix_colors(
         (None, None) => (0.5, 0.5, 1.0),
     };
 
+    let (_, _, _, a1) = c1.to_rgba_f32();
+    let (_, _, _, a2) = c2.to_rgba_f32();
+    let out_a_premul = a1 * w1 + a2 * w2;
+    if out_a_premul <= 1e-6 {
+        return Ok(Color::TRANSPARENT);
+    }
+    let final_alpha = (out_a_premul * alpha_mult).clamp(0.0, 1.0);
+
     let mixed = match space {
         ColorSpace::Oklab => {
             let lab1 = c1.to_oklab();
             let lab2 = c2.to_oklab();
-            let l = lab1.l * w1 + lab2.l * w2;
-            let a = lab1.a * w1 + lab2.a * w2;
-            let b = lab1.b * w1 + lab2.b * w2;
-            let alpha = (lab1.alpha * w1 + lab2.alpha * w2) * alpha_mult;
-            Color::from_oklab(crate::math::oklab::Oklab::new(l, a, b, alpha))
+            let l = (lab1.l * a1 * w1 + lab2.l * a2 * w2) / out_a_premul;
+            let a = (lab1.a * a1 * w1 + lab2.a * a2 * w2) / out_a_premul;
+            let b = (lab1.b * a1 * w1 + lab2.b * a2 * w2) / out_a_premul;
+            Color::from_oklab(crate::math::oklab::Oklab::new(l, a, b, final_alpha))
         }
         ColorSpace::Oklch => {
             let lch1 = c1.to_oklch();
             let lch2 = c2.to_oklch();
-            let l = lch1.l * w1 + lch2.l * w2;
-            let c = lch1.c * w1 + lch2.c * w2;
-            let alpha = (lch1.alpha * w1 + lch2.alpha * w2) * alpha_mult;
-            let mut dh = (lch2.h - lch1.h) % 360.0;
-            if dh > 180.0 {
-                dh -= 360.0;
-            } else if dh < -180.0 {
-                dh += 360.0;
-            }
-            let h = (lch1.h + dh * w2 + 360.0) % 360.0;
-            Color::from_oklch(crate::math::oklab::Oklch::new(l, c, h, alpha))
+            let l = (lch1.l * a1 * w1 + lch2.l * a2 * w2) / out_a_premul;
+            let c = (lch1.c * a1 * w1 + lch2.c * a2 * w2) / out_a_premul;
+
+            let h1_powerless = lch1.c < 1e-4;
+            let h2_powerless = lch2.c < 1e-4;
+            let (h1, h2) = match (h1_powerless, h2_powerless) {
+                (true, false) => (lch2.h, lch2.h),
+                (false, true) => (lch1.h, lch1.h),
+                (true, true) => (0.0, 0.0),
+                (false, false) => (lch1.h, lch2.h),
+            };
+            let h = interpolate_hue(h1, h2, w2, hue_method);
+            Color::from_oklch(crate::math::oklab::Oklch::new(l, c, h, final_alpha))
+        }
+        ColorSpace::Lab => {
+            let (l1, a1_val, b1_val, _) = c1.to_lab();
+            let (l2, a2_val, b2_val, _) = c2.to_lab();
+            let l = (l1 * a1 * w1 + l2 * a2 * w2) / out_a_premul;
+            let a = (a1_val * a1 * w1 + a2_val * a2 * w2) / out_a_premul;
+            let b = (b1_val * a1 * w1 + b2_val * a2 * w2) / out_a_premul;
+            Color::from_lab(l, a, b, final_alpha)
+        }
+        ColorSpace::Lch => {
+            let (l1, c1_val, h1_raw, _) = c1.to_lch();
+            let (l2, c2_val, h2_raw, _) = c2.to_lch();
+            let l = (l1 * a1 * w1 + l2 * a2 * w2) / out_a_premul;
+            let c = (c1_val * a1 * w1 + c2_val * a2 * w2) / out_a_premul;
+
+            let h1_powerless = c1_val < 1e-4;
+            let h2_powerless = c2_val < 1e-4;
+            let (h1, h2) = match (h1_powerless, h2_powerless) {
+                (true, false) => (h2_raw, h2_raw),
+                (false, true) => (h1_raw, h1_raw),
+                (true, true) => (0.0, 0.0),
+                (false, false) => (h1_raw, h2_raw),
+            };
+            let h = interpolate_hue(h1, h2, w2, hue_method);
+            Color::from_lch(l, c, h, final_alpha)
+        }
+        ColorSpace::Hsl => {
+            let (h1_raw, s1, l1, _) = c1.to_hsla();
+            let (h2_raw, s2, l2, _) = c2.to_hsla();
+            let s = (s1 * a1 * w1 + s2 * a2 * w2) / out_a_premul;
+            let l = (l1 * a1 * w1 + l2 * a2 * w2) / out_a_premul;
+
+            let h1_powerless = s1 < 1e-4;
+            let h2_powerless = s2 < 1e-4;
+            let (h1, h2) = match (h1_powerless, h2_powerless) {
+                (true, false) => (h2_raw, h2_raw),
+                (false, true) => (h1_raw, h1_raw),
+                (true, true) => (0.0, 0.0),
+                (false, false) => (h1_raw, h2_raw),
+            };
+            let h = interpolate_hue(h1, h2, w2, hue_method);
+            Color::from_hsla(h, s, l, final_alpha)
         }
         ColorSpace::SrgbLinear => {
-            let (r1, g1, b1, a1) = c1.to_rgba_f32();
-            let (r2, g2, b2, a2) = c2.to_rgba_f32();
-            let r = srgb_to_linear(r1) * w1 + srgb_to_linear(r2) * w2;
-            let g = srgb_to_linear(g1) * w1 + srgb_to_linear(g2) * w2;
-            let b = srgb_to_linear(b1) * w1 + srgb_to_linear(b2) * w2;
-            let a = (a1 * w1 + a2 * w2) * alpha_mult;
-            Color::from_rgba_f32(linear_to_srgb(r), linear_to_srgb(g), linear_to_srgb(b), a)
+            let (r1, g1, b1, _) = c1.to_rgba_f32();
+            let (r2, g2, b2, _) = c2.to_rgba_f32();
+            let r_lin = (srgb_to_linear(r1) * a1 * w1 + srgb_to_linear(r2) * a2 * w2) / out_a_premul;
+            let g_lin = (srgb_to_linear(g1) * a1 * w1 + srgb_to_linear(g2) * a2 * w2) / out_a_premul;
+            let b_lin = (srgb_to_linear(b1) * a1 * w1 + srgb_to_linear(b2) * a2 * w2) / out_a_premul;
+            Color::from_rgba_f32(linear_to_srgb(r_lin), linear_to_srgb(g_lin), linear_to_srgb(b_lin), final_alpha)
         }
         ColorSpace::DisplayP3 => {
-            let (r1, g1, b1, a1) = c1.to_rgba_f32();
-            let (r2, g2, b2, a2) = c2.to_rgba_f32();
+            let (r1, g1, b1, _) = c1.to_rgba_f32();
+            let (r2, g2, b2, _) = c2.to_rgba_f32();
             let (p1_r, p1_g, p1_b, _) = srgb_to_display_p3(r1, g1, b1, a1);
             let (p2_r, p2_g, p2_b, _) = srgb_to_display_p3(r2, g2, b2, a2);
-            let r = p1_r * w1 + p2_r * w2;
-            let g = p1_g * w1 + p2_g * w2;
-            let b = p1_b * w1 + p2_b * w2;
-            let a = (a1 * w1 + a2 * w2) * alpha_mult;
-            let (sr, sg, sb, sa) = display_p3_to_srgb(r, g, b, a);
-            Color::from_rgba_f32(sr, sg, sb, sa)
+            let r = (p1_r * a1 * w1 + p2_r * a2 * w2) / out_a_premul;
+            let g = (p1_g * a1 * w1 + p2_g * a2 * w2) / out_a_premul;
+            let b = (p1_b * a1 * w1 + p2_b * a2 * w2) / out_a_premul;
+            let (sr, sg, sb, _) = display_p3_to_srgb(r, g, b, 1.0);
+            Color::from_rgba_f32(sr, sg, sb, final_alpha)
         }
         _ => {
-            let (r1, g1, b1, a1) = c1.to_rgba_f32();
-            let (r2, g2, b2, a2) = c2.to_rgba_f32();
-            Color::from_rgba_f32(
-                r1 * w1 + r2 * w2,
-                g1 * w1 + g2 * w2,
-                b1 * w1 + b2 * w2,
-                (a1 * w1 + a2 * w2) * alpha_mult,
-            )
+            let (r1, g1, b1, _) = c1.to_rgba_f32();
+            let (r2, g2, b2, _) = c2.to_rgba_f32();
+            let r = (r1 * a1 * w1 + r2 * a2 * w2) / out_a_premul;
+            let g = (g1 * a1 * w1 + g2 * a2 * w2) / out_a_premul;
+            let b = (b1 * a1 * w1 + b2 * a2 * w2) / out_a_premul;
+            Color::from_rgba_f32(r, g, b, final_alpha)
         }
     };
     Ok(mixed)
 }
 
+/// Resolve `color-mix()` no espaço de cor solicitado com cálculo preciso de pesos.
+pub fn mix_colors(
+    space: ColorSpace,
+    c1: Color,
+    p1: Option<f32>,
+    c2: Color,
+    p2: Option<f32>,
+) -> Result<Color, AceError> {
+    mix_colors_with_hue(space, HueInterpolation::Shorter, c1, p1, c2, p2)
+}
+
+/// Interpola dois ângulos de matiz em graus conforme CSS Color 4 §12.4.
+pub fn interpolate_hue(h1: f32, h2: f32, t: f32, method: HueInterpolation) -> f32 {
+    let mut h1 = (h1 % 360.0 + 360.0) % 360.0;
+    let mut h2 = (h2 % 360.0 + 360.0) % 360.0;
+
+    match method {
+        HueInterpolation::Shorter => {
+            let diff = h2 - h1;
+            if diff > 180.0 {
+                h1 += 360.0;
+            } else if diff < -180.0 {
+                h2 += 360.0;
+            }
+        }
+        HueInterpolation::Longer => {
+            let diff = h2 - h1;
+            if diff > 0.0 && diff < 180.0 {
+                h1 += 360.0;
+            } else if diff <= 0.0 && diff > -180.0 {
+                h2 += 360.0;
+            }
+        }
+        HueInterpolation::Increasing => {
+            if h2 < h1 {
+                h2 += 360.0;
+            }
+        }
+        HueInterpolation::Decreasing => {
+            if h1 < h2 {
+                h1 += 360.0;
+            }
+        }
+    }
+
+    let h = h1 + (h2 - h1) * t;
+    (h % 360.0 + 360.0) % 360.0
+}
+
+/// Converte Linear sRGB (D65) para CIE XYZ (D50) usando a matriz combinada com Adaptação Cromática Bradford (W3C CSS Color 4 §9.2).
 #[inline]
-fn srgb_to_linear(v: f32) -> f32 {
+pub fn linear_srgb_to_xyz_d50(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let x = 0.4360747 * r + 0.3850649 * g + 0.1430804 * b;
+    let y = 0.2225045 * r + 0.7168786 * g + 0.0606169 * b;
+    let z = 0.0139322 * r + 0.0971045 * g + 0.7141733 * b;
+    (x, y, z)
+}
+
+/// Converte CIE XYZ (D50) para Linear sRGB (D65) usando a matriz inversa Bradford (W3C CSS Color 4 §9.2).
+#[inline]
+pub fn xyz_d50_to_linear_srgb(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+    let r = 3.1338561 * x - 1.6168667 * y - 0.4906146 * z;
+    let g = -0.9787684 * x + 1.9161415 * y + 0.0334540 * z;
+    let b = 0.0719453 * x - 0.2289914 * y + 1.4052427 * z;
+    (r, g, b)
+}
+
+/// Ponto branco de referência D50 e constantes CIE Lab (W3C CSS Color 4 §9.1).
+pub const D50_XN: f32 = 0.96422;
+pub const D50_YN: f32 = 1.00000;
+pub const D50_ZN: f32 = 0.82521;
+pub const CIE_EPSILON: f32 = 216.0 / 24389.0; // ≈ 0.008856451679035631
+pub const CIE_KAPPA: f32 = 24389.0 / 27.0;    // ≈ 903.2962962962963
+
+/// Converte CIE XYZ (D50) para CIE L*a*b* (D50).
+#[inline]
+pub fn xyz_d50_to_lab(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+    let xr = x / D50_XN;
+    let yr = y / D50_YN;
+    let zr = z / D50_ZN;
+
+    let fx = if xr > CIE_EPSILON {
+        xr.cbrt()
+    } else {
+        (CIE_KAPPA * xr + 16.0) / 116.0
+    };
+    let fy = if yr > CIE_EPSILON {
+        yr.cbrt()
+    } else {
+        (CIE_KAPPA * yr + 16.0) / 116.0
+    };
+    let fz = if zr > CIE_EPSILON {
+        zr.cbrt()
+    } else {
+        (CIE_KAPPA * zr + 16.0) / 116.0
+    };
+
+    let l = 116.0 * fy - 16.0;
+    let a = 500.0 * (fx - fy);
+    let b = 200.0 * (fy - fz);
+    (l, a, b)
+}
+
+/// Converte CIE L*a*b* (D50) para CIE XYZ (D50).
+#[inline]
+pub fn lab_to_xyz_d50(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
+    let fy = (l + 16.0) / 116.0;
+    let fx = a / 500.0 + fy;
+    let fz = fy - b / 200.0;
+
+    let fx3 = fx * fx * fx;
+    let fz3 = fz * fz * fz;
+
+    let xr = if fx3 > CIE_EPSILON {
+        fx3
+    } else {
+        (116.0 * fx - 16.0) / CIE_KAPPA
+    };
+    let yr = if l > CIE_KAPPA * CIE_EPSILON {
+        fy * fy * fy
+    } else {
+        l / CIE_KAPPA
+    };
+    let zr = if fz3 > CIE_EPSILON {
+        fz3
+    } else {
+        (116.0 * fz - 16.0) / CIE_KAPPA
+    };
+
+    let x = xr * D50_XN;
+    let y = yr * D50_YN;
+    let z = zr * D50_ZN;
+    (x, y, z)
+}
+
+/// Converte CIE L*a*b* para CIE L*C*h.
+#[inline]
+pub fn lab_to_lch(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
+    let c = (a * a + b * b).sqrt();
+    let mut h = b.atan2(a) * (180.0 / std::f32::consts::PI);
+    if h < 0.0 {
+        h += 360.0;
+    }
+    (l, c, h)
+}
+
+/// Converte CIE L*C*h para CIE L*a*b*.
+#[inline]
+pub fn lch_to_lab(l: f32, c: f32, h: f32) -> (f32, f32, f32) {
+    let h_rad = h * (std::f32::consts::PI / 180.0);
+    let a = c * h_rad.cos();
+    let b = c * h_rad.sin();
+    (l, a, b)
+}
+
+#[inline]
+pub fn srgb_to_linear(v: f32) -> f32 {
     if v <= 0.04045 {
         v / 12.92
     } else {
@@ -811,11 +1325,39 @@ fn srgb_to_linear(v: f32) -> f32 {
 }
 
 #[inline]
-fn linear_to_srgb(v: f32) -> f32 {
+pub fn linear_to_srgb(v: f32) -> f32 {
     if v <= 0.0031308 {
         12.92 * v
     } else {
         1.055 * v.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+fn parse_hue_angle(s: &str) -> Result<f32, AceError> {
+    let s = s.trim();
+    if let Some(val) = s.strip_suffix("deg") {
+        val.parse::<f32>().map_err(|_| invalid_color(s))
+    } else if let Some(val) = s.strip_suffix("grad") {
+        let g: f32 = val.parse().map_err(|_| invalid_color(s))?;
+        Ok(g * 0.9)
+    } else if let Some(val) = s.strip_suffix("rad") {
+        let r: f32 = val.parse().map_err(|_| invalid_color(s))?;
+        Ok(r * (180.0 / std::f32::consts::PI))
+    } else if let Some(val) = s.strip_suffix("turn") {
+        let t: f32 = val.parse().map_err(|_| invalid_color(s))?;
+        Ok(t * 360.0)
+    } else {
+        s.parse::<f32>().map_err(|_| invalid_color(s))
+    }
+}
+
+fn parse_lab_percentage(s: &str, scale_for_pct: f32) -> Result<f32, AceError> {
+    let s = s.trim();
+    if let Some(pct) = s.strip_suffix('%') {
+        let val: f32 = pct.parse().map_err(|_| invalid_color(s))?;
+        Ok((val / 100.0) * scale_for_pct)
+    } else {
+        s.parse::<f32>().map_err(|_| invalid_color(s))
     }
 }
 
