@@ -1,4 +1,4 @@
-use ace_core::id::{FrameId, NodeId, ProcessId, RequestId, TabId};
+﻿use ace_core::id::{FrameId, NodeId, ProcessId, RequestId, TabId};
 use std::mem::size_of;
 
 #[test]
@@ -34,4 +34,11 @@ fn test_id_conversions_and_uniqueness() {
 
     let zero_opt = NodeId::from_raw(0);
     assert_eq!(zero_opt, None);
+
+    // Validação estrita do TryFrom<u64>
+    let from_try = NodeId::try_from(raw_val).expect("TryFrom com valor válido deve funcionar");
+    assert_eq!(id1, from_try);
+
+    let err_try = NodeId::try_from(0);
+    assert!(err_try.is_err(), "TryFrom com 0 deve retornar erro");
 }

@@ -1,11 +1,41 @@
-//! # Buffer de Texto Segmentado em Chunks (WHATWG HTML5 Streaming Input)
+﻿//! # Buffer de Texto Segmentado em Chunks (WHATWG HTML5 Streaming Input)
 //!
 //! Abstração de leitura contínua sobre streams fragmentados de texto,
-//! permitindo consumo zero-copy, devolução de caracteres (*unconsume / push-front*) e rastreamento $O(1)$ de `SourceLocation`.
+//! permitindo consumo zero-copy, devolução de caracteres (*unconsume / push-front*),
+//! pré-processamento WHATWG (normalização CRLF/Null) e rastreamento $O(1)$ de `SourceLocation`.
 
 use crate::error::SourceLocation;
 use smol_str::SmolStr;
 use std::collections::VecDeque;
+
+/// Pré-processa um fragmento de texto conforme o padrão WHATWG HTML:
+/// - Normaliza `\r\n` (CRLF) e `\r` (CR) isolados para `\n` (LF).
+/// - Substitui `\0` (NULL) pelo caractere substituto Unicode `\u{FFFD}`.
+pub fn preprocess_html_input(input: &str) -> SmolStr {
+    if !input.contains('\r') && !input.contains('\0') {
+        return SmolStr::new(input);
+    }
+
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                result.push('\n');
+            }
+            '\0' => {
+                result.push('\u{FFFD}');
+            }
+            other => result.push(other),
+        }
+    }
+
+    SmolStr::new(result)
+}
 
 /// Buffer de texto segmentado com suporte a chunks dinâmicos e devolução de caracteres (*unconsume*).
 #[derive(Debug, Clone, Default)]
@@ -40,11 +70,20 @@ impl SegmentedString {
         }
     }
 
-    /// Cria uma `SegmentedString` a partir de uma fatia de texto estática.
+    /// Cria uma `SegmentedString` a partir de uma fatia de texto estática sem pré-processamento.
     pub fn from_static_str(text: &str) -> Self {
         let mut s = Self::new();
         if !text.is_empty() {
             s.chunks.push_back(SmolStr::new(text));
+        }
+        s
+    }
+
+    /// Cria uma `SegmentedString` com pré-processamento de fluxo de entrada WHATWG HTML5.
+    pub fn from_preprocessed_str(text: &str) -> Self {
+        let mut s = Self::new();
+        if !text.is_empty() {
+            s.chunks.push_back(preprocess_html_input(text));
         }
         s
     }
@@ -60,6 +99,13 @@ impl SegmentedString {
         let s = chunk.into();
         if !s.is_empty() {
             self.chunks.push_back(s);
+        }
+    }
+
+    /// Adiciona um novo chunk aplicando normalização WHATWG CRLF/Null.
+    pub fn append_preprocessed_chunk(&mut self, chunk: &str) {
+        if !chunk.is_empty() {
+            self.chunks.push_back(preprocess_html_input(chunk));
         }
     }
 
@@ -87,10 +133,13 @@ impl SegmentedString {
             return Some(c);
         }
 
-        for chunk in &self.chunks {
-            let slice = &chunk[self.current_chunk_offset..];
-            if let Some(c) = slice.chars().next() {
-                return Some(c);
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let start = if i == 0 { self.current_chunk_offset } else { 0 };
+            if start < chunk.len() {
+                let slice = &chunk[start..];
+                if let Some(c) = slice.chars().next() {
+                    return Some(c);
+                }
             }
         }
 
@@ -108,13 +157,14 @@ impl SegmentedString {
         let mut skipped = 0;
         for (i, chunk) in self.chunks.iter().enumerate() {
             let start = if i == 0 { self.current_chunk_offset } else { 0 };
-            let slice = &chunk[start..];
-
-            for c in slice.chars() {
-                if skipped == offset {
-                    return Some(c);
+            if start < chunk.len() {
+                let slice = &chunk[start..];
+                for c in slice.chars() {
+                    if skipped == offset {
+                        return Some(c);
+                    }
+                    skipped += 1;
                 }
-                skipped += 1;
             }
         }
 
@@ -190,9 +240,16 @@ impl SegmentedString {
 
     /// Retorna `true` se o stream estiver completamente vazio e sem chunks pendentes.
     pub fn is_eof(&self) -> bool {
-        self.pushed_back.is_empty()
-            && (self.chunks.is_empty()
-                || (self.chunks.len() == 1 && self.current_chunk_offset >= self.chunks[0].len()))
+        if !self.pushed_back.is_empty() {
+            return false;
+        }
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let start = if i == 0 { self.current_chunk_offset } else { 0 };
+            if start < chunk.len() {
+                return false;
+            }
+        }
+        true
     }
 
     /// Retorna a localização de código-fonte atual (`SourceLocation`).
