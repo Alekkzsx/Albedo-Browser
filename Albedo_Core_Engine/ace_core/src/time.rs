@@ -131,3 +131,72 @@ impl Clock for MockClock {
         Duration::from_micros(self.current_time_us.load(Ordering::SeqCst))
     }
 }
+
+/// Quantiza um timestamp em microssegundos para uma granularidade específica (ex: 5µs ou 20µs para mitigação Spectre).
+#[inline]
+pub fn quantize_micros(us: u64, resolution_us: u64) -> u64 {
+    if resolution_us <= 1 {
+        us
+    } else {
+        (us / resolution_us) * resolution_us
+    }
+}
+
+/// Quantiza um timestamp `DOMHighResTimeStamp` em milissegundos para uma granularidade em microssegundos.
+#[inline]
+pub fn quantize_highres(time_ms: f64, resolution_us: u64) -> f64 {
+    if resolution_us <= 1 {
+        time_ms
+    } else {
+        let us = (time_ms * 1000.0).round() as u64;
+        quantize_micros(us, resolution_us) as f64 / 1000.0
+    }
+}
+
+/// Relógio com quantização de resolução integrada para proteção estrita contra ataques de canal lateral (Spectre / Meltdown).
+pub struct QuantizedClock<C: Clock> {
+    inner: C,
+    resolution_us: u64,
+}
+
+impl<C: Clock> QuantizedClock<C> {
+    /// Cria um novo relógio quantizado com a resolução informada em microssegundos (ex: 5 ou 20).
+    pub fn new(inner: C, resolution_us: u64) -> Self {
+        Self {
+            inner,
+            resolution_us: resolution_us.max(1),
+        }
+    }
+
+    /// Retorna a resolução configurada em microssegundos.
+    pub fn resolution_us(&self) -> u64 {
+        self.resolution_us
+    }
+}
+
+impl<C: Clock> Clock for QuantizedClock<C> {
+    #[inline]
+    fn now_ms(&self) -> u64 {
+        self.now_us() / 1000
+    }
+
+    #[inline]
+    fn now_us(&self) -> u64 {
+        quantize_micros(self.inner.now_us(), self.resolution_us)
+    }
+
+    #[inline]
+    fn now_ns(&self) -> u128 {
+        (self.now_us() as u128) * 1000
+    }
+
+    #[inline]
+    fn now_duration(&self) -> Duration {
+        Duration::from_micros(self.now_us())
+    }
+
+    #[inline]
+    fn now_highres(&self) -> f64 {
+        self.now_us() as f64 / 1000.0
+    }
+}
