@@ -57,7 +57,7 @@ impl PerformanceTimeline {
     pub fn mark(&self, name: impl Into<SmolStr>) -> PerformanceMark {
         let mark = PerformanceMark {
             name: name.into(),
-            start_time_ms: self.clock.now_ms() as f64,
+            start_time_ms: self.clock.now_highres(),
         };
         self.marks.lock().push(mark.clone());
         mark
@@ -105,7 +105,7 @@ impl PerformanceTimeline {
     /// Inicia uma medição de escopo RAII que calcula a duração automaticamente ao ser destruída (`Drop`).
     pub fn scoped_measure<'a>(&'a self, name: impl Into<SmolStr>) -> ScopedMeasure<'a> {
         let name_str = name.into();
-        let start_time_ms = self.clock.now_ms() as f64;
+        let start_time_ms = self.clock.now_highres();
         ScopedMeasure {
             timeline: self,
             name: name_str,
@@ -155,7 +155,7 @@ pub struct ScopedMeasure<'a> {
 
 impl<'a> Drop for ScopedMeasure<'a> {
     fn drop(&mut self) {
-        let end_time_ms = self.timeline.clock.now_ms() as f64;
+        let end_time_ms = self.timeline.clock.now_highres();
         let duration_ms = (end_time_ms - self.start_time_ms).max(0.0);
         let measure = PerformanceMeasure {
             name: self.name.clone(),
