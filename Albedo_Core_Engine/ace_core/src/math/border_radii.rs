@@ -104,6 +104,7 @@ impl BorderRadii {
     ///
     /// Se a soma de dois raios adjacentes exceder a largura ou altura da caixa, todos os raios
     /// são multiplicados por um fator $f \in (0.0, 1.0]$.
+    #[inline]
     pub fn resolve_overlapping(&self, width: f32, height: f32) -> Self {
         if width <= 0.0 || height <= 0.0 || self.is_zero() {
             return *self;
@@ -114,20 +115,12 @@ impl BorderRadii {
         let s_bottom = self.bottom_left.x + self.bottom_right.x;
         let s_left = self.top_left.y + self.bottom_left.y;
 
-        let mut f: f32 = 1.0;
+        let max_w = s_top.max(s_bottom);
+        let max_h = s_left.max(s_right);
 
-        if s_top > width {
-            f = f.min(width / s_top);
-        }
-        if s_bottom > width {
-            f = f.min(width / s_bottom);
-        }
-        if s_left > height {
-            f = f.min(height / s_left);
-        }
-        if s_right > height {
-            f = f.min(height / s_right);
-        }
+        let scale_w = if max_w > width { width / max_w } else { 1.0 };
+        let scale_h = if max_h > height { height / max_h } else { 1.0 };
+        let f = scale_w.min(scale_h);
 
         if f < 1.0 {
             Self {
