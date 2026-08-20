@@ -267,72 +267,151 @@ impl std::str::FromStr for MimeType {
 }
 
 /// Identifica (sniff) o MIME type provável a partir dos bytes iniciais do recurso (Magic Numbers / WHATWG Sniffing).
+#[inline]
 pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
-    if bytes.is_empty() {
+    let len = bytes.len();
+    if len == 0 {
         return "text/plain";
     }
 
-    // Assinaturas mágicas de imagens
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return "image/png";
+    // 1. Matching otimizado de inteiros 64-bit / 32-bit (Magic Numbers)
+    if len >= 8 {
+        let first8 = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
+        let first4 = (first8 >> 32) as u32;
+
+        // PNG: \x89PNG\r\n\x1a\n (0x89504E470D0A1A0A)
+        if first8 == 0x8950_4E47_0D0A_1A0A {
+            return "image/png";
+        }
+
+        // GIF87a / GIF89a: 0x474946383761... / 0x474946383961...
+        let first6 = first8 >> 16;
+        if first6 == 0x4749_4638_3761 || first6 == 0x4749_4638_3961 {
+            return "image/gif";
+        }
+
+        // PDF: %PDF- (0x255044462D)
+        if (first8 >> 24) == 0x0025_5044_462D {
+            return "application/pdf";
+        }
+
+        // RIFF Container (WEBP / WAVE)
+        if first4 == 0x5249_4646 { // "RIFF"
+            if len >= 12 {
+                let tag = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
+                if tag == 0x5745_4250 { // "WEBP"
+                    return "image/webp";
+                }
+                if tag == 0x5741_5645 { // "WAVE"
+                    return "audio/wav";
+                }
+            }
+        }
+
+        // FTYP Box (MP4 / AVIF)
+        let ftyp = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
+        if ftyp == 0x6674_7970 { // "ftyp"
+            if len >= 12 {
+                let brand = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
+                if brand == 0x6176_6966 || brand == 0x6176_6973 { // "avif" / "avis"
+                    return "image/avif";
+                }
+            }
+            return "video/mp4";
+        }
+
+        // Fontes Web
+        if first4 == 0x774F_4646 { // "wOFF"
+            return "font/woff";
+        }
+        if first4 == 0x774F_4632 { // "wOF2"
+            return "font/woff2";
+        }
+        if first4 == 0x0001_0000 || first4 == 0x7472_7565 || first4 == 0x7479_7031 { // "\0\1\0\0" | "true" | "typ1"
+            return "font/ttf";
+        }
+        if first4 == 0x4F54_544F { // "OTTO"
+            return "font/otf";
+        }
+
+        // WebM: 0x1A45DFA3
+        if first4 == 0x1A45_DFA3 {
+            return "video/webm";
+        }
+
+        // Icon (.ico): 0x00000100 | 0x00000200
+        if first4 == 0x0000_0100 || first4 == 0x0000_0200 {
+            return "image/x-icon";
+        }
+
+        // TIFF: "II*\0" (0x49492A00) | "MM\0*" (0x4D4D002A)
+        if first4 == 0x4949_2A00 || first4 == 0x4D4D_002A {
+            return "image/tiff";
+        }
+
+        // JPEG: \xFF\xD8\xFF
+        if (first8 >> 40) == 0xFF_D8_FF {
+            return "image/jpeg";
+        }
+
+        // ID3 (MP3)
+        if (first8 >> 40) == 0x49_44_33 {
+            return "audio/mpeg";
+        }
+
+        // BMP: "BM" (0x424D)
+        if (first8 >> 48) == 0x42_4D {
+            return "image/bmp";
+        }
+    } else {
+        // Buffers curtos (< 8 bytes)
+        if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+            return "image/gif";
+        }
+        if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            return "image/png";
+        }
+        if bytes.starts_with(b"\xFF\xD8\xFF") {
+            return "image/jpeg";
+        }
+        if bytes.starts_with(b"BM") {
+            return "image/bmp";
+        }
+        if bytes.starts_with(b"\x00\x00\x01\x00") || bytes.starts_with(b"\x00\x00\x02\x00") {
+            return "image/x-icon";
+        }
+        if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
+            return "image/tiff";
+        }
+        if bytes.starts_with(b"wOFF") {
+            return "font/woff";
+        }
+        if bytes.starts_with(b"wOF2") {
+            return "font/woff2";
+        }
+        if bytes.starts_with(b"\x00\x01\x00\x00") || bytes.starts_with(b"true") || bytes.starts_with(b"typ1") {
+            return "font/ttf";
+        }
+        if bytes.starts_with(b"OTTO") {
+            return "font/otf";
+        }
+        if bytes.starts_with(b"%PDF-") {
+            return "application/pdf";
+        }
+        if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
+            return "video/webm";
+        }
+        if bytes.starts_with(b"ID3") {
+            return "audio/mpeg";
+        }
     }
-    if bytes.starts_with(b"\xFF\xD8\xFF") {
-        return "image/jpeg";
-    }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return "image/gif";
-    }
-    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        return "image/webp";
-    }
-    if bytes.len() >= 12
-        && &bytes[4..8] == b"ftyp"
-        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
-    {
-        return "image/avif";
-    }
-    if bytes.starts_with(b"\x00\x00\x01\x00") || bytes.starts_with(b"\x00\x00\x02\x00") {
-        return "image/x-icon";
-    }
-    if bytes.starts_with(b"BM") {
-        return "image/bmp";
-    }
-    if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
-        return "image/tiff";
-    }
-    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
-        return "audio/wav";
-    }
-    if bytes.starts_with(b"wOFF") {
-        return "font/woff";
-    }
-    if bytes.starts_with(b"wOF2") {
-        return "font/woff2";
-    }
-    if bytes.starts_with(b"\x00\x01\x00\x00")
-        || bytes.starts_with(b"true")
-        || bytes.starts_with(b"typ1")
-    {
-        return "font/ttf";
-    }
-    if bytes.starts_with(b"OTTO") {
-        return "font/otf";
-    }
-    if bytes.starts_with(b"%PDF-") {
-        return "application/pdf";
-    }
-    if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
-        return "video/webm";
-    }
-    if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
-        return "video/mp4";
-    }
-    if bytes.starts_with(b"ID3") || is_mp3_frame_header(bytes) {
+
+    if is_mp3_frame_header(bytes) {
         return "audio/mpeg";
     }
 
-    // Sniffing de texto/HTML/SVG (ignora espaços iniciais) com proteção de fronteira UTF-8 em 512 bytes
-    let slice = &bytes[..bytes.len().min(512)];
+    // 2. Sniffing de texto/HTML/SVG Zero-Allocation com validação de fronteira UTF-8
+    let slice = &bytes[..len.min(512)];
     let sample = match std::str::from_utf8(slice) {
         Ok(s) => s.trim_start(),
         Err(e) => {
@@ -348,29 +427,46 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         }
     };
 
-
-    let sample_lower = sample.to_ascii_lowercase();
-    if sample_lower.starts_with("<!doctype html")
-        || sample_lower.starts_with("<html")
-        || sample_lower.starts_with("<head")
-        || sample_lower.starts_with("<body")
-        || sample_lower.starts_with("<title")
+    // Zero-allocation case-insensitive checking (sem alocar String temporária de 512 bytes!)
+    if starts_with_ignore_ascii_case(sample, "<!doctype html")
+        || starts_with_ignore_ascii_case(sample, "<html")
+        || starts_with_ignore_ascii_case(sample, "<head")
+        || starts_with_ignore_ascii_case(sample, "<body")
+        || starts_with_ignore_ascii_case(sample, "<title")
     {
         return "text/html";
     }
 
-    if sample_lower.contains("<svg")
-        || sample_lower.contains("<!doctype svg")
-        || (sample_lower.starts_with("<?xml") && sample_lower.contains("<svg"))
+    if contains_ignore_ascii_case(sample, "<svg")
+        || contains_ignore_ascii_case(sample, "<!doctype svg")
+        || (starts_with_ignore_ascii_case(sample, "<?xml") && contains_ignore_ascii_case(sample, "<svg"))
     {
         return "image/svg+xml";
     }
 
-    if sample_lower.starts_with("<?xml") {
+    if starts_with_ignore_ascii_case(sample, "<?xml") {
         return "application/xml";
     }
 
     "text/plain"
+}
+
+#[inline(always)]
+fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
+    haystack.len() >= prefix.len()
+        && haystack.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+#[inline(always)]
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    let n = needle.as_bytes();
+    if n.is_empty() {
+        return true;
+    }
+    if haystack.len() < n.len() {
+        return false;
+    }
+    haystack.as_bytes().windows(n.len()).any(|w| w.eq_ignore_ascii_case(n))
 }
 
 /// Valida um cabeçalho de frame de áudio MPEG (MP3) conforme as restrições da especificação WHATWG MIME Sniffing.
