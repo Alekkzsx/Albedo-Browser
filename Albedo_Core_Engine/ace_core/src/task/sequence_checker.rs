@@ -11,14 +11,14 @@
 use std::fmt;
 
 #[cfg(debug_assertions)]
-use std::cell::Cell;
+use parking_lot::Mutex;
 #[cfg(debug_assertions)]
 use std::thread::{current, ThreadId};
 
 /// Verificador de afinidade de thread para proteção de estruturas não-thread-safe.
 pub struct SequenceChecker {
     #[cfg(debug_assertions)]
-    bound_thread: Cell<Option<ThreadId>>,
+    bound_thread: Mutex<Option<ThreadId>>,
 }
 
 impl Default for SequenceChecker {
@@ -35,7 +35,7 @@ impl SequenceChecker {
         #[cfg(debug_assertions)]
         {
             Self {
-                bound_thread: Cell::new(Some(current().id())),
+                bound_thread: Mutex::new(Some(current().id())),
             }
         }
         #[cfg(not(debug_assertions))]
@@ -50,7 +50,7 @@ impl SequenceChecker {
         #[cfg(debug_assertions)]
         {
             Self {
-                bound_thread: Cell::new(None),
+                bound_thread: Mutex::new(None),
             }
         }
         #[cfg(not(debug_assertions))]
@@ -65,10 +65,11 @@ impl SequenceChecker {
         #[cfg(debug_assertions)]
         {
             let current_id = current().id();
-            match self.bound_thread.get() {
+            let mut guard = self.bound_thread.lock();
+            match *guard {
                 Some(bound) => bound == current_id,
                 None => {
-                    self.bound_thread.set(Some(current_id));
+                    *guard = Some(current_id);
                     true
                 }
             }
@@ -97,7 +98,7 @@ impl SequenceChecker {
     pub fn detach(&self) {
         #[cfg(debug_assertions)]
         {
-            self.bound_thread.set(None);
+            *self.bound_thread.lock() = None;
         }
     }
 }
@@ -106,7 +107,7 @@ impl fmt::Debug for SequenceChecker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("SequenceChecker");
         #[cfg(debug_assertions)]
-        d.field("bound_thread", &self.bound_thread.get());
+        d.field("bound_thread", &*self.bound_thread.lock());
         d.finish()
     }
 }
