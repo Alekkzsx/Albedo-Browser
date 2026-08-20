@@ -27,6 +27,13 @@ pub const ZERO: LayoutUnit = LayoutUnit(0);
 pub struct LayoutUnit(pub i32);
 
 impl LayoutUnit {
+    /// Valor mínimo representável.
+    pub const MIN: Self = MIN;
+    /// Valor máximo representável.
+    pub const MAX: Self = MAX;
+    /// Zero em unidades de layout.
+    pub const ZERO: Self = ZERO;
+
     /// Cria um `LayoutUnit` a partir de um valor bruto de unidades inteiras (1/60 px).
     #[inline]
     pub const fn from_raw(raw: i32) -> Self {
@@ -170,13 +177,68 @@ impl LayoutUnit {
     #[inline]
     pub fn div_layout_unit(self, other: Self) -> f32 {
         if other.0 == 0 {
-            if self.0 >= 0 {
+            if self.0 == 0 {
+                f32::NAN
+            } else if self.0 > 0 {
                 f32::INFINITY
             } else {
                 f32::NEG_INFINITY
             }
         } else {
             self.0 as f32 / other.0 as f32
+        }
+    }
+
+    /// Divisão inteira saturada protegida contra divisão por zero e overflow (`i32::MIN / -1`).
+    #[inline]
+    pub const fn saturating_div(self, rhs: i32) -> Self {
+        if rhs == 0 {
+            if self.0 >= 0 {
+                MAX
+            } else {
+                MIN
+            }
+        } else if self.0 == i32::MIN && rhs == -1 {
+            MAX
+        } else {
+            Self(self.0 / rhs)
+        }
+    }
+
+    /// Adição com verificação de overflow (retorna `None` se estourar).
+    #[inline]
+    pub const fn checked_add(self, rhs: Self) -> Option<Self> {
+        match self.0.checked_add(rhs.0) {
+            Some(v) => Some(Self(v)),
+            None => None,
+        }
+    }
+
+    /// Subtração com verificação de underflow (retorna `None` se estourar).
+    #[inline]
+    pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
+        match self.0.checked_sub(rhs.0) {
+            Some(v) => Some(Self(v)),
+            None => None,
+        }
+    }
+
+    /// Multiplicação com verificação de overflow (retorna `None` se estourar).
+    #[inline]
+    pub const fn checked_mul(self, factor: i32) -> Option<Self> {
+        match self.0.checked_mul(factor) {
+            Some(v) => Some(Self(v)),
+            None => None,
+        }
+    }
+
+    /// Divisão com verificação de divisão por zero e overflow.
+    #[inline]
+    pub const fn checked_div(self, rhs: i32) -> Option<Self> {
+        if rhs == 0 || (self.0 == i32::MIN && rhs == -1) {
+            None
+        } else {
+            Some(Self(self.0 / rhs))
         }
     }
 
@@ -258,14 +320,14 @@ impl Div<i32> for LayoutUnit {
 
     #[inline]
     fn div(self, rhs: i32) -> Self::Output {
-        Self(self.0 / rhs)
+        self.saturating_div(rhs)
     }
 }
 
 impl DivAssign<i32> for LayoutUnit {
     #[inline]
     fn div_assign(&mut self, rhs: i32) {
-        self.0 /= rhs;
+        *self = self.saturating_div(rhs);
     }
 }
 
