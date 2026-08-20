@@ -327,9 +327,7 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
         return "video/mp4";
     }
-    if bytes.starts_with(b"ID3")
-        || (bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0)
-    {
+    if bytes.starts_with(b"ID3") || is_mp3_frame_header(bytes) {
         return "audio/mpeg";
     }
 
@@ -373,4 +371,44 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
     }
 
     "text/plain"
+}
+
+/// Valida um cabeçalho de frame de áudio MPEG (MP3) conforme as restrições da especificação WHATWG MIME Sniffing.
+#[inline]
+fn is_mp3_frame_header(bytes: &[u8]) -> bool {
+    if bytes.len() < 4 {
+        return false;
+    }
+    let b0 = bytes[0];
+    let b1 = bytes[1];
+    let b2 = bytes[2];
+    let b3 = bytes[3];
+
+    // Sync: 11 bits em 1 (0xFFE0)
+    if b0 != 0xFF || (b1 & 0xE0) != 0xE0 {
+        return false;
+    }
+    // MPEG Version != reserved (0b01)
+    if (b1 & 0x18) == 0x08 {
+        return false;
+    }
+    // Layer != reserved (0b00)
+    if (b1 & 0x06) == 0x00 {
+        return false;
+    }
+    // Bitrate index: 0b1111 (15) e 0b0000 (0) são inválidos
+    let bitrate = (b2 & 0xF0) >> 4;
+    if bitrate == 0x0F || bitrate == 0x00 {
+        return false;
+    }
+    // Sampling rate index: 0b11 (3) é reservado
+    if (b2 & 0x0C) == 0x0C {
+        return false;
+    }
+    // Emphasis: 0b10 (2) é reservado
+    if (b3 & 0x03) == 0x02 {
+        return false;
+    }
+
+    true
 }
