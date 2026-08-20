@@ -1,9 +1,12 @@
-//! # Flags de Recursos em Tempo de Execução (Runtime Features)
+//! # Flags de Recursos e Parâmetros em Tempo de Execução (Runtime Features & FeatureParams)
 //!
-//! Registro de flags de features lock-free baseado em `AtomicBitSet`, permitindo habilitar/desabilitar
-//! tecnologias experimentais (CSS Subgrid, WebGPU, DevTools) sem necessidade de recompilação.
+//! Registro de flags de features lock-free baseado em `AtomicBitSet` e suporte a parâmetros tipados
+//! dinâmicos (`FeatureParam<T>`, padrão Chromium `base::FeatureParam`), permitindo testes A/B,
+//! parametrização de buffers e ativação gradual de novas tecnologias sem necessidade de recompilação.
 
 use crate::collections::AtomicBitSet;
+use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
 use std::sync::atomic::Ordering;
 use std::sync::LazyLock;
 
@@ -39,9 +42,98 @@ pub enum Feature {
 
 static GLOBAL_FEATURES: LazyLock<RuntimeFeatures> = LazyLock::new(RuntimeFeatures::new_default);
 
+/// Valor de um parâmetro dinâmico de feature.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamValue {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(String),
+}
+
+/// Parâmetro tipado associado a uma `Feature` (Chromium `base::FeatureParam<T>`).
+#[derive(Debug, Clone)]
+pub struct FeatureParam<T> {
+    pub feature: Feature,
+    pub name: &'static str,
+    pub default_value: T,
+}
+
+impl<T: Clone> FeatureParam<T> {
+    /// Cria uma nova definição de parâmetro com valor padrão.
+    pub const fn new(feature: Feature, name: &'static str, default_value: T) -> Self {
+        Self {
+            feature,
+            name,
+            default_value,
+        }
+    }
+}
+
+impl FeatureParam<bool> {
+    /// Retorna o valor booleano atual do parâmetro considerando ativação da feature e overrides.
+    pub fn get(&self) -> bool {
+        if !RuntimeFeatures::global().is_enabled(self.feature) {
+            return self.default_value;
+        }
+        let overrides = RuntimeFeatures::global().param_overrides.read();
+        if let Some(ParamValue::Bool(v)) = overrides.get(&(self.feature, self.name)) {
+            *v
+        } else {
+            self.default_value
+        }
+    }
+}
+
+impl FeatureParam<i64> {
+    /// Retorna o valor inteiro atual do parâmetro.
+    pub fn get(&self) -> i64 {
+        if !RuntimeFeatures::global().is_enabled(self.feature) {
+            return self.default_value;
+        }
+        let overrides = RuntimeFeatures::global().param_overrides.read();
+        if let Some(ParamValue::Int(v)) = overrides.get(&(self.feature, self.name)) {
+            *v
+        } else {
+            self.default_value
+        }
+    }
+}
+
+impl FeatureParam<f64> {
+    /// Retorna o valor de ponto flutuante atual do parâmetro.
+    pub fn get(&self) -> f64 {
+        if !RuntimeFeatures::global().is_enabled(self.feature) {
+            return self.default_value;
+        }
+        let overrides = RuntimeFeatures::global().param_overrides.read();
+        if let Some(ParamValue::Float(v)) = overrides.get(&(self.feature, self.name)) {
+            *v
+        } else {
+            self.default_value
+        }
+    }
+}
+
+impl FeatureParam<String> {
+    /// Retorna o valor textual atual do parâmetro.
+    pub fn get(&self) -> String {
+        if !RuntimeFeatures::global().is_enabled(self.feature) {
+            return self.default_value.clone();
+        }
+        let overrides = RuntimeFeatures::global().param_overrides.read();
+        if let Some(ParamValue::Str(v)) = overrides.get(&(self.feature, self.name)) {
+            v.clone()
+        } else {
+            self.default_value.clone()
+        }
+    }
+}
+
 /// Gerenciador de flags de funcionalidades do navegador com acesso atômico $O(1)$ sem locks.
 pub struct RuntimeFeatures {
     flags: AtomicBitSet<4>, // 256 flags
+    param_overrides: RwLock<FxHashMap<(Feature, &'static str), ParamValue>>,
 }
 
 impl RuntimeFeatures {
@@ -49,6 +141,7 @@ impl RuntimeFeatures {
     pub fn new() -> Self {
         Self {
             flags: AtomicBitSet::new(),
+            param_overrides: RwLock::new(FxHashMap::default()),
         }
     }
 
@@ -89,6 +182,16 @@ impl RuntimeFeatures {
         self.flags.set(feature as usize, enabled, Ordering::SeqCst);
     }
 
+    /// Define um override para um parâmetro de feature (para testes A/B ou flags de CLI).
+    pub fn set_param_override(&self, feature: Feature, name: &'static str, value: ParamValue) {
+        self.param_overrides.write().insert((feature, name), value);
+    }
+
+    /// Limpa todos os overrides de parâmetros.
+    pub fn clear_param_overrides(&self) {
+        self.param_overrides.write().clear();
+    }
+
     /// Restaura a configuração padrão das features do navegador.
     pub fn reset_defaults(&self) {
         self.flags.clear(Ordering::SeqCst);
@@ -98,6 +201,7 @@ impl RuntimeFeatures {
         self.enable(Feature::FetchApi);
         self.enable(Feature::LocalStorage);
         self.enable(Feature::WebSocket);
+        self.clear_param_overrides();
     }
 
     /// Atalho global estático: verifica se um recurso está habilitado no motor.
@@ -110,5 +214,30 @@ impl RuntimeFeatures {
 impl Default for RuntimeFeatures {
     fn default() -> Self {
         Self::new_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_feature_flags_and_params() {
+        let registry = RuntimeFeatures::global();
+        registry.reset_defaults();
+
+        assert!(registry.is_enabled(Feature::CssGrid));
+        assert!(!registry.is_enabled(Feature::CssSubgrid));
+
+        let subgrid_depth = FeatureParam::new(Feature::CssSubgrid, "max_depth", 8i64);
+        assert_eq!(subgrid_depth.get(), 8); // Feature desabilitada retorna padrão
+
+        registry.enable(Feature::CssSubgrid);
+        assert_eq!(subgrid_depth.get(), 8);
+
+        registry.set_param_override(Feature::CssSubgrid, "max_depth", ParamValue::Int(16));
+        assert_eq!(subgrid_depth.get(), 16); // Override aplicado com sucesso
+
+        registry.reset_defaults();
     }
 }
