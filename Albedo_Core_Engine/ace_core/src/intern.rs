@@ -1,32 +1,39 @@
-//! # O(1) String Pooling & Static Atoms
+//! # O(1) String Pooling & Static Atoms de Alta Performance
 //!
-//! A comparação de strings é o calcanhar de Aquiles de qualquer parser HTML/CSS.
-//! No Albedo, representamos tags (`div`, `span`), atributos (`class`, `id`) e propriedades CSS (`color`)
-//! como "Atoms" (átomos).
-//!
-//! Quando um Atom é criado, a string é internada em um pool global.
-//! Comparar dois Atoms custa 1 ciclo de CPU, pois apenas o identificador numérico interno é comparado.
+//! Representação otimizada de átomos com identificadores estáticos de custo zero (zero atomic refcount)
+//! para tags HTML, atributos e propriedades CSS, com fallback dinâmico para DefaultAtom.
 
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use string_cache::DefaultAtom;
 
 /// Representa uma string otimizada e única em toda a execução do navegador.
-/// A comparação de igualdade `Atom == Atom` é $O(1)$.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Atom(DefaultAtom);
+/// Para átomos estáticos conhecidos, a igualdade é $O(1)$ imediata (comparação de u32) sem atomic refcount.
+#[derive(Clone, Eq)]
+pub enum Atom {
+    Static(&'static str, u32),
+    Dynamic(DefaultAtom),
+}
 
 impl Atom {
-    /// Interna uma string dinamicamente em tempo de execução.
+    /// Interna uma string. Se for um átomo estático conhecido, resolve em $O(1)$ sem alocações.
     #[inline]
     pub fn new(text: &str) -> Self {
-        Self(DefaultAtom::from(text))
+        if let Some(static_atom) = lookup_static(text) {
+            static_atom
+        } else {
+            Self::Dynamic(DefaultAtom::from(text))
+        }
     }
 
     /// Retorna a representação textual do Atom como `&str`.
     #[inline]
     pub fn as_str(&self) -> &str {
-        &self.0
+        match self {
+            Self::Static(s, _) => s,
+            Self::Dynamic(d) => d.as_ref(),
+        }
     }
 
     /// Retorna `true` se o átomo for uma string vazia.
@@ -54,6 +61,39 @@ impl Atom {
     }
 }
 
+impl PartialEq for Atom {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Static(_, id1), Self::Static(_, id2)) => id1 == id2,
+            (Self::Dynamic(d1), Self::Dynamic(d2)) => d1 == d2,
+            (Self::Static(s, _), Self::Dynamic(d)) => *s == d.as_ref(),
+            (Self::Dynamic(d), Self::Static(s, _)) => d.as_ref() == *s,
+        }
+    }
+}
+
+impl PartialOrd for Atom {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Atom {
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl Hash for Atom {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
 impl From<&str> for Atom {
     #[inline]
     fn from(s: &str) -> Self {
@@ -64,7 +104,11 @@ impl From<&str> for Atom {
 impl From<String> for Atom {
     #[inline]
     fn from(s: String) -> Self {
-        Self(DefaultAtom::from(s))
+        if let Some(static_atom) = lookup_static(&s) {
+            static_atom
+        } else {
+            Self::Dynamic(DefaultAtom::from(s))
+        }
     }
 }
 
@@ -85,7 +129,11 @@ impl From<Atom> for smol_str::SmolStr {
 impl From<DefaultAtom> for Atom {
     #[inline]
     fn from(atom: DefaultAtom) -> Self {
-        Self(atom)
+        if let Some(static_atom) = lookup_static(atom.as_ref()) {
+            static_atom
+        } else {
+            Self::Dynamic(atom)
+        }
     }
 }
 
@@ -152,141 +200,144 @@ impl fmt::Display for Atom {
     }
 }
 
-/// Macro auxiliar para definir átomos pré-computados com lazy initialization global.
-macro_rules! lazy_atom {
-    ($name:ident, $str:expr) => {
-        #[allow(non_snake_case)]
+macro_rules! define_static_atoms {
+    ($($id:expr, $fn_name:ident, $str:expr);* $(;)?) => {
+        pub mod atoms {
+            use super::Atom;
+            $(
+                #[allow(non_snake_case)]
+                #[inline(always)]
+                pub const fn $fn_name() -> Atom {
+                    Atom::Static($str, $id)
+                }
+            )*
+        }
+
         #[inline]
-        pub fn $name() -> $crate::intern::Atom {
-            static ATOM: std::sync::LazyLock<$crate::intern::Atom> =
-                std::sync::LazyLock::new(|| $crate::intern::Atom::new($str));
-            ATOM.clone()
+        pub fn lookup_static(s: &str) -> Option<Atom> {
+            match s {
+                $( $str => Some(Atom::Static($str, $id)), )*
+                _ => None,
+            }
         }
     };
 }
 
-/// Conjunto de átomos pré-definidos de altíssima frequência para eliminar alocações
-/// durante as fases de tokenização HTML e parsing CSS.
-pub mod atoms {
-    // Tags HTML
-    lazy_atom!(HTML, "html");
-    lazy_atom!(HEAD, "head");
-    lazy_atom!(BODY, "body");
-    lazy_atom!(DIV, "div");
-    lazy_atom!(SPAN, "span");
-    lazy_atom!(P, "p");
-    lazy_atom!(A, "a");
-    lazy_atom!(BUTTON, "button");
-    lazy_atom!(INPUT, "input");
-    lazy_atom!(IMG, "img");
-    lazy_atom!(SCRIPT, "script");
-    lazy_atom!(STYLE, "style");
-    lazy_atom!(LINK, "link");
-    lazy_atom!(META, "meta");
-    lazy_atom!(TITLE, "title");
-    lazy_atom!(IFRAME, "iframe");
-    lazy_atom!(TABLE, "table");
-    lazy_atom!(THEAD, "thead");
-    lazy_atom!(TBODY, "tbody");
-    lazy_atom!(TR, "tr");
-    lazy_atom!(TH, "th");
-    lazy_atom!(TD, "td");
-    lazy_atom!(UL, "ul");
-    lazy_atom!(OL, "ol");
-    lazy_atom!(LI, "li");
-    lazy_atom!(FORM, "form");
-    lazy_atom!(LABEL, "label");
-    lazy_atom!(TEXTAREA, "textarea");
-    lazy_atom!(SELECT, "select");
-    lazy_atom!(OPTION, "option");
-    lazy_atom!(HEADER, "header");
-    lazy_atom!(FOOTER, "footer");
-    lazy_atom!(NAV, "nav");
-    lazy_atom!(SECTION, "section");
-    lazy_atom!(ARTICLE, "article");
-    lazy_atom!(ASIDE, "aside");
-    lazy_atom!(MAIN, "main");
-    lazy_atom!(H1, "h1");
-    lazy_atom!(H2, "h2");
-    lazy_atom!(H3, "h3");
-    lazy_atom!(H4, "h4");
-    lazy_atom!(H5, "h5");
-    lazy_atom!(H6, "h6");
-    lazy_atom!(CANVAS, "canvas");
-    lazy_atom!(SVG, "svg");
-    lazy_atom!(PATH, "path");
-    lazy_atom!(VIDEO, "video");
-    lazy_atom!(AUDIO, "audio");
-    lazy_atom!(SOURCE, "source");
-    lazy_atom!(TEMPLATE, "template");
-    lazy_atom!(SLOT, "slot");
-    lazy_atom!(BR, "br");
-    lazy_atom!(HR, "hr");
-    lazy_atom!(PRE, "pre");
-    lazy_atom!(CODE, "code");
-    lazy_atom!(STRONG, "strong");
-    lazy_atom!(EM, "em");
-
-    // Atributos HTML
-    lazy_atom!(ID, "id");
-    lazy_atom!(CLASS, "class");
-    lazy_atom!(STYLE_ATTR, "style");
-    lazy_atom!(SRC, "src");
-    lazy_atom!(HREF, "href");
-    lazy_atom!(TYPE, "type");
-    lazy_atom!(VALUE, "value");
-    lazy_atom!(NAME, "name");
-    lazy_atom!(REL, "rel");
-    lazy_atom!(CONTENT, "content");
-    lazy_atom!(CHARSET, "charset");
-    lazy_atom!(ALT, "alt");
-    lazy_atom!(WIDTH, "width");
-    lazy_atom!(HEIGHT, "height");
-    lazy_atom!(DISABLED, "disabled");
-    lazy_atom!(CHECKED, "checked");
-    lazy_atom!(SELECTED, "selected");
-    lazy_atom!(READONLY, "readonly");
-    lazy_atom!(PLACEHOLDER, "placeholder");
-    lazy_atom!(ACTION, "action");
-    lazy_atom!(METHOD, "method");
-    lazy_atom!(TARGET, "target");
-
-    // Propriedades CSS
-    lazy_atom!(DISPLAY, "display");
-    lazy_atom!(POSITION, "position");
-    lazy_atom!(TOP, "top");
-    lazy_atom!(RIGHT, "right");
-    lazy_atom!(BOTTOM, "bottom");
-    lazy_atom!(LEFT, "left");
-    lazy_atom!(WIDTH_PROP, "width");
-    lazy_atom!(HEIGHT_PROP, "height");
-    lazy_atom!(MIN_WIDTH, "min-width");
-    lazy_atom!(MAX_WIDTH, "max-width");
-    lazy_atom!(MIN_HEIGHT, "min-height");
-    lazy_atom!(MAX_HEIGHT, "max-height");
-    lazy_atom!(MARGIN, "margin");
-    lazy_atom!(PADDING, "padding");
-    lazy_atom!(BORDER, "border");
-    lazy_atom!(BORDER_RADIUS, "border-radius");
-    lazy_atom!(COLOR, "color");
-    lazy_atom!(BACKGROUND_COLOR, "background-color");
-    lazy_atom!(OPACITY, "opacity");
-    lazy_atom!(Z_INDEX, "z-index");
-    lazy_atom!(FONT_FAMILY, "font-family");
-    lazy_atom!(FONT_SIZE, "font-size");
-    lazy_atom!(FONT_WEIGHT, "font-weight");
-    lazy_atom!(LINE_HEIGHT, "line-height");
-    lazy_atom!(TEXT_ALIGN, "text-align");
-    lazy_atom!(FLEX, "flex");
-    lazy_atom!(FLEX_DIRECTION, "flex-direction");
-    lazy_atom!(FLEX_WRAP, "flex-wrap");
-    lazy_atom!(JUSTIFY_CONTENT, "justify-content");
-    lazy_atom!(ALIGN_ITEMS, "align-items");
-    lazy_atom!(GRID, "grid");
-    lazy_atom!(GAP, "gap");
-    lazy_atom!(OVERFLOW, "overflow");
-    lazy_atom!(VISIBILITY, "visibility");
-    lazy_atom!(TRANSFORM, "transform");
-    lazy_atom!(BOX_SIZING, "box-sizing");
-    lazy_atom!(CURSOR, "cursor");
+define_static_atoms! {
+    0, HTML, "html";
+    1, HEAD, "head";
+    2, BODY, "body";
+    3, DIV, "div";
+    4, SPAN, "span";
+    5, P, "p";
+    6, A, "a";
+    7, BUTTON, "button";
+    8, INPUT, "input";
+    9, IMG, "img";
+    10, SCRIPT, "script";
+    11, STYLE, "style";
+    12, LINK, "link";
+    13, META, "meta";
+    14, TITLE, "title";
+    15, IFRAME, "iframe";
+    16, TABLE, "table";
+    17, THEAD, "thead";
+    18, TBODY, "tbody";
+    19, TR, "tr";
+    20, TH, "th";
+    21, TD, "td";
+    22, UL, "ul";
+    23, OL, "ol";
+    24, LI, "li";
+    25, FORM, "form";
+    26, LABEL, "label";
+    27, TEXTAREA, "textarea";
+    28, SELECT, "select";
+    29, OPTION, "option";
+    30, HEADER, "header";
+    31, FOOTER, "footer";
+    32, NAV, "nav";
+    33, SECTION, "section";
+    34, ARTICLE, "article";
+    35, ASIDE, "aside";
+    36, MAIN, "main";
+    37, H1, "h1";
+    38, H2, "h2";
+    39, H3, "h3";
+    40, H4, "h4";
+    41, H5, "h5";
+    42, H6, "h6";
+    43, CANVAS, "canvas";
+    44, SVG, "svg";
+    45, PATH, "path";
+    46, VIDEO, "video";
+    47, AUDIO, "audio";
+    48, SOURCE, "source";
+    49, TEMPLATE, "template";
+    50, SLOT, "slot";
+    51, BR, "br";
+    52, HR, "hr";
+    53, PRE, "pre";
+    54, CODE, "code";
+    55, STRONG, "strong";
+    56, EM, "em";
+    57, ID, "id";
+    58, CLASS, "class";
+    11, STYLE_ATTR, "style";
+    59, SRC, "src";
+    60, HREF, "href";
+    61, TYPE, "type";
+    62, VALUE, "value";
+    63, NAME, "name";
+    64, REL, "rel";
+    65, CONTENT, "content";
+    66, CHARSET, "charset";
+    67, ALT, "alt";
+    68, WIDTH, "width";
+    69, HEIGHT, "height";
+    70, DISABLED, "disabled";
+    71, CHECKED, "checked";
+    72, SELECTED, "selected";
+    73, READONLY, "readonly";
+    74, PLACEHOLDER, "placeholder";
+    75, ACTION, "action";
+    76, METHOD, "method";
+    77, TARGET, "target";
+    78, DISPLAY, "display";
+    79, POSITION, "position";
+    80, TOP, "top";
+    81, RIGHT, "right";
+    82, BOTTOM, "bottom";
+    83, LEFT, "left";
+    68, WIDTH_PROP, "width";
+    69, HEIGHT_PROP, "height";
+    84, MIN_WIDTH, "min-width";
+    85, MAX_WIDTH, "max-width";
+    86, MIN_HEIGHT, "min-height";
+    87, MAX_HEIGHT, "max-height";
+    88, MARGIN, "margin";
+    89, PADDING, "padding";
+    90, BORDER, "border";
+    91, BORDER_RADIUS, "border-radius";
+    92, COLOR, "color";
+    93, BACKGROUND_COLOR, "background-color";
+    94, OPACITY, "opacity";
+    95, Z_INDEX, "z-index";
+    96, FONT_FAMILY, "font-family";
+    97, FONT_SIZE, "font-size";
+    98, FONT_WEIGHT, "font-weight";
+    99, LINE_HEIGHT, "line-height";
+    100, TEXT_ALIGN, "text-align";
+    101, FLEX, "flex";
+    102, FLEX_DIRECTION, "flex-direction";
+    103, FLEX_WRAP, "flex-wrap";
+    104, JUSTIFY_CONTENT, "justify-content";
+    105, ALIGN_ITEMS, "align-items";
+    106, GRID, "grid";
+    107, GAP, "gap";
+    108, OVERFLOW, "overflow";
+    109, VISIBILITY, "visibility";
+    110, TRANSFORM, "transform";
+    111, BOX_SIZING, "box-sizing";
+    112, CURSOR, "cursor";
 }
