@@ -39,38 +39,60 @@ impl<const WORDS: usize> BloomFilter<WORDS> {
         self.words.iter().map(|w| w.count_ones() as usize).sum()
     }
 
-    /// Insere um valor de hash de 64 bits no filtro.
+    /// Insere um valor de hash de 64 bits no filtro com 4 passos desenrolados e indexação sem divisão.
+    #[inline(always)]
     pub fn insert_hash(&mut self, hash: u64) {
         let (h1, h2) = Self::split_hash(hash);
-        for i in 0..4 {
-            let bit_idx = (h1.wrapping_add(i * h2) as usize) % Self::BITS;
-            let word_idx = bit_idx / 64;
-            let bit_in_word = bit_idx % 64;
-            self.words[word_idx] |= 1u64 << bit_in_word;
+        let is_power_of_two = Self::BITS.is_power_of_two();
+        let mask = Self::BITS.wrapping_sub(1);
+
+        macro_rules! set_step {
+            ($step:expr) => {
+                let h = h1.wrapping_add($step * h2) as usize;
+                let bit_idx = if is_power_of_two { h & mask } else { h % Self::BITS };
+                let word_idx = bit_idx >> 6;
+                let bit_in_word = bit_idx & 63;
+                self.words[word_idx] |= 1u64 << bit_in_word;
+            };
         }
+
+        set_step!(0);
+        set_step!(1);
+        set_step!(2);
+        set_step!(3);
     }
 
     /// Insere uma string no filtro.
-    #[inline]
+    #[inline(always)]
     pub fn insert_str(&mut self, text: &str) {
         let hash = fast_hash(text);
         self.insert_hash(hash);
     }
 
-    /// Consulta se um valor de hash possivelmente está no conjunto.
-    ///
-    /// - Se retornar `false`: o elemento **definitivamente NÃO está** no conjunto (100% de garantia).
-    /// - Se retornar `true`: o elemento **provavelmente está** no conjunto (com baixa taxa de falso-positivo).
+    /// Consulta se um valor de hash possivelmente está no conjunto com early-exit no primeiro bit 0.
+    #[inline(always)]
     pub fn contains_hash(&self, hash: u64) -> bool {
         let (h1, h2) = Self::split_hash(hash);
-        for i in 0..4 {
-            let bit_idx = (h1.wrapping_add(i * h2) as usize) % Self::BITS;
-            let word_idx = bit_idx / 64;
-            let bit_in_word = bit_idx % 64;
-            if (self.words[word_idx] & (1u64 << bit_in_word)) == 0 {
-                return false;
-            }
+        let is_power_of_two = Self::BITS.is_power_of_two();
+        let mask = Self::BITS.wrapping_sub(1);
+
+        macro_rules! check_step {
+            ($step:expr) => {
+                let h = h1.wrapping_add($step * h2) as usize;
+                let bit_idx = if is_power_of_two { h & mask } else { h % Self::BITS };
+                let word_idx = bit_idx >> 6;
+                let bit_in_word = bit_idx & 63;
+                if (self.words[word_idx] & (1u64 << bit_in_word)) == 0 {
+                    return false;
+                }
+            };
         }
+
+        check_step!(0);
+        check_step!(1);
+        check_step!(2);
+        check_step!(3);
+
         true
     }
 
