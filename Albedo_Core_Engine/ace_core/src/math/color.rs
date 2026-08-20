@@ -98,6 +98,19 @@ impl HueInterpolation {
     }
 }
 
+/// Recíprocos pré-calculados para eliminar instruções de divisão FP no caminho crítico
+const INV_255: f32 = 1.0 / 255.0;
+const INV_12_92: f32 = 1.0 / 12.92;
+const INV_1_055: f32 = 1.0 / 1.055;
+const INV_D50_XN: f32 = 1.0 / 0.96422;
+const INV_D50_ZN: f32 = 1.0 / 0.82521;
+const INV_116: f32 = 1.0 / 116.0;
+const INV_500: f32 = 1.0 / 500.0;
+const INV_200: f32 = 1.0 / 200.0;
+const INV_CIE_KAPPA: f32 = 27.0 / 24389.0;
+const RAD_TO_DEG: f32 = 180.0 / std::f32::consts::PI;
+const DEG_TO_RAD: f32 = std::f32::consts::PI / 180.0;
+
 impl Color {
     pub const TRANSPARENT: Self = Self::from_rgba(0, 0, 0, 0);
     pub const BLACK: Self = Self::from_rgb(0, 0, 0);
@@ -113,42 +126,42 @@ impl Color {
     pub const SILVER: Self = Self::from_rgb(192, 192, 192);
 
     /// Cria uma cor a partir de valores inteiros RGBA (0-255).
-    #[inline]
+    #[inline(always)]
     pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
 
     /// Cria uma cor opaca a partir de valores inteiros RGB (0-255).
-    #[inline]
+    #[inline(always)]
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
     }
 
     /// Cria uma cor a partir de floats normalizados (0.0 ..= 1.0).
-    #[inline]
+    #[inline(always)]
     pub fn from_rgba_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
-            r: (r.clamp(0.0, 1.0) * 255.0).round() as u8,
-            g: (g.clamp(0.0, 1.0) * 255.0).round() as u8,
-            b: (b.clamp(0.0, 1.0) * 255.0).round() as u8,
-            a: (a.clamp(0.0, 1.0) * 255.0).round() as u8,
+            r: (r.clamp(0.0, 1.0) * 255.0 + 0.5) as u8,
+            g: (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8,
+            b: (b.clamp(0.0, 1.0) * 255.0 + 0.5) as u8,
+            a: (a.clamp(0.0, 1.0) * 255.0 + 0.5) as u8,
         }
     }
 
-    /// Retorna os componentes normalizados como floats (0.0 ..= 1.0).
-    #[inline]
+    /// Retorna os componentes normalizados como floats (0.0 ..= 1.0) usando multiplicação recíproca.
+    #[inline(always)]
     pub fn to_rgba_f32(self) -> (f32, f32, f32, f32) {
         (
-            self.r as f32 / 255.0,
-            self.g as f32 / 255.0,
-            self.b as f32 / 255.0,
-            self.a as f32 / 255.0,
+            self.r as f32 * INV_255,
+            self.g as f32 * INV_255,
+            self.b as f32 * INV_255,
+            self.a as f32 * INV_255,
         )
     }
 
     /// Retorna os componentes com canal alfa pré-multiplicado (necessário para Shaders GPU
     /// para evitar halos escuros em texturas semi-transparentes).
-    #[inline]
+    #[inline(always)]
     pub fn to_premultiplied_f32(self) -> (f32, f32, f32, f32) {
         let (r, g, b, a) = self.to_rgba_f32();
         (r * a, g * a, b * a, a)
@@ -402,17 +415,27 @@ impl Color {
     /// Composição alfa padrão Porter-Duff (`source-over`): mistura `self` (fonte) sobre `dst` (fundo).
     #[inline]
     pub fn blend_source_over(self, dst: Self) -> Self {
+        // Fast-path para casos triviais (muito frequentes em compositing)
+        if self.a == 255 {
+            return self;
+        }
+        if self.a == 0 {
+            return dst;
+        }
+
         let (src_r, src_g, src_b, src_a) = self.to_rgba_f32();
         let (dst_r, dst_g, dst_b, dst_a) = dst.to_rgba_f32();
 
-        let out_a = src_a + dst_a * (1.0 - src_a);
+        let dst_factor = dst_a * (1.0 - src_a);
+        let out_a = src_a + dst_factor;
         if out_a <= 0.0 {
             return Self::TRANSPARENT;
         }
 
-        let out_r = (src_r * src_a + dst_r * dst_a * (1.0 - src_a)) / out_a;
-        let out_g = (src_g * src_a + dst_g * dst_a * (1.0 - src_a)) / out_a;
-        let out_b = (src_b * src_a + dst_b * dst_a * (1.0 - src_a)) / out_a;
+        let inv_out_a = 1.0 / out_a;
+        let out_r = (src_r * src_a + dst_r * dst_factor) * inv_out_a;
+        let out_g = (src_g * src_a + dst_g * dst_factor) * inv_out_a;
+        let out_b = (src_b * src_a + dst_b * dst_factor) * inv_out_a;
 
         Self::from_rgba_f32(out_r, out_g, out_b, out_a)
     }
@@ -1171,10 +1194,24 @@ pub fn mix_colors(
     mix_colors_with_hue(space, HueInterpolation::Shorter, c1, p1, c2, p2)
 }
 
+/// Normaliza o ângulo de matiz em graus para o intervalo [0.0, 360.0) com fast-path branchless.
+#[inline(always)]
+pub fn normalize_hue(mut h: f32) -> f32 {
+    if h >= 0.0 && h < 360.0 {
+        return h;
+    }
+    h %= 360.0;
+    if h < 0.0 {
+        h += 360.0;
+    }
+    h
+}
+
 /// Interpola dois ângulos de matiz em graus conforme CSS Color 4 §12.4.
+#[inline]
 pub fn interpolate_hue(h1: f32, h2: f32, t: f32, method: HueInterpolation) -> f32 {
-    let mut h1 = (h1 % 360.0 + 360.0) % 360.0;
-    let mut h2 = (h2 % 360.0 + 360.0) % 360.0;
+    let mut h1 = normalize_hue(h1);
+    let mut h2 = normalize_hue(h2);
 
     match method {
         HueInterpolation::Shorter => {
@@ -1206,11 +1243,17 @@ pub fn interpolate_hue(h1: f32, h2: f32, t: f32, method: HueInterpolation) -> f3
     }
 
     let h = h1 + (h2 - h1) * t;
-    (h % 360.0 + 360.0) % 360.0
+    if h >= 360.0 {
+        if h < 720.0 { h - 360.0 } else { normalize_hue(h) }
+    } else if h < 0.0 {
+        if h >= -360.0 { h + 360.0 } else { normalize_hue(h) }
+    } else {
+        h
+    }
 }
 
 /// Converte Linear sRGB (D65) para CIE XYZ (D50) usando a matriz combinada com Adaptação Cromática Bradford (W3C CSS Color 4 §9.2).
-#[inline]
+#[inline(always)]
 pub fn linear_srgb_to_xyz_d50(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let x = 0.4360747 * r + 0.3850649 * g + 0.1430804 * b;
     let y = 0.2225045 * r + 0.7168786 * g + 0.0606169 * b;
@@ -1219,7 +1262,7 @@ pub fn linear_srgb_to_xyz_d50(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
 }
 
 /// Converte CIE XYZ (D50) para Linear sRGB (D65) usando a matriz inversa Bradford (W3C CSS Color 4 §9.2).
-#[inline]
+#[inline(always)]
 pub fn xyz_d50_to_linear_srgb(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     let r = 3.1338561 * x - 1.6168667 * y - 0.4906146 * z;
     let g = -0.9787684 * x + 1.9161415 * y + 0.0334540 * z;
@@ -1235,26 +1278,26 @@ pub const CIE_EPSILON: f32 = 216.0 / 24389.0; // ≈ 0.008856451679035631
 pub const CIE_KAPPA: f32 = 24389.0 / 27.0;    // ≈ 903.2962962962963
 
 /// Converte CIE XYZ (D50) para CIE L*a*b* (D50).
-#[inline]
+#[inline(always)]
 pub fn xyz_d50_to_lab(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
-    let xr = x / D50_XN;
-    let yr = y / D50_YN;
-    let zr = z / D50_ZN;
+    let xr = x * INV_D50_XN;
+    let yr = y; // D50_YN == 1.0 (divisão eliminada)
+    let zr = z * INV_D50_ZN;
 
     let fx = if xr > CIE_EPSILON {
         xr.cbrt()
     } else {
-        (CIE_KAPPA * xr + 16.0) / 116.0
+        (CIE_KAPPA * xr + 16.0) * INV_116
     };
     let fy = if yr > CIE_EPSILON {
         yr.cbrt()
     } else {
-        (CIE_KAPPA * yr + 16.0) / 116.0
+        (CIE_KAPPA * yr + 16.0) * INV_116
     };
     let fz = if zr > CIE_EPSILON {
         zr.cbrt()
     } else {
-        (CIE_KAPPA * zr + 16.0) / 116.0
+        (CIE_KAPPA * zr + 16.0) * INV_116
     };
 
     let l = 116.0 * fy - 16.0;
@@ -1264,11 +1307,11 @@ pub fn xyz_d50_to_lab(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
 }
 
 /// Converte CIE L*a*b* (D50) para CIE XYZ (D50).
-#[inline]
+#[inline(always)]
 pub fn lab_to_xyz_d50(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
-    let fy = (l + 16.0) / 116.0;
-    let fx = a / 500.0 + fy;
-    let fz = fy - b / 200.0;
+    let fy = (l + 16.0) * INV_116;
+    let fx = a * INV_500 + fy;
+    let fz = fy - b * INV_200;
 
     let fx3 = fx * fx * fx;
     let fz3 = fz * fz * fz;
@@ -1276,55 +1319,53 @@ pub fn lab_to_xyz_d50(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let xr = if fx3 > CIE_EPSILON {
         fx3
     } else {
-        (116.0 * fx - 16.0) / CIE_KAPPA
+        (116.0 * fx - 16.0) * INV_CIE_KAPPA
     };
     let yr = if l > CIE_KAPPA * CIE_EPSILON {
         fy * fy * fy
     } else {
-        l / CIE_KAPPA
+        l * INV_CIE_KAPPA
     };
     let zr = if fz3 > CIE_EPSILON {
         fz3
     } else {
-        (116.0 * fz - 16.0) / CIE_KAPPA
+        (116.0 * fz - 16.0) * INV_CIE_KAPPA
     };
 
     let x = xr * D50_XN;
-    let y = yr * D50_YN;
+    let y = yr; // D50_YN == 1.0
     let z = zr * D50_ZN;
     (x, y, z)
 }
 
 /// Converte CIE L*a*b* para CIE L*C*h.
-#[inline]
+#[inline(always)]
 pub fn lab_to_lch(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let c = (a * a + b * b).sqrt();
-    let mut h = b.atan2(a) * (180.0 / std::f32::consts::PI);
+    let mut h = b.atan2(a) * RAD_TO_DEG;
     if h < 0.0 {
         h += 360.0;
     }
     (l, c, h)
 }
 
-/// Converte CIE L*C*h para CIE L*a*b*.
-#[inline]
+/// Converte CIE L*C*h para CIE L*a*b* usando sin_cos() em uma única instrução de hardware.
+#[inline(always)]
 pub fn lch_to_lab(l: f32, c: f32, h: f32) -> (f32, f32, f32) {
-    let h_rad = h * (std::f32::consts::PI / 180.0);
-    let a = c * h_rad.cos();
-    let b = c * h_rad.sin();
-    (l, a, b)
+    let (sin_h, cos_h) = (h * DEG_TO_RAD).sin_cos();
+    (l, c * cos_h, c * sin_h)
 }
 
-#[inline]
+#[inline(always)]
 pub fn srgb_to_linear(v: f32) -> f32 {
     if v <= 0.04045 {
-        v / 12.92
+        v * INV_12_92
     } else {
-        ((v + 0.055) / 1.055).powf(2.4)
+        ((v + 0.055) * INV_1_055).powf(2.4)
     }
 }
 
-#[inline]
+#[inline(always)]
 pub fn linear_to_srgb(v: f32) -> f32 {
     if v <= 0.0031308 {
         12.92 * v
