@@ -31,7 +31,7 @@ use crate::time::{Clock, MonotonicClock};
 use crossbeam::queue::SegQueue;
 use parking_lot::Mutex;
 use std::collections::BinaryHeap;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, trace, warn};
@@ -87,11 +87,12 @@ impl Ord for ScheduledTimer {
     }
 }
 
-/// Conjunto de filas concorrentes dedicadas por fonte de tarefas WHATWG com escalonador justo (Fair Queuing)
-/// e prevenção de starvation por envelhecimento (Aging).
+/// Conjunto de filas concorrentes dedicadas por fonte de tarefas WHATWG com escalonador justo (Fair Queuing),
+/// máscara de bits atômica para despacho $O(1)$ amortizado e prevenção de starvation por envelhecimento (Aging).
 pub struct TaskSourceQueues {
     queues: [SegQueue<Task>; NUM_TASK_SOURCES],
     starvation_counters: [AtomicU32; NUM_TASK_SOURCES],
+    active_mask: AtomicU8,
     starvation_limit: u32,
 }
 
@@ -105,7 +106,6 @@ impl TaskSourceQueues {
     pub fn new() -> Self {
         Self::with_starvation_limit(DEFAULT_STARVATION_LIMIT)
     }
-
 
     pub fn with_starvation_limit(starvation_limit: u32) -> Self {
         Self {
@@ -127,6 +127,7 @@ impl TaskSourceQueues {
                 AtomicU32::new(0),
                 AtomicU32::new(0),
             ],
+            active_mask: AtomicU8::new(0),
             starvation_limit,
         }
     }
@@ -134,11 +135,9 @@ impl TaskSourceQueues {
     #[inline]
     pub fn push(&self, task: Task) {
         let idx = task.source.priority() as usize;
-        if idx < NUM_TASK_SOURCES {
-            self.queues[idx].push(task);
-        } else {
-            self.queues[NUM_TASK_SOURCES - 1].push(task);
-        }
+        let target = if idx < NUM_TASK_SOURCES { idx } else { NUM_TASK_SOURCES - 1 };
+        self.queues[target].push(task);
+        self.active_mask.fetch_or(1 << target, Ordering::Release);
     }
 
     /// Retorna o valor atual do contador de starvation para uma dada fonte de tarefas.
@@ -154,59 +153,81 @@ impl TaskSourceQueues {
 
     /// Seleciona a próxima tarefa prioritária respeitando a especificação WHATWG com prevenção de starvation.
     pub fn pop_highest_priority(&self) -> Option<Task> {
-        // 1. Prevenção de Starvation: verifica se alguma fila não-vazia atingiu o limite de starvation
+        let mut mask = self.active_mask.load(Ordering::Acquire);
+        if mask == 0 {
+            return None;
+        }
+
+        // 1. Prevenção de Starvation: verifica se alguma fila ativa atingiu o limite de starvation
         let mut starved_idx = None;
         let mut max_starvation = self.starvation_limit;
 
         for (idx, counter) in self.starvation_counters.iter().enumerate() {
-            let val = counter.load(Ordering::Acquire);
-            if val >= max_starvation && !self.queues[idx].is_empty() {
-                max_starvation = val;
-                starved_idx = Some(idx);
+            if (mask & (1 << idx)) != 0 {
+                let val = counter.load(Ordering::Relaxed);
+                if val >= max_starvation && !self.queues[idx].is_empty() {
+                    max_starvation = val;
+                    starved_idx = Some(idx);
+                }
             }
         }
 
         if let Some(idx) = starved_idx {
             if let Some(task) = self.queues[idx].pop() {
                 self.starvation_counters[idx].store(0, Ordering::Release);
+                if self.queues[idx].is_empty() {
+                    self.active_mask.fetch_and(!(1 << idx), Ordering::Release);
+                }
                 for (i, q) in self.queues.iter().enumerate() {
                     if i != idx {
                         if !q.is_empty() {
                             self.starvation_counters[i].fetch_add(1, Ordering::Relaxed);
                         } else {
                             self.starvation_counters[i].store(0, Ordering::Relaxed);
+                            self.active_mask.fetch_and(!(1 << i), Ordering::Relaxed);
                         }
                     }
                 }
                 return Some(task);
             } else {
                 self.starvation_counters[idx].store(0, Ordering::Release);
+                self.active_mask.fetch_and(!(1 << idx), Ordering::Release);
             }
         }
 
-        // 2. Se nenhuma fila estiver faminta, despacha por ordem padrão de prioridade (0..6)
-        for (idx, q) in self.queues.iter().enumerate() {
-            if let Some(task) = q.pop() {
+        // 2. Se nenhuma fila estiver faminta, despacha pela fila de maior prioridade disponível via bitmask
+        while mask != 0 {
+            let idx = mask.trailing_zeros() as usize;
+            if idx >= NUM_TASK_SOURCES {
+                break;
+            }
+
+            if let Some(task) = self.queues[idx].pop() {
                 self.starvation_counters[idx].store(0, Ordering::Release);
+                if self.queues[idx].is_empty() {
+                    self.active_mask.fetch_and(!(1 << idx), Ordering::Release);
+                }
                 for (i, other_q) in self.queues.iter().enumerate() {
                     if i != idx {
                         if !other_q.is_empty() {
                             self.starvation_counters[i].fetch_add(1, Ordering::Relaxed);
                         } else {
                             self.starvation_counters[i].store(0, Ordering::Relaxed);
+                            self.active_mask.fetch_and(!(1 << i), Ordering::Relaxed);
                         }
                     }
                 }
                 return Some(task);
             } else {
                 self.starvation_counters[idx].store(0, Ordering::Relaxed);
+                self.active_mask.fetch_and(!(1 << idx), Ordering::Release);
+                mask &= !(1 << idx);
             }
         }
 
         None
     }
 }
-
 
 /// Handle clonável para submissão de tarefas e microtasks a partir de qualquer thread.
 #[derive(Clone)]
@@ -221,19 +242,27 @@ pub struct TaskQueue {
     idle_queue: Arc<IdleTaskQueue>,
     /// Heap mínima de temporizadores agendados ($O(\log n)$).
     timers: Arc<Mutex<BinaryHeap<ScheduledTimer>>>,
+    /// Prazo do temporizador mais próximo em milissegundos (fast-path lock-free).
+    earliest_deadline_ms: Arc<AtomicU64>,
+    /// Quantidade total de temporizadores pendentes (fast-path lock-free).
+    timer_count: Arc<AtomicU32>,
     /// Flag para throttling de abas em segundo plano (min 1000ms para timers).
     background_throttling: Arc<AtomicBool>,
     /// Relógio de referência para resolução de prazos.
     clock: Arc<dyn Clock>,
+    /// Flag atômica indicando se o Event Loop está atualmente adormecido.
+    is_sleeping: Arc<AtomicBool>,
     /// Notificador para acordar a thread do Event Loop imediatamente sem busy waiting.
     waker: Arc<(Mutex<()>, parking_lot::Condvar)>,
 }
 
 impl TaskQueue {
-    /// Acorda o Event Loop adormecido imediatamente.
-    #[inline]
+    /// Acorda o Event Loop adormecido imediatamente caso esteja em espera condvar.
+    #[inline(always)]
     pub fn wake(&self) {
-        self.waker.1.notify_one();
+        if self.is_sleeping.load(Ordering::Acquire) {
+            self.waker.1.notify_one();
+        }
     }
 
     /// Enfileira uma macrotask associada a uma fonte específica da spec WHATWG.
@@ -344,6 +373,8 @@ impl TaskQueue {
         };
 
         self.timers.lock().push(timer);
+        self.timer_count.fetch_add(1, Ordering::Release);
+        self.earliest_deadline_ms.fetch_min(target_ms, Ordering::Release);
         self.wake();
         (id, is_cancelled)
     }
@@ -359,9 +390,6 @@ impl TaskQueue {
     }
 
     /// Enfileira uma microtask (Promises, `queueMicrotask`, MutationObserver).
-    ///
-    /// Microtasks possuem prioridade absoluta e são drenadas após **cada** macrotask.
-    /// Fila dinâmica sem limite rígido artificial.
     pub fn queue_microtask<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'static,
@@ -421,10 +449,13 @@ pub struct EventLoop {
     raf_queue: Arc<SegQueue<TaskFn>>,
     idle_queue: Arc<IdleTaskQueue>,
     timers: Arc<Mutex<BinaryHeap<ScheduledTimer>>>,
+    earliest_deadline_ms: Arc<AtomicU64>,
+    timer_count: Arc<AtomicU32>,
     background_throttling: Arc<AtomicBool>,
     is_running: Arc<AtomicBool>,
     performing_microtask_checkpoint: Arc<AtomicBool>,
     clock: Arc<dyn Clock>,
+    is_sleeping: Arc<AtomicBool>,
     waker: Arc<(Mutex<()>, parking_lot::Condvar)>,
     queue_handle: TaskQueue,
 }
@@ -447,9 +478,12 @@ impl EventLoop {
         let raf_queue = Arc::new(SegQueue::new());
         let idle_queue = Arc::new(IdleTaskQueue::new());
         let timers = Arc::new(Mutex::new(BinaryHeap::new()));
+        let earliest_deadline_ms = Arc::new(AtomicU64::new(u64::MAX));
+        let timer_count = Arc::new(AtomicU32::new(0));
         let background_throttling = Arc::new(AtomicBool::new(false));
         let is_running = Arc::new(AtomicBool::new(false));
         let performing_microtask_checkpoint = Arc::new(AtomicBool::new(false));
+        let is_sleeping = Arc::new(AtomicBool::new(false));
         let waker = Arc::new((Mutex::new(()), parking_lot::Condvar::new()));
 
         let handle = TaskQueue {
@@ -458,8 +492,11 @@ impl EventLoop {
             raf_queue: Arc::clone(&raf_queue),
             idle_queue: Arc::clone(&idle_queue),
             timers: Arc::clone(&timers),
+            earliest_deadline_ms: Arc::clone(&earliest_deadline_ms),
+            timer_count: Arc::clone(&timer_count),
             background_throttling: Arc::clone(&background_throttling),
             clock: Arc::clone(&clock),
+            is_sleeping: Arc::clone(&is_sleeping),
             waker: Arc::clone(&waker),
         };
 
@@ -469,10 +506,13 @@ impl EventLoop {
             raf_queue,
             idle_queue,
             timers,
+            earliest_deadline_ms,
+            timer_count,
             background_throttling,
             is_running,
             performing_microtask_checkpoint,
             clock,
+            is_sleeping,
             waker,
             queue_handle: handle,
         }
@@ -491,9 +531,11 @@ impl EventLoop {
     }
 
     /// Acorda o Event Loop adormecido imediatamente.
-    #[inline]
+    #[inline(always)]
     pub fn wake(&self) {
-        self.waker.1.notify_one();
+        if self.is_sleeping.load(Ordering::Acquire) {
+            self.waker.1.notify_one();
+        }
     }
 
     /// Retorna `true` se um Microtask Checkpoint estiver sendo executado atualmente neste Event Loop (WHATWG §8.1.6.3).
@@ -508,9 +550,17 @@ impl EventLoop {
     }
 
     /// Processa todos os temporizadores agendados cujo prazo já expirou utilizando a Min-Heap ($O(k \log n)$),
-    /// enfileirando cada timer como uma macrotask individual no `TaskSource::Timer` (WHATWG §8.1.6).
+    /// com fast-path lock-free eliminando travamento de Mutex em quadros sem timers pendentes.
     pub fn process_expired_timers(&self) -> usize {
+        if self.timer_count.load(Ordering::Relaxed) == 0 {
+            return 0;
+        }
+
         let now = self.clock.now_ms();
+        if now < self.earliest_deadline_ms.load(Ordering::Relaxed) {
+            return 0;
+        }
+
         let mut expired = Vec::new();
 
         {
@@ -523,6 +573,14 @@ impl EventLoop {
                 } else {
                     break;
                 }
+            }
+
+            let remaining_count = timers.len() as u32;
+            self.timer_count.store(remaining_count, Ordering::Release);
+            if let Some(earliest) = timers.peek() {
+                self.earliest_deadline_ms.store(earliest.target_ms, Ordering::Release);
+            } else {
+                self.earliest_deadline_ms.store(u64::MAX, Ordering::Release);
             }
         }
 
@@ -557,12 +615,6 @@ impl EventLoop {
     }
 
     /// Executa um passo único do Event Loop (WHATWG §8.1.6).
-    ///
-    /// 1. Promove temporizadores expirados para a fila de macrotasks `TaskSource::Timer`.
-    /// 2. Seleciona e executa exatamente UMA macrotask disponível (com prevenção de starvation).
-    /// 3. Executa o Microtask Checkpoint (`drain_microtasks()`) imediatamente após a macrotask.
-    ///
-    /// Retorna `true` se alguma tarefa, timer ou microtask foi processada.
     pub fn step(&self) -> bool {
         let mut executed_something = false;
 
@@ -595,7 +647,6 @@ impl EventLoop {
             raf_task();
             count += 1;
         }
-        // Microtask checkpoint após animações
         self.drain_microtasks();
         count
     }
@@ -613,7 +664,6 @@ impl EventLoop {
 
     /// Drena exaustivamente a fila de microtasks (Promises) com Reentrancy Guard (WHATWG §8.1.6.3).
     pub fn drain_microtasks(&self) -> usize {
-        // WHATWG HTML §8.1.6.3 Step 1: Se já estiver executando um checkpoint, retorna imediatamente.
         if self
             .performing_microtask_checkpoint
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -622,7 +672,6 @@ impl EventLoop {
             return 0;
         }
 
-        // RAII Guard para garantir reset da flag mesmo sob panic ou retorno antecipado
         struct MicrotaskGuard<'a>(&'a AtomicBool);
         impl<'a> Drop for MicrotaskGuard<'a> {
             fn drop(&mut self) {
@@ -637,7 +686,6 @@ impl EventLoop {
             micro_task();
             executed += 1;
 
-            // Circuit Breaker para evitar travamento do browser em caso de loop infinito de Promises
             if executed > 100_000 {
                 warn!("Circuit Breaker: Mais de 100.000 microtasks executadas consecutivamente!");
                 break;
@@ -662,10 +710,10 @@ impl EventLoop {
             let processed = self.step();
             if !processed {
                 let next_timeout = {
-                    let timers = self.timers.lock();
-                    if let Some(earliest) = timers.peek() {
+                    let earliest_ms = self.earliest_deadline_ms.load(Ordering::Relaxed);
+                    if earliest_ms != u64::MAX {
                         let now = self.clock.now_ms();
-                        let remaining = earliest.target_ms.saturating_sub(now);
+                        let remaining = earliest_ms.saturating_sub(now);
                         Duration::from_millis(remaining.clamp(1, 50))
                     } else {
                         Duration::from_millis(50)
@@ -673,13 +721,14 @@ impl EventLoop {
                 };
 
                 let mut guard = self.waker.0.lock();
+                self.is_sleeping.store(true, Ordering::Release);
                 self.waker.1.wait_for(&mut guard, next_timeout);
+                self.is_sleeping.store(false, Ordering::Release);
             }
         }
         debug!("Event Loop finalizado.");
     }
 }
-
 
 impl Default for EventLoop {
     fn default() -> Self {
