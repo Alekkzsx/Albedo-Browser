@@ -3,7 +3,7 @@
 //! Developed by Challenger M2 Agent to stress-test security boundaries,
 //! CWE mitigations, RFC compliance, and parser resilience.
 
-use ace_core::net::{is_safe_url_scheme, parse_data_uri, percent_decode, sniff_mime_type, MimeType};
+use ace_core::net::{percent_decode, sniff_mime_type};
 use ace_core::security::{
     compute_referrer, matches_domain_pattern, Origin, ReferrerPolicy, UnguessableToken,
 };
@@ -47,7 +47,7 @@ fn test_adversarial_unguessable_token_distribution() {
     // We allow a generous statistical margin [3500, 6500] (p < 10^-15 for any bit to fail this)
     for (i, &count) in bit_counts.iter().enumerate() {
         assert!(
-            count >= 3500 && count <= 6500,
+            (3500..=6500).contains(&count),
             "Bit {} has non-uniform distribution: count = {} out of {}",
             i,
             count,
