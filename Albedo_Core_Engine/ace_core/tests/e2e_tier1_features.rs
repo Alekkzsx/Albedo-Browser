@@ -1408,7 +1408,7 @@ fn tier1_feat17_polar_interpolation_oklch_shortest_hue_arc() {
     // O matiz deve cruzar pelo 0° (ou 360°), nunca por 180°
     let h = mid_oklch.h;
     assert!(
-        h < 20.0 || h > 340.0,
+        !(20.0..=340.0).contains(&h),
         "Hue should interpolate across 0/360 boundary, got {}",
         h
     );
