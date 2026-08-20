@@ -161,7 +161,7 @@ impl<'a> SfCursor<'a> {
                 let s = std::str::from_utf8(slice)
                     .map_err(|_| SfError::SyntaxError("Invalid UTF-8 in string"))?;
                 return Ok(BareItem::String(s));
-            } else if b < 0x20 || b > 0x7E {
+            } else if !(0x20..=0x7E).contains(&b) {
                 return Err(SfError::InvalidCharacter(b as char));
             } else {
                 self.advance();
