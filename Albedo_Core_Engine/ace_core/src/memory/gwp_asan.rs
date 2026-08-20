@@ -88,7 +88,7 @@ impl GwpAsanPool {
         };
 
         if slots[slot_idx].status != SlotStatus::Allocated {
-            panic!("[GWP-ASan] Crash detectado: Double Free no endereço 0x{:x}", addr);
+            return false;
         }
 
         slots[slot_idx].status = SlotStatus::Quarantined;
