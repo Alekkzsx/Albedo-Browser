@@ -2,14 +2,36 @@
 //!
 //! Identificador seguro de 128 bits para isolamento estrito entre processos (IPC),
 //! prevenção de *Origin Confusion Attacks* e autenticação de canais de comunicação.
+//!
+//! A comparação de igualdade (`PartialEq`) é implementada em tempo constante ($O(1)$)
+//! sem branches condicionais para mitigar ataques de temporização (Timing Side-Channels).
 
 use std::fmt;
 
 /// Token de 128 bits criptograficamente inadivinhável para limites de segurança e IPC.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, PartialOrd, Ord, Default)]
 pub struct UnguessableToken {
     high: u64,
     low: u64,
+}
+
+impl PartialEq for UnguessableToken {
+    /// Comparação em tempo estritamente constante contra ataques de temporização (*timing attacks*).
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        let diff = (self.high ^ other.high) | (self.low ^ other.low);
+        diff == 0
+    }
+}
+
+impl Eq for UnguessableToken {}
+
+impl std::hash::Hash for UnguessableToken {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.high.hash(state);
+        self.low.hash(state);
+    }
 }
 
 impl UnguessableToken {
@@ -69,3 +91,17 @@ impl fmt::Display for UnguessableToken {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_token_constant_time_eq() {
+        let t1 = UnguessableToken::from_raw(0x1234_5678, 0x9abc_def0);
+        let t2 = UnguessableToken::from_raw(0x1234_5678, 0x9abc_def0);
+        let t3 = UnguessableToken::from_raw(0x1234_5678, 0x9abc_def1);
+
+        assert_eq!(t1, t2);
+        assert_ne!(t1, t3);
+    }
+}
