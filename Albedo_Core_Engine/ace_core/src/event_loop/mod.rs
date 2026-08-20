@@ -9,6 +9,7 @@
 //! 4. (Opcional) Executa o ciclo de renderização (`requestAnimationFrame`, recalc style, layout pass).
 //! 5. Repete.
 
+pub mod budget;
 pub mod coalescer;
 pub mod idle;
 pub mod scope;
@@ -16,6 +17,9 @@ pub mod source;
 pub mod task;
 pub mod utils;
 
+pub use budget::{
+    AntiStarvationSelector, BackgroundTabThrottler, CPUTimeBudgetPool, TaskPriority,
+};
 pub use coalescer::{CoalescedMovement, InputEventCoalescer};
 pub use idle::{IdleDeadline, IdleTaskFn, IdleTaskQueue, ScheduledIdleTask};
 pub use scope::{ScopedTaskQueue, TaskScope};
