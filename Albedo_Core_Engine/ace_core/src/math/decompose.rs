@@ -5,8 +5,6 @@
 //! Matriz = Translação * Perspectiva * Rotação(Quaternion) * Skew * Escala
 //! com interpolação esférica (SLERP) de rotação em $S^3$, eliminando Gimbal Lock.
 
-use super::geometry::Vec3;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quaternion {
     pub x: f64,
