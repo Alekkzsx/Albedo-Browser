@@ -49,12 +49,12 @@ pub enum Host {
 }
 
 impl Host {
-    /// Retorna a representação textual do host.
-    pub fn as_str(&self) -> String {
+    /// Retorna a representação textual do host sem alocação desnecessária no heap para Domínios/Opacos.
+    pub fn as_str(&self) -> SmolStr {
         match self {
-            Self::Domain(s) => s.to_string(),
-            Self::Ip(ip) => ip.to_string(),
-            Self::Opaque => "".to_string(),
+            Self::Domain(s) => s.clone(),
+            Self::Ip(ip) => SmolStr::new(ip.to_string()),
+            Self::Opaque => SmolStr::default(),
         }
     }
 
@@ -139,22 +139,23 @@ impl Origin {
         self.to_site().same_site(&other.to_site())
     }
 
-    /// Converte a origem em sua serialização ASCII padrão (RFC 6454 Section 6.2).
-    /// Ex: `"https://example.com:443"`, `"http://localhost:8080"` ou `"null"` para opacas.
+    /// Converte a origem em sua serialização ASCII padrão (RFC 6454 Section 6.2) em buffer único pré-dimensionado.
     pub fn ascii_serialization(&self) -> String {
+        use std::fmt::Write;
         match self {
             Self::Tuple { scheme, host, port } => {
+                let mut out = String::with_capacity(32);
                 let default_port = scheme.default_port();
                 if *port == 0 || default_port == Some(*port) {
-                    format!("{}://{}", scheme.as_str(), host.as_str())
+                    let _ = write!(out, "{}://{}", scheme.as_str(), host);
                 } else {
-                    format!("{}://{}:{}", scheme.as_str(), host.as_str(), port)
+                    let _ = write!(out, "{}://{}:{}", scheme.as_str(), host, port);
                 }
+                out
             }
             Self::Opaque(_) => "null".to_string(),
         }
     }
-
 
     /// Analisa uma string de URL conforme a especificação WHATWG URL para extrair sua origem canônica.
     pub fn parse(url_str: &str) -> Result<Self, AceError> {
@@ -192,7 +193,17 @@ impl Origin {
 
 impl fmt::Display for Origin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.ascii_serialization())
+        match self {
+            Self::Tuple { scheme, host, port } => {
+                let default_port = scheme.default_port();
+                if *port == 0 || default_port == Some(*port) {
+                    write!(f, "{}://{}", scheme.as_str(), host)
+                } else {
+                    write!(f, "{}://{}:{}", scheme.as_str(), host, port)
+                }
+            }
+            Self::Opaque(_) => write!(f, "null"),
+        }
     }
 }
 
@@ -204,7 +215,11 @@ impl fmt::Display for Scheme {
 
 impl fmt::Display for Host {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        match self {
+            Self::Domain(s) => write!(f, "{}", s.as_str()),
+            Self::Ip(ip) => write!(f, "{}", ip),
+            Self::Opaque => Ok(()),
+        }
     }
 }
 
