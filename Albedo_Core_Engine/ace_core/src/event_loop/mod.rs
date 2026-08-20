@@ -225,9 +225,17 @@ pub struct TaskQueue {
     background_throttling: Arc<AtomicBool>,
     /// Relógio de referência para resolução de prazos.
     clock: Arc<dyn Clock>,
+    /// Notificador para acordar a thread do Event Loop imediatamente sem busy waiting.
+    waker: Arc<(Mutex<()>, parking_lot::Condvar)>,
 }
 
 impl TaskQueue {
+    /// Acorda o Event Loop adormecido imediatamente.
+    #[inline]
+    pub fn wake(&self) {
+        self.waker.1.notify_one();
+    }
+
     /// Enfileira uma macrotask associada a uma fonte específica da spec WHATWG.
     /// Retorna o `TaskId` e o controle atômico de cancelamento (`is_cancelled`).
     pub fn queue_task<F>(&self, source: TaskSource, f: F) -> (TaskId, Arc<AtomicBool>)
@@ -237,6 +245,7 @@ impl TaskQueue {
         let (task, cancel_handle) = Task::new(source, f);
         let id = task.id;
         self.task_queues.push(task);
+        self.wake();
         (id, cancel_handle)
     }
 
@@ -335,6 +344,7 @@ impl TaskQueue {
         };
 
         self.timers.lock().push(timer);
+        self.wake();
         (id, is_cancelled)
     }
 
@@ -357,6 +367,7 @@ impl TaskQueue {
         F: FnOnce() + Send + 'static,
     {
         self.microtask_queue.push(Box::new(f));
+        self.wake();
     }
 
     /// Enfileira uma função para ser executada no próximo quadro de animação (`requestAnimationFrame`).
@@ -365,6 +376,7 @@ impl TaskQueue {
         F: FnOnce() + Send + 'static,
     {
         self.raf_queue.push(Box::new(f));
+        self.wake();
     }
 
     /// Enfileira uma tarefa ociosa (`requestIdleCallback`) com timeout opcional.
@@ -372,7 +384,9 @@ impl TaskQueue {
     where
         F: FnOnce(IdleDeadline) + Send + 'static,
     {
-        self.idle_queue.post_idle_task(timeout, &*self.clock, f)
+        let res = self.idle_queue.post_idle_task(timeout, &*self.clock, f);
+        self.wake();
+        res
     }
 
     /// Cria um novo `TaskScope` vinculado a esta fila para gerenciamento de ciclo de vida de abas/frames.
@@ -411,6 +425,7 @@ pub struct EventLoop {
     is_running: Arc<AtomicBool>,
     performing_microtask_checkpoint: Arc<AtomicBool>,
     clock: Arc<dyn Clock>,
+    waker: Arc<(Mutex<()>, parking_lot::Condvar)>,
     queue_handle: TaskQueue,
 }
 
@@ -435,6 +450,7 @@ impl EventLoop {
         let background_throttling = Arc::new(AtomicBool::new(false));
         let is_running = Arc::new(AtomicBool::new(false));
         let performing_microtask_checkpoint = Arc::new(AtomicBool::new(false));
+        let waker = Arc::new((Mutex::new(()), parking_lot::Condvar::new()));
 
         let handle = TaskQueue {
             task_queues: Arc::clone(&task_queues),
@@ -444,6 +460,7 @@ impl EventLoop {
             timers: Arc::clone(&timers),
             background_throttling: Arc::clone(&background_throttling),
             clock: Arc::clone(&clock),
+            waker: Arc::clone(&waker),
         };
 
         Self {
@@ -456,6 +473,7 @@ impl EventLoop {
             is_running,
             performing_microtask_checkpoint,
             clock,
+            waker,
             queue_handle: handle,
         }
     }
@@ -470,6 +488,12 @@ impl EventLoop {
     #[inline]
     pub fn handle(&self) -> TaskQueue {
         self.queue_handle.clone()
+    }
+
+    /// Acorda o Event Loop adormecido imediatamente.
+    #[inline]
+    pub fn wake(&self) {
+        self.waker.1.notify_one();
     }
 
     /// Retorna `true` se um Microtask Checkpoint estiver sendo executado atualmente neste Event Loop (WHATWG §8.1.6.3).
@@ -625,9 +649,11 @@ impl EventLoop {
     /// Solicita o encerramento do Event Loop contínuo.
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::SeqCst);
+        self.waker.1.notify_all();
     }
 
     /// Inicia a execução contínua bloqueando a thread atual até `stop()` ser chamado.
+    /// Utiliza suspensão eficiente (sem busy waiting / zero 100% CPU spinning).
     pub fn run_sync(&self) {
         debug!("Iniciando Event Loop WHATWG...");
         self.is_running.store(true, Ordering::SeqCst);
@@ -635,7 +661,19 @@ impl EventLoop {
         while self.is_running.load(Ordering::SeqCst) {
             let processed = self.step();
             if !processed {
-                std::thread::yield_now();
+                let next_timeout = {
+                    let timers = self.timers.lock();
+                    if let Some(earliest) = timers.peek() {
+                        let now = self.clock.now_ms();
+                        let remaining = earliest.target_ms.saturating_sub(now);
+                        Duration::from_millis(remaining.clamp(1, 50))
+                    } else {
+                        Duration::from_millis(50)
+                    }
+                };
+
+                let mut guard = self.waker.0.lock();
+                self.waker.1.wait_for(&mut guard, next_timeout);
             }
         }
         debug!("Event Loop finalizado.");
