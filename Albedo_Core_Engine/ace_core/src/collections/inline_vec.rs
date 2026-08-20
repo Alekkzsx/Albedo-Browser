@@ -76,7 +76,26 @@ impl<T, const N: usize> InlineVec<T, N> {
         matches!(self.storage, InlineVecStorage::Inline { .. })
     }
 
-    /// Adiciona um elemento ao final do vetor (com proteção contra pânico durante realocação).
+    /// Tenta adicionar um elemento ao buffer inline sem nunca alocar no heap.
+    /// Retorna `Err(item)` caso o buffer inline já esteja em sua capacidade máxima.
+    #[inline(always)]
+    pub fn push_within_capacity(&mut self, item: T) -> Result<(), T> {
+        match &mut self.storage {
+            InlineVecStorage::Inline { len, data } => {
+                if *len < N {
+                    data[*len].write(item);
+                    *len += 1;
+                    Ok(())
+                } else {
+                    Err(item)
+                }
+            }
+            InlineVecStorage::Heap(_) => Err(item),
+        }
+    }
+
+    /// Adiciona um elemento ao final do vetor (com transição bulk memcpy ultra-rápida para heap se cheio).
+    #[inline]
     pub fn push(&mut self, item: T) {
         match &mut self.storage {
             InlineVecStorage::Inline { len, data } => {
@@ -84,14 +103,15 @@ impl<T, const N: usize> InlineVec<T, N> {
                     data[*len].write(item);
                     *len += 1;
                 } else {
-                    // Transição para o Heap: migra os N elementos inline para um Vec
+                    // Transição para o Heap: migra os N elementos inline para um Vec em uma única instrução memcpy
                     let mut heap_vec = Vec::with_capacity(N * 2 + 1);
                     let count = *len;
                     *len = 0; // Se houver pânico, data já é considerado drenado
-                    for slot in data.iter_mut().take(count) {
-                        // SAFETY: Os slots 0..count foram inicializados e *len agora é 0
-                        let val = unsafe { slot.assume_init_read() };
-                        heap_vec.push(val);
+                    unsafe {
+                        let dst = heap_vec.as_mut_ptr();
+                        let src = data.as_ptr() as *const T;
+                        std::ptr::copy_nonoverlapping(src, dst, count);
+                        heap_vec.set_len(count);
                     }
                     heap_vec.push(item);
                     self.storage = InlineVecStorage::Heap(heap_vec);
