@@ -48,15 +48,20 @@ impl<E> ObserverList<E> {
 
     /// Notifica todos os observadores registrados com o evento especificado.
     ///
-    /// Esta operação realiza uma cópia snapshot dos ponteiros `Arc` sob lock e executa os callbacks
-    /// **fora do lock**, garantindo que qualquer modificação reentrante na lista seja 100% segura.
+    /// Esta operação realiza uma cópia snapshot dos ponteiros `Arc` sob lock em stack (`InlineVec`)
+    /// e executa os callbacks **fora do lock**, garantindo que qualquer modificação reentrante seja 100% segura
+    /// e que listas com até 8 ouvintes tenham zero alocações de heap.
     pub fn notify(&self, event: &E) {
-        let snapshot: Vec<Callback<E>> = {
+        let snapshot: crate::collections::InlineVec<Callback<E>, 8> = {
             let list = self.observers.read();
-            list.iter().map(|(_, cb)| Arc::clone(cb)).collect()
+            let mut snap = crate::collections::InlineVec::with_capacity(list.len());
+            for (_, cb) in list.iter() {
+                snap.push(Arc::clone(cb));
+            }
+            snap
         };
 
-        for callback in snapshot {
+        for callback in snapshot.iter() {
             callback(event);
         }
     }
