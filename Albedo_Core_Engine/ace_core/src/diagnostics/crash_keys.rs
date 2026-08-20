@@ -28,10 +28,11 @@ impl CrashKeyRegistry {
         &GLOBAL_CRASH_KEYS
     }
 
-    /// Define o valor de uma chave de diagnóstico.
+    /// Define o valor de uma chave de diagnóstico convertendo a string fora do write lock.
     pub fn set_key(&self, key: &'static str, value: impl Into<String>) {
+        let value = value.into();
         let mut guard = self.entries.write();
-        guard.insert(key, value.into());
+        guard.insert(key, value);
     }
 
     /// Obtém o valor de uma chave de diagnóstico.
@@ -52,12 +53,13 @@ impl CrashKeyRegistry {
         guard.clear();
     }
 
-    /// Gera um resumo formatado de todas as chaves ativas para inclusão em relatórios de erro.
+    /// Gera um resumo formatado de todas as chaves ativas em buffer único pré-dimensionado.
     pub fn dump_summary(&self) -> String {
+        use std::fmt::Write;
         let guard = self.entries.read();
-        let mut out = String::new();
+        let mut out = String::with_capacity(guard.len() * 32);
         for (k, v) in guard.iter() {
-            out.push_str(&format!("{}: {}\n", k, v));
+            let _ = writeln!(out, "{}: {}", k, v);
         }
         out
     }
