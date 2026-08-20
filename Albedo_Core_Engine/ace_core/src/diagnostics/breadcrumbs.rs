@@ -62,13 +62,14 @@ impl<const CAPACITY: usize> BreadcrumbBuffer<CAPACITY> {
         if CAPACITY == 0 {
             return;
         }
+        let message = message.into();
         let mut guard = self.entries.lock();
         if guard.len() >= CAPACITY {
             guard.pop_front();
         }
         guard.push_back(BreadcrumbEntry {
             category,
-            message: message.into(),
+            message,
             timestamp_ms,
         });
     }
