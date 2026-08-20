@@ -72,14 +72,14 @@ impl<T> ArenaId<T> {
     /// Posição do *slot* no armazenamento da arena.
     #[inline]
     #[must_use]
-    pub(crate) const fn index(self) -> u32 {
+    pub const fn index(self) -> u32 {
         self.key.get() as u32
     }
 
     /// Geração registrada no momento da alocação.
     #[inline]
     #[must_use]
-    pub(crate) const fn version(self) -> u32 {
+    pub const fn version(self) -> u32 {
         (self.key.get() >> 32) as u32
     }
 
