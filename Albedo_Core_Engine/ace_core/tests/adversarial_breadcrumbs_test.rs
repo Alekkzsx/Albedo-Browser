@@ -99,7 +99,7 @@ fn test_adversarial_breadcrumbs_multithreaded_high_contention() {
                 });
 
                 read_iterations += 1;
-                if read_iterations % 100 == 0 {
+                if read_iterations.is_multiple_of(100) {
                     thread::yield_now();
                 }
             }
@@ -157,7 +157,7 @@ fn test_ring_buffer_slices_continuity_under_continuous_overflow() {
         assert_eq!(snap.len(), expected_len);
 
         // Verify order in snapshot
-        let start_seq = if i + 1 > CAPACITY { i + 1 - CAPACITY } else { 0 };
+        let start_seq = (i + 1).saturating_sub(CAPACITY);
         for (idx, entry) in snap.iter().enumerate() {
             let expected_seq = start_seq + idx;
             assert_eq!(entry.message, format!("Item_{expected_seq}"));
