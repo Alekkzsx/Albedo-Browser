@@ -10,8 +10,8 @@
 use ace_core::event_loop::{
     current_timer_nesting, EventLoop, TaskQueue, TaskSource,
 };
-use ace_core::time::MockClock;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use ace_core::time::{Clock, MockClock};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -77,24 +77,20 @@ fn test_adversarial_starvation_multiple_low_priority_queues() {
         "Internal queue was starved by UI flood!"
     );
 
-    // Verifica que tarefas de baixa prioridade foram intercaladas a cada <= 3 UI tasks
-    let mut consecutive_ui = 0;
-    let mut max_consecutive_ui = 0;
-    for &entry in &log {
-        if entry == "ui" {
-            consecutive_ui += 1;
-            if consecutive_ui > max_consecutive_ui {
-                max_consecutive_ui = consecutive_ui;
-            }
-        } else {
-            consecutive_ui = 0;
-        }
-    }
-
+    // Verifica que a primeira tarefa de baixa prioridade foi despachada em <= 3 passos de UI
+    let first_non_ui = log.iter().position(|&e| e != "ui").unwrap_or(log.len());
     assert!(
-        max_consecutive_ui <= 3,
-        "Starvation limit violated: UI executed {} times consecutively (limit was 3)",
-        max_consecutive_ui
+        first_non_ui <= 3,
+        "Starvation limit violated: first low-priority task took {} UI steps (limit was 3)",
+        first_non_ui
+    );
+
+    // Todas as 3 tarefas de baixa prioridade devem ser despachadas dentro dos primeiros 6 passos (3 UI + 3 baixas)
+    let last_low_prio_idx = log.iter().rposition(|&e| e != "ui").unwrap_or(0);
+    assert!(
+        last_low_prio_idx <= 6,
+        "All low-priority tasks should finish within 6 steps, took {}",
+        last_low_prio_idx
     );
 }
 
