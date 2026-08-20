@@ -1,4 +1,4 @@
-﻿//! # Buffer de Texto Segmentado em Chunks (WHATWG HTML5 Streaming Input)
+//! # Buffer de Texto Segmentado em Chunks (WHATWG HTML5 Streaming Input)
 //!
 //! Abstração de leitura contínua sobre streams fragmentados de texto,
 //! permitindo consumo zero-copy, devolução de caracteres (*unconsume / push-front*),
@@ -17,21 +17,30 @@ pub fn preprocess_html_input(input: &str) -> SmolStr {
     }
 
     let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        match c {
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
+    let bytes = input.as_bytes();
+    let mut last = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\r' => {
+                result.push_str(&input[last..i]);
                 result.push('\n');
+                if i + 1 < bytes.len() && bytes[i + 1] == b'\n' {
+                    i += 1;
+                }
+                last = i + 1;
             }
-            '\0' => {
+            0 => {
+                result.push_str(&input[last..i]);
                 result.push('\u{FFFD}');
+                last = i + 1;
             }
-            other => result.push(other),
+            _ => {}
         }
+        i += 1;
+    }
+    if last < input.len() {
+        result.push_str(&input[last..]);
     }
 
     SmolStr::new(result)
@@ -220,6 +229,15 @@ impl SegmentedString {
 
     /// Verifica se o stream atual começa com o prefixo especificado.
     pub fn starts_with(&self, prefix: &str) -> bool {
+        if self.pushed_back.is_empty() {
+            if let Some(chunk) = self.chunks.front() {
+                let slice = &chunk[self.current_chunk_offset..];
+                if slice.len() >= prefix.len() {
+                    return slice.starts_with(prefix);
+                }
+            }
+        }
+
         for (i, target_c) in prefix.chars().enumerate() {
             if self.peek_at(i) != Some(target_c) {
                 return false;
