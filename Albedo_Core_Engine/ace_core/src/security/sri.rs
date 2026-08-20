@@ -74,6 +74,18 @@ impl StreamingSriHasher {
         }
     }
 
+    /// Retorna o algoritmo criptográfico configurado.
+    #[inline]
+    pub fn algorithm(&self) -> SriAlgorithm {
+        self.algorithm
+    }
+
+    /// Retorna o digest criptográfico esperado.
+    #[inline]
+    pub fn target_digest(&self) -> &[u8] {
+        &self.target_digest
+    }
+
     /// Alimenta fatias do payload incrementalmente conforme chegam da rede.
     pub fn update(&mut self, chunk: &[u8]) {
         if let Some(h) = &mut self.ctx_256 {
