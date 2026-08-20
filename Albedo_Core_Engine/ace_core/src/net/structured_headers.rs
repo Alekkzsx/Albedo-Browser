@@ -322,6 +322,45 @@ impl<'a> SfCursor<'a> {
         }
         Ok(list)
     }
+
+    /// Parseia um Dictionary RFC 8941 (pares chave-valor separados por vírgula).
+    pub fn parse_dictionary(&mut self) -> Result<Vec<(&'a str, ParameterizedItem<'a>)>, SfError> {
+        let mut dict = Vec::new();
+        if self.is_eof() {
+            return Ok(dict);
+        }
+
+        loop {
+            self.skip_ow_ws();
+            let key = self.parse_key()?;
+            let val = if let Some(b'=') = self.peek() {
+                self.advance();
+                self.parse_item()?
+            } else {
+                let parameters = self.parse_parameters()?;
+                ParameterizedItem {
+                    item: BareItem::Boolean(true),
+                    parameters,
+                }
+            };
+            dict.push((key, val));
+            self.skip_ow_ws();
+
+            if self.is_eof() {
+                break;
+            }
+
+            match self.peek() {
+                Some(b',') => {
+                    self.advance();
+                    self.skip_ow_ws();
+                }
+                Some(c) => return Err(SfError::InvalidCharacter(c as char)),
+                None => break,
+            }
+        }
+        Ok(dict)
+    }
 }
 
 #[cfg(test)]
@@ -329,17 +368,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_structured_header_list() {
+    fn test_parse_structured_header_dictionary() {
         let header = b"max-age=604800; report-to=\"default\", enforce; v=?1";
+        let mut cursor = SfCursor::new(header);
+        let dict = cursor.parse_dictionary().unwrap();
+
+        assert_eq!(dict.len(), 2);
+        assert_eq!(dict[0].0, "max-age");
+        assert_eq!(dict[0].1.item, BareItem::Integer(604800));
+        assert_eq!(dict[0].1.parameters[0].key, "report-to");
+        assert_eq!(dict[0].1.parameters[0].value, BareItem::String("default"));
+
+        assert_eq!(dict[1].0, "enforce");
+        assert_eq!(dict[1].1.item, BareItem::Boolean(true));
+        assert_eq!(dict[1].1.parameters[0].key, "v");
+        assert_eq!(dict[1].1.parameters[0].value, BareItem::Boolean(true));
+    }
+
+    #[test]
+    fn test_parse_structured_header_list() {
+        let header = b"\"en-US\", \"pt-BR\"; q=0.9";
         let mut cursor = SfCursor::new(header);
         let list = cursor.parse_list().unwrap();
 
         assert_eq!(list.len(), 2);
-        assert_eq!(list[0].item, BareItem::Token("max-age"));
-        assert_eq!(list[0].parameters[0].key, "report-to");
-        assert_eq!(list[0].parameters[0].value, BareItem::String("default"));
-        assert_eq!(list[1].item, BareItem::Token("enforce"));
-        assert_eq!(list[1].parameters[0].key, "v");
-        assert_eq!(list[1].parameters[0].value, BareItem::Boolean(true));
+        assert_eq!(list[0].item, BareItem::String("en-US"));
+        assert_eq!(list[1].item, BareItem::String("pt-BR"));
+        assert_eq!(list[1].parameters[0].key, "q");
     }
 }
