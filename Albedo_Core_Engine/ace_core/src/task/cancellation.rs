@@ -9,35 +9,41 @@ use std::sync::Arc;
 
 type Callback = Box<dyn Fn() + Send + Sync + 'static>;
 
-/// Token thread-safe para notificação e consulta de cancelamento cooperativo.
+struct CancellationTokenInner {
+    is_cancelled: AtomicBool,
+    callbacks: Mutex<Vec<Callback>>,
+}
+
+/// Token thread-safe para notificação e consulta de cancelamento cooperativo com alocação única de `Arc`.
 #[derive(Clone)]
 pub struct CancellationToken {
-    is_cancelled: Arc<AtomicBool>,
-    callbacks: Arc<Mutex<Vec<Callback>>>,
+    inner: Arc<CancellationTokenInner>,
 }
 
 impl CancellationToken {
-    /// Cria um novo token no estado não cancelado.
+    /// Cria um novo token no estado não cancelado com alocação consolidada única.
     pub fn new() -> Self {
         Self {
-            is_cancelled: Arc::new(AtomicBool::new(false)),
-            callbacks: Arc::new(Mutex::new(Vec::new())),
+            inner: Arc::new(CancellationTokenInner {
+                is_cancelled: AtomicBool::new(false),
+                callbacks: Mutex::new(Vec::new()),
+            }),
         }
     }
 
     /// Retorna `true` se o token já foi cancelado.
-    #[inline]
+    #[inline(always)]
     pub fn is_cancelled(&self) -> bool {
-        self.is_cancelled.load(Ordering::SeqCst)
+        self.inner.is_cancelled.load(Ordering::Acquire)
     }
 
     /// Cancela o token atomicamente e dispara todos os callbacks registrados.
     ///
     /// Se já estiver cancelado, esta chamada não tem efeito adicional.
     pub fn cancel(&self) {
-        if !self.is_cancelled.swap(true, Ordering::SeqCst) {
+        if !self.inner.is_cancelled.swap(true, Ordering::AcqRel) {
             let callbacks = {
-                let mut guard = self.callbacks.lock();
+                let mut guard = self.inner.callbacks.lock();
                 std::mem::take(&mut *guard)
             };
 
@@ -57,8 +63,8 @@ impl CancellationToken {
         if self.is_cancelled() {
             callback();
         } else {
-            let mut guard = self.callbacks.lock();
-            if self.is_cancelled.load(Ordering::SeqCst) {
+            let mut guard = self.inner.callbacks.lock();
+            if self.inner.is_cancelled.load(Ordering::Acquire) {
                 drop(guard);
                 callback();
             } else {
