@@ -6,42 +6,60 @@
 use crate::event_loop::source::TaskSource;
 use crate::event_loop::TaskQueue;
 use crate::id::TaskId;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+#[derive(Debug)]
+struct TaskScopeInner {
+    is_active: AtomicBool,
+    owner_count: AtomicU32,
+}
 
 /// Gerenciador de ciclo de vida de tarefas associadas a uma entidade (Aba, Documento, Frame).
 ///
 /// Ao ser destruído (`Drop`), invalida atomicamente todas as tarefas agendadas sob seu controle.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TaskScope {
-    is_active: Arc<AtomicBool>,
+    inner: Arc<TaskScopeInner>,
 }
 
 impl TaskScope {
     /// Cria um novo escopo ativo de tarefas.
     pub fn new() -> Self {
         Self {
-            is_active: Arc::new(AtomicBool::new(true)),
+            inner: Arc::new(TaskScopeInner {
+                is_active: AtomicBool::new(true),
+                owner_count: AtomicU32::new(1),
+            }),
         }
     }
 
     /// Retorna `true` se o escopo ainda estiver ativo e válido.
     #[inline]
     pub fn is_active(&self) -> bool {
-        self.is_active.load(Ordering::Acquire)
+        self.inner.is_active.load(Ordering::Acquire)
     }
 
     /// Invalida o escopo imediatamente, cancelando todas as tarefas pendentes vinculadas.
     pub fn invalidate(&self) {
-        self.is_active.store(false, Ordering::Release);
+        self.inner.is_active.store(false, Ordering::Release);
     }
 
     /// Cria uma fila de tarefas encapsulada vinculada a este escopo.
     pub fn wrap_queue(&self, queue: TaskQueue) -> ScopedTaskQueue {
         ScopedTaskQueue {
-            scope: Arc::clone(&self.is_active),
+            scope: Arc::clone(&self.inner),
             queue,
+        }
+    }
+}
+
+impl Clone for TaskScope {
+    fn clone(&self) -> Self {
+        self.inner.owner_count.fetch_add(1, Ordering::Relaxed);
+        Self {
+            inner: Arc::clone(&self.inner),
         }
     }
 }
@@ -54,8 +72,7 @@ impl Default for TaskScope {
 
 impl Drop for TaskScope {
     fn drop(&mut self) {
-        // Se este for o último ou penúltimo handle dono do escopo, invalida
-        if Arc::strong_count(&self.is_active) <= 2 {
+        if self.inner.owner_count.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.invalidate();
         }
     }
@@ -64,7 +81,7 @@ impl Drop for TaskScope {
 /// Fila de tarefas associada a um `TaskScope`, interceptando chamadas e descartando tarefas de escopos invalidados.
 #[derive(Clone)]
 pub struct ScopedTaskQueue {
-    scope: Arc<AtomicBool>,
+    scope: Arc<TaskScopeInner>,
     queue: TaskQueue,
 }
 
@@ -74,13 +91,13 @@ impl ScopedTaskQueue {
     where
         F: FnOnce() + Send + 'static,
     {
-        if !self.scope.load(Ordering::Acquire) {
+        if !self.scope.is_active.load(Ordering::Acquire) {
             return None;
         }
 
         let scope_flag = Arc::clone(&self.scope);
         let (id, _cancel) = self.queue.queue_task(source, move || {
-            if scope_flag.load(Ordering::Acquire) {
+            if scope_flag.is_active.load(Ordering::Acquire) {
                 f();
             }
         });
@@ -149,13 +166,13 @@ impl ScopedTaskQueue {
     where
         F: FnOnce() + Send + 'static,
     {
-        if !self.scope.load(Ordering::Acquire) {
+        if !self.scope.is_active.load(Ordering::Acquire) {
             return None;
         }
 
         let scope_flag = Arc::clone(&self.scope);
         let (id, _cancel) = self.queue.schedule_timer(delay, move || {
-            if scope_flag.load(Ordering::Acquire) {
+            if scope_flag.is_active.load(Ordering::Acquire) {
                 f();
             }
         });
@@ -168,13 +185,13 @@ impl ScopedTaskQueue {
     where
         F: FnOnce() + Send + 'static,
     {
-        if !self.scope.load(Ordering::Acquire) {
+        if !self.scope.is_active.load(Ordering::Acquire) {
             return;
         }
 
         let scope_flag = Arc::clone(&self.scope);
         self.queue.queue_microtask(move || {
-            if scope_flag.load(Ordering::Acquire) {
+            if scope_flag.is_active.load(Ordering::Acquire) {
                 f();
             }
         });
@@ -185,13 +202,13 @@ impl ScopedTaskQueue {
     where
         F: FnOnce() + Send + 'static,
     {
-        if !self.scope.load(Ordering::Acquire) {
+        if !self.scope.is_active.load(Ordering::Acquire) {
             return;
         }
 
         let scope_flag = Arc::clone(&self.scope);
         self.queue.request_animation_frame(move || {
-            if scope_flag.load(Ordering::Acquire) {
+            if scope_flag.is_active.load(Ordering::Acquire) {
                 f();
             }
         });
