@@ -11,6 +11,7 @@ pub mod inline_vec;
 pub mod intrusive_list;
 pub mod lru_cache;
 pub mod ring_buffer;
+pub mod thin_vec;
 pub mod triple_buffer;
 pub mod utils;
 
@@ -24,5 +25,6 @@ pub use intrusive_list::{IntrusiveLink, IntrusiveList, IntrusiveNode};
 pub use lru_cache::LruCache;
 pub use ring_buffer::RingBuffer;
 pub use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
+pub use thin_vec::ThinVec;
 pub use triple_buffer::{triple_buffer, TripleBufferConsumer, TripleBufferProducer};
 pub use utils::{chunk_slice, has_single_bit, next_power_of_two, popcount_u64};
