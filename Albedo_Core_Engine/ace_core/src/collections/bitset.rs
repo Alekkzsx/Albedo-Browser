@@ -28,33 +28,33 @@ impl<const WORDS: usize> FixedBitSet<WORDS> {
     }
 
     /// Define o estado de um bit específico (`true` ou `false`).
-    #[inline]
+    #[inline(always)]
     pub fn set(&mut self, bit: usize, val: bool) {
         if bit < Self::capacity() {
-            let word_idx = bit / 64;
-            let bit_idx = bit % 64;
+            let word_idx = bit >> 6;
+            let bit_mask = 1u64 << (bit & 63);
             if val {
-                self.words[word_idx] |= 1 << bit_idx;
+                self.words[word_idx] |= bit_mask;
             } else {
-                self.words[word_idx] &= !(1 << bit_idx);
+                self.words[word_idx] &= !bit_mask;
             }
         }
     }
 
     /// Consulta se um bit específico está ativo (`true`).
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, bit: usize) -> bool {
         if bit < Self::capacity() {
-            let word_idx = bit / 64;
-            let bit_idx = bit % 64;
-            (self.words[word_idx] & (1 << bit_idx)) != 0
+            let word_idx = bit >> 6;
+            let bit_mask = 1u64 << (bit & 63);
+            (self.words[word_idx] & bit_mask) != 0
         } else {
             false
         }
     }
 
     /// Zera todos os bits.
-    #[inline]
+    #[inline(always)]
     pub fn clear(&mut self) {
         self.words.fill(0);
     }
