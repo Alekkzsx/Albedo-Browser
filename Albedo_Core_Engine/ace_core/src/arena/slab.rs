@@ -206,6 +206,70 @@ impl<T> Arena<T> {
         self.entries.iter_mut().filter_map(|e| e.value.as_mut())
     }
 
+    /// Varre a arena e remove todos os elementos para os quais `is_alive(id, &item)` retorna `false`.
+    ///
+    /// Ideal para implementar a fase de *Sweeping* de coletores de lixo (Mark-and-Sweep)
+    /// ou coleta periódica de nós DOM desconectados e desalocados em uma única passagem $O(N)$.
+    ///
+    /// Retorna o número de elementos descartados.
+    pub fn gc_sweep<F>(&mut self, mut is_alive: F) -> usize
+    where
+        F: FnMut(ArenaId<T>, &T) -> bool,
+    {
+        let mut swept = 0;
+        for (i, entry) in self.entries.iter_mut().enumerate() {
+            if let Some(val) = &entry.value {
+                let id = ArenaId::new(i as u32, entry.version);
+                if !is_alive(id, val) {
+                    entry.value = None;
+                    entry.version = next_version(entry.version);
+                    self.free_list.push(i as u32);
+                    swept += 1;
+                }
+            }
+        }
+        self.total_freed += swept as u64;
+        swept
+    }
+
+    /// Filtra os elementos vivos da arena in-place, preservando apenas aqueles para os quais `f(&T)` retorna `true`.
+    /// Retorna o número de elementos removidos.
+    pub fn retain<F>(&mut self, mut f: F) -> usize
+    where
+        F: FnMut(&T) -> bool,
+    {
+        let mut removed = 0;
+        for (i, entry) in self.entries.iter_mut().enumerate() {
+            if let Some(val) = &entry.value {
+                if !f(val) {
+                    entry.value = None;
+                    entry.version = next_version(entry.version);
+                    self.free_list.push(i as u32);
+                    removed += 1;
+                }
+            }
+        }
+        self.total_freed += removed as u64;
+        removed
+    }
+
+    /// Reduz o tamanho do vetor subjacente eliminando slots livres consecutivos no final do armazenamento.
+    pub fn shrink_to_fit(&mut self) {
+        while let Some(last) = self.entries.last() {
+            if last.value.is_none() {
+                let last_idx = (self.entries.len() - 1) as u32;
+                self.entries.pop();
+                if let Some(pos) = self.free_list.iter().position(|&x| x == last_idx) {
+                    self.free_list.swap_remove(pos);
+                }
+            } else {
+                break;
+            }
+        }
+        self.entries.shrink_to_fit();
+        self.free_list.shrink_to_fit();
+    }
+
     /// Coleta métricas de uso da arena para diagnóstico e telemetria.
     #[must_use]
     pub fn stats(&self) -> ArenaStats {
