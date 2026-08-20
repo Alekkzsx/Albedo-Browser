@@ -96,12 +96,44 @@ impl ScopedTaskQueue {
         self.queue_task(TaskSource::UserInteraction, f)
     }
 
+    /// Enfileira uma tarefa de manipulação de DOM com proteção de escopo.
+    pub fn queue_dom<F>(&self, f: F) -> Option<TaskId>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::DomManipulation, f)
+    }
+
     /// Enfileira uma tarefa de rede com proteção de escopo.
     pub fn queue_network<F>(&self, f: F) -> Option<TaskId>
     where
         F: FnOnce() + Send + 'static,
     {
         self.queue_task(TaskSource::Networking, f)
+    }
+
+    /// Enfileira uma tarefa de navegação e histórico com proteção de escopo.
+    pub fn queue_history<F>(&self, f: F) -> Option<TaskId>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::HistoryTraversal, f)
+    }
+
+    /// Enfileira uma tarefa de renderização com proteção de escopo.
+    pub fn queue_rendering<F>(&self, f: F) -> Option<TaskId>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::Rendering, f)
+    }
+
+    /// Enfileira uma tarefa interna do motor com proteção de escopo.
+    pub fn queue_internal<F>(&self, f: F) -> Option<TaskId>
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.queue_task(TaskSource::Internal, f)
     }
 
     /// Enfileira uma tarefa de temporizador imediato com proteção de escopo.
