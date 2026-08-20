@@ -40,6 +40,29 @@ impl Vec4 {
     pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
+
+    /// Realiza a divisão de perspectiva em coordenadas homogêneas ($x/w, y/w, z/w$).
+    /// Retorna `None` se $w \le 10^{-6}$ (vértice atrás do plano da câmera ou no infinito).
+    #[inline]
+    pub fn to_cartesian_3d<U>(self) -> Option<Point3D<f32, U>> {
+        if self.w > 1e-6 {
+            let inv_w = 1.0 / self.w;
+            Some(Point3D::new(self.x * inv_w, self.y * inv_w, self.z * inv_w))
+        } else {
+            None
+        }
+    }
+
+    /// Realiza a projeção de perspectiva 2D cartesiana ($x/w, y/w$).
+    #[inline]
+    pub fn to_cartesian_2d<U>(self) -> Option<Point2D<f32, U>> {
+        if self.w > 1e-6 {
+            let inv_w = 1.0 / self.w;
+            Some(Point2D::new(self.x * inv_w, self.y * inv_w))
+        } else {
+            None
+        }
+    }
 }
 
 /// Transformação afim 2D (matriz 3x3) no espaço CSS.
