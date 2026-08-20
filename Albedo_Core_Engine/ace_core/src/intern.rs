@@ -200,7 +200,7 @@ impl fmt::Display for Atom {
     }
 }
 
-macro_rules! define_static_atoms {
+macro_rules! define_atoms {
     ($($id:expr, $fn_name:ident, $str:expr);* $(;)?) => {
         pub mod atoms {
             use super::Atom;
@@ -212,18 +212,10 @@ macro_rules! define_static_atoms {
                 }
             )*
         }
-
-        #[inline]
-        pub fn lookup_static(s: &str) -> Option<Atom> {
-            match s {
-                $( $str => Some(Atom::Static($str, $id)), )*
-                _ => None,
-            }
-        }
     };
 }
 
-define_static_atoms! {
+define_atoms! {
     0, HTML, "html";
     1, HEAD, "head";
     2, BODY, "body";
@@ -340,4 +332,125 @@ define_static_atoms! {
     110, TRANSFORM, "transform";
     111, BOX_SIZING, "box-sizing";
     112, CURSOR, "cursor";
+}
+
+/// Lookup em $O(1)$ para converter strings conhecidas em átomos estáticos sem alocações.
+#[inline]
+pub fn lookup_static(s: &str) -> Option<Atom> {
+    match s {
+        "html" => Some(Atom::Static("html", 0)),
+        "head" => Some(Atom::Static("head", 1)),
+        "body" => Some(Atom::Static("body", 2)),
+        "div" => Some(Atom::Static("div", 3)),
+        "span" => Some(Atom::Static("span", 4)),
+        "p" => Some(Atom::Static("p", 5)),
+        "a" => Some(Atom::Static("a", 6)),
+        "button" => Some(Atom::Static("button", 7)),
+        "input" => Some(Atom::Static("input", 8)),
+        "img" => Some(Atom::Static("img", 9)),
+        "script" => Some(Atom::Static("script", 10)),
+        "style" => Some(Atom::Static("style", 11)),
+        "link" => Some(Atom::Static("link", 12)),
+        "meta" => Some(Atom::Static("meta", 13)),
+        "title" => Some(Atom::Static("title", 14)),
+        "iframe" => Some(Atom::Static("iframe", 15)),
+        "table" => Some(Atom::Static("table", 16)),
+        "thead" => Some(Atom::Static("thead", 17)),
+        "tbody" => Some(Atom::Static("tbody", 18)),
+        "tr" => Some(Atom::Static("tr", 19)),
+        "th" => Some(Atom::Static("th", 20)),
+        "td" => Some(Atom::Static("td", 21)),
+        "ul" => Some(Atom::Static("ul", 22)),
+        "ol" => Some(Atom::Static("ol", 23)),
+        "li" => Some(Atom::Static("li", 24)),
+        "form" => Some(Atom::Static("form", 25)),
+        "label" => Some(Atom::Static("label", 26)),
+        "textarea" => Some(Atom::Static("textarea", 27)),
+        "select" => Some(Atom::Static("select", 28)),
+        "option" => Some(Atom::Static("option", 29)),
+        "header" => Some(Atom::Static("header", 30)),
+        "footer" => Some(Atom::Static("footer", 31)),
+        "nav" => Some(Atom::Static("nav", 32)),
+        "section" => Some(Atom::Static("section", 33)),
+        "article" => Some(Atom::Static("article", 34)),
+        "aside" => Some(Atom::Static("aside", 35)),
+        "main" => Some(Atom::Static("main", 36)),
+        "h1" => Some(Atom::Static("h1", 37)),
+        "h2" => Some(Atom::Static("h2", 38)),
+        "h3" => Some(Atom::Static("h3", 39)),
+        "h4" => Some(Atom::Static("h4", 40)),
+        "h5" => Some(Atom::Static("h5", 41)),
+        "h6" => Some(Atom::Static("h6", 42)),
+        "canvas" => Some(Atom::Static("canvas", 43)),
+        "svg" => Some(Atom::Static("svg", 44)),
+        "path" => Some(Atom::Static("path", 45)),
+        "video" => Some(Atom::Static("video", 46)),
+        "audio" => Some(Atom::Static("audio", 47)),
+        "source" => Some(Atom::Static("source", 48)),
+        "template" => Some(Atom::Static("template", 49)),
+        "slot" => Some(Atom::Static("slot", 50)),
+        "br" => Some(Atom::Static("br", 51)),
+        "hr" => Some(Atom::Static("hr", 52)),
+        "pre" => Some(Atom::Static("pre", 53)),
+        "code" => Some(Atom::Static("code", 54)),
+        "strong" => Some(Atom::Static("strong", 55)),
+        "em" => Some(Atom::Static("em", 56)),
+        "id" => Some(Atom::Static("id", 57)),
+        "class" => Some(Atom::Static("class", 58)),
+        "src" => Some(Atom::Static("src", 59)),
+        "href" => Some(Atom::Static("href", 60)),
+        "type" => Some(Atom::Static("type", 61)),
+        "value" => Some(Atom::Static("value", 62)),
+        "name" => Some(Atom::Static("name", 63)),
+        "rel" => Some(Atom::Static("rel", 64)),
+        "content" => Some(Atom::Static("content", 65)),
+        "charset" => Some(Atom::Static("charset", 66)),
+        "alt" => Some(Atom::Static("alt", 67)),
+        "width" => Some(Atom::Static("width", 68)),
+        "height" => Some(Atom::Static("height", 69)),
+        "disabled" => Some(Atom::Static("disabled", 70)),
+        "checked" => Some(Atom::Static("checked", 71)),
+        "selected" => Some(Atom::Static("selected", 72)),
+        "readonly" => Some(Atom::Static("readonly", 73)),
+        "placeholder" => Some(Atom::Static("placeholder", 74)),
+        "action" => Some(Atom::Static("action", 75)),
+        "method" => Some(Atom::Static("method", 76)),
+        "target" => Some(Atom::Static("target", 77)),
+        "display" => Some(Atom::Static("display", 78)),
+        "position" => Some(Atom::Static("position", 79)),
+        "top" => Some(Atom::Static("top", 80)),
+        "right" => Some(Atom::Static("right", 81)),
+        "bottom" => Some(Atom::Static("bottom", 82)),
+        "left" => Some(Atom::Static("left", 83)),
+        "min-width" => Some(Atom::Static("min-width", 84)),
+        "max-width" => Some(Atom::Static("max-width", 85)),
+        "min-height" => Some(Atom::Static("min-height", 86)),
+        "max-height" => Some(Atom::Static("max-height", 87)),
+        "margin" => Some(Atom::Static("margin", 88)),
+        "padding" => Some(Atom::Static("padding", 89)),
+        "border" => Some(Atom::Static("border", 90)),
+        "border-radius" => Some(Atom::Static("border-radius", 91)),
+        "color" => Some(Atom::Static("color", 92)),
+        "background-color" => Some(Atom::Static("background-color", 93)),
+        "opacity" => Some(Atom::Static("opacity", 94)),
+        "z-index" => Some(Atom::Static("z-index", 95)),
+        "font-family" => Some(Atom::Static("font-family", 96)),
+        "font-size" => Some(Atom::Static("font-size", 97)),
+        "font-weight" => Some(Atom::Static("font-weight", 98)),
+        "line-height" => Some(Atom::Static("line-height", 99)),
+        "text-align" => Some(Atom::Static("text-align", 100)),
+        "flex" => Some(Atom::Static("flex", 101)),
+        "flex-direction" => Some(Atom::Static("flex-direction", 102)),
+        "flex-wrap" => Some(Atom::Static("flex-wrap", 103)),
+        "justify-content" => Some(Atom::Static("justify-content", 104)),
+        "align-items" => Some(Atom::Static("align-items", 105)),
+        "grid" => Some(Atom::Static("grid", 106)),
+        "gap" => Some(Atom::Static("gap", 107)),
+        "overflow" => Some(Atom::Static("overflow", 108)),
+        "visibility" => Some(Atom::Static("visibility", 109)),
+        "transform" => Some(Atom::Static("transform", 110)),
+        "box-sizing" => Some(Atom::Static("box-sizing", 111)),
+        "cursor" => Some(Atom::Static("cursor", 112)),
+        _ => None,
+    }
 }
