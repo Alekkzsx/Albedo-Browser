@@ -70,10 +70,27 @@ impl<T, const N: usize> InlineVec<T, N> {
         self.len() == 0
     }
 
+    /// Cria um novo `InlineVec` com capacidade inicial.
+    pub fn with_capacity(capacity: usize) -> Self {
+        if capacity <= N {
+            Self::new()
+        } else {
+            Self {
+                storage: InlineVecStorage::Heap(Vec::with_capacity(capacity)),
+            }
+        }
+    }
+
     /// Retorna `true` se os elementos ainda estão armazenados no buffer inline.
     #[inline]
     pub fn is_inline(&self) -> bool {
         matches!(self.storage, InlineVecStorage::Inline { .. })
+    }
+
+    /// Retorna `true` se o vetor transbordou para o heap.
+    #[inline]
+    pub fn is_heap(&self) -> bool {
+        matches!(self.storage, InlineVecStorage::Heap(_))
     }
 
     /// Tenta adicionar um elemento ao buffer inline sem nunca alocar no heap.
