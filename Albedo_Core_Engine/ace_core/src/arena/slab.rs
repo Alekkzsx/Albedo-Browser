@@ -104,6 +104,34 @@ impl<T> Arena<T> {
         entry.value.as_mut()
     }
 
+    /// Obtém `&T` sem verificações de limites para caminhos críticos de renderização onde o ID já foi validado.
+    ///
+    /// # Safety
+    /// O identificador `id` deve pertencer a esta arena e estar vivo.
+    #[inline(always)]
+    pub unsafe fn get_unchecked(&self, id: ArenaId<T>) -> &T {
+        let entry = self.entries.get_unchecked(id.index() as usize);
+        debug_assert_eq!(entry.version, id.version());
+        match &entry.value {
+            Some(v) => v,
+            None => std::hint::unreachable_unchecked(),
+        }
+    }
+
+    /// Obtém `&mut T` sem verificações de limites para caminhos críticos onde o ID já foi validado.
+    ///
+    /// # Safety
+    /// O identificador `id` deve pertencer a esta arena e estar vivo.
+    #[inline(always)]
+    pub unsafe fn get_unchecked_mut(&mut self, id: ArenaId<T>) -> &mut T {
+        let entry = self.entries.get_unchecked_mut(id.index() as usize);
+        debug_assert_eq!(entry.version, id.version());
+        match &mut entry.value {
+            Some(v) => v,
+            None => std::hint::unreachable_unchecked(),
+        }
+    }
+
     /// Remove o valor referenciado, devolvendo-o. O identificador é invalidado imediatamente.
     #[inline]
     pub fn remove(&mut self, id: ArenaId<T>) -> Option<T> {
