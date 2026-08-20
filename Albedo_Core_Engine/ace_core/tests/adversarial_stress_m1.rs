@@ -8,7 +8,7 @@
 
 use ace_core::arena::Arena;
 use ace_core::collections::inline_vec::InlineVec;
-use ace_core::collections::triple_buffer::{triple_buffer, triple_buffer_with, TripleBuffer};
+use ace_core::collections::triple_buffer::{triple_buffer, triple_buffer_with};
 use ace_core::diagnostics::breadcrumbs::{BreadcrumbBuffer, BreadcrumbEntry};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
