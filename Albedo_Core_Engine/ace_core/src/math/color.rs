@@ -1197,7 +1197,7 @@ pub fn mix_colors(
 /// Normaliza o ângulo de matiz em graus para o intervalo [0.0, 360.0) com fast-path branchless.
 #[inline(always)]
 pub fn normalize_hue(mut h: f32) -> f32 {
-    if h >= 0.0 && h < 360.0 {
+    if (0.0..360.0).contains(&h) {
         return h;
     }
     h %= 360.0;
