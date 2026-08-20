@@ -106,6 +106,24 @@ impl CPUTimeBudgetPool {
         *budget = (*budget - exec_us).max(-500_000.0); // Limite de dívida máxima
     }
 
+    /// Retorna o orçamento máximo em milissegundos.
+    #[inline]
+    pub fn max_budget_ms(&self) -> f64 {
+        self.max_budget_ms
+    }
+
+    /// Retorna a taxa de regeneração do orçamento.
+    #[inline]
+    pub fn recovery_rate(&self) -> f64 {
+        self.recovery_rate
+    }
+
+    /// Retorna o timestamp em nanossegundos da última atualização.
+    #[inline]
+    pub fn last_update_ns(&self) -> u64 {
+        self.last_update_ns.load(Ordering::Relaxed)
+    }
+
     /// Retorna `true` se a fila ainda possuir orçamento de CPU disponível para execução imediata.
     pub fn has_budget(&self) -> bool {
         *self.current_budget_us.lock() > 0.0
