@@ -59,13 +59,13 @@ impl UnguessableToken {
 
 impl fmt::Debug for UnguessableToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "UnguessableToken({})", self.to_hex())
+        write!(f, "UnguessableToken({:016x}{:016x})", self.high, self.low)
     }
 }
 
 impl fmt::Display for UnguessableToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_hex())
+        write!(f, "{:016x}{:016x}", self.high, self.low)
     }
 }
 
