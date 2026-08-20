@@ -74,22 +74,40 @@ pub fn compute_referrer(
     let parsed_target = url::Url::parse(target_url).ok()?;
 
     // Apenas esquemas HTTP/HTTPS são elegíveis para envio de Referer
-    if parsed_current.scheme() != "http" && parsed_current.scheme() != "https" {
+    let current_scheme = parsed_current.scheme();
+    if current_scheme != "http" && current_scheme != "https" {
         return None;
     }
 
-    let is_downgrade = parsed_current.scheme() == "https" && parsed_target.scheme() != "https";
-    let target_origin = Origin::parse(target_url).ok()?;
+    let target_scheme = parsed_target.scheme();
+    let is_downgrade = current_scheme == "https" && target_scheme != "https";
+
+    // Extrai origem do alvo diretamente da URL já parseada (zero re-parsing)
+    let target_origin_scheme = match target_scheme {
+        "http" => crate::security::origin::Scheme::Http,
+        "https" => crate::security::origin::Scheme::Https,
+        "file" => crate::security::origin::Scheme::File,
+        other => crate::security::origin::Scheme::Custom(smol_str::SmolStr::new(other)),
+    };
+    let target_host = match parsed_target.host() {
+        Some(url::Host::Domain(d)) => crate::security::origin::Host::Domain(smol_str::SmolStr::new(d)),
+        Some(url::Host::Ipv4(ip)) => crate::security::origin::Host::Ip(std::net::IpAddr::V4(ip)),
+        Some(url::Host::Ipv6(ip)) => crate::security::origin::Host::Ip(std::net::IpAddr::V6(ip)),
+        None => crate::security::origin::Host::Opaque,
+    };
+    let target_origin = Origin::tuple(target_origin_scheme, target_host, parsed_target.port());
     let is_same_origin = current_origin.same_origin(&target_origin);
 
-    // Sanitiza: remove fragmentos (#...) e dados de autenticação sensíveis (userinfo)
-    let mut sanitized_url = parsed_current.clone();
-    sanitized_url.set_fragment(None);
-    let _ = sanitized_url.set_username("");
-    let _ = sanitized_url.set_password(None);
-    let sanitized_current_url = sanitized_url.to_string();
+    // Helpers lazy para evitar alocações quando descartado
+    let get_sanitized_url = || {
+        let mut sanitized = parsed_current.clone();
+        sanitized.set_fragment(None);
+        let _ = sanitized.set_username("");
+        let _ = sanitized.set_password(None);
+        sanitized.to_string()
+    };
 
-    let origin_string = current_origin.ascii_serialization();
+    let get_origin_string = || current_origin.ascii_serialization();
 
     match policy {
         ReferrerPolicy::NoReferrer => None,
@@ -97,41 +115,41 @@ pub fn compute_referrer(
             if is_downgrade {
                 None
             } else {
-                Some(sanitized_current_url)
+                Some(get_sanitized_url())
             }
         }
         ReferrerPolicy::SameOrigin => {
             if is_same_origin {
-                Some(sanitized_current_url)
+                Some(get_sanitized_url())
             } else {
                 None
             }
         }
-        ReferrerPolicy::Origin => Some(origin_string),
+        ReferrerPolicy::Origin => Some(get_origin_string()),
         ReferrerPolicy::StrictOrigin => {
             if is_downgrade {
                 None
             } else {
-                Some(origin_string)
+                Some(get_origin_string())
             }
         }
         ReferrerPolicy::OriginWhenCrossOrigin => {
             if is_same_origin {
-                Some(sanitized_current_url)
+                Some(get_sanitized_url())
             } else {
-                Some(origin_string)
+                Some(get_origin_string())
             }
         }
         ReferrerPolicy::StrictOriginWhenCrossOrigin => {
             if is_same_origin {
-                Some(sanitized_current_url)
+                Some(get_sanitized_url())
             } else if is_downgrade {
                 None
             } else {
-                Some(origin_string)
+                Some(get_origin_string())
             }
         }
-        ReferrerPolicy::UnsafeUrl => Some(sanitized_current_url),
+        ReferrerPolicy::UnsafeUrl => Some(get_sanitized_url()),
     }
 }
 
