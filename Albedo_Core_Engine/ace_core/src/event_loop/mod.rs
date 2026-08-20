@@ -402,7 +402,7 @@ impl TaskQueue {
 
 /// O processador do Event Loop de uma aba ou contexto de navegação.
 pub struct EventLoop {
-    task_queues: Arc<TaskSourceQueues>,
+    pub task_queues: Arc<TaskSourceQueues>,
     microtask_queue: Arc<SegQueue<TaskFn>>,
     raf_queue: Arc<SegQueue<TaskFn>>,
     idle_queue: Arc<IdleTaskQueue>,
