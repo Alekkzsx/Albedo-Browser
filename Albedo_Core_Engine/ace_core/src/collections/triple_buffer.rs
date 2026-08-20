@@ -54,6 +54,7 @@ pub struct TripleBuffer<T> {
 
 impl<T: Clone> TripleBuffer<T> {
     /// Cria um novo par `(Producer, Consumer)` inicializado com clones de `initial`.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(initial: T) -> (TripleBufferProducer<T>, TripleBufferConsumer<T>) {
         triple_buffer(initial)
     }
