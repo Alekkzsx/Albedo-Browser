@@ -114,7 +114,7 @@ impl CompactPslTrie {
     }
 
     /// Determina a quantidade de labels que compõem o sufixo público.
-    pub fn find_public_suffix_labels<'a>(&self, host_labels: &[&'a str]) -> Option<PslMatch> {
+    pub fn find_public_suffix_labels(&self, host_labels: &[&str]) -> Option<PslMatch> {
         let mut curr_idx = 0;
         let mut longest_match: Option<PslMatch> = None;
 
