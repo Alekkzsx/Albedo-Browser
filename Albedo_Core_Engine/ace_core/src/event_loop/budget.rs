@@ -100,7 +100,7 @@ impl CPUTimeBudgetPool {
     }
 
     /// Atualiza e consome o tempo de execução consumido por uma tarefa.
-    pub fn record_execution(&self, execution_duration: Duration, now: Instant) {
+    pub fn record_execution(&self, execution_duration: Duration, _now: Instant) {
         let mut budget = self.current_budget_us.lock();
         let exec_us = execution_duration.as_micros() as f64;
         *budget = (*budget - exec_us).max(-500_000.0); // Limite de dívida máxima
