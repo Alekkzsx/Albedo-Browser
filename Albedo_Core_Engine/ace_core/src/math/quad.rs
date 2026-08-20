@@ -6,7 +6,7 @@
 use crate::math::geometry::rect;
 use crate::math::layout_unit::LayoutUnit;
 use crate::math::units::{CssPixel, DevicePixel, LayoutPixel};
-use euclid::{Point2D, Rect, Transform2D};
+use euclid::{Point2D, Rect, Transform2D, Transform3D};
 
 /// Quadrilátero planar definido por 4 vértices $[p_0, p_1, p_2, p_3]$ no sentido horário.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,6 +49,23 @@ impl<U: Copy> Quad2D<f32, U> {
         let p3 = transform.transform_point(base_quad.points[3]);
 
         Self::new(p0, p1, p2, p3)
+    }
+
+    /// Projeta os 4 vértices de um retângulo através de uma matriz de transformação 3D (CSS 3D Transforms / Matrix4D).
+    ///
+    /// Aplica divisão de perspectiva homogênea e retorna `None` se algum dos 4 vértices
+    /// estiver localizado atrás do plano da câmera ($w \le 0$).
+    pub fn from_transformed_rect_3d(
+        r: &Rect<f32, U>,
+        transform: &Transform3D<f32, U, U>,
+    ) -> Option<Self> {
+        let base_quad = Self::from_rect(r);
+        let p0 = transform.transform_point2d(base_quad.points[0])?;
+        let p1 = transform.transform_point2d(base_quad.points[1])?;
+        let p2 = transform.transform_point2d(base_quad.points[2])?;
+        let p3 = transform.transform_point2d(base_quad.points[3])?;
+
+        Some(Self::new(p0, p1, p2, p3))
     }
 
     /// Calcula a menor caixa delimitadora alinhada aos eixos (AABB) que envolve todos os 4 vértices.
