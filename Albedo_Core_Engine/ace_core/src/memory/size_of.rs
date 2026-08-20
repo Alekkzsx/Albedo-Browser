@@ -75,7 +75,7 @@ impl MallocSizeOf for smol_str::SmolStr {
 
 impl<T: MallocSizeOf, const N: usize> MallocSizeOf for crate::collections::InlineVec<T, N> {
     fn size_of_heap(&self) -> usize {
-        let shallow = if self.is_spilled() {
+        let shallow = if self.is_heap() {
             self.capacity() * size_of::<T>()
         } else {
             0
