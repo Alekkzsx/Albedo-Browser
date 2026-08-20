@@ -3,8 +3,10 @@
 //! Envelopa a crate `rayon` para fornecer pools de thread e provê tokens de cancelamento cooperativo (`CancellationToken`).
 
 pub mod cancellation;
+pub mod sequence_checker;
 
 pub use cancellation::CancellationToken;
+pub use sequence_checker::SequenceChecker;
 
 use crate::error::AceError;
 use std::panic::{catch_unwind, AssertUnwindSafe};
