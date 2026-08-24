@@ -683,8 +683,7 @@ impl HTMLTokenizer {
                             let lookahead_len = 1 + expected_str.len() + 1; // '/' + tag + '>'
                             let peeked = peek_str(input, lookahead_len);
 
-                            if peeked.starts_with('/') {
-                                let after_slash = &peeked[1..];
+                            if let Some(after_slash) = peeked.strip_prefix('/') {
                                 if after_slash.to_ascii_lowercase().starts_with(expected_str) {
                                     let remainder = &after_slash[expected_str.len()..];
                                     if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
@@ -737,8 +736,7 @@ impl HTMLTokenizer {
                             let lookahead_len = 1 + expected_str.len() + 1;
                             let peeked = peek_str(input, lookahead_len);
 
-                            if peeked.starts_with('/') {
-                                let after_slash = &peeked[1..];
+                            if let Some(after_slash) = peeked.strip_prefix('/') {
                                 if after_slash.to_ascii_lowercase().starts_with(expected_str) {
                                     let remainder = &after_slash[expected_str.len()..];
                                     if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
