@@ -6,13 +6,30 @@
 pub mod element;
 pub mod iter;
 pub mod text;
+pub mod token_list;
 
 pub use element::{Attribute, ElementData, Namespace};
 pub use text::{CommentData, DoctypeData, DocumentData, DocumentMode, TextData};
+pub use token_list::DOMTokenList;
 
 use ace_core::flags::NodeFlags;
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
+
+/// Modo de encapsulamento da Shadow DOM (WHATWG DOM Standard).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShadowMode {
+    #[default]
+    Open,
+    Closed,
+}
+
+/// Dados específicos de uma raiz de sombra (`NodeKind::ShadowRoot`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShadowRootData {
+    pub mode: ShadowMode,
+    pub host: NodeId,
+}
 
 /// As diferentes variantes de nós suportadas na árvore DOM.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +40,7 @@ pub enum NodeKind {
     Text(TextData),
     Comment(CommentData),
     DocumentFragment,
+    ShadowRoot(ShadowRootData),
 }
 
 /// A estrutura primária de um nó na árvore DOM do Albedo.
