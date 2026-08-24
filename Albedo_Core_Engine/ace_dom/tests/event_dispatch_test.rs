@@ -25,15 +25,10 @@ fn test_event_dispatch_bubbling_order() {
     registry.add_event_listener(
         parent_id,
         "click",
-        EventListener {
-            callback: Box::new(move |e| {
-                assert_eq!(e.phase, EventPhase::CapturingPhase);
-                order_clone1.lock().unwrap().push("parent_capture");
-            }),
-            capture: true,
-            once: false,
-            passive: false,
-        },
+        EventListener::new(1, true, move |e| {
+            assert_eq!(e.phase, EventPhase::CapturingPhase);
+            order_clone1.lock().unwrap().push("parent_capture");
+        }),
     );
 
     // Ouvinte no alvo (button)
@@ -41,15 +36,10 @@ fn test_event_dispatch_bubbling_order() {
     registry.add_event_listener(
         btn_id,
         "click",
-        EventListener {
-            callback: Box::new(move |e| {
-                assert_eq!(e.phase, EventPhase::AtTarget);
-                order_clone2.lock().unwrap().push("btn_target");
-            }),
-            capture: false,
-            once: false,
-            passive: false,
-        },
+        EventListener::new(2, false, move |e| {
+            assert_eq!(e.phase, EventPhase::AtTarget);
+            order_clone2.lock().unwrap().push("btn_target");
+        }),
     );
 
     // Ouvinte de borbulhamento no pai
@@ -57,15 +47,10 @@ fn test_event_dispatch_bubbling_order() {
     registry.add_event_listener(
         parent_id,
         "click",
-        EventListener {
-            callback: Box::new(move |e| {
-                assert_eq!(e.phase, EventPhase::BubblingPhase);
-                order_clone3.lock().unwrap().push("parent_bubble");
-            }),
-            capture: false,
-            once: false,
-            passive: false,
-        },
+        EventListener::new(3, false, move |e| {
+            assert_eq!(e.phase, EventPhase::BubblingPhase);
+            order_clone3.lock().unwrap().push("parent_bubble");
+        }),
     );
 
     let mut event = Event::new("click", true, true);
@@ -92,14 +77,9 @@ fn test_event_stop_propagation() {
     registry.add_event_listener(
         btn_id,
         "click",
-        EventListener {
-            callback: Box::new(|e| {
-                e.stop_propagation();
-            }),
-            capture: false,
-            once: false,
-            passive: false,
-        },
+        EventListener::new(1, false, |e| {
+            e.stop_propagation();
+        }),
     );
 
     // Ouvinte no pai (que NÃO deve ser chamado por causa do stop_propagation)
@@ -107,14 +87,9 @@ fn test_event_stop_propagation() {
     registry.add_event_listener(
         parent_id,
         "click",
-        EventListener {
-            callback: Box::new(move |_| {
-                p_clone.fetch_add(1, Ordering::SeqCst);
-            }),
-            capture: false,
-            once: false,
-            passive: false,
-        },
+        EventListener::new(2, false, move |_| {
+            p_clone.fetch_add(1, Ordering::SeqCst);
+        }),
     );
 
     let mut event = Event::new("click", true, true);
