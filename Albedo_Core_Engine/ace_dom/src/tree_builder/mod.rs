@@ -154,6 +154,41 @@ impl HTMLTreeBuilder {
         false
     }
 
+    /// Trata a abertura de tags `<template>`, suportando Declarative Shadow DOM (`shadowrootmode`).
+    fn handle_template_start(&mut self, start_tag: crate::tokenizer::StartTagToken) -> TokenizerAction {
+        let mut dsd_mode = None;
+        for attr in start_tag.attributes.as_slice() {
+            if attr.name.eq_ignore_ascii_case("shadowrootmode") {
+                if attr.value.eq_ignore_ascii_case("open") {
+                    dsd_mode = Some(crate::node::ShadowMode::Open);
+                } else if attr.value.eq_ignore_ascii_case("closed") {
+                    dsd_mode = Some(crate::node::ShadowMode::Closed);
+                }
+            }
+        }
+
+        let host_id = self.open_elements.current_node();
+        let content_id = if let (Some(mode), Some(host)) = (dsd_mode, host_id) {
+            match self.doc.attach_shadow(host, mode) {
+                Ok(s_id) => s_id,
+                Err(_) => self.doc.create_document_fragment(),
+            }
+        } else {
+            self.doc.create_document_fragment()
+        };
+
+        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
+        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
+            for attr in start_tag.attributes.as_slice() {
+                el.set_attribute(attr.name.clone(), attr.value.clone());
+            }
+            el.template_content = Some(content_id);
+        }
+        self.template_insertion_modes.push(InsertionMode::InTemplate);
+        self.mode = InsertionMode::InTemplate;
+        TokenizerAction::Continue
+    }
+
     /// Trata elementos vazios (*Void Elements*) que não têm filhos e fecham imediatamente.
     fn is_void_element(tag_name: &str) -> bool {
         matches!(
