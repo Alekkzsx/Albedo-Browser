@@ -293,6 +293,57 @@ impl CompoundSelector {
     }
 }
 
+fn find_top_level_combinator(input: &str, target: char) -> Option<usize> {
+    let mut in_bracket = false;
+    let mut in_quote: Option<char> = None;
+    for (i, c) in input.char_indices() {
+        match c {
+            '"' | '\'' => {
+                if in_quote == Some(c) {
+                    in_quote = None;
+                } else if in_quote.is_none() {
+                    in_quote = Some(c);
+                }
+            }
+            '[' if in_quote.is_none() => in_bracket = true,
+            ']' if in_quote.is_none() => in_bracket = false,
+            _ => {
+                if !in_bracket && in_quote.is_none() && c == target {
+                    return Some(i);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn split_top_level_descendant(input: &str) -> Option<(&str, &str)> {
+    let mut in_bracket = false;
+    let mut in_quote: Option<char> = None;
+    for (i, c) in input.char_indices() {
+        match c {
+            '"' | '\'' => {
+                if in_quote == Some(c) {
+                    in_quote = None;
+                } else if in_quote.is_none() {
+                    in_quote = Some(c);
+                }
+            }
+            '[' if in_quote.is_none() => in_bracket = true,
+            ']' if in_quote.is_none() => in_bracket = false,
+            ' ' if !in_bracket && in_quote.is_none() => {
+                let left = input[..i].trim();
+                let right = input[i + 1..].trim();
+                if !left.is_empty() && !right.is_empty() {
+                    return Some((left, right));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Um seletor CSS completo com cadeia de combinadores (ex: `div.content > p + span`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComplexSelector {
@@ -308,9 +359,9 @@ impl ComplexSelector {
         }
 
         // Tenta combinador de filho direto `>`
-        if let Some((left, right)) = trimmed.split_once('>') {
-            let left_comp = CompoundSelector::parse(left)?;
-            let right_comp = CompoundSelector::parse(right)?;
+        if let Some(pos) = find_top_level_combinator(trimmed, '>') {
+            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
+            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
             return Some(Self {
                 parts: vec![
                     (left_comp, Some(Combinator::Child)),
@@ -320,9 +371,9 @@ impl ComplexSelector {
         }
 
         // Tenta combinador de irmão adjacente `+`
-        if let Some((left, right)) = trimmed.split_once('+') {
-            let left_comp = CompoundSelector::parse(left)?;
-            let right_comp = CompoundSelector::parse(right)?;
+        if let Some(pos) = find_top_level_combinator(trimmed, '+') {
+            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
+            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
             return Some(Self {
                 parts: vec![
                     (left_comp, Some(Combinator::AdjacentSibling)),
@@ -332,9 +383,9 @@ impl ComplexSelector {
         }
 
         // Tenta combinador de irmão geral `~`
-        if let Some((left, right)) = trimmed.split_once('~') {
-            let left_comp = CompoundSelector::parse(left)?;
-            let right_comp = CompoundSelector::parse(right)?;
+        if let Some(pos) = find_top_level_combinator(trimmed, '~') {
+            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
+            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
             return Some(Self {
                 parts: vec![
                     (left_comp, Some(Combinator::GeneralSibling)),
@@ -344,21 +395,18 @@ impl ComplexSelector {
         }
 
         // Tenta combinador de descendente (espaço)
-        if trimmed.contains(' ') {
-            let words: Vec<&str> = trimmed.split_whitespace().collect();
-            if words.len() == 2 {
-                let left_comp = CompoundSelector::parse(words[0])?;
-                let right_comp = CompoundSelector::parse(words[1])?;
-                return Some(Self {
-                    parts: vec![
-                        (left_comp, Some(Combinator::Descendant)),
-                        (right_comp, None),
-                    ],
-                });
-            }
+        if let Some((left, right)) = split_top_level_descendant(trimmed) {
+            let left_comp = CompoundSelector::parse(left)?;
+            let right_comp = CompoundSelector::parse(right)?;
+            return Some(Self {
+                parts: vec![
+                    (left_comp, Some(Combinator::Descendant)),
+                    (right_comp, None),
+                ],
+            });
         }
 
-        // Seletor composto único
+        // Seletor composto único sem combinadores
         let compound = CompoundSelector::parse(trimmed)?;
         Some(Self {
             parts: vec![(compound, None)],
