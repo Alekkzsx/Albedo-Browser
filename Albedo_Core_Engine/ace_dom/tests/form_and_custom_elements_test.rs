@@ -1,7 +1,7 @@
 //! # Bateria de Testes de Formulários, ValidityState e Custom Elements (ace_dom)
 
 use ace_dom::custom_elements::{is_valid_custom_element_name, CustomElementRegistry};
-use ace_dom::form::{check_control_validity, FormData, FormDataValue};
+use ace_dom::form::{check_control_validity, FormData};
 use ace_dom::node::element::Namespace;
 use ace_dom::tree::Document;
 
