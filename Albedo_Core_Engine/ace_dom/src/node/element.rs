@@ -144,4 +144,9 @@ impl ElementData {
     pub fn has_class(&self, class_name: &str) -> bool {
         self.classes.as_slice().iter().any(|c| c.eq_ignore_ascii_case(class_name))
     }
+
+    /// Retorna a interface mutável `DOMStringMap` para manipulação de atributos `data-*`.
+    pub fn dataset_mut(&mut self) -> crate::node::dataset::DOMStringMap<'_> {
+        crate::node::dataset::DOMStringMap::new(self)
+    }
 }
