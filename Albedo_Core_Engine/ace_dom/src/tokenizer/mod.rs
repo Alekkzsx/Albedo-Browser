@@ -138,7 +138,35 @@ impl HTMLTokenizer {
 
     /// Executa a tokenização completa sobre um `SegmentedString`, emitindo tokens continuamente para o `TokenSink`.
     pub fn tokenize(&mut self, input: &mut SegmentedString, sink: &mut dyn TokenSink) {
-        while let Some(ch) = input.advance() {
+        loop {
+            // Fast-Path SIMD (memchr3): varre blocos contíguos de texto no estado Data acelerado por hardware
+            if self.state == TokenizerState::Data {
+                if let Some(slice) = input.current_contiguous_slice() {
+                    if let Some(pos) = memchr::memchr3(b'<', b'&', 0, slice.as_bytes()) {
+                        if pos > 0 {
+                            let text = &slice[..pos];
+                            let act = sink.process_token(Token::Character(SmolStr::new(text)));
+                            if let TokenizerAction::SwitchState(s) = act {
+                                self.state = s;
+                            }
+                            input.advance_bytes(pos);
+                        }
+                    } else if !slice.is_empty() {
+                        let act = sink.process_token(Token::Character(SmolStr::new(slice)));
+                        if let TokenizerAction::SwitchState(s) = act {
+                            self.state = s;
+                        }
+                        let len = slice.len();
+                        input.advance_bytes(len);
+                    }
+                }
+            }
+
+            let ch = match input.advance() {
+                Some(c) => c,
+                None => break,
+            };
+
             match self.state {
                 // 1. Data State (WHATWG §12.2.5.1)
                 TokenizerState::Data => match ch {
