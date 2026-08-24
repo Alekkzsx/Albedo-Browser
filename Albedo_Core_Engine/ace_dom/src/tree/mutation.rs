@@ -176,3 +176,41 @@ pub fn remove_child(
 
     Ok(())
 }
+
+/// Substitui `old_child_id` por `new_child_id` sob `parent_id`.
+pub fn replace_child(
+    arena: &mut Arena<NodeData>,
+    parent_id: NodeId,
+    new_child_id: NodeId,
+    old_child_id: NodeId,
+) -> Result<(), DomError> {
+    if new_child_id == old_child_id {
+        return Ok(());
+    }
+    insert_before(arena, parent_id, new_child_id, Some(old_child_id))?;
+    remove_child(arena, parent_id, old_child_id)?;
+    Ok(())
+}
+
+/// Insere `child_id` como o primeiro filho de `parent_id`.
+pub fn prepend_child(
+    arena: &mut Arena<NodeData>,
+    parent_id: NodeId,
+    child_id: NodeId,
+) -> Result<(), DomError> {
+    let p_aid = to_arena_id(parent_id)?;
+    let first_child = arena.get(p_aid).ok_or(DomError::InvalidNodeId(parent_id))?.first_child;
+    insert_before(arena, parent_id, child_id, first_child)
+}
+
+/// Insere `new_child_id` imediatamente após `ref_child_id` sob `parent_id`.
+pub fn insert_after(
+    arena: &mut Arena<NodeData>,
+    parent_id: NodeId,
+    new_child_id: NodeId,
+    ref_child_id: NodeId,
+) -> Result<(), DomError> {
+    let ref_aid = to_arena_id(ref_child_id)?;
+    let next_sibling = arena.get(ref_aid).ok_or(DomError::InvalidNodeId(ref_child_id))?.next_sibling;
+    insert_before(arena, parent_id, new_child_id, next_sibling)
+}
