@@ -4,11 +4,13 @@
 //! ocupando exatamente 40 bytes por nó através de `Option<NodeId>` (Niche Optimization).
 
 pub mod element;
+pub mod flat_tree;
 pub mod iter;
 pub mod text;
 pub mod token_list;
 
 pub use element::{Attribute, ElementData, Namespace};
+pub use flat_tree::FlatTreeResolver;
 pub use text::{CommentData, DoctypeData, DocumentData, DocumentMode, TextData};
 pub use token_list::DOMTokenList;
 
