@@ -90,7 +90,7 @@ impl SimpleSelector {
     }
 
     /// Avalia se um determinado nó satisfaz este seletor atômico.
-    pub fn matches(&self, doc: &Document, node_id: NodeId, node: &NodeData) -> bool {
+    pub fn matches(&self, doc: &Document, _node_id: NodeId, node: &NodeData) -> bool {
         let el = match node.as_element() {
             Some(e) => e,
             None => return false,
