@@ -290,6 +290,11 @@ impl Document {
         crate::serializer::serialize_inner_html(self, node_id)
     }
 
+    /// Compara a posição deste nó em relação a outro na árvore DOM conforme o padrão WHATWG DOM §4.2.
+    pub fn compare_document_position(&self, node_a: NodeId, node_b: NodeId) -> crate::node::DocumentPosition {
+        crate::node::compare_document_position(self, node_a, node_b)
+    }
+
     /// Retorna o número total de nós vivos alocados na arena.
     #[inline]
     pub fn node_count(&self) -> usize {
