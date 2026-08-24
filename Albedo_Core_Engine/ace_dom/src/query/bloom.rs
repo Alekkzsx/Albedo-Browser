@@ -60,21 +60,9 @@ impl AncestorFilter {
     pub fn fast_reject(&self, compound: &CompoundSelector) -> bool {
         for simple in &compound.simple_selectors {
             match simple {
-                SimpleSelector::Tag(tag) => {
-                    if !self.contains_atom(tag) {
-                        return true;
-                    }
-                }
-                SimpleSelector::Id(id) => {
-                    if !self.contains_atom(id) {
-                        return true;
-                    }
-                }
-                SimpleSelector::Class(class) => {
-                    if !self.contains_atom(class) {
-                        return true;
-                    }
-                }
+                SimpleSelector::Tag(tag) if !self.contains_atom(tag) => return true,
+                SimpleSelector::Id(id) if !self.contains_atom(id) => return true,
+                SimpleSelector::Class(class) if !self.contains_atom(class) => return true,
                 _ => {}
             }
         }
