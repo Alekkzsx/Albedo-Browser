@@ -55,6 +55,7 @@ pub struct ElementData {
     pub id_attr: Option<Atom>,
     pub classes: InlineVec<Atom, 4>,
     pub shadow_root: Option<NodeId>,
+    pub template_content: Option<NodeId>,
 }
 
 impl ElementData {
@@ -67,6 +68,7 @@ impl ElementData {
             id_attr: None,
             classes: InlineVec::new(),
             shadow_root: None,
+            template_content: None,
         }
     }
 
