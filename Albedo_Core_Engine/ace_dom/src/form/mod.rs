@@ -68,10 +68,8 @@ pub fn check_control_validity(doc: &Document, node_id: NodeId) -> ValidityState 
         if !val.starts_with("http://") && !val.starts_with("https://") {
             state.type_mismatch = true;
         }
-    } else if type_attr == "number" && !val.is_empty() {
-        if val.parse::<f64>().is_err() {
-            state.bad_input = true;
-        }
+    } else if type_attr == "number" && !val.is_empty() && val.parse::<f64>().is_err() {
+        state.bad_input = true;
     }
 
     state
