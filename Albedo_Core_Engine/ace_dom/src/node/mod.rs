@@ -3,6 +3,7 @@
 //! Estrutura compacta com nós alocados na `Arena<NodeData>` e links bidirecionais
 //! ocupando exatamente 40 bytes por nó através de `Option<NodeId>` (Niche Optimization).
 
+pub mod dataset;
 pub mod element;
 pub mod flat_tree;
 pub mod iter;
@@ -10,6 +11,7 @@ pub mod position;
 pub mod text;
 pub mod token_list;
 
+pub use dataset::DOMStringMap;
 pub use element::{Attribute, ElementData, Namespace};
 pub use flat_tree::FlatTreeResolver;
 pub use position::{compare_document_position, DocumentPosition};
