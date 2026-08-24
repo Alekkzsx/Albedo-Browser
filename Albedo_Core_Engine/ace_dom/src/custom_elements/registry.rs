@@ -5,7 +5,6 @@
 use crate::error::DomError;
 use ace_core::intern::Atom;
 use rustc_hash::FxHashMap;
-use smol_str::SmolStr;
 
 /// Valida se um nome de tag é um nome de elemento customizado válido (WHATWG §4.13.1.2).
 pub fn is_valid_custom_element_name(name: &str) -> bool {
