@@ -256,6 +256,43 @@ impl SegmentedString {
         }
     }
 
+    /// Retorna uma referência direta à fatia contígua na frente do buffer, se não houver caracteres devolvidos.
+    pub fn current_contiguous_slice(&mut self) -> Option<&str> {
+        if !self.pushed_back.is_empty() {
+            return None;
+        }
+        self.clean_empty_chunks();
+        let chunk = self.chunks.front()?;
+        if self.current_chunk_offset < chunk.len() {
+            Some(&chunk[self.current_chunk_offset..])
+        } else {
+            None
+        }
+    }
+
+    /// Avança o cursor em `n` bytes contíguos atualizando métricas de linha/coluna (Fast-Path SIMD).
+    pub fn advance_bytes(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+        if let Some(chunk) = self.chunks.front() {
+            let end = (self.current_chunk_offset + n).min(chunk.len());
+            let slice = &chunk[self.current_chunk_offset..end];
+            for c in slice.chars() {
+                if c == '\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
+                }
+            }
+            let consumed = end - self.current_chunk_offset;
+            self.current_chunk_offset += consumed;
+            self.byte_offset += consumed;
+            self.clean_empty_chunks();
+        }
+    }
+
     /// Retorna `true` se o stream estiver completamente vazio e sem chunks pendentes.
     pub fn is_eof(&self) -> bool {
         if !self.pushed_back.is_empty() {
