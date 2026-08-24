@@ -106,8 +106,7 @@ pub fn decode_character_reference(input: &str) -> Option<(SmolStr, usize)> {
         let has_semicolon = end < input.len() && bytes[end] == b';';
         let consumed = if has_semicolon { end + 1 } else { end };
 
-        let mut out = SmolStr::default();
-        out = SmolStr::new(ch.to_string());
+        let out = SmolStr::new(ch.to_string());
         return Some((out, consumed));
     }
 
