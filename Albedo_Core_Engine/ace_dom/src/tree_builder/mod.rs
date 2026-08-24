@@ -419,7 +419,7 @@ impl TokenSink for HTMLTreeBuilder {
                         }
                         TokenizerAction::Continue
                     } else if tag_str.eq_ignore_ascii_case("math") {
-                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::MathML);
+                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::MathMl);
                         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
                             for attr in start_tag.attributes.as_slice() {
                                 el.set_attribute(attr.name.clone(), attr.value.clone());
