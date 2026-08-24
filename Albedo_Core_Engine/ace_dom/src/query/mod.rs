@@ -58,12 +58,9 @@ impl Document {
     /// Retorna o primeiro elemento que satisfaz a regra de seletor CSS informada (com combinadores).
     pub fn query_selector(&self, selector_str: &str) -> Option<NodeId> {
         let selector = ComplexSelector::parse(selector_str)?;
-        for (node_id, _) in self.descendants(self.root()) {
-            if selector.matches(self, node_id) {
-                return Some(node_id);
-            }
-        }
-        None
+        self.descendants(self.root())
+            .map(|(node_id, _)| node_id)
+            .find(|&node_id| selector.matches(self, node_id))
     }
 
     /// Retorna todos os elementos que satisfazem a regra de seletor CSS informada (com combinadores).
