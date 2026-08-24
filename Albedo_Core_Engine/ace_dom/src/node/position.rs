@@ -82,7 +82,7 @@ pub fn compare_document_position(doc: &Document, node_a: NodeId, node_b: NodeId)
         }
         _ => {
             // Nós estão desconectados da raiz do documento
-            let fallback_order = if node_b.index() < node_a.index() {
+            let fallback_order = if node_b < node_a {
                 DocumentPosition::PRECEDING
             } else {
                 DocumentPosition::FOLLOWING
