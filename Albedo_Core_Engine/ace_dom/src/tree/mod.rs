@@ -280,6 +280,16 @@ impl Document {
         crate::node::FlatTreeResolver::flat_tree_children(self, node_id)
     }
 
+    /// Serializa o nó e seus descendentes em uma string HTML normativa (`outerHTML`).
+    pub fn outer_html(&self, node_id: NodeId) -> String {
+        crate::serializer::serialize_node(self, node_id)
+    }
+
+    /// Serializa os filhos do nó em uma string HTML normativa (`innerHTML`).
+    pub fn inner_html(&self, node_id: NodeId) -> String {
+        crate::serializer::serialize_inner_html(self, node_id)
+    }
+
     /// Retorna o número total de nós vivos alocados na arena.
     #[inline]
     pub fn node_count(&self) -> usize {
