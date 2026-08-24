@@ -58,7 +58,7 @@ impl AncestorFilter {
 
     /// Retorna `true` se puder REJEITAR com 100% de certeza que o ancestral não existe na cadeia.
     pub fn fast_reject(&self, compound: &CompoundSelector) -> bool {
-        for simple in &compound.selectors {
+        for simple in &compound.simple_selectors {
             match simple {
                 SimpleSelector::Tag(tag) => {
                     if !self.contains_atom(tag) {
