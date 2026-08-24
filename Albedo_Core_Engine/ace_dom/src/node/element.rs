@@ -43,6 +43,9 @@ impl Attribute {
     }
 }
 
+use crate::node::token_list::DOMTokenList;
+use ace_core::id::NodeId;
+
 /// Dados específicos de um elemento DOM (`NodeKind::Element`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementData {
@@ -51,6 +54,7 @@ pub struct ElementData {
     pub attributes: InlineVec<Attribute, 4>,
     pub id_attr: Option<Atom>,
     pub classes: InlineVec<Atom, 4>,
+    pub shadow_root: Option<NodeId>,
 }
 
 impl ElementData {
@@ -62,7 +66,13 @@ impl ElementData {
             attributes: InlineVec::new(),
             id_attr: None,
             classes: InlineVec::new(),
+            shadow_root: None,
         }
+    }
+
+    /// Retorna um manipulador `DOMTokenList` para mutação conveniente e viva das classes.
+    pub fn class_list(&mut self) -> DOMTokenList<'_> {
+        DOMTokenList::new(self)
     }
 
     /// Adiciona ou substitui um atributo, atualizando automaticamente os caches de ID e Classes.
