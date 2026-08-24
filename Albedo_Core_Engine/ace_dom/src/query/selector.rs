@@ -34,7 +34,26 @@ fn next_element_sibling(doc: &Document, node_id: NodeId) -> Option<NodeId> {
     None
 }
 
-/// Pseudo-classes estruturais suportadas no DOM.
+/// Operadores de casamento de atributos CSS (Selectors Level 4 §6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttributeOp {
+    /// Presença do atributo (`[attr]`)
+    Exists,
+    /// Igualdade exata (`[attr="val"]`)
+    Exact(String),
+    /// Prefixo (`[attr^="val"]`)
+    Prefix(String),
+    /// Sufixo (`[attr$="val"]`)
+    Suffix(String),
+    /// Substring (`[attr*="val"]`)
+    Contains(String),
+    /// Lista separada por espaços contém palavra (`[attr~="val"]`)
+    Includes(String),
+    /// Correspondência de prefixo com hífen (`[attr|="val"]`)
+    DashMatch(String),
+}
+
+/// Pseudo-classes estruturais e de estado suportadas no DOM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PseudoClass {
     FirstChild,
@@ -42,6 +61,11 @@ pub enum PseudoClass {
     OnlyChild,
     Empty,
     Root,
+    Checked,
+    Disabled,
+    Enabled,
+    Required,
+    Optional,
 }
 
 /// Um seletor simples que pode ser casado contra um único nó.
@@ -55,12 +79,12 @@ pub enum SimpleSelector {
     Id(Atom),
     /// Seletor de Classe (ex: `.active`)
     Class(Atom),
-    /// Seletor de Atributo (ex: `[target="_blank"]` ou `[disabled]`)
+    /// Seletor de Atributo com operador (ex: `[target="_blank"]`, `[href^="https"]`)
     Attribute {
         name: Atom,
-        value: Option<String>,
+        op: AttributeOp,
     },
-    /// Pseudo-classe estrutural
+    /// Pseudo-classe estrutural ou de estado
     Pseudo(PseudoClass),
 }
 
@@ -91,22 +115,57 @@ impl SimpleSelector {
                 "only-child" => Some(Self::Pseudo(PseudoClass::OnlyChild)),
                 "empty" => Some(Self::Pseudo(PseudoClass::Empty)),
                 "root" => Some(Self::Pseudo(PseudoClass::Root)),
+                "checked" => Some(Self::Pseudo(PseudoClass::Checked)),
+                "disabled" => Some(Self::Pseudo(PseudoClass::Disabled)),
+                "enabled" => Some(Self::Pseudo(PseudoClass::Enabled)),
+                "required" => Some(Self::Pseudo(PseudoClass::Required)),
+                "optional" => Some(Self::Pseudo(PseudoClass::Optional)),
                 _ => None,
             };
         }
 
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let inner = &trimmed[1..trimmed.len() - 1];
-            if let Some((attr_name, attr_val)) = inner.split_once('=') {
+            if let Some((attr_name, attr_val)) = inner.split_once("^=") {
                 let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
                 return Some(Self::Attribute {
                     name: Atom::new(attr_name.trim()),
-                    value: Some(clean_val.to_string()),
+                    op: AttributeOp::Prefix(clean_val.to_string()),
+                });
+            } else if let Some((attr_name, attr_val)) = inner.split_once("$=") {
+                let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
+                return Some(Self::Attribute {
+                    name: Atom::new(attr_name.trim()),
+                    op: AttributeOp::Suffix(clean_val.to_string()),
+                });
+            } else if let Some((attr_name, attr_val)) = inner.split_once("*=") {
+                let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
+                return Some(Self::Attribute {
+                    name: Atom::new(attr_name.trim()),
+                    op: AttributeOp::Contains(clean_val.to_string()),
+                });
+            } else if let Some((attr_name, attr_val)) = inner.split_once("~=") {
+                let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
+                return Some(Self::Attribute {
+                    name: Atom::new(attr_name.trim()),
+                    op: AttributeOp::Includes(clean_val.to_string()),
+                });
+            } else if let Some((attr_name, attr_val)) = inner.split_once("|=") {
+                let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
+                return Some(Self::Attribute {
+                    name: Atom::new(attr_name.trim()),
+                    op: AttributeOp::DashMatch(clean_val.to_string()),
+                });
+            } else if let Some((attr_name, attr_val)) = inner.split_once('=') {
+                let clean_val = attr_val.trim().trim_matches('"').trim_matches('\'');
+                return Some(Self::Attribute {
+                    name: Atom::new(attr_name.trim()),
+                    op: AttributeOp::Exact(clean_val.to_string()),
                 });
             } else {
                 return Some(Self::Attribute {
                     name: Atom::new(inner.trim()),
-                    value: None,
+                    op: AttributeOp::Exists,
                 });
             }
         }
@@ -135,11 +194,20 @@ impl SimpleSelector {
             Self::Tag(tag) => el.tag_name.eq_ignore_ascii_case(tag.as_str()),
             Self::Id(id) => el.id_attr.as_ref() == Some(id),
             Self::Class(class) => el.has_class(class.as_str()),
-            Self::Attribute { name, value } => {
-                if let Some(val_expected) = value {
-                    el.get_attribute(name.as_str()) == Some(val_expected.as_str())
-                } else {
-                    el.get_attribute(name.as_str()).is_some()
+            Self::Attribute { name, op } => {
+                let attr_val = el.get_attribute(name.as_str());
+                match op {
+                    AttributeOp::Exists => attr_val.is_some(),
+                    AttributeOp::Exact(expected) => attr_val == Some(expected.as_str()),
+                    AttributeOp::Prefix(prefix) => attr_val.is_some_and(|v| v.starts_with(prefix)),
+                    AttributeOp::Suffix(suffix) => attr_val.is_some_and(|v| v.ends_with(suffix)),
+                    AttributeOp::Contains(sub) => attr_val.is_some_and(|v| v.contains(sub)),
+                    AttributeOp::Includes(word) => {
+                        attr_val.is_some_and(|v| v.split_ascii_whitespace().any(|w| w == word))
+                    }
+                    AttributeOp::DashMatch(prefix) => attr_val.is_some_and(|v| {
+                        v == prefix || v.starts_with(&format!("{}-", prefix))
+                    }),
                 }
             }
             Self::Pseudo(pseudo) => match pseudo {
@@ -151,6 +219,11 @@ impl SimpleSelector {
                 }
                 PseudoClass::Empty => node.first_child.is_none(),
                 PseudoClass::Root => node.parent == Some(doc.root()),
+                PseudoClass::Checked => el.has_attribute("checked") || el.has_attribute("selected"),
+                PseudoClass::Disabled => el.has_attribute("disabled"),
+                PseudoClass::Enabled => !el.has_attribute("disabled"),
+                PseudoClass::Required => el.has_attribute("required"),
+                PseudoClass::Optional => !el.has_attribute("required"),
             },
         }
     }
