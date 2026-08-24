@@ -10,7 +10,6 @@ pub use validity::ValidityState;
 
 use crate::tree::Document;
 use ace_core::id::NodeId;
-use smol_str::SmolStr;
 
 /// Representa a associação de controles a um formulário `<form>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
