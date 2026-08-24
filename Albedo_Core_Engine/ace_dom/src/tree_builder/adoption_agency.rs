@@ -92,7 +92,7 @@ pub fn run_adoption_agency_algorithm(
         };
 
         // Passo 7: Common ancestor é o nó imediatamente acima do formatting element na pilha
-        let common_ancestor_id = stack[fmt_pos - 1];
+        let _common_ancestor_id = stack[fmt_pos - 1];
 
         // Passo 8: Clona o formatting element e insere os filhos
         if let Some(fmt_node) = doc.get_node(formatting_element_id) {
