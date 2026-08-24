@@ -28,7 +28,7 @@ pub use node::{
     NodeData, NodeKind, TextData,
 };
 pub use query::{ElementIndex, SimpleSelector};
-pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerState};
+pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
 pub use tree::Document;
 pub use tree_builder::{ActiveFormattingElements, HTMLTreeBuilder, InsertionMode, StackOfOpenElements};
 
