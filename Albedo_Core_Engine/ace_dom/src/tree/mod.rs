@@ -168,6 +168,90 @@ impl Document {
         mutation::insert_before(&mut self.arena, parent_id, new_child_id, ref_child_id)
     }
 
+    /// Cria um novo nó de Fragmento de Documento (`DocumentFragment`).
+    pub fn create_document_fragment(&mut self) -> NodeId {
+        let dummy_id = NodeId::new();
+        let node = NodeData::new(dummy_id, NodeKind::DocumentFragment);
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Conecta uma Shadow DOM a um elemento hospedeiro (WHATWG DOM Standard §4.2.2).
+    pub fn attach_shadow(
+        &mut self,
+        host_id: NodeId,
+        mode: crate::node::ShadowMode,
+    ) -> Result<NodeId, DomError> {
+        let host_node = self.get_node(host_id).ok_or(DomError::InvalidNodeId(host_id))?;
+        let el_data = host_node
+            .as_element()
+            .ok_or_else(|| DomError::HierarchyRequestError("Apenas Elementos podem hospedar Shadow DOM".into()))?;
+
+        if el_data.shadow_root.is_some() {
+            return Err(DomError::HierarchyRequestError(
+                "O elemento já possui uma ShadowRoot anexada".into(),
+            ));
+        }
+
+        let dummy_id = NodeId::new();
+        let shadow_data = crate::node::ShadowRootData { mode, host: host_id };
+        let shadow_node = NodeData::new(dummy_id, NodeKind::ShadowRoot(shadow_data));
+        let arena_id = self.arena.alloc(shadow_node);
+        let shadow_root_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = shadow_root_id;
+        }
+
+        if let Some(host_mut) = self.get_node_mut(host_id) {
+            if let Some(el_mut) = host_mut.as_element_mut() {
+                el_mut.shadow_root = Some(shadow_root_id);
+            }
+        }
+
+        Ok(shadow_root_id)
+    }
+
+    /// Obtém o `NodeId` da ShadowRoot associada a um elemento, se existir e for acessível.
+    pub fn get_shadow_root(&self, host_id: NodeId) -> Option<NodeId> {
+        self.get_node(host_id)
+            .and_then(|n| n.as_element())
+            .and_then(|el| el.shadow_root)
+    }
+
+    /// Clona um nó existente no documento. Se `deep == true`, clona recursivamente todos os descendentes.
+    pub fn clone_node(&mut self, node_id: NodeId, deep: bool) -> Result<NodeId, DomError> {
+        let original_node = self.get_node(node_id).ok_or(DomError::InvalidNodeId(node_id))?;
+        let new_kind = original_node.kind.clone();
+
+        let dummy_id = NodeId::new();
+        let mut new_node = NodeData::new(dummy_id, new_kind);
+        new_node.flags = original_node.flags;
+
+        let arena_id = self.arena.alloc(new_node);
+        let new_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = new_id;
+        }
+
+        if deep {
+            let mut children_to_clone = Vec::new();
+            for (child_id, _) in self.children(node_id) {
+                children_to_clone.push(child_id);
+            }
+
+            for child_id in children_to_clone {
+                let cloned_child = self.clone_node(child_id, true)?;
+                self.append_child(new_id, cloned_child)?;
+            }
+        }
+
+        Ok(new_id)
+    }
+
     /// Remove um filho do nó pai.
     #[inline]
     pub fn remove_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
