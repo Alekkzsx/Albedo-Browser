@@ -8,6 +8,32 @@ use crate::tree::Document;
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
 
+/// Helper para obter o irmão anterior que seja um Elemento (ignorando nós de texto/comentário).
+fn prev_element_sibling(doc: &Document, node_id: NodeId) -> Option<NodeId> {
+    let mut curr = doc.get_node(node_id)?.prev_sibling;
+    while let Some(id) = curr {
+        let node = doc.get_node(id)?;
+        if node.is_element() {
+            return Some(id);
+        }
+        curr = node.prev_sibling;
+    }
+    None
+}
+
+/// Helper para obter o irmão posterior que seja um Elemento (ignorando nós de texto/comentário).
+fn next_element_sibling(doc: &Document, node_id: NodeId) -> Option<NodeId> {
+    let mut curr = doc.get_node(node_id)?.next_sibling;
+    while let Some(id) = curr {
+        let node = doc.get_node(id)?;
+        if node.is_element() {
+            return Some(id);
+        }
+        curr = node.next_sibling;
+    }
+    None
+}
+
 /// Pseudo-classes estruturais suportadas no DOM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PseudoClass {
@@ -85,12 +111,20 @@ impl SimpleSelector {
             }
         }
 
-        // Tag name canônica
-        Some(Self::Tag(Atom::new(&trimmed.to_ascii_lowercase())))
+        // Tag name canônica (apenas se for um identificador puro sem combinadores ou modificadores)
+        if !trimmed.contains('.')
+            && !trimmed.contains('#')
+            && !trimmed.contains(':')
+            && !trimmed.contains('[')
+        {
+            Some(Self::Tag(Atom::new(&trimmed.to_ascii_lowercase())))
+        } else {
+            None
+        }
     }
 
     /// Avalia se um determinado nó satisfaz este seletor atômico.
-    pub fn matches(&self, doc: &Document, _node_id: NodeId, node: &NodeData) -> bool {
+    pub fn matches(&self, doc: &Document, node_id: NodeId, node: &NodeData) -> bool {
         let el = match node.as_element() {
             Some(e) => e,
             None => return false,
@@ -109,9 +143,12 @@ impl SimpleSelector {
                 }
             }
             Self::Pseudo(pseudo) => match pseudo {
-                PseudoClass::FirstChild => node.prev_sibling.is_none(),
-                PseudoClass::LastChild => node.next_sibling.is_none(),
-                PseudoClass::OnlyChild => node.prev_sibling.is_none() && node.next_sibling.is_none(),
+                PseudoClass::FirstChild => prev_element_sibling(doc, node_id).is_none(),
+                PseudoClass::LastChild => next_element_sibling(doc, node_id).is_none(),
+                PseudoClass::OnlyChild => {
+                    prev_element_sibling(doc, node_id).is_none()
+                        && next_element_sibling(doc, node_id).is_none()
+                }
                 PseudoClass::Empty => node.first_child.is_none(),
                 PseudoClass::Root => node.parent == Some(doc.root()),
             },
@@ -221,6 +258,18 @@ impl ComplexSelector {
             });
         }
 
+        // Tenta combinador de irmão geral `~`
+        if let Some((left, right)) = trimmed.split_once('~') {
+            let left_comp = CompoundSelector::parse(left)?;
+            let right_comp = CompoundSelector::parse(right)?;
+            return Some(Self {
+                parts: vec![
+                    (left_comp, Some(Combinator::GeneralSibling)),
+                    (right_comp, None),
+                ],
+            });
+        }
+
         // Tenta combinador de descendente (espaço)
         if trimmed.contains(' ') {
             let words: Vec<&str> = trimmed.split_whitespace().collect();
@@ -279,7 +328,7 @@ impl ComplexSelector {
                     false
                 }
                 Some(Combinator::AdjacentSibling) => {
-                    if let Some(prev_id) = node.prev_sibling {
+                    if let Some(prev_id) = prev_element_sibling(doc, node_id) {
                         if let Some(prev_node) = doc.get_node(prev_id) {
                             return antecedent_comp.matches(doc, prev_id, prev_node);
                         }
@@ -287,13 +336,13 @@ impl ComplexSelector {
                     false
                 }
                 Some(Combinator::GeneralSibling) => {
-                    let mut curr = node.prev_sibling;
+                    let mut curr = prev_element_sibling(doc, node_id);
                     while let Some(prev_id) = curr {
                         if let Some(prev_node) = doc.get_node(prev_id) {
                             if antecedent_comp.matches(doc, prev_id, prev_node) {
                                 return true;
                             }
-                            curr = prev_node.prev_sibling;
+                            curr = prev_element_sibling(doc, prev_id);
                         } else {
                             break;
                         }
