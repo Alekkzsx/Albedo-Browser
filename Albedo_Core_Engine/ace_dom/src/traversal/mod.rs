@@ -107,7 +107,7 @@ impl TreeWalker {
     }
 }
 
-/// O `NodeIterator` oficial para iteração linear de nós DOM.
+/// O `NodeIterator` oficial para iteração linear de nós DOM (WHATWG DOM §6).
 #[derive(Debug, Clone)]
 pub struct NodeIterator {
     pub root: NodeId,
@@ -130,20 +130,49 @@ impl NodeIterator {
     /// Avança e retorna o próximo nó que satisfaz o filtro.
     pub fn next_node(&mut self, doc: &Document) -> Option<NodeId> {
         let nodes = document_order_nodes(doc, self.root);
-        let mut found_ref = !self.pointer_before_reference_node;
+        let mut passed_ref = false;
 
         for node_id in nodes {
-            if found_ref {
+            if passed_ref {
                 if matches_filter(doc, node_id, self.what_to_show) {
                     self.reference_node = node_id;
                     self.pointer_before_reference_node = false;
                     return Some(node_id);
                 }
             } else if node_id == self.reference_node {
-                found_ref = true;
-                if self.pointer_before_reference_node && matches_filter(doc, node_id, self.what_to_show) {
+                if self.pointer_before_reference_node {
                     self.pointer_before_reference_node = false;
+                    if matches_filter(doc, node_id, self.what_to_show) {
+                        return Some(node_id);
+                    }
+                } else {
+                    passed_ref = true;
+                }
+            }
+        }
+        None
+    }
+
+    /// Retrocede e retorna o nó anterior que satisfaz o filtro.
+    pub fn previous_node(&mut self, doc: &Document) -> Option<NodeId> {
+        let nodes = document_order_nodes(doc, self.root);
+        let mut passed_ref = false;
+
+        for node_id in nodes.into_iter().rev() {
+            if passed_ref {
+                if matches_filter(doc, node_id, self.what_to_show) {
+                    self.reference_node = node_id;
+                    self.pointer_before_reference_node = true;
                     return Some(node_id);
+                }
+            } else if node_id == self.reference_node {
+                if !self.pointer_before_reference_node {
+                    self.pointer_before_reference_node = true;
+                    if matches_filter(doc, node_id, self.what_to_show) {
+                        return Some(node_id);
+                    }
+                } else {
+                    passed_ref = true;
                 }
             }
         }
