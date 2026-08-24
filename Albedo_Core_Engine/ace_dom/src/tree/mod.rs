@@ -80,7 +80,7 @@ impl Document {
     pub fn create_element(&mut self, tag_name: impl Into<Atom>, namespace: Namespace) -> NodeId {
         let dummy_id = NodeId::new();
         let el_data = ElementData::new(tag_name, namespace);
-        let node = NodeData::new(dummy_id, NodeKind::Element(el_data));
+        let node = NodeData::new(dummy_id, NodeKind::Element(Box::new(el_data)));
         let arena_id = self.arena.alloc(node);
         let real_id = arena_id.to_node_id();
         if let Some(n) = self.arena.get_mut(arena_id) {
