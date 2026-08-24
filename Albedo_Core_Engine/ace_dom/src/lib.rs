@@ -24,8 +24,8 @@ pub use entities::{decode_character_reference, resolve_named_entity, resolve_num
 pub use error::DomError;
 pub use events::{dispatch_event, Event, EventListener, EventPhase, EventRegistry};
 pub use node::{
-    Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, ElementData, Namespace,
-    NodeData, NodeKind, TextData,
+    Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DOMTokenList, ElementData,
+    Namespace, NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
 };
 pub use query::{ElementIndex, SimpleSelector};
 pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
