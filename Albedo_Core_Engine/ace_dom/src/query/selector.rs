@@ -132,7 +132,7 @@ impl SimpleSelector {
 
         match self {
             Self::Universal => true,
-            Self::Tag(tag) => el.tag_name == *tag,
+            Self::Tag(tag) => el.tag_name.eq_ignore_ascii_case(tag.as_str()),
             Self::Id(id) => el.id_attr.as_ref() == Some(id),
             Self::Class(class) => el.has_class(class.as_str()),
             Self::Attribute { name, value } => {
