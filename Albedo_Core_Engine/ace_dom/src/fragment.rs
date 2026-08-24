@@ -4,7 +4,6 @@
 //! (essencial para setters de `innerHTML` e `createContextualFragment`).
 
 use crate::node::element::Namespace;
-use crate::node::DocumentMode;
 use crate::tokenizer::{HTMLTokenizer, TokenizerState};
 use crate::tree::Document;
 use crate::tree_builder::{HTMLTreeBuilder, InsertionMode};
