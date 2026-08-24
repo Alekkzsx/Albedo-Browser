@@ -140,6 +140,20 @@ impl HTMLTreeBuilder {
         let _ = self.doc.append_child(parent_id, node_id);
     }
 
+    /// Retorna `true` se o contexto atual de inserção estiver dentro de uma subárvore SVG (sem ponto de integração).
+    fn is_inside_svg(&self) -> bool {
+        if let Some(curr_id) = self.open_elements.current_node() {
+            if let Some(curr_node) = self.doc.get_node(curr_id) {
+                if let Some(el) = curr_node.as_element() {
+                    if el.namespace == Namespace::Svg && !foreign::is_html_integration_point_in_svg(el.tag_name.as_str()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Trata elementos vazios (*Void Elements*) que não têm filhos e fecham imediatamente.
     fn is_void_element(tag_name: &str) -> bool {
         matches!(
@@ -408,7 +422,7 @@ impl TokenSink for HTMLTreeBuilder {
                 Token::StartTag(start_tag) => {
                     let tag_str = start_tag.name.as_str();
 
-                    if tag_str.eq_ignore_ascii_case("svg") {
+                    if self.is_inside_svg() || tag_str.eq_ignore_ascii_case("svg") {
                         let adj_tag = adjust_svg_tag_name(tag_str);
                         let el_id = self.insert_element(adj_tag, Namespace::Svg);
                         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
@@ -442,6 +456,9 @@ impl TokenSink for HTMLTreeBuilder {
                         let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
                         let frag_id = self.doc.create_document_fragment();
                         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
+                            for attr in start_tag.attributes.as_slice() {
+                                el.set_attribute(attr.name.clone(), attr.value.clone());
+                            }
                             el.template_content = Some(frag_id);
                         }
                         self.template_insertion_modes.push(InsertionMode::InTemplate);
