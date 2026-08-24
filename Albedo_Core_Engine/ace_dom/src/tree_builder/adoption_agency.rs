@@ -117,6 +117,5 @@ pub fn run_adoption_agency_algorithm(
         // Remove do active formatting e desempilha o original
         active_formatting.remove(formatting_element_id);
         open_elements.pop_until_id(formatting_element_id);
-        return;
     }
 }
