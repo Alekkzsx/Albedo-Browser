@@ -1,6 +1,7 @@
 //! # Pipeline de Despacho de Eventos DOM (Event Dispatch Pipeline)
 //!
-//! Implementação completa das 3 fases normativas: Captura (Top-Down) -> Target -> Borbulhamento (Bottom-Up).
+//! Implementação completa das 3 fases normativas: Captura (Top-Down) -> Target -> Borbulhamento (Bottom-Up),
+//! com suporte a `once`, `passive` e desregistro reativo.
 
 use crate::events::{Event, EventListener, EventPhase};
 use crate::tree::Document;
@@ -96,11 +97,18 @@ impl EventRegistry {
                     break;
                 }
 
-                let listener = &list[i];
-                if listener.capture == capture_phase {
-                    (listener.callback)(event);
+                if list[i].options.signal_aborted {
+                    list.remove(i);
+                    continue;
+                }
 
-                    if listener.once {
+                if list[i].options.capture == capture_phase {
+                    let callback = list[i].callback.clone();
+                    let is_once = list[i].options.once;
+
+                    (callback)(event);
+
+                    if is_once {
                         list.remove(i);
                         continue;
                     }
@@ -111,7 +119,7 @@ impl EventRegistry {
     }
 }
 
-/// Função utilitária de conveniência para despachar um evento com um registro.
+/// Despacha um evento diretamente usando um registro temporário.
 pub fn dispatch_event(
     registry: &mut EventRegistry,
     doc: &Document,
