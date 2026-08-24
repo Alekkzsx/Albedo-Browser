@@ -1,32 +1,68 @@
-# Rust Target Build Artifacts
+# -----------------------------------------------------------------------------
+# Rust & Cargo Artifacts
+# -----------------------------------------------------------------------------
+# Ignora a pasta target na raiz e em qualquer sub-diretório de workspaces
 /target/
+**/target/
+.agents
+
+# Ferramentas de Profiling, Cobertura e Benchmarking do ecossistema Rust
+*.profraw
+*.profdata
+*.gcno
+*.gcda
+cobertura.xml
+tarpaulin-report.html
+flamegraph.svg
+
+# Backups do rustfmt
 **/*.rs.bk
-*.rs.in
 
-# Cargo Local Files
-Cargo.lock.3
-.cargo/config.toml
+# Artefatos gerados pelo build do Windows (MSVC)
+*.pdb
 
-# IDE & Editor Files
-.idea/
-.vscode/*
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/settings.json
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+# -----------------------------------------------------------------------------
+# Dependencies 
+# -----------------------------------------------------------------------------
+# NOTA IMPORTANTE: O Albedo é um navegador (uma aplicação final), portanto, 
+# o `Cargo.lock` NÃO deve ser ignorado. Ele deve ser versionado no Git para 
+# garantir que todos os engenheiros tenham builds determinísticos e consistentes!
+# Removido o bloqueio antigo ao Cargo.lock.
 
+# -----------------------------------------------------------------------------
 # Logs & Temporary Files
+# -----------------------------------------------------------------------------
 *.log
 /tmp/
 /dist/
-cobertura.xml
-tarpaulin-report.html
 
+# -----------------------------------------------------------------------------
+# IDEs & Code Editors
+# -----------------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# OS Generated Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# -----------------------------------------------------------------------------
 # Environment & Secrets
+# -----------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
