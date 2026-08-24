@@ -4,7 +4,7 @@
 
 pub mod dispatch;
 
-pub use dispatch::dispatch_event;
+pub use dispatch::{dispatch_event, EventRegistry};
 
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
