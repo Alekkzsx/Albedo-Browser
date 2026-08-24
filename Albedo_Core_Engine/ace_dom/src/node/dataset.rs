@@ -3,7 +3,6 @@
 //! Fornece sincronização bidirecional entre atributos `data-*` do HTML e propriedades camelCase em `element.dataset`.
 
 use crate::node::ElementData;
-use ace_core::intern::Atom;
 use smol_str::SmolStr;
 
 /// Objeto `DOMStringMap` representando a propriedade `dataset` de um elemento HTML.
