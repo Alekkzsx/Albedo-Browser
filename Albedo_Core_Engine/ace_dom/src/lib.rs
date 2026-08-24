@@ -61,8 +61,8 @@ pub use node::{
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
-    AncestorFilter, Combinator, ComplexSelector, CompoundSelector, ElementIndex, PseudoClass,
-    SimpleSelector,
+    AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,
+    PseudoClass, SimpleSelector,
 };
 pub use range::{BoundaryPoint, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
