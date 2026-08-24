@@ -1,13 +1,13 @@
 //! # Motor de Consultas e Seletores DOM (Query Engine)
 //!
 //! Fornece APIs normativas `getElementById`, `getElementsByTagName`, `getElementsByClassName`,
-//! `querySelector` e `querySelectorAll`.
+//! `querySelector` e `querySelectorAll` com suporte a combinadores hierárquicos.
 
 pub mod index;
 pub mod selector;
 
 pub use index::ElementIndex;
-pub use selector::SimpleSelector;
+pub use selector::{Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector};
 
 use crate::tree::Document;
 use ace_core::id::NodeId;
@@ -15,10 +15,12 @@ use ace_core::id::NodeId;
 impl Document {
     /// Encontra o primeiro elemento com o ID especificado.
     pub fn get_element_by_id(&self, id: &str) -> Option<NodeId> {
-        let selector = SimpleSelector::Id(ace_core::intern::Atom::new(id));
+        let target_atom = ace_core::intern::Atom::new(id);
         for (node_id, node) in self.descendants(self.root()) {
-            if selector.matches(node) {
-                return Some(node_id);
+            if let Some(el) = node.as_element() {
+                if el.id_attr.as_ref() == Some(&target_atom) {
+                    return Some(node_id);
+                }
             }
         }
         None
@@ -53,27 +55,27 @@ impl Document {
         results
     }
 
-    /// Retorna o primeiro elemento que satisfaz a regra de seletor CSS simples informada.
+    /// Retorna o primeiro elemento que satisfaz a regra de seletor CSS informada (com combinadores).
     pub fn query_selector(&self, selector_str: &str) -> Option<NodeId> {
-        let selector = SimpleSelector::parse(selector_str)?;
-        for (node_id, node) in self.descendants(self.root()) {
-            if selector.matches(node) {
+        let selector = ComplexSelector::parse(selector_str)?;
+        for (node_id, _) in self.descendants(self.root()) {
+            if selector.matches(self, node_id) {
                 return Some(node_id);
             }
         }
         None
     }
 
-    /// Retorna todos os elementos que satisfazem a regra de seletor CSS simples informada.
+    /// Retorna todos os elementos que satisfazem a regra de seletor CSS informada (com combinadores).
     pub fn query_selector_all(&self, selector_str: &str) -> Vec<NodeId> {
-        let selector = match SimpleSelector::parse(selector_str) {
+        let selector = match ComplexSelector::parse(selector_str) {
             Some(s) => s,
             None => return Vec::new(),
         };
 
         let mut results = Vec::new();
-        for (node_id, node) in self.descendants(self.root()) {
-            if selector.matches(node) {
+        for (node_id, _) in self.descendants(self.root()) {
+            if selector.matches(self, node_id) {
                 results.push(node_id);
             }
         }
