@@ -20,6 +20,19 @@ pub trait TokenSink {
     fn process_token(&mut self, token: Token);
 }
 
+/// Helper para espiar os próximos `n` caracteres do `SegmentedString` sem avançar.
+fn peek_str(input: &SegmentedString, n: usize) -> String {
+    let mut s = String::with_capacity(n);
+    for i in 0..n {
+        if let Some(c) = input.peek_at(i) {
+            s.push(c);
+        } else {
+            break;
+        }
+    }
+    s
+}
+
 /// O Tokenizer oficial HTML5 do Albedo Browser.
 #[derive(Debug)]
 pub struct HTMLTokenizer {
@@ -113,15 +126,15 @@ impl HTMLTokenizer {
 
     /// Executa a tokenização completa sobre um `SegmentedString`, emitindo tokens continuamente para o `TokenSink`.
     pub fn tokenize(&mut self, input: &mut SegmentedString, sink: &mut dyn TokenSink) {
-        while let Some(ch) = input.next_char() {
+        while let Some(ch) = input.advance() {
             match self.state {
                 // 1. Data State (WHATWG §12.2.5.1)
                 TokenizerState::Data => match ch {
                     '&' => {
-                        let remaining = input.peek_str(32);
+                        let remaining = peek_str(input, 32);
                         if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
                             for _ in 0..consumed {
-                                input.next_char();
+                                input.advance();
                             }
                             sink.process_token(Token::Character(decoded));
                         } else {
@@ -160,7 +173,7 @@ impl HTMLTokenizer {
                     }
                     other => {
                         sink.process_token(Token::Character(SmolStr::new("<")));
-                        input.unconsume_char(other);
+                        input.push_front_char(other);
                         self.state = TokenizerState::Data;
                     }
                 },
@@ -315,10 +328,10 @@ impl HTMLTokenizer {
                         self.state = TokenizerState::AfterAttributeValueQuoted;
                     }
                     '&' => {
-                        let remaining = input.peek_str(32);
+                        let remaining = peek_str(input, 32);
                         if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
                             for _ in 0..consumed {
-                                input.next_char();
+                                input.advance();
                             }
                             self.current_attr_value.push_str(&decoded);
                         } else {
@@ -340,10 +353,10 @@ impl HTMLTokenizer {
                         self.state = TokenizerState::AfterAttributeValueQuoted;
                     }
                     '&' => {
-                        let remaining = input.peek_str(32);
+                        let remaining = peek_str(input, 32);
                         if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
                             for _ in 0..consumed {
-                                input.next_char();
+                                input.advance();
                             }
                             self.current_attr_value.push_str(&decoded);
                         } else {
@@ -365,10 +378,10 @@ impl HTMLTokenizer {
                         self.state = TokenizerState::BeforeAttributeName;
                     }
                     '&' => {
-                        let remaining = input.peek_str(32);
+                        let remaining = peek_str(input, 32);
                         if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
                             for _ in 0..consumed {
-                                input.next_char();
+                                input.advance();
                             }
                             self.current_attr_value.push_str(&decoded);
                         } else {
@@ -401,7 +414,7 @@ impl HTMLTokenizer {
                         self.emit_current_tag(sink);
                     }
                     c => {
-                        input.unconsume_char(c);
+                        input.push_front_char(c);
                         self.state = TokenizerState::BeforeAttributeName;
                     }
                 },
@@ -414,30 +427,30 @@ impl HTMLTokenizer {
                         self.emit_current_tag(sink);
                     }
                     c => {
-                        input.unconsume_char(c);
+                        input.push_front_char(c);
                         self.state = TokenizerState::BeforeAttributeName;
                     }
                 },
 
                 // 14. Markup Declaration Open State (§12.2.5.42)
                 TokenizerState::MarkupDeclarationOpen => {
-                    input.unconsume_char(ch);
-                    let prefix = input.peek_str(7);
+                    input.push_front_char(ch);
+                    let prefix = peek_str(input, 7);
                     if prefix.starts_with("--") {
                         for _ in 0..2 {
-                            input.next_char();
+                            input.advance();
                         }
                         self.current_comment.clear();
                         self.state = TokenizerState::CommentStart;
                     } else if prefix.to_ascii_uppercase().starts_with("DOCTYPE") {
                         for _ in 0..7 {
-                            input.next_char();
+                            input.advance();
                         }
                         self.current_doctype = DoctypeToken::default();
                         self.state = TokenizerState::Doctype;
                     } else if prefix.starts_with("[CDATA[") {
                         for _ in 0..7 {
-                            input.next_char();
+                            input.advance();
                         }
                         self.state = TokenizerState::CDataSection;
                     } else {
@@ -543,7 +556,7 @@ impl HTMLTokenizer {
                         sink.process_token(Token::Doctype(self.current_doctype.clone()));
                     }
                     c => {
-                        input.unconsume_char(c);
+                        input.push_front_char(c);
                         self.state = TokenizerState::BeforeDoctypeName;
                     }
                 },
