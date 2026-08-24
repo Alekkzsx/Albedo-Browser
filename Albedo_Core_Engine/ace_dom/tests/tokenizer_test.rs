@@ -1,7 +1,7 @@
 //! # Bateria de Testes do Tokenizer HTML5 (ace_dom)
 
 use ace_core::text::SegmentedString;
-use ace_dom::tokenizer::{HTMLTokenizer, Token, TokenSink};
+use ace_dom::tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction};
 
 #[derive(Default)]
 struct TestSink {
@@ -9,8 +9,9 @@ struct TestSink {
 }
 
 impl TokenSink for TestSink {
-    fn process_token(&mut self, token: Token) {
+    fn process_token(&mut self, token: Token) -> TokenizerAction {
         self.tokens.push(token);
+        TokenizerAction::Continue
     }
 }
 
