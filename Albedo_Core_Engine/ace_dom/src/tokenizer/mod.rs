@@ -15,9 +15,17 @@ use ace_core::intern::Atom;
 use ace_core::text::SegmentedString;
 use smol_str::SmolStr;
 
+/// Ação ou transição de estado requisitada pelo receptor de tokens (TreeBuilder).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TokenizerAction {
+    #[default]
+    Continue,
+    SwitchState(TokenizerState),
+}
+
 /// Receptor de tokens emitidos pelo Tokenizer (implementado pelo `HTMLTreeBuilder`).
 pub trait TokenSink {
-    fn process_token(&mut self, token: Token);
+    fn process_token(&mut self, token: Token) -> TokenizerAction;
 }
 
 /// Helper para espiar os próximos `n` caracteres do `SegmentedString` sem avançar.
@@ -75,8 +83,8 @@ impl HTMLTokenizer {
     fn emit_current_tag(&mut self, sink: &mut dyn TokenSink) {
         let tag_atom = Atom::new(&self.current_tag_name.to_ascii_lowercase());
 
-        if self.current_tag_is_end {
-            sink.process_token(Token::EndTag(EndTagToken { name: tag_atom }));
+        let action = if self.current_tag_is_end {
+            sink.process_token(Token::EndTag(EndTagToken { name: tag_atom }))
         } else {
             self.last_start_tag_name = Some(tag_atom.clone());
             let mut attrs = InlineVec::new();
@@ -88,7 +96,11 @@ impl HTMLTokenizer {
                 name: tag_atom,
                 self_closing: self.current_tag_self_closing,
                 attributes: attrs,
-            }));
+            }))
+        };
+
+        if let TokenizerAction::SwitchState(new_state) = action {
+            self.state = new_state;
         }
 
         self.current_tag_name.clear();
@@ -660,6 +672,143 @@ impl HTMLTokenizer {
                         sink.process_token(Token::Character(SmolStr::new("]]")));
                         sink.process_token(Token::Character(SmolStr::new(c.to_string())));
                         self.state = TokenizerState::CDataSection;
+                    }
+                },
+
+                // 27. RAWTEXT State (WHATWG §12.2.5.3 - ex: <style>, <iframe>, <xmp>)
+                TokenizerState::RAWTEXT => match ch {
+                    '<' => {
+                        if let Some(expected_tag) = &self.last_start_tag_name {
+                            let expected_str = expected_tag.as_str();
+                            let lookahead_len = 1 + expected_str.len() + 1; // '/' + tag + '>'
+                            let peeked = peek_str(input, lookahead_len);
+
+                            if peeked.starts_with('/') {
+                                let after_slash = &peeked[1..];
+                                if after_slash.to_ascii_lowercase().starts_with(expected_str) {
+                                    let remainder = &after_slash[expected_str.len()..];
+                                    if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                        // Consome '/' e o nome da tag
+                                        input.advance(); // consome '/'
+                                        for _ in 0..expected_str.len() {
+                                            input.advance();
+                                        }
+                                        // Consome até '>'
+                                        while let Some(next_c) = input.advance() {
+                                            if next_c == '>' {
+                                                break;
+                                            }
+                                        }
+                                        sink.process_token(Token::EndTag(EndTagToken {
+                                            name: expected_tag.clone(),
+                                        }));
+                                        self.state = TokenizerState::Data;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        sink.process_token(Token::Character(SmolStr::new("<")));
+                    }
+                    '\0' => {
+                        sink.process_token(Token::Character(SmolStr::new("\u{FFFD}")));
+                    }
+                    c => {
+                        sink.process_token(Token::Character(SmolStr::new(c.to_string())));
+                    }
+                },
+
+                // 28. RCDATA State (WHATWG §12.2.5.2 - ex: <title>, <textarea>)
+                TokenizerState::RCDATA => match ch {
+                    '&' => {
+                        let remaining = peek_str(input, 32);
+                        if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            for _ in 0..consumed {
+                                input.advance();
+                            }
+                            sink.process_token(Token::Character(decoded));
+                        } else {
+                            sink.process_token(Token::Character(SmolStr::new("&")));
+                        }
+                    }
+                    '<' => {
+                        if let Some(expected_tag) = &self.last_start_tag_name {
+                            let expected_str = expected_tag.as_str();
+                            let lookahead_len = 1 + expected_str.len() + 1;
+                            let peeked = peek_str(input, lookahead_len);
+
+                            if peeked.starts_with('/') {
+                                let after_slash = &peeked[1..];
+                                if after_slash.to_ascii_lowercase().starts_with(expected_str) {
+                                    let remainder = &after_slash[expected_str.len()..];
+                                    if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                        input.advance(); // consome '/'
+                                        for _ in 0..expected_str.len() {
+                                            input.advance();
+                                        }
+                                        while let Some(next_c) = input.advance() {
+                                            if next_c == '>' {
+                                                break;
+                                            }
+                                        }
+                                        sink.process_token(Token::EndTag(EndTagToken {
+                                            name: expected_tag.clone(),
+                                        }));
+                                        self.state = TokenizerState::Data;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        sink.process_token(Token::Character(SmolStr::new("<")));
+                    }
+                    '\0' => {
+                        sink.process_token(Token::Character(SmolStr::new("\u{FFFD}")));
+                    }
+                    c => {
+                        sink.process_token(Token::Character(SmolStr::new(c.to_string())));
+                    }
+                },
+
+                // 29. Script Data State (WHATWG §12.2.5.4 - ex: <script>)
+                TokenizerState::ScriptData => match ch {
+                    '<' => {
+                        let peeked = peek_str(input, 8); // '/script'
+                        if peeked.to_ascii_lowercase().starts_with("/script") {
+                            let remainder = &peeked[7..];
+                            if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                for _ in 0..7 {
+                                    input.advance();
+                                }
+                                while let Some(next_c) = input.advance() {
+                                    if next_c == '>' {
+                                        break;
+                                    }
+                                }
+                                sink.process_token(Token::EndTag(EndTagToken {
+                                    name: Atom::new("script"),
+                                }));
+                                self.state = TokenizerState::Data;
+                                continue;
+                            }
+                        }
+                        sink.process_token(Token::Character(SmolStr::new("<")));
+                    }
+                    '\0' => {
+                        sink.process_token(Token::Character(SmolStr::new("\u{FFFD}")));
+                    }
+                    c => {
+                        sink.process_token(Token::Character(SmolStr::new(c.to_string())));
+                    }
+                },
+
+                // 30. PLAINTEXT State (WHATWG §12.2.5.5 - ex: <plaintext>)
+                TokenizerState::PLAINTEXT => match ch {
+                    '\0' => {
+                        sink.process_token(Token::Character(SmolStr::new("\u{FFFD}")));
+                    }
+                    c => {
+                        sink.process_token(Token::Character(SmolStr::new(c.to_string())));
                     }
                 },
 
