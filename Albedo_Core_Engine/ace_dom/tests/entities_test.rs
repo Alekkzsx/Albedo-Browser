@@ -40,7 +40,7 @@ fn test_decode_character_reference_stream() {
 
     let (res_hex, c_hex) = decode_character_reference("#x1F600;tail").expect("hex emoji");
     assert_eq!(res_hex.as_str(), "😀");
-    assert_eq!(c_hex, 9);
+    assert_eq!(c_hex, 8);
 
     let (res_dec, c_dec) = decode_character_reference("#169;tail").expect("dec copy");
     assert_eq!(res_dec.as_str(), "©");
