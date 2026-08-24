@@ -6,11 +6,13 @@
 pub mod element;
 pub mod flat_tree;
 pub mod iter;
+pub mod position;
 pub mod text;
 pub mod token_list;
 
 pub use element::{Attribute, ElementData, Namespace};
 pub use flat_tree::FlatTreeResolver;
+pub use position::{compare_document_position, DocumentPosition};
 pub use text::{CommentData, DoctypeData, DocumentData, DocumentMode, TextData};
 pub use token_list::DOMTokenList;
 
