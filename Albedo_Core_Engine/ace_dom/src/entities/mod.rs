@@ -134,8 +134,7 @@ pub fn decode_character_reference(input: &str) -> Option<(SmolStr, usize)> {
     }
 
     // Tenta prefixo sem ponto e vírgula se a fatia terminava com ';'
-    if slice.ends_with(';') {
-        let without_semi = &slice[..slice.len() - 1];
+    if let Some(without_semi) = slice.strip_suffix(';') {
         if let Some(replacement) = resolve_named_entity(without_semi) {
             return Some((SmolStr::new(replacement), without_semi.len()));
         }
