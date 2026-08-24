@@ -9,7 +9,9 @@ pub mod selector;
 
 pub use bloom::AncestorFilter;
 pub use index::ElementIndex;
-pub use selector::{Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector};
+pub use selector::{
+    AttributeOp, Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector,
+};
 
 use crate::tree::Document;
 use ace_core::id::NodeId;
