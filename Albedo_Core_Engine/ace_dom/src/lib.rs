@@ -27,7 +27,9 @@ pub use node::{
     Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DOMTokenList, ElementData,
     Namespace, NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
 };
-pub use query::{ElementIndex, SimpleSelector};
+pub use query::{
+    Combinator, ComplexSelector, CompoundSelector, ElementIndex, PseudoClass, SimpleSelector,
+};
 pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
 pub use tree::Document;
 pub use tree_builder::{ActiveFormattingElements, HTMLTreeBuilder, InsertionMode, StackOfOpenElements};
