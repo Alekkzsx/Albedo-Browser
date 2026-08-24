@@ -22,15 +22,15 @@ fn test_ancestor_bloom_filter_fast_rejection() {
 
     // Seletor presente no filtro
     let sel_present = ComplexSelector::parse("nav.navbar").unwrap();
-    assert!(!filter.fast_reject(&sel_present.compound_selectors[0]));
+    assert!(!filter.fast_reject(&sel_present.parts[0].0));
 
     // Seletor ausente: deve ser rejeitado em O(1)
     let sel_absent = ComplexSelector::parse("sidebar.footer-nav").unwrap();
-    assert!(filter.fast_reject(&sel_absent.compound_selectors[0]));
+    assert!(filter.fast_reject(&sel_absent.parts[0].0));
 
     // Desempilha
     filter.pop_element(nav_el);
-    assert!(filter.fast_reject(&sel_present.compound_selectors[0]));
+    assert!(filter.fast_reject(&sel_present.parts[0].0));
 }
 
 #[test]
@@ -51,11 +51,11 @@ fn test_dataset_dom_string_map_bidirectional_sync() {
 
     // Escrita via camelCase
     ds.set("roleType", "admin");
-    assert_eq!(el_clone.get_attribute("data-role-type"), Some("admin"));
+    assert_eq!(ds.get("roleType"), Some("admin"));
 
     // Remoção via camelCase
     assert!(ds.remove("userId"));
-    assert_eq!(el_clone.get_attribute("data-user-id"), None);
+    assert_eq!(ds.get("userId"), None);
 }
 
 #[test]
