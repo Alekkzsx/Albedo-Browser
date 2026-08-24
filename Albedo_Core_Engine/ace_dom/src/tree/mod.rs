@@ -18,7 +18,7 @@ use smol_str::SmolStr;
 /// A raiz de uma árvore DOM completa gerida em memória contígua na `Arena<NodeData>`.
 #[derive(Debug, Clone)]
 pub struct Document {
-    arena: Arena<NodeData>,
+    pub(crate) arena: Arena<NodeData>,
     root: NodeId,
     pub doctype: Option<NodeId>,
     pub document_element: Option<NodeId>,
