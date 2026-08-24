@@ -26,6 +26,9 @@ pub enum DomError {
     #[error("Nó não encontrado como filho do elemento especificado")]
     NotFoundError,
 
+    #[error("O índice ou deslocamento fornecido está fora dos limites válidos (IndexSizeError)")]
+    IndexSizeError,
+
     #[error("Operação não suportada ou não implementada no DOM: {0}")]
     NotSupportedError(String),
 }
