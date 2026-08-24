@@ -1,6 +1,6 @@
-//! # Modelo de Eventos DOM Nível 3 (WHATWG DOM Event Architecture)
+//! # Modelo de Eventos DOM Nível 3 & 4 (WHATWG DOM Event Architecture)
 //!
-//! Estruturas de eventos, fases de propagação e despacho de eventos.
+//! Estruturas de eventos, fases de propagação, `AddEventListenerOptions` e despacho.
 
 pub mod dispatch;
 
@@ -19,6 +19,56 @@ pub enum EventPhase {
     CapturingPhase = 1,
     AtTarget = 2,
     BubblingPhase = 3,
+}
+
+/// Opções avançadas para registro de ouvintes de eventos (WHATWG DOM §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AddEventListenerOptions {
+    /// O evento será disparado na fase de captura (Top-Down).
+    pub capture: bool,
+    /// Indica que o ouvinte não chamará `preventDefault()` (otimização para o compositor).
+    pub passive: bool,
+    /// O ouvinte será executado no máximo uma vez e depois automaticamente removido.
+    pub once: bool,
+    /// Indica se o ouvinte foi cancelado por um sinal de aborto (`AbortSignal`).
+    pub signal_aborted: bool,
+}
+
+/// Um ouvinte de evento registrado com opções.
+#[derive(Clone)]
+pub struct EventListener {
+    pub id: usize,
+    pub options: AddEventListenerOptions,
+    pub callback: Arc<dyn Fn(&mut Event) + Send + Sync>,
+}
+
+impl EventListener {
+    /// Cria um novo ouvinte simples.
+    pub fn new(id: usize, capture: bool, callback: impl Fn(&mut Event) + Send + Sync + 'static) -> Self {
+        Self {
+            id,
+            options: AddEventListenerOptions {
+                capture,
+                passive: false,
+                once: false,
+                signal_aborted: false,
+            },
+            callback: Arc::new(callback),
+        }
+    }
+
+    /// Cria um novo ouvinte com opções completas.
+    pub fn with_options(
+        id: usize,
+        options: AddEventListenerOptions,
+        callback: impl Fn(&mut Event) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            id,
+            options,
+            callback: Arc::new(callback),
+        }
+    }
 }
 
 /// Um evento DOM instanciado para propagação na árvore.
@@ -85,23 +135,5 @@ impl Event {
     #[inline]
     pub fn is_default_prevented(&self) -> bool {
         self.default_prevented.load(Ordering::Acquire)
-    }
-}
-
-/// Ouvinte de evento com opções de captura e execução única.
-pub struct EventListener {
-    pub callback: Box<dyn Fn(&mut Event) + Send + Sync>,
-    pub capture: bool,
-    pub once: bool,
-    pub passive: bool,
-}
-
-impl std::fmt::Debug for EventListener {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EventListener")
-            .field("capture", &self.capture)
-            .field("once", &self.once)
-            .field("passive", &self.passive)
-            .finish()
     }
 }
