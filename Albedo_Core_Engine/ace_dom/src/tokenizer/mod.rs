@@ -621,13 +621,12 @@ impl HTMLTokenizer {
                 },
 
                 // 25. Bogus Doctype State (§12.2.5.67)
-                TokenizerState::BogusDoctype => match ch {
-                    '>' => {
+                TokenizerState::BogusDoctype => {
+                    if ch == '>' {
                         self.state = TokenizerState::Data;
                         sink.process_token(Token::Doctype(self.current_doctype.clone()));
                     }
-                    _ => {}
-                },
+                }
 
                 // 26. CDATA Section State (§12.2.5.68)
                 TokenizerState::CDataSection => match ch {
