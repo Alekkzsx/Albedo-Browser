@@ -9,7 +9,6 @@ pub use config::SanitizerConfig;
 use crate::node::NodeKind;
 use crate::tree::Document;
 use ace_core::id::NodeId;
-use ace_core::intern::Atom;
 
 /// Sanitizador oficial de árvores DOM.
 pub struct HTMLSanitizer;
