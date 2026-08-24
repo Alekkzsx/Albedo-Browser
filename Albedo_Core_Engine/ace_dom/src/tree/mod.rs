@@ -275,6 +275,11 @@ impl Document {
         DescendantsIter::new(&self.arena, root_id)
     }
 
+    /// Retorna a lista de nós filhos imediatos na visão achatada (*Flat Tree / Composed Tree*).
+    pub fn flat_tree_children(&self, node_id: NodeId) -> Vec<NodeId> {
+        crate::node::FlatTreeResolver::flat_tree_children(self, node_id)
+    }
+
     /// Retorna o número total de nós vivos alocados na arena.
     #[inline]
     pub fn node_count(&self) -> usize {
