@@ -258,6 +258,112 @@ impl Document {
         mutation::remove_child(&mut self.arena, parent_id, child_id)
     }
 
+    /// Substitui um nó filho por outro nó sob o mesmo pai.
+    #[inline]
+    pub fn replace_child(
+        &mut self,
+        parent_id: NodeId,
+        new_child: NodeId,
+        old_child: NodeId,
+    ) -> Result<(), DomError> {
+        mutation::replace_child(&mut self.arena, parent_id, new_child, old_child)
+    }
+
+    /// Insere um nó como o primeiro filho do nó pai.
+    #[inline]
+    pub fn prepend_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
+        mutation::prepend_child(&mut self.arena, parent_id, child_id)
+    }
+
+    /// Insere um nó imediatamente após um nó de referência.
+    #[inline]
+    pub fn insert_after(
+        &mut self,
+        parent_id: NodeId,
+        new_child: NodeId,
+        ref_child: NodeId,
+    ) -> Result<(), DomError> {
+        mutation::insert_after(&mut self.arena, parent_id, new_child, ref_child)
+    }
+
+    /// Verifica se um nó contém outro nó como descendente ou a si mesmo (WHATWG §4.2.2).
+    pub fn contains(&self, parent_id: NodeId, node_id: NodeId) -> bool {
+        if parent_id == node_id {
+            return true;
+        }
+        for (ancestor_id, _) in self.ancestors(node_id) {
+            if ancestor_id == parent_id {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Divide um nó de texto em dois nós consecutivos no deslocamento `offset` especificado (WHATWG Text §4.6).
+    pub fn split_text(&mut self, text_id: NodeId, offset: usize) -> Result<NodeId, DomError> {
+        let parent_id = self.get_node(text_id).and_then(|n| n.parent).ok_or(DomError::NotFoundError)?;
+
+        let (left_text, right_text) = {
+            let node = self.get_node(text_id).ok_or(DomError::InvalidNodeId(text_id))?;
+            if let NodeKind::Text(ref t) = node.kind {
+                let s = t.data.as_str();
+                if offset > s.len() {
+                    return Err(DomError::IndexSizeError);
+                }
+                (s[..offset].to_string(), s[offset..].to_string())
+            } else {
+                return Err(DomError::HierarchyRequestError("Nó não é do tipo Text".into()));
+            }
+        };
+
+        if let Some(node_mut) = self.get_node_mut(text_id) {
+            if let NodeKind::Text(ref mut t) = node_mut.kind {
+                t.data = SmolStr::new(left_text);
+            }
+        }
+
+        let new_text_id = self.create_text_node(&right_text);
+        self.insert_after(parent_id, new_text_id, text_id)?;
+        Ok(new_text_id)
+    }
+
+    /// Normaliza a subárvore unificando nós de texto adjacentes e removendo nós de texto vazios (Node.normalize).
+    pub fn normalize(&mut self, root_id: NodeId) -> Result<(), DomError> {
+        let children_ids: Vec<NodeId> = self.children(root_id).map(|(c_id, _)| c_id).collect();
+        let mut prev_text_id: Option<NodeId> = None;
+
+        for child_id in children_ids {
+            let is_text = self.get_node(child_id).map(|n| matches!(n.kind, NodeKind::Text(_))).unwrap_or(false);
+
+            if is_text {
+                let is_empty = self.get_node(child_id).and_then(|n| n.text_content()).map(|t| t.is_empty()).unwrap_or(false);
+                if is_empty {
+                    self.remove_child(root_id, child_id)?;
+                    continue;
+                }
+
+                if let Some(prev_id) = prev_text_id {
+                    let next_content = self.get_node(child_id).and_then(|n| n.text_content()).unwrap_or_default().to_string();
+                    if let Some(prev_node) = self.get_node_mut(prev_id) {
+                        if let NodeKind::Text(ref mut t) = prev_node.kind {
+                            let mut merged = t.data.to_string();
+                            merged.push_str(&next_content);
+                            t.data = SmolStr::new(merged);
+                        }
+                    }
+                    self.remove_child(root_id, child_id)?;
+                } else {
+                    prev_text_id = Some(child_id);
+                }
+            } else {
+                prev_text_id = None;
+                self.normalize(child_id)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Retorna um iterador sobre os filhos imediatos de um nó.
     pub fn children(&self, parent_id: NodeId) -> ChildrenIter<'_> {
         let first_child = self.get_node(parent_id).and_then(|n| n.first_child);
