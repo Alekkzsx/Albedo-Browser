@@ -19,7 +19,7 @@ use ace_core::intern::Atom;
 pub enum NodeKind {
     Document(DocumentData),
     DocumentType(DoctypeData),
-    Element(ElementData),
+    Element(Box<ElementData>),
     Text(TextData),
     Comment(CommentData),
     DocumentFragment,
