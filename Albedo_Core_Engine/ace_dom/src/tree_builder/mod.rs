@@ -506,6 +506,9 @@ impl TokenSink for HTMLTreeBuilder {
                     }
                     TokenizerAction::Continue
                 }
+                Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
+                    TokenizerAction::Continue
+                }
                 other => {
                     // Foster Parenting: elementos ou textos inválidos dentro de table são movidos para antes da tabela
                     match other {
@@ -522,6 +525,8 @@ impl TokenSink for HTMLTreeBuilder {
                                 }
                             }
                             self.foster_parent_node(el_id);
+                            self.open_elements.push(el_id);
+                            self.mode = InsertionMode::InBody;
                             TokenizerAction::Continue
                         }
                         _ => TokenizerAction::Continue,
