@@ -122,6 +122,12 @@ impl ElementData {
             .map(|attr| attr.value.as_str())
     }
 
+    /// Retorna `true` se o elemento contiver o atributo especificado.
+    #[inline]
+    pub fn has_attribute(&self, name: &str) -> bool {
+        self.get_attribute(name).is_some()
+    }
+
     /// Remove um atributo pelo nome.
     pub fn remove_attribute(&mut self, name: &str) -> bool {
         let before_len = self.attributes.len();
