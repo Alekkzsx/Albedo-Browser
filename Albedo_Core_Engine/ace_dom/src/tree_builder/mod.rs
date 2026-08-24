@@ -375,14 +375,7 @@ impl TokenSink for HTMLTreeBuilder {
                             TokenizerAction::Continue
                         }
                     } else if tag == "template" {
-                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
-                        let frag_id = self.doc.create_document_fragment();
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            el.template_content = Some(frag_id);
-                        }
-                        self.template_insertion_modes.push(InsertionMode::InTemplate);
-                        self.mode = InsertionMode::InTemplate;
-                        TokenizerAction::Continue
+                        self.handle_template_start(start_tag)
                     } else if tag == "head" {
                         TokenizerAction::Continue
                     } else {
@@ -488,17 +481,7 @@ impl TokenSink for HTMLTreeBuilder {
                         self.mode = InsertionMode::InTable;
                         TokenizerAction::Continue
                     } else if tag_str == "template" {
-                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
-                        let frag_id = self.doc.create_document_fragment();
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            for attr in start_tag.attributes.as_slice() {
-                                el.set_attribute(attr.name.clone(), attr.value.clone());
-                            }
-                            el.template_content = Some(frag_id);
-                        }
-                        self.template_insertion_modes.push(InsertionMode::InTemplate);
-                        self.mode = InsertionMode::InTemplate;
-                        TokenizerAction::Continue
+                        self.handle_template_start(start_tag)
                     } else if matches!(tag_str, "style" | "script" | "textarea") {
                         let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
                         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
