@@ -9,7 +9,7 @@ use ace_core::id::NodeId;
 
 /// Helper interno para obter uma referência a `NodeData` na Arena em $O(1)$.
 #[inline(always)]
-fn get_node<'a>(arena: &'a Arena<NodeData>, node_id: NodeId) -> Option<&'a NodeData> {
+fn get_node(arena: &Arena<NodeData>, node_id: NodeId) -> Option<&NodeData> {
     let arena_id = ArenaId::<NodeData>::from_node_id(node_id)?;
     arena.get(arena_id)
 }
