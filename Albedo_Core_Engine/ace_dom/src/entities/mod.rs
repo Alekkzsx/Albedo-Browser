@@ -110,34 +110,28 @@ pub fn decode_character_reference(input: &str) -> Option<(SmolStr, usize)> {
         return Some((out, consumed));
     }
 
-    // Referência nomeada: tenta com ponto-e-vírgula primeiro, depois sem
+    // Referência nomeada: busca normativa pelo maior prefixo correspondente (WHATWG §12.2.5.73)
+    let max_len = input.len().min(32);
     let mut end = 0;
-    while end < input.len() && end < 32 {
+    while end < max_len {
         let b = bytes[end];
+        end += 1;
         if b == b';' {
-            end += 1;
             break;
         }
         if !b.is_ascii_alphanumeric() {
+            end -= 1;
             break;
         }
-        end += 1;
     }
 
-    if end == 0 {
-        return None;
-    }
-
-    let slice = &input[..end];
-    if let Some(replacement) = resolve_named_entity(slice) {
-        return Some((SmolStr::new(replacement), end));
-    }
-
-    // Tenta prefixo sem ponto e vírgula se a fatia terminava com ';'
-    if let Some(without_semi) = slice.strip_suffix(';') {
-        if let Some(replacement) = resolve_named_entity(without_semi) {
-            return Some((SmolStr::new(replacement), without_semi.len()));
+    let mut check_len = end;
+    while check_len > 0 {
+        let prefix = &input[..check_len];
+        if let Some(replacement) = resolve_named_entity(prefix) {
+            return Some((SmolStr::new(replacement), check_len));
         }
+        check_len -= 1;
     }
 
     None
