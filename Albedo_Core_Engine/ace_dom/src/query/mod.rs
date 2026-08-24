@@ -3,9 +3,11 @@
 //! Fornece APIs normativas `getElementById`, `getElementsByTagName`, `getElementsByClassName`,
 //! `querySelector` e `querySelectorAll` com suporte a combinadores hierárquicos.
 
+pub mod bloom;
 pub mod index;
 pub mod selector;
 
+pub use bloom::AncestorFilter;
 pub use index::ElementIndex;
 pub use selector::{Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector};
 
