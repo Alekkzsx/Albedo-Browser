@@ -138,7 +138,8 @@ impl Range {
             doc.append_child(frag_id, cloned)?;
         } else {
             let common = self.common_ancestor_container(doc);
-            for (child_id, _) in doc.children(common) {
+            let child_ids: Vec<NodeId> = doc.children(common).map(|(c_id, _)| c_id).collect();
+            for child_id in child_ids {
                 let cloned = doc.clone_node(child_id, true)?;
                 doc.append_child(frag_id, cloned)?;
             }
