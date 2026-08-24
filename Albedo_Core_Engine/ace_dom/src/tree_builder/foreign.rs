@@ -116,7 +116,7 @@ pub fn adjust_svg_tag_name(tag: &str) -> Atom {
     if let Some(&adjusted) = SVG_TAG_NAME_FIXUPS.get(lower.as_str()) {
         Atom::new(adjusted)
     } else {
-        Atom::new(lower)
+        Atom::new(&lower)
     }
 }
 
@@ -127,7 +127,7 @@ pub fn adjust_svg_attribute_name(attr: &str) -> Atom {
     if let Some(&adjusted) = SVG_ATTRIBUTE_FIXUPS.get(lower.as_str()) {
         Atom::new(adjusted)
     } else {
-        Atom::new(lower)
+        Atom::new(&lower)
     }
 }
 
