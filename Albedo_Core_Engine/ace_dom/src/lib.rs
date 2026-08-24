@@ -5,43 +5,67 @@
 //!
 //! ## Principais Recursos
 //! - **HTML5 Tokenizer:** Máquina de Estados Finita (FSM) de streaming sobre `SegmentedString` com Fast-Path SIMD (`memchr3`).
-//! - **Tree Builder:** Construção da árvore com modos de inserção normativos, tags `<template>`, Foreign Content SVG/MathML e AAA.
+//! - **Preload Scanner:** Lookahead não-bloqueante de sub-recursos (`<link>`, `<script>`, `<img>`, etc.).
+//! - **Tree Builder:** Modos de inserção normativos, tags `<template>`, Declarative Shadow DOM (DSD), Foreign Content SVG/MathML e AAA.
 //! - **Árvore DOM em Arena:** Nós compactos de 40 bytes por link (`Arena<NodeData>`) sem vazamentos de ciclo.
 //! - **Shadow DOM & Flat Tree:** Distribuição de slots, `ShadowRoot` e árvore achatada composta.
 //! - **Fragment Parser & Serializer:** Parsing contextual (`innerHTML` setter) e serialização normativa (`outerHTML`).
 //! - **MutationObserver:** Observação assíncrona de mutações em lote.
-//! - **DOM Range & Traversal:** `Range`, `compareBoundaryPoints`, `TreeWalker` e `NodeIterator`.
-//! - **Resolução $O(1)$ de Entidades:** Tabela estática perfeita PHF para todas as 2.231 entidades nomeadas.
-//! - **Consultas & Índices:** `ElementIndex`, `getElementById`, `querySelector` com combinadores CSS.
-//! - **Eventos DOM 3:** Pipeline de Captura, Target e Borbulhamento.
+//! - **DOM Range & Traversal:** `Range`, `compareDocumentPosition`, `TreeWalker` e `NodeIterator`.
+//! - **Counting Bloom Filter:** Rejeição instantânea em $O(1)$ de seletores CSS descendentes (`AncestorFilter`).
+//! - **Forms & ValidityState:** Validação de restrições de formulário e serialização de `FormData`.
+//! - **Custom Elements:** Registro de Web Components e fila de reações de ciclo de vida.
+//! - **HTML Sanitizer:** Defesas nativas contra injeção de código malicioso e ataques XSS.
+//! - **DOMParser:** API universal com suporte a tipos MIME (`text/html`, `image/svg+xml`, `application/xml`).
+//! - **Consultas & Índices:** `ElementIndex`, `getElementById`, `querySelector` com combinadores CSS e `dataset`.
+//! - **Eventos DOM 3/4:** Pipeline de Captura, Target e Borbulhamento com `AddEventListenerOptions` e `AbortSignal`.
 
+pub mod custom_elements;
+pub mod dom_parser;
 pub mod entities;
 pub mod error;
 pub mod events;
+pub mod form;
 pub mod fragment;
 pub mod node;
 pub mod observer;
+pub mod preload_scanner;
 pub mod query;
 pub mod range;
+pub mod sanitizer;
 pub mod serializer;
 pub mod tokenizer;
 pub mod traversal;
 pub mod tree;
 pub mod tree_builder;
 
+pub use custom_elements::{
+    is_valid_custom_element_name, CustomElementDefinition, CustomElementRegistry, LifecycleQueue,
+    LifecycleReaction,
+};
+pub use dom_parser::{DOMParser, SupportedType};
 pub use entities::{decode_character_reference, resolve_named_entity, resolve_numeric_entity};
 pub use error::DomError;
-pub use events::{dispatch_event, Event, EventListener, EventPhase, EventRegistry};
+pub use events::{
+    dispatch_event, AddEventListenerOptions, Event, EventListener, EventPhase, EventRegistry,
+};
+pub use form::{
+    check_control_validity, FormAssociation, FormData, FormDataEntry, FormDataValue, ValidityState,
+};
 pub use fragment::parse_fragment;
 pub use node::{
-    Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DOMTokenList, ElementData,
-    FlatTreeResolver, Namespace, NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
+    Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DocumentPosition,
+    DOMStringMap, DOMTokenList, ElementData, FlatTreeResolver, Namespace, NodeData, NodeKind,
+    ShadowMode, ShadowRootData, TextData,
 };
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
+pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
-    Combinator, ComplexSelector, CompoundSelector, ElementIndex, PseudoClass, SimpleSelector,
+    AncestorFilter, Combinator, ComplexSelector, CompoundSelector, ElementIndex, PseudoClass,
+    SimpleSelector,
 };
 pub use range::{BoundaryPoint, Range, RangeComparison};
+pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
 pub use serializer::{serialize_inner_html, serialize_node};
 pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
 pub use traversal::{FilterResult, NodeFilter, NodeIterator, TreeWalker};
