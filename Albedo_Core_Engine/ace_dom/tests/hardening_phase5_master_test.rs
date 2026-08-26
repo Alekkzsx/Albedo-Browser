@@ -172,3 +172,45 @@ fn test_advanced_constraint_validation_rules() {
     let state = check_control_validity(&doc, input_id);
     assert!(state.valid());
 }
+
+#[test]
+fn test_select_and_colgroup_insertion_modes() {
+    let html = r#"
+    <body>
+      <select id="country-select">
+        <optgroup label="Américas">
+          <option value="br" selected>Brasil</option>
+          <option value="us">Estados Unidos</option>
+        </optgroup>
+        <optgroup label="Europa">
+          <option value="de">Alemanha</option>
+        </optgroup>
+      </select>
+
+      <table>
+        <colgroup>
+          <col class="col-1" />
+          <col class="col-2" />
+        </colgroup>
+        <tr>
+          <td>A</td>
+          <td>B</td>
+        </tr>
+      </table>
+    </body>
+    "#;
+
+    let doc = parse_html(html);
+
+    // Valida que o select gerou 2 optgroups e 3 options
+    let select_id = doc.get_element_by_id("country-select").expect("select encontrado");
+    let options = doc.query_selector_all("option");
+    assert_eq!(options.len(), 3);
+
+    let optgroups = doc.query_selector_all("optgroup");
+    assert_eq!(optgroups.len(), 2);
+
+    // Valida que a tabela contém colgroup com 2 colunas
+    let cols = doc.query_selector_all("col");
+    assert_eq!(cols.len(), 2);
+}
