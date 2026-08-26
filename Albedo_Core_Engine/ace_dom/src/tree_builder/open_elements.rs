@@ -188,6 +188,12 @@ impl StackOfOpenElements {
                     ) {
                         return false;
                     }
+                }
+            }
+        }
+        false
+    }
+
     /// Retorna a posição de um nó na pilha.
     #[inline]
     pub fn position_of(&self, id: NodeId) -> Option<usize> {
