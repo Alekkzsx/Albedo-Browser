@@ -140,6 +140,75 @@ impl HTMLTreeBuilder {
         let _ = self.doc.append_child(parent_id, node_id);
     }
 
+    /// Insere texto com Foster Parenting (WHATWG §12.2.6.4.8).
+    fn insert_foster_text(&mut self, text: &str) {
+        let text_id = self.doc.create_text_node(text);
+        self.foster_parent_node(text_id);
+    }
+
+    /// Reseta o modo de inserção caminhando pela pilha de elementos abertos (WHATWG §12.2.4.1).
+    fn reset_insertion_mode(&mut self) {
+        let stack = self.open_elements.as_slice();
+        for &node_id in stack.iter().rev() {
+            if let Some(node) = self.doc.get_node(node_id) {
+                if let Some(tag) = node.tag_name() {
+                    match tag.as_str() {
+                        "select" => {
+                            self.mode = InsertionMode::InSelect;
+                            return;
+                        }
+                        "td" | "th" => {
+                            self.mode = InsertionMode::InCell;
+                            return;
+                        }
+                        "tr" => {
+                            self.mode = InsertionMode::InRow;
+                            return;
+                        }
+                        "tbody" | "thead" | "tfoot" => {
+                            self.mode = InsertionMode::InTableBody;
+                            return;
+                        }
+                        "caption" => {
+                            self.mode = InsertionMode::InCaption;
+                            return;
+                        }
+                        "colgroup" => {
+                            self.mode = InsertionMode::InColumnGroup;
+                            return;
+                        }
+                        "table" => {
+                            self.mode = InsertionMode::InTable;
+                            return;
+                        }
+                        "template" => {
+                            self.mode = self.template_insertion_modes.last().copied().unwrap_or(InsertionMode::InBody);
+                            return;
+                        }
+                        "head" => {
+                            self.mode = InsertionMode::InHead;
+                            return;
+                        }
+                        "body" => {
+                            self.mode = InsertionMode::InBody;
+                            return;
+                        }
+                        "frameset" => {
+                            self.mode = InsertionMode::InFrameset;
+                            return;
+                        }
+                        "html" => {
+                            self.mode = InsertionMode::BeforeHead;
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.mode = InsertionMode::InBody;
+    }
+
     /// Retorna `true` se o contexto atual de inserção estiver dentro de uma subárvore SVG (sem ponto de integração).
     fn is_inside_svg(&self) -> bool {
         if let Some(curr_id) = self.open_elements.current_node() {
@@ -799,6 +868,175 @@ impl TokenSink for HTMLTreeBuilder {
                 other => {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
+                }
+            },
+
+            // 14. Text Insertion Mode (§12.2.6.4.4)
+            InsertionMode::Text => match token {
+                Token::Character(ref s) => {
+                    self.insert_text(s.as_str());
+                    TokenizerAction::Continue
+                }
+                Token::EndTag(_) => {
+                    self.open_elements.pop();
+                    self.mode = self.original_mode.take().unwrap_or(InsertionMode::InBody);
+                    TokenizerAction::SwitchTo(crate::tokenizer::state::TokenizerState::Data)
+                }
+                Token::Eof => {
+                    self.open_elements.pop();
+                    self.mode = self.original_mode.take().unwrap_or(InsertionMode::InBody);
+                    self.process_token(token)
+                }
+                _ => TokenizerAction::Continue,
+            },
+
+            // 15. In Select & In Select In Table (§12.2.6.4.15 & §12.2.6.4.16)
+            InsertionMode::InSelect | InsertionMode::InSelectInTable => match token {
+                Token::Character(ref s) => {
+                    self.insert_text(s.as_str());
+                    TokenizerAction::Continue
+                }
+                Token::Comment(ref s) => {
+                    let c_id = self.doc.create_comment(s.as_str());
+                    let target = self.current_insertion_target();
+                    let _ = self.doc.append_child(target, c_id);
+                    TokenizerAction::Continue
+                }
+                Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("option") => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("option")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    self.insert_html_element(&tag);
+                    TokenizerAction::Continue
+                }
+                Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("optgroup") => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("option")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("optgroup")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    self.insert_html_element(&tag);
+                    TokenizerAction::Continue
+                }
+                Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("optgroup") => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("option")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("optgroup")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    TokenizerAction::Continue
+                }
+                Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("option") => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("option")) {
+                            self.open_elements.pop();
+                        }
+                    }
+                    TokenizerAction::Continue
+                }
+                Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("select") => {
+                    if self.open_elements.has_element_in_scope(&self.doc, "select") {
+                        self.open_elements.pop_until_tag(&self.doc, "select");
+                        self.reset_insertion_mode();
+                    }
+                    TokenizerAction::Continue
+                }
+                Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("select") => {
+                    if self.open_elements.has_element_in_scope(&self.doc, "select") {
+                        self.open_elements.pop_until_tag(&self.doc, "select");
+                        self.reset_insertion_mode();
+                    }
+                    TokenizerAction::Continue
+                }
+                Token::StartTag(ref tag) if matches!(tag.name.to_ascii_lowercase().as_str(), "input" | "keygen" | "textarea") => {
+                    if self.open_elements.has_element_in_scope(&self.doc, "select") {
+                        self.open_elements.pop_until_tag(&self.doc, "select");
+                        self.reset_insertion_mode();
+                        self.process_token(token)
+                    } else {
+                        TokenizerAction::Continue
+                    }
+                }
+                Token::Eof => TokenizerAction::Continue,
+                _ => TokenizerAction::Continue,
+            },
+
+            // 16. In Table Text (§12.2.6.4.8)
+            InsertionMode::InTableText => match token {
+                Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
+                    self.insert_text(s.as_str());
+                    TokenizerAction::Continue
+                }
+                Token::Character(ref s) => {
+                    self.insert_foster_text(s.as_str());
+                    TokenizerAction::Continue
+                }
+                other => {
+                    self.mode = self.original_mode.take().unwrap_or(InsertionMode::InTable);
+                    self.process_token(other)
+                }
+            },
+
+            // 17. In Caption (§12.2.6.4.9)
+            InsertionMode::InCaption => match token {
+                Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("caption") => {
+                    if self.open_elements.has_element_in_table_scope(&self.doc, "caption") {
+                        self.open_elements.pop_until_tag(&self.doc, "caption");
+                        self.active_formatting.clear_to_last_marker();
+                        self.mode = InsertionMode::InTable;
+                    }
+                    TokenizerAction::Continue
+                }
+                other => {
+                    let prev_mode = self.mode;
+                    self.mode = InsertionMode::InBody;
+                    let act = self.process_token(other);
+                    self.mode = prev_mode;
+                    act
+                }
+            },
+
+            // 18. In Column Group (§12.2.6.4.10)
+            InsertionMode::InColumnGroup => match token {
+                Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
+                    self.insert_text(s.as_str());
+                    TokenizerAction::Continue
+                }
+                Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("col") => {
+                    self.insert_html_element(&tag);
+                    self.open_elements.pop();
+                    TokenizerAction::Continue
+                }
+                Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("colgroup") => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("colgroup")) {
+                            self.open_elements.pop();
+                            self.mode = InsertionMode::InTable;
+                        }
+                    }
+                    TokenizerAction::Continue
+                }
+                other => {
+                    if let Some(curr_id) = self.open_elements.current_node() {
+                        if self.doc.get_node(curr_id).and_then(|n| n.tag_name()).is_some_and(|t| t.eq_ignore_ascii_case("colgroup")) {
+                            self.open_elements.pop();
+                            self.mode = InsertionMode::InTable;
+                            return self.process_token(other);
+                        }
+                    }
+                    TokenizerAction::Continue
                 }
             },
 
