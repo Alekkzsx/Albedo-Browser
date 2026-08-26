@@ -27,6 +27,7 @@ pub mod error;
 pub mod events;
 pub mod form;
 pub mod fragment;
+pub mod gc;
 pub mod node;
 pub mod observer;
 pub mod preload_scanner;
@@ -53,6 +54,7 @@ pub use form::{
     check_control_validity, FormAssociation, FormData, FormDataEntry, FormDataValue, ValidityState,
 };
 pub use fragment::parse_fragment;
+pub use gc::{GcTracer, MarkTracer, Traceable};
 pub use node::{
     Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DocumentPosition,
     DOMStringMap, DOMTokenList, ElementData, ElementRareData, FlatTreeResolver, Namespace,
