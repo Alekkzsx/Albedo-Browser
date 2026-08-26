@@ -134,6 +134,17 @@ impl Range {
         }
 
         if self.start.node == self.end.node {
+            let node_id = self.start.node;
+            if let Some(node) = doc.get_node(node_id) {
+                if let crate::node::NodeKind::Text(ref t) = node.kind {
+                    let s_off = self.start.offset.min(t.data.len());
+                    let e_off = self.end.offset.min(t.data.len()).max(s_off);
+                    let sliced = &t.data[s_off..e_off];
+                    let text_clone = doc.create_text_node(sliced);
+                    doc.append_child(frag_id, text_clone)?;
+                    return Ok(frag_id);
+                }
+            }
             let cloned = doc.clone_node(self.start.node, true)?;
             doc.append_child(frag_id, cloned)?;
         } else {
@@ -146,5 +157,71 @@ impl Range {
         }
 
         Ok(frag_id)
+    }
+
+    /// Remove o conteúdo contido no intervalo do Range mantendo a árvore íntegra (WHATWG DOM §5.4).
+    pub fn delete_contents(&mut self, doc: &mut Document) -> Result<(), DomError> {
+        if self.collapsed() {
+            return Ok(());
+        }
+
+        if self.start.node == self.end.node {
+            let node_id = self.start.node;
+            if let Some(node) = doc.get_node_mut(node_id) {
+                if let crate::node::NodeKind::Text(ref mut t) = node.kind {
+                    let s_off = self.start.offset.min(t.data.len());
+                    let e_off = self.end.offset.min(t.data.len()).max(s_off);
+                    let mut s = t.data.to_string();
+                    s.replace_range(s_off..e_off, "");
+                    t.data = smol_str::SmolStr::new(s);
+                    self.end.offset = self.start.offset;
+                    return Ok(());
+                }
+            }
+            if let Some(parent_id) = doc.get_node(node_id).and_then(|n| n.parent) {
+                let _ = doc.remove_child(parent_id, node_id);
+                self.end = self.start;
+            }
+        } else {
+            let common = self.common_ancestor_container(doc);
+            let mut to_remove = Vec::new();
+            for (child_id, _) in doc.children(common) {
+                if child_id != self.start.node && child_id != self.end.node {
+                    to_remove.push(child_id);
+                }
+            }
+            for child_id in to_remove {
+                let _ = doc.remove_child(common, child_id);
+            }
+            self.end = self.start;
+        }
+
+        Ok(())
+    }
+
+    /// Extrai o conteúdo contido no Range, removendo-o da árvore e retornando em um DocumentFragment.
+    pub fn extract_contents(&mut self, doc: &mut Document) -> Result<NodeId, DomError> {
+        let frag_id = self.clone_contents(doc)?;
+        self.delete_contents(doc)?;
+        Ok(frag_id)
+    }
+
+    /// Insere um nó no ponto inicial do Range (WHATWG DOM §5.4).
+    pub fn insert_node(&mut self, doc: &mut Document, node_id: NodeId) -> Result<(), DomError> {
+        let start_node = self.start.node;
+        if let Some(parent_id) = doc.get_node(start_node).and_then(|n| n.parent) {
+            doc.insert_before(parent_id, node_id, Some(start_node))?;
+        } else {
+            doc.append_child(start_node, node_id)?;
+        }
+        Ok(())
+    }
+
+    /// Envelopa o conteúdo do Range dentro de um novo elemento pai.
+    pub fn surround_contents(&mut self, doc: &mut Document, new_parent: NodeId) -> Result<(), DomError> {
+        let extracted = self.extract_contents(doc)?;
+        doc.append_child(new_parent, extracted)?;
+        self.insert_node(doc, new_parent)?;
+        Ok(())
     }
 }
