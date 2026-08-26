@@ -151,6 +151,18 @@ impl Document {
         self.arena.get_mut(arena_id)
     }
 
+    /// Obtém o `NodeId` do primeiro filho de um nó, se existir.
+    #[inline]
+    pub fn first_child(&self, node_id: NodeId) -> Option<NodeId> {
+        self.get_node(node_id).and_then(|n| n.first_child)
+    }
+
+    /// Obtém o `NodeId` do último filho de um nó, se existir.
+    #[inline]
+    pub fn last_child(&self, node_id: NodeId) -> Option<NodeId> {
+        self.get_node(node_id).and_then(|n| n.last_child)
+    }
+
     /// Anexa um filho ao final da lista de filhos de um pai.
     #[inline]
     pub fn append_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
