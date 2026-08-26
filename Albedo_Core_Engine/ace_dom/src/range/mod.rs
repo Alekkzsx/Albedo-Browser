@@ -3,8 +3,10 @@
 //! Representa um fragmento contíguo de conteúdo de um documento delimitado por dois pontos de contorno.
 
 pub mod boundary;
+pub mod registry;
 
 pub use boundary::{BoundaryPoint, RangeComparison};
+pub use registry::{LiveRangeHandle, LiveRangeRegistry};
 
 use crate::error::DomError;
 use crate::tree::Document;
