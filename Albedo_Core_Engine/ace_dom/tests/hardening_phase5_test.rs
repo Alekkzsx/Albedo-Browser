@@ -4,7 +4,7 @@
 //! MutationObserver com subtree ancestor walk, e DOM Range mutation APIs.
 
 use ace_dom::node::element::Namespace;
-use ace_dom::observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
+use ace_dom::observer::{MutationObserver, MutationObserverInit, MutationRecord};
 use ace_dom::parse_html;
 use ace_dom::range::Range;
 use ace_dom::tree::Document;
@@ -95,7 +95,7 @@ fn test_mutation_observer_subtree_ancestor_walk() {
     let span_id = doc.create_element("span", Namespace::Html);
     doc.append_child(p_id, span_id).unwrap();
 
-    let record = MutationRecord::child_list(p_id, vec![span_id], vec![]);
+    let record = MutationRecord::child_list(p_id, vec![span_id], vec![], None, None);
     observer.notify_mutation_tree(&doc, record);
 
     let records = observer.take_records();
