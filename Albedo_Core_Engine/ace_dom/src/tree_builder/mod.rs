@@ -91,7 +91,7 @@ impl HTMLTreeBuilder {
             if let Some(curr_node) = self.doc.get_node(curr_id) {
                 if let Some(el) = curr_node.as_element() {
                     if el.tag_name.eq_ignore_ascii_case("template") {
-                        if let Some(frag_id) = el.template_content {
+                        if let Some(frag_id) = el.template_content() {
                             return frag_id;
                         }
                     }
@@ -262,7 +262,7 @@ impl HTMLTreeBuilder {
             for attr in start_tag.attributes.as_slice() {
                 el.set_attribute(attr.name.clone(), attr.value.clone());
             }
-            el.template_content = Some(content_id);
+            el.set_template_content(Some(content_id));
         }
         self.template_insertion_modes.push(InsertionMode::InTemplate);
         self.mode = InsertionMode::InTemplate;
