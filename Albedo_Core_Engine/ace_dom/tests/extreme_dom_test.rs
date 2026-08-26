@@ -46,7 +46,7 @@ fn test_template_element_inactive_fragment_isolation() {
     assert_eq!(doc.children(template_id).count(), 0);
 
     // O fragmento isolado deve existir em template_content e conter os 2 nós filhos
-    let frag_id = el.template_content.expect("template_content presente");
+    let frag_id = el.template_content().expect("template_content presente");
     let frag_children: Vec<_> = doc.children(frag_id).collect();
     assert!(frag_children.len() >= 2);
 
