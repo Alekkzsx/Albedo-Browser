@@ -689,6 +689,8 @@ impl ComplexSelector {
                     if !prev_chunk.is_empty() {
                         tokens.push(SelectorToken::Compound(prev_chunk.to_string()));
                         curr.clear();
+                    } else if let Some(SelectorToken::Comb(Combinator::Descendant)) = tokens.last() {
+                        tokens.pop();
                     }
                     let comb = match c {
                         '>' => Combinator::Child,
@@ -698,6 +700,9 @@ impl ComplexSelector {
                     };
                     tokens.push(SelectorToken::Comb(comb));
                     i += 1;
+                    while i < chars.len() && chars[i].is_whitespace() {
+                        i += 1;
+                    }
                 }
                 ' ' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
                     let prev_chunk = curr.trim();
@@ -711,7 +716,9 @@ impl ComplexSelector {
                     if i < chars.len() && (chars[i] == '>' || chars[i] == '+' || chars[i] == '~') {
                         continue;
                     }
-                    tokens.push(SelectorToken::Comb(Combinator::Descendant));
+                    if !matches!(tokens.last(), Some(SelectorToken::Comb(_))) {
+                        tokens.push(SelectorToken::Comb(Combinator::Descendant));
+                    }
                 }
                 _ => {
                     curr.push(c);
