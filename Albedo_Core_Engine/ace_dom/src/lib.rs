@@ -62,7 +62,7 @@ pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, Mutat
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
     AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,
-    PseudoClass, SimpleSelector,
+    PseudoClass, RuleBucketIndex, SimpleSelector,
 };
 pub use range::{BoundaryPoint, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
