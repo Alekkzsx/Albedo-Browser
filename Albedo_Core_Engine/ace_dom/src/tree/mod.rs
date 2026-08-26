@@ -191,7 +191,7 @@ impl Document {
             .as_element()
             .ok_or_else(|| DomError::HierarchyRequestError("Apenas Elementos podem hospedar Shadow DOM".into()))?;
 
-        if el_data.shadow_root.is_some() {
+        if el_data.shadow_root().is_some() {
             return Err(DomError::HierarchyRequestError(
                 "O elemento já possui uma ShadowRoot anexada".into(),
             ));
@@ -208,7 +208,7 @@ impl Document {
 
         if let Some(host_mut) = self.get_node_mut(host_id) {
             if let Some(el_mut) = host_mut.as_element_mut() {
-                el_mut.shadow_root = Some(shadow_root_id);
+                el_mut.set_shadow_root(Some(shadow_root_id));
             }
         }
 
@@ -219,7 +219,7 @@ impl Document {
     pub fn get_shadow_root(&self, host_id: NodeId) -> Option<NodeId> {
         self.get_node(host_id)
             .and_then(|n| n.as_element())
-            .and_then(|el| el.shadow_root)
+            .and_then(|el| el.shadow_root())
     }
 
     /// Clona um nó existente no documento. Se `deep == true`, clona recursivamente todos os descendentes.
