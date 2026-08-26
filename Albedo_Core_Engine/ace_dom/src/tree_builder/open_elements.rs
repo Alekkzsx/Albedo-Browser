@@ -188,9 +188,128 @@ impl StackOfOpenElements {
                     ) {
                         return false;
                     }
-                }
-            }
+    /// Retorna a posição de um nó na pilha.
+    #[inline]
+    pub fn position_of(&self, id: NodeId) -> Option<usize> {
+        self.stack.iter().position(|&item| item == id)
+    }
+
+    /// Substitui um nó por outro mantendo a mesma posição na pilha.
+    pub fn replace(&mut self, old_id: NodeId, new_id: NodeId) -> bool {
+        if let Some(pos) = self.position_of(old_id) {
+            self.stack[pos] = new_id;
+            true
+        } else {
+            false
         }
-        false
+    }
+
+    /// Remove um nó específico de qualquer ponto da pilha.
+    pub fn remove_id(&mut self, target_id: NodeId) -> bool {
+        if let Some(pos) = self.position_of(target_id) {
+            self.stack.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Insere um nó imediatamente após outro nó alvo na pilha.
+    pub fn insert_after(&mut self, target_id: NodeId, new_id: NodeId) -> bool {
+        if let Some(pos) = self.position_of(target_id) {
+            self.stack.insert(pos + 1, new_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Verifica se uma tag pertence à categoria especial (WHATWG §12.2.4.2).
+    pub fn is_special(tag: &str) -> bool {
+        matches!(
+            tag,
+            "address"
+                | "applet"
+                | "area"
+                | "article"
+                | "aside"
+                | "base"
+                | "basefont"
+                | "bgsound"
+                | "blockquote"
+                | "body"
+                | "br"
+                | "button"
+                | "caption"
+                | "center"
+                | "col"
+                | "colgroup"
+                | "dd"
+                | "details"
+                | "dir"
+                | "div"
+                | "dl"
+                | "dt"
+                | "embed"
+                | "fieldset"
+                | "figcaption"
+                | "figure"
+                | "footer"
+                | "form"
+                | "frame"
+                | "frameset"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "head"
+                | "header"
+                | "hgroup"
+                | "hr"
+                | "html"
+                | "iframe"
+                | "img"
+                | "input"
+                | "keygen"
+                | "li"
+                | "link"
+                | "listing"
+                | "main"
+                | "marquee"
+                | "menu"
+                | "meta"
+                | "nav"
+                | "noembed"
+                | "noframes"
+                | "noscript"
+                | "object"
+                | "ol"
+                | "p"
+                | "param"
+                | "plaintext"
+                | "pre"
+                | "script"
+                | "section"
+                | "select"
+                | "source"
+                | "style"
+                | "summary"
+                | "table"
+                | "tbody"
+                | "td"
+                | "template"
+                | "textarea"
+                | "tfoot"
+                | "th"
+                | "thead"
+                | "title"
+                | "tr"
+                | "track"
+                | "ul"
+                | "wbr"
+                | "xmp"
+        )
     }
 }
