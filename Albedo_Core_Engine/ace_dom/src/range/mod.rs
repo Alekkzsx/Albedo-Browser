@@ -232,4 +232,38 @@ impl Range {
         self.insert_node(doc, new_parent)?;
         Ok(())
     }
+
+    /// Ajusta os pontos de contorno quando um nó de texto é dividido em dois (WHATWG DOM §5.5).
+    pub fn adjust_for_split_text(&mut self, orig_node: NodeId, new_node: NodeId, split_offset: usize) {
+        if self.start.node == orig_node && self.start.offset > split_offset {
+            self.start.node = new_node;
+            self.start.offset -= split_offset;
+        }
+        if self.end.node == orig_node && self.end.offset > split_offset {
+            self.end.node = new_node;
+            self.end.offset -= split_offset;
+        }
+    }
+
+    /// Ajusta os pontos de contorno quando um nó é removido (WHATWG DOM §5.5).
+    pub fn adjust_for_node_removal(&mut self, removed_node: NodeId, parent_id: NodeId, child_index: usize) {
+        if self.start.node == removed_node {
+            self.start.node = parent_id;
+            self.start.offset = child_index;
+        }
+        if self.end.node == removed_node {
+            self.end.node = parent_id;
+            self.end.offset = child_index;
+        }
+    }
+
+    /// Ajusta os pontos de contorno quando um nó é inserido (WHATWG DOM §5.5).
+    pub fn adjust_for_node_insertion(&mut self, parent_id: NodeId, insertion_index: usize) {
+        if self.start.node == parent_id && self.start.offset >= insertion_index {
+            self.start.offset += 1;
+        }
+        if self.end.node == parent_id && self.end.offset >= insertion_index {
+            self.end.offset += 1;
+        }
+    }
 }
