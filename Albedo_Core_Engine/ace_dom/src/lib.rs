@@ -64,7 +64,7 @@ pub use query::{
     AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,
     PseudoClass, RuleBucketIndex, SimpleSelector,
 };
-pub use range::{BoundaryPoint, Range, RangeComparison};
+pub use range::{BoundaryPoint, LiveRangeHandle, LiveRangeRegistry, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
 pub use serializer::{serialize_inner_html, serialize_node};
 pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
