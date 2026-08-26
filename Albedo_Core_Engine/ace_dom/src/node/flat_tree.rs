@@ -82,15 +82,34 @@ impl FlatTreeResolver {
                 return Self::flat_tree_children(doc, shadow_root_id);
             }
 
-            // Se for um slot, retorna os nós distribuídos (ou fallback)
+            // Se for um slot, retorna os nós distribuídos (com flattening recursivo se houver slots aninhados)
             if el.tag_name.eq_ignore_ascii_case("slot") {
-                return Self::get_assigned_nodes(doc, node_id);
+                let assigned = Self::get_assigned_nodes(doc, node_id);
+                let mut flat = Vec::new();
+                for a_id in assigned {
+                    if let Some(a_node) = doc.get_node(a_id) {
+                        if let Some(a_el) = a_node.as_element() {
+                            if a_el.tag_name.eq_ignore_ascii_case("slot") {
+                                flat.extend(Self::flat_tree_children(doc, a_id));
+                                continue;
+                            }
+                        }
+                    }
+                    flat.push(a_id);
+                }
+                return flat;
             }
         }
 
         // Caso padrão: filhos normais da árvore
         let mut children = Vec::new();
-        for (child_id, _) in doc.children(node_id) {
+        for (child_id, child_node) in doc.children(node_id) {
+            if let Some(child_el) = child_node.as_element() {
+                if child_el.tag_name.eq_ignore_ascii_case("slot") {
+                    children.extend(Self::flat_tree_children(doc, child_id));
+                    continue;
+                }
+            }
             children.push(child_id);
         }
         children
