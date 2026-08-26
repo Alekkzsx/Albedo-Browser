@@ -12,15 +12,34 @@ fn to_arena_id(id: NodeId) -> Result<ArenaId<NodeData>, DomError> {
     ArenaId::<NodeData>::from_node_id(id).ok_or(DomError::InvalidNodeId(id))
 }
 
+/// Verifica se `ancestor` é um ancestral inclusivo de `node`.
+fn is_inclusive_ancestor(arena: &Arena<NodeData>, ancestor: NodeId, node: NodeId) -> bool {
+    if ancestor == node {
+        return true;
+    }
+    let mut curr = Some(node);
+    while let Some(curr_id) = curr {
+        if curr_id == ancestor {
+            return true;
+        }
+        if let Some(aid) = ArenaId::<NodeData>::from_node_id(curr_id) {
+            curr = arena.get(aid).and_then(|n| n.parent);
+        } else {
+            break;
+        }
+    }
+    false
+}
+
 /// Anexa `child_id` como o último filho de `parent_id`.
 pub fn append_child(
     arena: &mut Arena<NodeData>,
     parent_id: NodeId,
     child_id: NodeId,
 ) -> Result<(), DomError> {
-    if parent_id == child_id {
+    if is_inclusive_ancestor(arena, child_id, parent_id) {
         return Err(DomError::HierarchyRequestError(
-            "Um nó não pode ser filho de si mesmo".into(),
+            "Cannot insert an ancestor into a descendant".into(),
         ));
     }
 
@@ -76,9 +95,9 @@ pub fn insert_before(
         None => return append_child(arena, parent_id, new_child_id),
     };
 
-    if new_child_id == ref_id || parent_id == new_child_id {
+    if new_child_id == ref_id || is_inclusive_ancestor(arena, new_child_id, parent_id) {
         return Err(DomError::HierarchyRequestError(
-            "Hierarquia de inserção inválida".into(),
+            "Cannot insert an ancestor into a descendant".into(),
         ));
     }
 
