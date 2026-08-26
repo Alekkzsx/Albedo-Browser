@@ -87,38 +87,6 @@ impl EventRegistry {
 
         !event.is_default_prevented()
     }
-}
-
-/// Computa a cadeia de propagação (current_target, retargeted_target) cruzando ou respeitando Shadow Roots.
-fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<(NodeId, NodeId)> {
-    let mut path = Vec::new();
-    let mut curr = target_id;
-    let mut effective_target = target_id;
-
-    path.push((curr, effective_target));
-
-    while let Some(node) = doc.get_node(curr) {
-        if let crate::node::NodeKind::ShadowRoot(ref s_data) = node.kind {
-            if composed {
-                curr = s_data.host;
-                effective_target = s_data.host;
-                path.push((curr, effective_target));
-                continue;
-            } else {
-                break;
-            }
-        }
-
-        if let Some(parent_id) = node.parent {
-            curr = parent_id;
-            path.push((curr, effective_target));
-        } else {
-            break;
-        }
-    }
-
-    path
-}
 
     fn invoke_listeners(
         &mut self,
@@ -154,6 +122,37 @@ fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<
             }
         }
     }
+}
+
+/// Computa a cadeia de propagação (current_target, retargeted_target) cruzando ou respeitando Shadow Roots.
+fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<(NodeId, NodeId)> {
+    let mut path = Vec::new();
+    let mut curr = target_id;
+    let mut effective_target = target_id;
+
+    path.push((curr, effective_target));
+
+    while let Some(node) = doc.get_node(curr) {
+        if let crate::node::NodeKind::ShadowRoot(ref s_data) = node.kind {
+            if composed {
+                curr = s_data.host;
+                effective_target = s_data.host;
+                path.push((curr, effective_target));
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        if let Some(parent_id) = node.parent {
+            curr = parent_id;
+            path.push((curr, effective_target));
+        } else {
+            break;
+        }
+    }
+
+    path
 }
 
 /// Despacha um evento diretamente usando um registro temporário.
