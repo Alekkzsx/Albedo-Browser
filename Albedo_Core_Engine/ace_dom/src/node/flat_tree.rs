@@ -78,7 +78,7 @@ impl FlatTreeResolver {
 
         // Se o nó for um hospedeiro com ShadowRoot anexada, desce na ShadowRoot
         if let Some(el) = node.as_element() {
-            if let Some(shadow_root_id) = el.shadow_root {
+            if let Some(shadow_root_id) = el.shadow_root() {
                 return Self::flat_tree_children(doc, shadow_root_id);
             }
 
