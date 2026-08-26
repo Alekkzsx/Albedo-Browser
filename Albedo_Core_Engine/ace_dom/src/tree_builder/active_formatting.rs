@@ -132,6 +132,27 @@ impl ActiveFormattingElements {
         None
     }
 
+    /// Retorna o índice de um elemento na lista de formatação.
+    pub fn position_of(&self, id: NodeId) -> Option<usize> {
+        self.entries.iter().position(|e| *e == FormattingEntry::Element(id))
+    }
+
+    /// Substitui um elemento por outro mantendo a mesma posição na lista.
+    pub fn replace(&mut self, old_id: NodeId, new_id: NodeId) -> bool {
+        if let Some(pos) = self.position_of(old_id) {
+            self.entries[pos] = FormattingEntry::Element(new_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Insere um elemento em uma posição específica (bookmark).
+    pub fn insert_at(&mut self, index: usize, id: NodeId) {
+        let idx = index.min(self.entries.len());
+        self.entries.insert(idx, FormattingEntry::Element(id));
+    }
+
     /// Retorna as entradas como fatia.
     pub fn as_slice(&self) -> &[FormattingEntry] {
         &self.entries
