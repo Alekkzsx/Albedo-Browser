@@ -82,8 +82,9 @@ pub enum CompactHTMLToken {
     Eof,
 }
 
-impl From<Token> for Option<CompactHTMLToken> {
-    fn from(tok: Token) -> Self {
+impl CompactHTMLToken {
+    /// Converte um `Token` tradicional em `CompactHTMLToken` (ignorando `Token::Null`).
+    pub fn from_token(tok: Token) -> Option<Self> {
         match tok {
             Token::Doctype(d) => Some(CompactHTMLToken::Doctype {
                 name: d.name,
