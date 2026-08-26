@@ -77,7 +77,7 @@ pub fn serialize_inner_html(doc: &Document, node_id: NodeId) -> String {
     if let Some(node) = doc.get_node(node_id) {
         if let Some(el) = node.as_element() {
             if el.tag_name.eq_ignore_ascii_case("template") {
-                if let Some(frag_id) = el.template_content {
+                if let Some(frag_id) = el.template_content() {
                     for (child_id, _) in doc.children(frag_id) {
                         serialize_node_into(doc, child_id, &mut out);
                     }
@@ -147,7 +147,7 @@ fn serialize_node_into(doc: &Document, node_id: NodeId, out: &mut String) {
             }
 
             if tag.eq_ignore_ascii_case("template") {
-                if let Some(frag_id) = el.template_content {
+                if let Some(frag_id) = el.template_content() {
                     for (child_id, _) in doc.children(frag_id) {
                         serialize_node_into(doc, child_id, out);
                     }
