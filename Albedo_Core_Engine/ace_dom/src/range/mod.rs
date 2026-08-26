@@ -135,16 +135,24 @@ impl Range {
 
         if self.start.node == self.end.node {
             let node_id = self.start.node;
-            if let Some(node) = doc.get_node(node_id) {
+            let text_slice_opt = if let Some(node) = doc.get_node(node_id) {
                 if let crate::node::NodeKind::Text(ref t) = node.kind {
                     let s_off = self.start.offset.min(t.data.len());
                     let e_off = self.end.offset.min(t.data.len()).max(s_off);
-                    let sliced = &t.data[s_off..e_off];
-                    let text_clone = doc.create_text_node(sliced);
-                    doc.append_child(frag_id, text_clone)?;
-                    return Ok(frag_id);
+                    Some(t.data[s_off..e_off].to_string())
+                } else {
+                    None
                 }
+            } else {
+                None
+            };
+
+            if let Some(sliced_text) = text_slice_opt {
+                let text_clone = doc.create_text_node(sliced_text);
+                doc.append_child(frag_id, text_clone)?;
+                return Ok(frag_id);
             }
+
             let cloned = doc.clone_node(self.start.node, true)?;
             doc.append_child(frag_id, cloned)?;
         } else {
