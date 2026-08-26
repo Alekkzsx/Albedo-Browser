@@ -1,6 +1,4 @@
-use ace_dom::{parse_html, ElementData, ElementRareData, Namespace};
-use ace_core::intern::Atom;
-use std::mem::size_of;
+use ace_dom::{parse_html, ElementData, Namespace};
 
 #[test]
 fn test_element_data_memory_density_and_rare_data() {
