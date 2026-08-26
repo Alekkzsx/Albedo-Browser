@@ -179,6 +179,55 @@ impl FormData {
 
         body
     }
+
+    /// Constrói um `FormData` a partir de um elemento `<form>`, incluindo controles aninhados
+    /// e controles externos associados via atributo `form="form_id"` (WHATWG HTML §4.10).
+    pub fn from_form_element(doc: &crate::tree::Document, form_id: ace_core::id::NodeId) -> Self {
+        let mut form_data = Self::new();
+
+        let form_id_attr = doc.get_node(form_id).and_then(|n| n.as_element()).and_then(|el| el.get_attribute("id"));
+
+        let mut candidate_ids = Vec::new();
+
+        // 1. Controles filhos diretos/indiretos do form
+        for (child_id, _) in doc.descendants(form_id) {
+            candidate_ids.push(child_id);
+        }
+
+        // 2. Controles externos com atributo form="form_id"
+        if let Some(fid) = form_id_attr {
+            for (node_id, node) in doc.descendants(doc.root()) {
+                if let Some(el) = node.as_element() {
+                    if el.get_attribute("form") == Some(fid) && !candidate_ids.contains(&node_id) {
+                        candidate_ids.push(node_id);
+                    }
+                }
+            }
+        }
+
+        for node_id in candidate_ids {
+            if let Some(node) = doc.get_node(node_id) {
+                if let Some(el) = node.as_element() {
+                    let tag = el.tag_name.as_str();
+                    if matches!(tag, "input" | "textarea" | "select") {
+                        if el.has_attribute("disabled") {
+                            continue;
+                        }
+
+                        let name = match el.get_attribute("name") {
+                            Some(n) if !n.is_empty() => n,
+                            _ => continue,
+                        };
+
+                        let val = el.get_attribute("value").unwrap_or_default();
+                        form_data.append(name, val);
+                    }
+                }
+            }
+        }
+
+        form_data
+    }
 }
 
 /// Codifica caracteres para o padrão percent-encoding do application/x-www-form-urlencoded.
