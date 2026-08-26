@@ -50,7 +50,8 @@ fn test_nth_child_and_not_pseudo_classes() {
 
     // :nth-child(2)
     let item2 = doc.query_selector("li:nth-child(2)").expect("item 2");
-    assert!(doc.get_node(item2).unwrap().text_content().unwrap().contains("Item 2"));
+    let item2_text = doc.children(item2).next().unwrap().1.text_content().unwrap();
+    assert!(item2_text.contains("Item 2"));
 
     // :nth-child(even) -> itens 2 e 4
     let evens = doc.query_selector_all("li:nth-child(even)");
