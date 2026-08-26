@@ -95,8 +95,12 @@ impl AncestorFilter {
     fn remove_atom(&mut self, atom: &Atom) {
         let h1 = Self::hash1(atom);
         let h2 = Self::hash2(atom);
-        self.buckets[h1] = self.buckets[h1].saturating_sub(1);
-        self.buckets[h2] = self.buckets[h2].saturating_sub(1);
+        if self.buckets[h1] < 255 {
+            self.buckets[h1] = self.buckets[h1].saturating_sub(1);
+        }
+        if self.buckets[h2] < 255 {
+            self.buckets[h2] = self.buckets[h2].saturating_sub(1);
+        }
     }
 
     fn contains_atom(&self, atom: &Atom) -> bool {
