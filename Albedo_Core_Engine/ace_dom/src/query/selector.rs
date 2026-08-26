@@ -432,7 +432,6 @@ impl SimpleSelector {
         }
     }
 }
-}
 
 /// Combinador hierárquico entre seletores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
