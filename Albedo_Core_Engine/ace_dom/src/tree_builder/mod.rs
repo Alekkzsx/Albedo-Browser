@@ -74,6 +74,17 @@ impl HTMLTreeBuilder {
         el_id
     }
 
+    /// Insere um elemento HTML copiando seus atributos e empilhando-o.
+    fn insert_html_element(&mut self, tag: &crate::tokenizer::StartTagToken) -> NodeId {
+        let el_id = self.insert_element(tag.name.as_str(), Namespace::Html);
+        if let Some(node) = self.doc.get_node_mut(el_id) {
+            if let Some(el) = node.as_element_mut() {
+                el.attributes = tag.attributes.clone();
+            }
+        }
+        el_id
+    }
+
     /// Retorna o alvo de inserção atual (respeitando o `template_content` de tags `<template>`).
     fn current_insertion_target(&self) -> NodeId {
         if let Some(curr_id) = self.open_elements.current_node() {
