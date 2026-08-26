@@ -85,6 +85,41 @@ impl LiveRangeRegistry {
         }
     }
 
+    /// Notifica o registro sobre a remoção de um nó filho com verificação de descendentes na árvore DOM.
+    pub fn notify_node_removal_with_doc(
+        &mut self,
+        doc: &crate::tree::Document,
+        removed_node: NodeId,
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
+        self.cleanup();
+        for weak in &self.ranges {
+            if let Some(arc) = weak.upgrade() {
+                if let Ok(mut r) = arc.lock() {
+                    r.adjust_for_node_removal_with_doc(doc, removed_node, parent_id, child_index);
+                }
+            }
+        }
+    }
+
+    /// Notifica o registro sobre a remoção de múltiplos nós (nó e descendentes).
+    pub fn notify_node_removal_with_descendants(
+        &mut self,
+        removed_nodes: &[NodeId],
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
+        self.cleanup();
+        for weak in &self.ranges {
+            if let Some(arc) = weak.upgrade() {
+                if let Ok(mut r) = arc.lock() {
+                    r.adjust_for_node_removal_with_descendants(removed_nodes, parent_id, child_index);
+                }
+            }
+        }
+    }
+
     /// Notifica o registro sobre a inserção de um nó filho (`insert_before` / `append_child`).
     pub fn notify_node_insertion(&mut self, parent_id: NodeId, insertion_index: usize) {
         self.cleanup();
