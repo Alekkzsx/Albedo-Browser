@@ -106,6 +106,18 @@ impl NodeData {
         matches!(self.kind, NodeKind::Document(_))
     }
 
+    /// Retorna `true` se este nó for uma raiz de sombra (`NodeKind::ShadowRoot`).
+    #[inline]
+    pub fn is_shadow_root(&self) -> bool {
+        matches!(self.kind, NodeKind::ShadowRoot(_))
+    }
+
+    /// Retorna `true` se este nó for um comentário (`NodeKind::Comment`).
+    #[inline]
+    pub fn is_comment(&self) -> bool {
+        matches!(self.kind, NodeKind::Comment(_))
+    }
+
     /// Retorna uma referência a `ElementData` caso o nó seja um Elemento.
     #[inline]
     pub fn as_element(&self) -> Option<&ElementData> {
