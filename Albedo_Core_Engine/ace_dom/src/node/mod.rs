@@ -12,7 +12,7 @@ pub mod text;
 pub mod token_list;
 
 pub use dataset::DOMStringMap;
-pub use element::{Attribute, ElementData, Namespace};
+pub use element::{Attribute, ElementData, ElementRareData, Namespace};
 pub use flat_tree::FlatTreeResolver;
 pub use position::{compare_document_position, DocumentPosition};
 pub use text::{CommentData, DoctypeData, DocumentData, DocumentMode, TextData};
