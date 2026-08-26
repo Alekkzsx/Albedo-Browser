@@ -556,6 +556,7 @@ impl CompoundSelector {
 fn find_top_level_combinator(input: &str, target: char) -> Option<usize> {
     let mut in_bracket = false;
     let mut in_quote: Option<char> = None;
+    let mut in_paren = 0;
     for (i, c) in input.char_indices() {
         match c {
             '"' | '\'' => {
@@ -565,10 +566,16 @@ fn find_top_level_combinator(input: &str, target: char) -> Option<usize> {
                     in_quote = Some(c);
                 }
             }
+            '(' if in_quote.is_none() => in_paren += 1,
+            ')' if in_quote.is_none() => {
+                if in_paren > 0 {
+                    in_paren -= 1;
+                }
+            }
             '[' if in_quote.is_none() => in_bracket = true,
             ']' if in_quote.is_none() => in_bracket = false,
             _ => {
-                if !in_bracket && in_quote.is_none() && c == target {
+                if !in_bracket && in_quote.is_none() && in_paren == 0 && c == target {
                     return Some(i);
                 }
             }
@@ -580,6 +587,7 @@ fn find_top_level_combinator(input: &str, target: char) -> Option<usize> {
 fn split_top_level_descendant(input: &str) -> Option<(&str, &str)> {
     let mut in_bracket = false;
     let mut in_quote: Option<char> = None;
+    let mut in_paren = 0;
     for (i, c) in input.char_indices() {
         match c {
             '"' | '\'' => {
@@ -589,9 +597,15 @@ fn split_top_level_descendant(input: &str) -> Option<(&str, &str)> {
                     in_quote = Some(c);
                 }
             }
+            '(' if in_quote.is_none() => in_paren += 1,
+            ')' if in_quote.is_none() => {
+                if in_paren > 0 {
+                    in_paren -= 1;
+                }
+            }
             '[' if in_quote.is_none() => in_bracket = true,
             ']' if in_quote.is_none() => in_bracket = false,
-            ' ' if !in_bracket && in_quote.is_none() => {
+            ' ' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
                 let left = input[..i].trim();
                 let right = input[i + 1..].trim();
                 if !left.is_empty() && !right.is_empty() {
