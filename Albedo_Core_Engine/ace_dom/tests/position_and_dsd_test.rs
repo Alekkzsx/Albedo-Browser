@@ -60,7 +60,7 @@ fn test_declarative_shadow_dom_parsing() {
     let el = host_node.as_element().unwrap();
 
     // O elemento host deve possuir uma ShadowRoot anexada diretamente pelo parser
-    let shadow_id = el.shadow_root.expect("ShadowRoot anexada via DSD");
+    let shadow_id = el.shadow_root().expect("ShadowRoot anexada via DSD");
     let shadow_node = doc.get_node(shadow_id).unwrap();
 
     if let ace_dom::NodeKind::ShadowRoot(ref s_data) = shadow_node.kind {
