@@ -63,29 +63,53 @@ impl MutationObserver {
         std::mem::take(&mut self.record_queue)
     }
 
+    fn matches_filter(options: &MutationObserverInit, record: &MutationRecord) -> bool {
+        match record.record_type {
+            MutationType::ChildList => options.child_list,
+            MutationType::Attributes => {
+                if !options.attributes {
+                    return false;
+                }
+                if let Some(ref filter) = options.attribute_filter {
+                    if let Some(ref attr_name) = record.attribute_name {
+                        filter.contains(attr_name)
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            }
+            MutationType::CharacterData => options.character_data,
+        }
+    }
+
     /// Notifica o observador sobre uma mutação ocorrida, enfileirando o registro se aplicável.
     pub fn notify_mutation(&mut self, record: MutationRecord) {
-        // Verifica se o alvo (ou algum ancestral em caso de subtree) está sendo observado
         if let Some(options) = self.targets.get(&record.target) {
-            match record.record_type {
-                MutationType::ChildList if options.child_list => {
+            if Self::matches_filter(options, &record) {
+                self.record_queue.push(record);
+            }
+        }
+    }
+
+    /// Notifica o observador sobre uma mutação ocorrida, checando também ancestrais com `subtree: true`.
+    pub fn notify_mutation_tree(&mut self, doc: &crate::tree::Document, record: MutationRecord) {
+        // 1. Checa o alvo direto
+        if let Some(options) = self.targets.get(&record.target) {
+            if Self::matches_filter(options, &record) {
+                self.record_queue.push(record);
+                return;
+            }
+        }
+
+        // 2. Checa ancestrais se subtree: true
+        for (ancestor_id, _) in doc.ancestors(record.target) {
+            if let Some(options) = self.targets.get(&ancestor_id) {
+                if options.subtree && Self::matches_filter(options, &record) {
                     self.record_queue.push(record);
+                    return;
                 }
-                MutationType::Attributes if options.attributes => {
-                    if let Some(ref filter) = options.attribute_filter {
-                        if let Some(ref attr_name) = record.attribute_name {
-                            if filter.contains(attr_name) {
-                                self.record_queue.push(record);
-                            }
-                        }
-                    } else {
-                        self.record_queue.push(record);
-                    }
-                }
-                MutationType::CharacterData if options.character_data => {
-                    self.record_queue.push(record);
-                }
-                _ => {}
             }
         }
     }
