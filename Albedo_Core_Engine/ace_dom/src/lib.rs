@@ -67,7 +67,10 @@ pub use query::{
 pub use range::{BoundaryPoint, LiveRangeHandle, LiveRangeRegistry, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
 pub use serializer::{serialize_inner_html, serialize_node};
-pub use tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
+pub use tokenizer::{
+    tokenize_to_compact_tokens, CompactHTMLToken, HTMLTokenizer, StreamingTokenSink, Token,
+    TokenSink, TokenizerAction, TokenizerState,
+};
 pub use traversal::{FilterResult, NodeFilter, NodeIterator, TreeWalker};
 pub use tree::Document;
 pub use tree_builder::{
