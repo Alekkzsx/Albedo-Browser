@@ -252,10 +252,62 @@ impl Range {
         if self.start.node == removed_node {
             self.start.node = parent_id;
             self.start.offset = child_index;
+        } else if self.start.node == parent_id && self.start.offset > child_index {
+            self.start.offset -= 1;
         }
+
         if self.end.node == removed_node {
             self.end.node = parent_id;
             self.end.offset = child_index;
+        } else if self.end.node == parent_id && self.end.offset > child_index {
+            self.end.offset -= 1;
+        }
+    }
+
+    /// Ajusta os pontos de contorno considerando a árvore DOM (WHATWG DOM §5.5), incluindo verificação de descendentes.
+    pub fn adjust_for_node_removal_with_doc(
+        &mut self,
+        doc: &Document,
+        removed_node: NodeId,
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
+        let is_start_in_removed = self.start.node == removed_node || doc.contains(removed_node, self.start.node);
+        if is_start_in_removed {
+            self.start.node = parent_id;
+            self.start.offset = child_index;
+        } else if self.start.node == parent_id && self.start.offset > child_index {
+            self.start.offset -= 1;
+        }
+
+        let is_end_in_removed = self.end.node == removed_node || doc.contains(removed_node, self.end.node);
+        if is_end_in_removed {
+            self.end.node = parent_id;
+            self.end.offset = child_index;
+        } else if self.end.node == parent_id && self.end.offset > child_index {
+            self.end.offset -= 1;
+        }
+    }
+
+    /// Ajusta os pontos de contorno quando múltiplos nós (como uma lista explícita de descendentes) são removidos.
+    pub fn adjust_for_node_removal_with_descendants(
+        &mut self,
+        removed_nodes: &[NodeId],
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
+        if removed_nodes.contains(&self.start.node) {
+            self.start.node = parent_id;
+            self.start.offset = child_index;
+        } else if self.start.node == parent_id && self.start.offset > child_index {
+            self.start.offset -= 1;
+        }
+
+        if removed_nodes.contains(&self.end.node) {
+            self.end.node = parent_id;
+            self.end.offset = child_index;
+        } else if self.end.node == parent_id && self.end.offset > child_index {
+            self.end.offset -= 1;
         }
     }
 
