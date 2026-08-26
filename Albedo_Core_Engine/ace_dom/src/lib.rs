@@ -55,8 +55,8 @@ pub use form::{
 pub use fragment::parse_fragment;
 pub use node::{
     Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DocumentPosition,
-    DOMStringMap, DOMTokenList, ElementData, FlatTreeResolver, Namespace, NodeData, NodeKind,
-    ShadowMode, ShadowRootData, TextData,
+    DOMStringMap, DOMTokenList, ElementData, ElementRareData, FlatTreeResolver, Namespace,
+    NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
 };
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
