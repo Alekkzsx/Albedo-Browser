@@ -43,16 +43,16 @@ fn test_shadow_dom_event_retargeting_and_composed_path() {
 
     let mut registry = EventRegistry::new();
 
-    let body_target_seen = Arc::new(AtomicUsize::new(0));
-    let btn_target_seen = Arc::new(AtomicUsize::new(0));
+    let body_target_seen = Arc::new(std::sync::Mutex::new(None));
+    let btn_target_seen = Arc::new(std::sync::Mutex::new(None));
 
     let body_target_seen_clone = Arc::clone(&body_target_seen);
     registry.add_event_listener(
         body_id,
         "custom-click",
-        EventListener::new(move |ev| {
+        EventListener::new(1, false, move |ev| {
             if let Some(target) = ev.target {
-                body_target_seen_clone.store(target.index() as usize, Ordering::SeqCst);
+                *body_target_seen_clone.lock().unwrap() = Some(target);
             }
         }),
     );
@@ -61,25 +61,24 @@ fn test_shadow_dom_event_retargeting_and_composed_path() {
     registry.add_event_listener(
         inner_btn_id,
         "custom-click",
-        EventListener::new(move |ev| {
+        EventListener::new(2, false, move |ev| {
             if let Some(target) = ev.target {
-                btn_target_seen_clone.store(target.index() as usize, Ordering::SeqCst);
+                *btn_target_seen_clone.lock().unwrap() = Some(target);
             }
         }),
     );
 
     // Dispara evento com composed: true a partir do botão interno
-    let mut event = Event::new("custom-click");
-    event.bubbles = true;
+    let mut event = Event::new("custom-click", true, true);
     event.composed = true;
 
     registry.dispatch(&doc, inner_btn_id, &mut event);
 
     // O botão interno vê target = inner_btn_id
-    assert_eq!(btn_target_seen.load(Ordering::SeqCst), inner_btn_id.index() as usize);
+    assert_eq!(*btn_target_seen.lock().unwrap(), Some(inner_btn_id));
 
     // O ouvinte no body (fora do Web Component) deve enxergar o target retargetado para host_id
-    assert_eq!(body_target_seen.load(Ordering::SeqCst), host_id.index() as usize);
+    assert_eq!(*body_target_seen.lock().unwrap(), Some(host_id));
 }
 
 #[test]
