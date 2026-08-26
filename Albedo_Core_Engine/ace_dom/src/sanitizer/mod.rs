@@ -22,15 +22,15 @@ impl HTMLSanitizer {
         for (node_id, node) in doc.descendants(root_id) {
             match &node.kind {
                 NodeKind::Element(el) => {
-                    let tag = &el.tag_name;
-                    // Verifica block list
-                    if config.block_elements.contains(tag) {
+                    let tag = el.tag_name.as_str();
+                    // Verifica block list (case-insensitive)
+                    if config.block_elements.iter().any(|b| b.as_str().eq_ignore_ascii_case(tag)) {
                         to_remove.push(node_id);
                         continue;
                     }
-                    // Verifica allow list
+                    // Verifica allow list (case-insensitive)
                     if let Some(ref allow) = config.allow_elements {
-                        if !allow.contains(tag) {
+                        if !allow.iter().any(|a| a.as_str().eq_ignore_ascii_case(tag)) {
                             to_remove.push(node_id);
                             continue;
                         }
@@ -79,13 +79,13 @@ impl HTMLSanitizer {
                     }
 
                     // Verifica listas de bloqueio
-                    if config.block_attributes.contains(&attr.name) {
+                    if config.block_attributes.iter().any(|b| b.as_str().eq_ignore_ascii_case(attr.name.as_str())) {
                         attrs_to_remove.push(attr.name.clone());
                         continue;
                     }
 
                     if let Some(ref allow_attrs) = config.allow_attributes {
-                        if !allow_attrs.contains(&attr.name) {
+                        if !allow_attrs.iter().any(|a| a.as_str().eq_ignore_ascii_case(attr.name.as_str())) {
                             attrs_to_remove.push(attr.name.clone());
                             continue;
                         }
