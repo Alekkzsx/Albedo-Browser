@@ -8,7 +8,7 @@ pub mod index;
 pub mod selector;
 
 pub use bloom::AncestorFilter;
-pub use index::ElementIndex;
+pub use index::{ElementIndex, RuleBucketIndex};
 pub use selector::{
     AttributeOp, Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector,
 };
