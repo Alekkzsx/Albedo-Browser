@@ -219,8 +219,39 @@ impl FormData {
                             _ => continue,
                         };
 
-                        let val = el.get_attribute("value").unwrap_or_default();
-                        form_data.append(name, val);
+                        let val = if tag == "textarea" {
+                            let mut text = String::new();
+                            for (_, child_node) in doc.children(node_id) {
+                                if let Some(t) = child_node.text_content() {
+                                    text.push_str(t);
+                                }
+                            }
+                            if text.is_empty() {
+                                el.get_attribute("value").unwrap_or_default().to_string()
+                            } else {
+                                text
+                            }
+                        } else if tag == "select" {
+                            let mut selected_val = None;
+                            for (opt_id, opt_node) in doc.children(node_id) {
+                                if let Some(opt_el) = opt_node.as_element() {
+                                    if opt_el.tag_name.eq_ignore_ascii_case("option") {
+                                        let is_selected = opt_el.has_attribute("selected");
+                                        let opt_v = opt_el.get_attribute("value").map(|s| s.to_string()).unwrap_or_else(|| {
+                                            doc.children(opt_id).filter_map(|(_, n)| n.text_content()).collect::<String>()
+                                        });
+                                        if is_selected || selected_val.is_none() {
+                                            selected_val = Some(opt_v);
+                                        }
+                                    }
+                                }
+                            }
+                            selected_val.unwrap_or_default()
+                        } else {
+                            el.get_attribute("value").unwrap_or_default().to_string()
+                        };
+
+                        form_data.append(name, &val);
                     }
                 }
             }
