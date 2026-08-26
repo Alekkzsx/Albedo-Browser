@@ -48,7 +48,7 @@ impl StreamingTokenSink {
 
 impl TokenSink for StreamingTokenSink {
     fn process_token(&mut self, token: Token) -> TokenizerAction {
-        if let Some(compact) = CompactHTMLToken::from(token) {
+        if let Some(compact) = CompactHTMLToken::from_token(token) {
             self.tokens.push(compact);
         }
         TokenizerAction::Continue
