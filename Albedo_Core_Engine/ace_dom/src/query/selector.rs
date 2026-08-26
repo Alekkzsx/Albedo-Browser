@@ -139,11 +139,19 @@ pub enum PseudoClass {
     Enabled,
     Required,
     Optional,
+    Hover,
+    Active,
+    Focus,
+    FocusVisible,
+    Target,
     NthChild(i32, i32),
     NthLastChild(i32, i32),
     NthOfType(i32, i32),
     NthLastOfType(i32, i32),
     Not(Box<SimpleSelector>),
+    Is(Vec<ComplexSelector>),
+    Where(Vec<ComplexSelector>),
+    Has(Box<ComplexSelector>),
 }
 
 /// Um seletor simples que pode ser casado contra um único nó.
@@ -208,6 +216,16 @@ impl SimpleSelector {
                 return Some(Self::Pseudo(PseudoClass::Required));
             } else if lower == "optional" {
                 return Some(Self::Pseudo(PseudoClass::Optional));
+            } else if lower == "hover" {
+                return Some(Self::Pseudo(PseudoClass::Hover));
+            } else if lower == "active" {
+                return Some(Self::Pseudo(PseudoClass::Active));
+            } else if lower == "focus" {
+                return Some(Self::Pseudo(PseudoClass::Focus));
+            } else if lower == "focus-visible" {
+                return Some(Self::Pseudo(PseudoClass::FocusVisible));
+            } else if lower == "target" {
+                return Some(Self::Pseudo(PseudoClass::Target));
             } else if let Some(arg) = lower.strip_prefix("nth-child(").and_then(|s| s.strip_suffix(')')) {
                 if let Some((a, b)) = parse_an_plus_b(arg) {
                     return Some(Self::Pseudo(PseudoClass::NthChild(a, b)));
@@ -227,6 +245,26 @@ impl SimpleSelector {
             } else if let Some(arg) = lower.strip_prefix("not(").and_then(|s| s.strip_suffix(')')) {
                 if let Some(inner_sel) = Self::parse_atomic(arg) {
                     return Some(Self::Pseudo(PseudoClass::Not(Box::new(inner_sel))));
+                }
+            } else if let Some(arg) = lower.strip_prefix("is(").and_then(|s| s.strip_suffix(')')) {
+                let selectors: Vec<ComplexSelector> = arg
+                    .split(',')
+                    .filter_map(|s| ComplexSelector::parse(s.trim()))
+                    .collect();
+                if !selectors.is_empty() {
+                    return Some(Self::Pseudo(PseudoClass::Is(selectors)));
+                }
+            } else if let Some(arg) = lower.strip_prefix("where(").and_then(|s| s.strip_suffix(')')) {
+                let selectors: Vec<ComplexSelector> = arg
+                    .split(',')
+                    .filter_map(|s| ComplexSelector::parse(s.trim()))
+                    .collect();
+                if !selectors.is_empty() {
+                    return Some(Self::Pseudo(PseudoClass::Where(selectors)));
+                }
+            } else if let Some(arg) = lower.strip_prefix("has(").and_then(|s| s.strip_suffix(')')) {
+                if let Some(inner_sel) = ComplexSelector::parse(arg) {
+                    return Some(Self::Pseudo(PseudoClass::Has(Box::new(inner_sel))));
                 }
             }
             return None;
@@ -427,7 +465,38 @@ impl SimpleSelector {
                     }
                     matches_an_plus_b(idx, *a, *b)
                 }
+                PseudoClass::Hover => el.has_attribute("data-hover"),
+                PseudoClass::Active => el.has_attribute("data-active"),
+                PseudoClass::Focus => el.has_attribute("data-focus") || el.has_attribute("autofocus"),
+                PseudoClass::FocusVisible => {
+                    el.has_attribute("data-focus-visible") || el.has_attribute("autofocus")
+                }
+                PseudoClass::Target => {
+                    if let Some(ref id) = el.id_attr {
+                        if let Some(doc_node) = doc.get_node(doc.root()) {
+                            if let crate::node::NodeKind::Document(ref d_data) = doc_node.kind {
+                                if let Some(ref url) = d_data.url {
+                                    if let Some((_, frag)) = url.split_once('#') {
+                                        return id.as_str() == frag;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    false
+                }
                 PseudoClass::Not(inner) => !inner.matches(doc, node_id, node),
+                PseudoClass::Is(selectors) | PseudoClass::Where(selectors) => {
+                    selectors.iter().any(|sel| sel.matches(doc, node_id))
+                }
+                PseudoClass::Has(inner) => {
+                    for (desc_id, _) in doc.descendants(node_id) {
+                        if desc_id != node_id && inner.matches(doc, desc_id) {
+                            return true;
+                        }
+                    }
+                    false
+                }
             },
         }
     }
@@ -553,69 +622,9 @@ impl CompoundSelector {
     }
 }
 
-fn find_top_level_combinator(input: &str, target: char) -> Option<usize> {
-    let mut in_bracket = false;
-    let mut in_quote: Option<char> = None;
-    let mut in_paren = 0;
-    for (i, c) in input.char_indices() {
-        match c {
-            '"' | '\'' => {
-                if in_quote == Some(c) {
-                    in_quote = None;
-                } else if in_quote.is_none() {
-                    in_quote = Some(c);
-                }
-            }
-            '(' if in_quote.is_none() => in_paren += 1,
-            ')' if in_quote.is_none() => {
-                if in_paren > 0 {
-                    in_paren -= 1;
-                }
-            }
-            '[' if in_quote.is_none() => in_bracket = true,
-            ']' if in_quote.is_none() => in_bracket = false,
-            _ => {
-                if !in_bracket && in_quote.is_none() && in_paren == 0 && c == target {
-                    return Some(i);
-                }
-            }
-        }
-    }
-    None
-}
-
-fn split_top_level_descendant(input: &str) -> Option<(&str, &str)> {
-    let mut in_bracket = false;
-    let mut in_quote: Option<char> = None;
-    let mut in_paren = 0;
-    for (i, c) in input.char_indices() {
-        match c {
-            '"' | '\'' => {
-                if in_quote == Some(c) {
-                    in_quote = None;
-                } else if in_quote.is_none() {
-                    in_quote = Some(c);
-                }
-            }
-            '(' if in_quote.is_none() => in_paren += 1,
-            ')' if in_quote.is_none() => {
-                if in_paren > 0 {
-                    in_paren -= 1;
-                }
-            }
-            '[' if in_quote.is_none() => in_bracket = true,
-            ']' if in_quote.is_none() => in_bracket = false,
-            ' ' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
-                let left = input[..i].trim();
-                let right = input[i + 1..].trim();
-                if !left.is_empty() && !right.is_empty() {
-                    return Some((left, right));
-                }
-            }
-            _ => {}
-        }
-    }
-    None
+enum SelectorToken {
+    Compound(String),
+    Comb(Combinator),
 }
 
 /// Um seletor CSS completo com cadeia de combinadores (ex: `div.content > p + span`).
@@ -625,129 +634,221 @@ pub struct ComplexSelector {
 }
 
 impl ComplexSelector {
-    /// Faz o parse de uma cadeia de seletores com combinadores.
+    /// Faz o parse de uma cadeia de seletores com combinadores de qualquer comprimento.
     pub fn parse(input: &str) -> Option<Self> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
             return None;
         }
 
-        // Tenta combinador de filho direto `>`
-        if let Some(pos) = find_top_level_combinator(trimmed, '>') {
-            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
-            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
-            return Some(Self {
-                parts: vec![
-                    (left_comp, Some(Combinator::Child)),
-                    (right_comp, None),
-                ],
-            });
+        let mut tokens = Vec::new();
+        let mut curr = String::new();
+        let mut in_bracket = false;
+        let mut in_quote: Option<char> = None;
+        let mut in_paren = 0;
+
+        let chars: Vec<char> = trimmed.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            let c = chars[i];
+            match c {
+                '"' | '\'' => {
+                    if in_quote == Some(c) {
+                        in_quote = None;
+                    } else if in_quote.is_none() {
+                        in_quote = Some(c);
+                    }
+                    curr.push(c);
+                    i += 1;
+                }
+                '(' if in_quote.is_none() => {
+                    in_paren += 1;
+                    curr.push(c);
+                    i += 1;
+                }
+                ')' if in_quote.is_none() => {
+                    if in_paren > 0 {
+                        in_paren -= 1;
+                    }
+                    curr.push(c);
+                    i += 1;
+                }
+                '[' if in_quote.is_none() => {
+                    in_bracket = true;
+                    curr.push(c);
+                    i += 1;
+                }
+                ']' if in_quote.is_none() => {
+                    in_bracket = false;
+                    curr.push(c);
+                    i += 1;
+                }
+                '>' | '+' | '~' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
+                    let prev_chunk = curr.trim();
+                    if !prev_chunk.is_empty() {
+                        tokens.push(SelectorToken::Compound(prev_chunk.to_string()));
+                        curr.clear();
+                    }
+                    let comb = match c {
+                        '>' => Combinator::Child,
+                        '+' => Combinator::AdjacentSibling,
+                        '~' => Combinator::GeneralSibling,
+                        _ => unreachable!(),
+                    };
+                    tokens.push(SelectorToken::Comb(comb));
+                    i += 1;
+                }
+                ' ' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
+                    let prev_chunk = curr.trim();
+                    if !prev_chunk.is_empty() {
+                        tokens.push(SelectorToken::Compound(prev_chunk.to_string()));
+                        curr.clear();
+                    }
+                    while i < chars.len() && chars[i].is_whitespace() {
+                        i += 1;
+                    }
+                    if i < chars.len() && (chars[i] == '>' || chars[i] == '+' || chars[i] == '~') {
+                        continue;
+                    }
+                    tokens.push(SelectorToken::Comb(Combinator::Descendant));
+                }
+                _ => {
+                    curr.push(c);
+                    i += 1;
+                }
+            }
         }
 
-        // Tenta combinador de irmão adjacente `+`
-        if let Some(pos) = find_top_level_combinator(trimmed, '+') {
-            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
-            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
-            return Some(Self {
-                parts: vec![
-                    (left_comp, Some(Combinator::AdjacentSibling)),
-                    (right_comp, None),
-                ],
-            });
+        let remaining = curr.trim();
+        if !remaining.is_empty() {
+            tokens.push(SelectorToken::Compound(remaining.to_string()));
         }
 
-        // Tenta combinador de irmão geral `~`
-        if let Some(pos) = find_top_level_combinator(trimmed, '~') {
-            let left_comp = CompoundSelector::parse(&trimmed[..pos])?;
-            let right_comp = CompoundSelector::parse(&trimmed[pos + 1..])?;
-            return Some(Self {
-                parts: vec![
-                    (left_comp, Some(Combinator::GeneralSibling)),
-                    (right_comp, None),
-                ],
-            });
+        let mut parts = Vec::new();
+        let mut idx = 0;
+        while idx < tokens.len() {
+            match &tokens[idx] {
+                SelectorToken::Compound(s) => {
+                    let compound = CompoundSelector::parse(s)?;
+                    let comb = if idx + 1 < tokens.len() {
+                        if let SelectorToken::Comb(c) = &tokens[idx + 1] {
+                            idx += 1;
+                            Some(*c)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    parts.push((compound, comb));
+                }
+                SelectorToken::Comb(_) => {
+                    return None;
+                }
+            }
+            idx += 1;
         }
 
-        // Tenta combinador de descendente (espaço)
-        if let Some((left, right)) = split_top_level_descendant(trimmed) {
-            let left_comp = CompoundSelector::parse(left)?;
-            let right_comp = CompoundSelector::parse(right)?;
-            return Some(Self {
-                parts: vec![
-                    (left_comp, Some(Combinator::Descendant)),
-                    (right_comp, None),
-                ],
-            });
+        if parts.is_empty() {
+            None
+        } else {
+            Some(Self { parts })
         }
-
-        // Seletor composto único sem combinadores
-        let compound = CompoundSelector::parse(trimmed)?;
-        Some(Self {
-            parts: vec![(compound, None)],
-        })
     }
 
-    /// Avalia se um nó específico do documento casa com este seletor complexo.
+    /// Avalia se um nó específico do documento casa com este seletor complexo usando matching Right-to-Left (RTL).
     pub fn matches(&self, doc: &Document, node_id: NodeId) -> bool {
         let node = match doc.get_node(node_id) {
             Some(n) => n,
             None => return false,
         };
 
-        if self.parts.len() == 1 {
-            return self.parts[0].0.matches(doc, node_id, node);
+        if self.parts.is_empty() {
+            return false;
         }
 
-        if self.parts.len() == 2 {
-            let (target_comp, _) = &self.parts[1];
-            if !target_comp.matches(doc, node_id, node) {
-                return false;
-            }
+        // 1. Testa o Key Selector (mais à direita) em O(1)
+        let last_idx = self.parts.len() - 1;
+        let (key_selector, _) = &self.parts[last_idx];
+        if !key_selector.matches(doc, node_id, node) {
+            return false;
+        }
 
-            let (antecedent_comp, combinator) = &self.parts[0];
-            match combinator {
-                Some(Combinator::Child) => {
-                    if let Some(parent_id) = node.parent {
-                        if let Some(parent_node) = doc.get_node(parent_id) {
-                            return antecedent_comp.matches(doc, parent_id, parent_node);
-                        }
-                    }
+        if self.parts.len() == 1 {
+            return true;
+        }
+
+        // 2. Caminha da direita para a esquerda na cadeia de combinadores
+        self.match_chain_rtl(doc, node_id, last_idx)
+    }
+
+    fn match_chain_rtl(&self, doc: &Document, curr_node_id: NodeId, curr_idx: usize) -> bool {
+        if curr_idx == 0 {
+            return true;
+        }
+
+        let prev_idx = curr_idx - 1;
+        let (prev_selector, combinator) = &self.parts[prev_idx];
+
+        match combinator {
+            Some(Combinator::Child) => {
+                let parent_id = match doc.get_node(curr_node_id).and_then(|n| n.parent) {
+                    Some(p) => p,
+                    None => return false,
+                };
+                let parent_node = match doc.get_node(parent_id) {
+                    Some(n) if n.is_element() => n,
+                    _ => return false,
+                };
+                if prev_selector.matches(doc, parent_id, parent_node) {
+                    self.match_chain_rtl(doc, parent_id, prev_idx)
+                } else {
                     false
                 }
-                Some(Combinator::Descendant) => {
-                    for (ancestor_id, ancestor_node) in doc.ancestors(node_id) {
-                        if antecedent_comp.matches(doc, ancestor_id, ancestor_node) {
+            }
+            Some(Combinator::Descendant) => {
+                for (ancestor_id, ancestor_node) in doc.ancestors(curr_node_id) {
+                    if ancestor_node.is_element() && prev_selector.matches(doc, ancestor_id, ancestor_node) {
+                        if self.match_chain_rtl(doc, ancestor_id, prev_idx) {
                             return true;
                         }
                     }
+                }
+                false
+            }
+            Some(Combinator::AdjacentSibling) => {
+                let prev_id = match prev_element_sibling(doc, curr_node_id) {
+                    Some(id) => id,
+                    None => return false,
+                };
+                let prev_node = match doc.get_node(prev_id) {
+                    Some(n) => n,
+                    None => return false,
+                };
+                if prev_selector.matches(doc, prev_id, prev_node) {
+                    self.match_chain_rtl(doc, prev_id, prev_idx)
+                } else {
                     false
                 }
-                Some(Combinator::AdjacentSibling) => {
-                    if let Some(prev_id) = prev_element_sibling(doc, node_id) {
-                        if let Some(prev_node) = doc.get_node(prev_id) {
-                            return antecedent_comp.matches(doc, prev_id, prev_node);
-                        }
-                    }
-                    false
-                }
-                Some(Combinator::GeneralSibling) => {
-                    let mut curr = prev_element_sibling(doc, node_id);
-                    while let Some(prev_id) = curr {
-                        if let Some(prev_node) = doc.get_node(prev_id) {
-                            if antecedent_comp.matches(doc, prev_id, prev_node) {
+            }
+            Some(Combinator::GeneralSibling) => {
+                let mut curr = prev_element_sibling(doc, curr_node_id);
+                while let Some(prev_id) = curr {
+                    if let Some(prev_node) = doc.get_node(prev_id) {
+                        if prev_selector.matches(doc, prev_id, prev_node) {
+                            if self.match_chain_rtl(doc, prev_id, prev_idx) {
                                 return true;
                             }
-                            curr = prev_element_sibling(doc, prev_id);
-                        } else {
-                            break;
                         }
+                        curr = prev_element_sibling(doc, prev_id);
+                    } else {
+                        break;
                     }
-                    false
                 }
-                None => true,
+                false
             }
-        } else {
-            false
+            None => true,
         }
     }
 }
