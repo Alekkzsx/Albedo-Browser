@@ -9,7 +9,6 @@ use ace_dom::node::element::Namespace;
 use ace_dom::node::ShadowMode;
 use ace_dom::parse_html;
 use ace_dom::tree::Document;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 #[test]
@@ -203,7 +202,7 @@ fn test_select_and_colgroup_insertion_modes() {
     let doc = parse_html(html);
 
     // Valida que o select gerou 2 optgroups e 3 options
-    let select_id = doc.get_element_by_id("country-select").expect("select encontrado");
+    let _select_id = doc.get_element_by_id("country-select").expect("select encontrado");
     let options = doc.query_selector_all("option");
     assert_eq!(options.len(), 3);
 
