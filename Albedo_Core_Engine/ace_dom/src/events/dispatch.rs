@@ -33,31 +33,34 @@ impl EventRegistry {
             .push(listener);
     }
 
-    /// Despacha um evento através da hierarquia DOM.
+    /// Despacha um evento através da hierarquia DOM (com suporte a Composed Path e Shadow DOM retargeting).
     pub fn dispatch(&mut self, doc: &Document, target_id: NodeId, event: &mut Event) -> bool {
         event.target = Some(target_id);
 
-        // Constrói a cadeia de ancestrais (da raiz até o pai do alvo)
-        let mut ancestors = Vec::new();
-        for (ancestor_id, _) in doc.ancestors(target_id) {
-            ancestors.push(ancestor_id);
+        // Constrói a cadeia de caminho do evento (ancestrais com retargeting)
+        let full_path = compute_event_path(doc, target_id, event.composed);
+        if full_path.is_empty() {
+            return !event.is_default_prevented();
         }
-        // Inverte para ter a ordem Top-Down (Raiz -> Pai)
-        ancestors.reverse();
 
-        // 1. Fase de Captura (Top-Down)
+        // Ancestrais (excluindo o nó alvo) em ordem Top-Down para captura
+        let ancestors: Vec<_> = full_path[1..].iter().rev().copied().collect();
+
+        // 1. Fase de Captura (Top-Down: Raiz -> Pai)
         event.phase = EventPhase::CapturingPhase;
-        for &node_id in &ancestors {
+        for (node_id, retargeted_target) in &ancestors {
             if event.is_propagation_stopped() {
                 break;
             }
-            event.current_target = Some(node_id);
-            self.invoke_listeners(node_id, &event.event_type.clone(), event, true);
+            event.target = Some(*retargeted_target);
+            event.current_target = Some(*node_id);
+            self.invoke_listeners(*node_id, &event.event_type.clone(), event, true);
         }
 
         // 2. Fase no Alvo (AtTarget)
         if !event.is_propagation_stopped() {
             event.phase = EventPhase::AtTarget;
+            event.target = Some(target_id);
             event.current_target = Some(target_id);
             self.invoke_listeners(target_id, &event.event_type.clone(), event, true);
             if !event.is_immediate_propagation_stopped() {
@@ -65,23 +68,57 @@ impl EventRegistry {
             }
         }
 
-        // 3. Fase de Borbulhamento (Bottom-Up)
+        // 3. Fase de Borbulhamento (Bottom-Up: Pai -> Raiz)
         if event.bubbles && !event.is_propagation_stopped() {
             event.phase = EventPhase::BubblingPhase;
-            for &node_id in ancestors.iter().rev() {
+            for (node_id, retargeted_target) in &full_path[1..] {
                 if event.is_propagation_stopped() {
                     break;
                 }
-                event.current_target = Some(node_id);
-                self.invoke_listeners(node_id, &event.event_type.clone(), event, false);
+                event.target = Some(*retargeted_target);
+                event.current_target = Some(*node_id);
+                self.invoke_listeners(*node_id, &event.event_type.clone(), event, false);
             }
         }
 
         event.phase = EventPhase::None;
         event.current_target = None;
+        event.target = Some(target_id);
 
         !event.is_default_prevented()
     }
+}
+
+/// Computa a cadeia de propagação (current_target, retargeted_target) cruzando ou respeitando Shadow Roots.
+fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<(NodeId, NodeId)> {
+    let mut path = Vec::new();
+    let mut curr = target_id;
+    let mut effective_target = target_id;
+
+    path.push((curr, effective_target));
+
+    while let Some(node) = doc.get_node(curr) {
+        if let crate::node::NodeKind::ShadowRoot(ref s_data) = node.kind {
+            if composed {
+                curr = s_data.host;
+                effective_target = s_data.host;
+                path.push((curr, effective_target));
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        if let Some(parent_id) = node.parent {
+            curr = parent_id;
+            path.push((curr, effective_target));
+        } else {
+            break;
+        }
+    }
+
+    path
+}
 
     fn invoke_listeners(
         &mut self,
