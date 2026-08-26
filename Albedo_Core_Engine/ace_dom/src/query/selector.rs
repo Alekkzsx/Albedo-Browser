@@ -816,10 +816,11 @@ impl ComplexSelector {
             }
             Some(Combinator::Descendant) => {
                 for (ancestor_id, ancestor_node) in doc.ancestors(curr_node_id) {
-                    if ancestor_node.is_element() && prev_selector.matches(doc, ancestor_id, ancestor_node) {
-                        if self.match_chain_rtl(doc, ancestor_id, prev_idx) {
-                            return true;
-                        }
+                    if ancestor_node.is_element()
+                        && prev_selector.matches(doc, ancestor_id, ancestor_node)
+                        && self.match_chain_rtl(doc, ancestor_id, prev_idx)
+                    {
+                        return true;
                     }
                 }
                 false
@@ -843,10 +844,10 @@ impl ComplexSelector {
                 let mut curr = prev_element_sibling(doc, curr_node_id);
                 while let Some(prev_id) = curr {
                     if let Some(prev_node) = doc.get_node(prev_id) {
-                        if prev_selector.matches(doc, prev_id, prev_node) {
-                            if self.match_chain_rtl(doc, prev_id, prev_idx) {
-                                return true;
-                            }
+                        if prev_selector.matches(doc, prev_id, prev_node)
+                            && self.match_chain_rtl(doc, prev_id, prev_idx)
+                        {
+                            return true;
                         }
                         curr = prev_element_sibling(doc, prev_id);
                     } else {
