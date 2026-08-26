@@ -6,7 +6,7 @@ pub mod state;
 pub mod token;
 
 pub use state::TokenizerState;
-pub use token::{DoctypeToken, EndTagToken, StartTagToken, Token};
+pub use token::{CompactHTMLToken, DoctypeToken, EndTagToken, StartTagToken, Token};
 
 use crate::entities::decode_character_reference;
 use crate::node::element::Attribute;
@@ -26,6 +26,42 @@ pub enum TokenizerAction {
 /// Receptor de tokens emitidos pelo Tokenizer (implementado pelo `HTMLTreeBuilder`).
 pub trait TokenSink {
     fn process_token(&mut self, token: Token) -> TokenizerAction;
+}
+
+/// Sink que acumula tokens em um buffer de `CompactHTMLToken` para streaming assíncrono multithread.
+#[derive(Debug, Default)]
+pub struct StreamingTokenSink {
+    pub tokens: Vec<CompactHTMLToken>,
+}
+
+impl StreamingTokenSink {
+    pub fn new() -> Self {
+        Self {
+            tokens: Vec::with_capacity(64),
+        }
+    }
+
+    pub fn take_tokens(&mut self) -> Vec<CompactHTMLToken> {
+        std::mem::take(&mut self.tokens)
+    }
+}
+
+impl TokenSink for StreamingTokenSink {
+    fn process_token(&mut self, token: Token) -> TokenizerAction {
+        if let Some(compact) = CompactHTMLToken::from(token) {
+            self.tokens.push(compact);
+        }
+        TokenizerAction::Continue
+    }
+}
+
+/// Tokeniza uma string HTML em um vetor de `CompactHTMLToken`s de alta performance em qualquer thread.
+pub fn tokenize_to_compact_tokens(html: &str) -> Vec<CompactHTMLToken> {
+    let mut input = SegmentedString::from_preprocessed_str(html);
+    let mut tokenizer = HTMLTokenizer::new();
+    let mut sink = StreamingTokenSink::new();
+    tokenizer.tokenize(&mut input, &mut sink);
+    sink.take_tokens()
 }
 
 /// Helper para espiar os próximos `n` caracteres do `SegmentedString` sem avançar.
