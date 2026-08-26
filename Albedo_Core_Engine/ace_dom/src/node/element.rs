@@ -3,7 +3,9 @@
 //! Estruturas de alta performance com `Atom` para nomes e `InlineVec<Attribute, 4>`
 //! para armazenamento local de atributos sem alocações no heap em 95%+ dos nós.
 
+use crate::node::token_list::DOMTokenList;
 use ace_core::collections::InlineVec;
+use ace_core::id::NodeId;
 use ace_core::intern::Atom;
 use smol_str::SmolStr;
 
@@ -43,10 +45,21 @@ impl Attribute {
     }
 }
 
-use crate::node::token_list::DOMTokenList;
-use ace_core::id::NodeId;
+/// Dados raros ou de componentes específicos alocados sob demanda (Blink/WebKit ElementRareData pattern).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ElementRareData {
+    pub shadow_root: Option<NodeId>,
+    pub template_content: Option<NodeId>,
+    pub custom_element_definition: Option<Atom>,
+    pub form_owner: Option<NodeId>,
+    pub inline_style: Option<SmolStr>,
+    pub aria_role: Option<Atom>,
+}
 
 /// Dados específicos de um elemento DOM (`NodeKind::Element`).
+///
+/// Otimizado para densidade de cache L1/L2: campos comuns residem no layout plano (48B),
+/// enquanto campos raros (Shadow DOM, templates, custom elements) são delegados ao `ElementRareData`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementData {
     pub tag_name: Atom,
@@ -54,8 +67,7 @@ pub struct ElementData {
     pub attributes: InlineVec<Attribute, 4>,
     pub id_attr: Option<Atom>,
     pub classes: InlineVec<Atom, 4>,
-    pub shadow_root: Option<NodeId>,
-    pub template_content: Option<NodeId>,
+    pub rare_data: Option<Box<ElementRareData>>,
 }
 
 impl ElementData {
@@ -67,9 +79,54 @@ impl ElementData {
             attributes: InlineVec::new(),
             id_attr: None,
             classes: InlineVec::new(),
-            shadow_root: None,
-            template_content: None,
+            rare_data: None,
         }
+    }
+
+    /// Retorna o `shadow_root` se anexado neste elemento.
+    #[inline]
+    pub fn shadow_root(&self) -> Option<NodeId> {
+        self.rare_data.as_ref().and_then(|r| r.shadow_root)
+    }
+
+    /// Define o `shadow_root` para este elemento.
+    #[inline]
+    pub fn set_shadow_root(&mut self, shadow_root: Option<NodeId>) {
+        if shadow_root.is_some() || self.rare_data.is_some() {
+            self.ensure_rare_data().shadow_root = shadow_root;
+        }
+    }
+
+    /// Retorna o `template_content` se este for um elemento `<template>`.
+    #[inline]
+    pub fn template_content(&self) -> Option<NodeId> {
+        self.rare_data.as_ref().and_then(|r| r.template_content)
+    }
+
+    /// Define o `template_content` para este elemento `<template>`.
+    #[inline]
+    pub fn set_template_content(&mut self, template_content: Option<NodeId>) {
+        if template_content.is_some() || self.rare_data.is_some() {
+            self.ensure_rare_data().template_content = template_content;
+        }
+    }
+
+    /// Garante e retorna a estrutura `ElementRareData` alocada sob demanda.
+    #[inline]
+    pub fn ensure_rare_data(&mut self) -> &mut ElementRareData {
+        self.rare_data.get_or_insert_with(Box::default)
+    }
+
+    /// Retorna uma referência a `ElementRareData`, se existir.
+    #[inline]
+    pub fn rare_data(&self) -> Option<&ElementRareData> {
+        self.rare_data.as_deref()
+    }
+
+    /// Retorna uma referência mutável a `ElementRareData`, se existir.
+    #[inline]
+    pub fn rare_data_mut(&mut self) -> Option<&mut ElementRareData> {
+        self.rare_data.as_deref_mut()
     }
 
     /// Retorna um manipulador `DOMTokenList` para mutação conveniente e viva das classes.
