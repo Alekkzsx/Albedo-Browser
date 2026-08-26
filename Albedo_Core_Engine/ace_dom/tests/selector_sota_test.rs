@@ -2,7 +2,7 @@ use ace_dom::{parse_html, ComplexSelector, RuleBucketIndex};
 
 #[test]
 fn test_complex_multi_segment_rtl_matching() {
-    let html = r#"
+    let html = r##"
         <div class="main">
             <section class="content">
                 <article class="post">
@@ -11,7 +11,7 @@ fn test_complex_multi_segment_rtl_matching() {
                 </article>
             </section>
         </div>
-    "#;
+    "##;
 
     let doc = parse_html(html);
 
@@ -32,7 +32,7 @@ fn test_complex_multi_segment_rtl_matching() {
 
 #[test]
 fn test_css4_pseudo_classes_is_where_has() {
-    let html = r#"
+    let html = r##"
         <div id="card1" class="card active">
             <h2 class="heading">Card 1</h2>
             <button class="btn primary">Click me</button>
@@ -41,7 +41,7 @@ fn test_css4_pseudo_classes_is_where_has() {
             <h2 class="heading">Card 2</h2>
             <a href="#" class="link">Learn more</a>
         </div>
-    "#;
+    "##;
 
     let doc = parse_html(html);
 
@@ -72,12 +72,12 @@ fn test_css4_pseudo_classes_is_where_has() {
 
 #[test]
 fn test_rule_bucket_index_filtering() {
-    let html = r#"
+    let html = r##"
         <div id="header" class="nav-bar dark">
             <a class="nav-link" href="/">Home</a>
             <span class="badge">New</span>
         </div>
-    "#;
+    "##;
 
     let doc = parse_html(html);
     let mut index = RuleBucketIndex::new();
