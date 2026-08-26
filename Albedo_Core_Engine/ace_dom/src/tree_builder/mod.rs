@@ -891,7 +891,7 @@ impl TokenSink for HTMLTreeBuilder {
                 Token::EndTag(_) => {
                     self.open_elements.pop();
                     self.mode = self.original_mode.take().unwrap_or(InsertionMode::InBody);
-                    TokenizerAction::SwitchTo(crate::tokenizer::state::TokenizerState::Data)
+                    TokenizerAction::SwitchState(crate::tokenizer::state::TokenizerState::Data)
                 }
                 Token::Eof => {
                     self.open_elements.pop();
