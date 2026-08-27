@@ -7,6 +7,51 @@ use crate::node::NodeData;
 use crate::tree::Document;
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
+use std::cmp::Ordering;
+
+/// Especificidade de um seletor CSS conforme W3C Selectors Level 4 §16: (a, b, c).
+/// a = Contagem de seletores de ID (#id)
+/// b = Contagem de seletores de classe (.class), atributos ([attr]) e pseudo-classes (:hover, etc. exceto :where())
+/// c = Contagem de seletores de tipo (tags) e pseudo-elementos (::before, etc.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Specificity {
+    pub a: u32,
+    pub b: u32,
+    pub c: u32,
+}
+
+impl PartialOrd for Specificity {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Specificity {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.a
+            .cmp(&other.a)
+            .then_with(|| self.b.cmp(&other.b))
+            .then_with(|| self.c.cmp(&other.c))
+    }
+}
+
+impl Specificity {
+    pub const ZERO: Self = Self { a: 0, b: 0, c: 0 };
+
+    #[inline]
+    pub const fn new(a: u32, b: u32, c: u32) -> Self {
+        Self { a, b, c }
+    }
+
+    #[inline]
+    pub fn add(&mut self, other: Self) {
+        self.a += other.a;
+        self.b += other.b;
+        self.c += other.c;
+    }
+}
 
 /// Helper para obter o irmão anterior que seja um Elemento (ignorando nós de texto/comentário).
 fn prev_element_sibling(doc: &Document, node_id: NodeId) -> Option<NodeId> {
@@ -500,6 +545,25 @@ impl SimpleSelector {
             },
         }
     }
+
+    /// Calcula a especificidade deste seletor simples conforme Selectors Level 4 §16.
+    pub fn specificity(&self) -> Specificity {
+        match self {
+            Self::Id(_) => Specificity::new(1, 0, 0),
+            Self::Class(_) | Self::Attribute { .. } => Specificity::new(0, 1, 0),
+            Self::Pseudo(p) => match p {
+                PseudoClass::Where(_) => Specificity::ZERO,
+                PseudoClass::Is(selectors) => {
+                    selectors.iter().map(|s| s.specificity()).max().unwrap_or(Specificity::ZERO)
+                }
+                PseudoClass::Not(inner) => inner.specificity(),
+                PseudoClass::Has(inner) => inner.specificity(),
+                _ => Specificity::new(0, 1, 0),
+            },
+            Self::Tag(_) => Specificity::new(0, 0, 1),
+            Self::Universal => Specificity::ZERO,
+        }
+    }
 }
 
 /// Combinador hierárquico entre seletores.
@@ -619,6 +683,15 @@ impl CompoundSelector {
         self.simple_selectors
             .iter()
             .all(|s| s.matches(doc, node_id, node))
+    }
+
+    /// Calcula a especificidade total do seletor composto.
+    pub fn specificity(&self) -> Specificity {
+        let mut spec = Specificity::ZERO;
+        for s in &self.simple_selectors {
+            spec.add(s.specificity());
+        }
+        spec
     }
 }
 
@@ -858,5 +931,14 @@ impl ComplexSelector {
             }
             None => true,
         }
+    }
+
+    /// Calcula a especificidade total do seletor complexo somando as especificidades dos compostos.
+    pub fn specificity(&self) -> Specificity {
+        let mut spec = Specificity::ZERO;
+        for (compound, _) in &self.parts {
+            spec.add(compound.specificity());
+        }
+        spec
     }
 }
