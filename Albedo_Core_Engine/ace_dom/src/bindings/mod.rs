@@ -6,6 +6,6 @@ pub mod interfaces;
 pub mod webidl;
 pub mod wrapper;
 
-pub use interfaces::{DocumentBindings, ElementBindings, NodeBindings};
+pub use interfaces::{DocumentBindings, ElementBindings, EventBindings, NodeBindings, TextBindings};
 pub use webidl::{JSValue, WebIDLException, WebIDLResult};
 pub use wrapper::{DOMDataStore, DOMWrapper, JSObjectId};
