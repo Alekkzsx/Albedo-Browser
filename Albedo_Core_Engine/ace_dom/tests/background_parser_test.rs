@@ -1,4 +1,4 @@
-use ace_dom::{parse_html, parse_html_threaded, BackgroundHTMLParser, PreloadKind};
+use ace_dom::{parse_html, parse_html_threaded, BackgroundHTMLParser};
 
 #[test]
 fn test_background_parser_correctness_and_parity() {
