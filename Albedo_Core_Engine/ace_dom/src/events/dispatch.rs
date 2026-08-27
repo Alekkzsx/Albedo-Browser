@@ -40,8 +40,11 @@ impl EventRegistry {
         // Constrói a cadeia de caminho do evento (ancestrais com retargeting)
         let full_path = compute_event_path(doc, target_id, event.composed);
         if full_path.is_empty() {
+            event.composed_path.clear();
             return !event.is_default_prevented();
         }
+
+        event.composed_path = full_path.iter().map(|(node_id, _)| *node_id).collect();
 
         // Ancestrais (excluindo o nó alvo) em ordem Top-Down para captura
         let ancestors: Vec<_> = full_path[1..].iter().rev().copied().collect();
@@ -126,6 +129,10 @@ impl EventRegistry {
 
 /// Computa a cadeia de propagação (current_target, retargeted_target) cruzando ou respeitando Shadow Roots.
 fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<(NodeId, NodeId)> {
+    if doc.get_node(target_id).is_none() {
+        return Vec::new();
+    }
+
     let mut path = Vec::new();
     let mut curr = target_id;
     let mut effective_target = target_id;
