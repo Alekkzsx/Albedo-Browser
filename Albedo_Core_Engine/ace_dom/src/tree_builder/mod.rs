@@ -69,7 +69,8 @@ impl HTMLTreeBuilder {
     }
 
     /// Retorna o documento finalizado após o parsing.
-    pub fn finish(self) -> Document {
+    pub fn finish(mut self) -> Document {
+        self.doc.rebuild_index();
         self.doc
     }
 
