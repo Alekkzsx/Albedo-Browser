@@ -8,8 +8,8 @@
 
 use ace_core::intern::Atom;
 use ace_dom::custom_elements::{
-    is_pcen_char, is_valid_custom_element_name, CustomElementCallbacks, CustomElementDefinition,
-    CustomElementReaction, CustomElementReactionsStack, CustomElementRegistry, CustomElementState,
+    is_pcen_char, is_valid_custom_element_name, CustomElementCallbacks, CustomElementReaction,
+    CustomElementReactionsStack, CustomElementRegistry, CustomElementState,
 };
 use ace_dom::node::element::Namespace;
 use ace_dom::tree::Document;
@@ -241,12 +241,12 @@ fn test_custom_element_state_initialization() {
     let updated_el = doc.get_node(custom_id).unwrap().as_element().unwrap();
     assert_eq!(updated_el.custom_element_state(), CustomElementState::Custom);
     assert_eq!(
-        updated_el.custom_element_definition().as_deref(),
-        Some(&Atom::new("user-badge"))
+        updated_el.custom_element_definition(),
+        Some(Atom::new("user-badge"))
     );
     assert_eq!(
-        updated_el.is_value().as_deref(),
-        Some(&Atom::new("custom-button"))
+        updated_el.is_value(),
+        Some(Atom::new("custom-button"))
     );
 }
 
@@ -298,7 +298,7 @@ fn test_custom_element_upgrade_algorithm() {
         .expect("registro ok");
 
     // Executa upgrade na subárvore sob `container_id`
-    registry.upgrade(&mut doc.arena, container_id, Some(&mut reactions));
+    registry.upgrade(doc.arena_mut(), container_id, Some(&mut reactions));
 
     // Verifica se os nós transicionaram para Custom
     assert_eq!(
