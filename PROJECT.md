@@ -29,8 +29,8 @@
 | M1 | WHATWG HTML §12 & Tree Construction Audit | Tokenizer states, entity decoding, AAA step 3.17 bookmark fix, DSD, SVG/MathML | None | DONE (Explored) |
 | M2 | Memory Soundness & Competitive SOTA Analysis | Exact byte footprint per node, GC cycle-freedom, 100% Safe Rust invariants, Comparative Matrix | None | DONE (Explored) |
 | M3 | Query, Observer, Range & Asymptotic Complexity | CSS4 RTL engine, Ancestor Bloom Filter, MutationObserver hooks, Live Range LCA, Sanitizer | None | DONE (Explored) |
-| M4 | Clippy & Test Suite Remediation | Fix clippy warnings in `tests/hardening_phase5_master_test.rs`, run full workspace clippy & test validation | M1, M2, M3 | IN_PROGRESS |
-| M5 | Master Plan & Technical Report Consolidation | Write `ACE_DOM_MASTER_PLAN.md` and `ACE_DOM_AUDIT_REPORT.md`, verify via Reviewer, Challenger, and Auditor | M4 | PLANNED |
+| M4 | Clippy & Test Suite Remediation | Fix clippy warnings in `tests/hardening_phase5_master_test.rs`, run full workspace clippy & test validation | M1, M2, M3 | DONE (0 warnings, 100% pass) |
+| M5 | Master Plan & Technical Report Consolidation | Deliver `ACE_DOM_MASTER_PLAN.md`, verify via Reviewer, Challenger, and Auditor | M4 | DONE (Pass Gate) |
 
 ## Interface Contracts
 ### `ace_dom` ↔ `ace_core`
