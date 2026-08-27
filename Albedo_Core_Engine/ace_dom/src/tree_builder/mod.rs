@@ -36,6 +36,7 @@ pub struct HTMLTreeBuilder {
     pub head_element: Option<NodeId>,
     pub form_element: Option<NodeId>,
     pub frameset_ok: bool,
+    pub csp: Option<crate::security::CSPPolicy>,
 }
 
 impl Default for HTMLTreeBuilder {
@@ -57,7 +58,14 @@ impl HTMLTreeBuilder {
             head_element: None,
             form_element: None,
             frameset_ok: true,
+            csp: None,
         }
+    }
+
+    /// Configura a política de Content Security Policy (CSP) do documento.
+    pub fn with_csp(mut self, csp: crate::security::CSPPolicy) -> Self {
+        self.csp = Some(csp);
+        self
     }
 
     /// Retorna o documento finalizado após o parsing.
