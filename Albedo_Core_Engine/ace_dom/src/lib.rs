@@ -77,7 +77,7 @@ pub use parser::{BackgroundHTMLParser, BackgroundParserHandle, HTMLParserSchedul
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
     AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,
-    PseudoClass, RuleBucketIndex, SimpleSelector,
+    PseudoClass, RuleBucketIndex, SimpleSelector, Specificity,
 };
 pub use range::{BoundaryPoint, LiveRangeHandle, LiveRangeRegistry, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
