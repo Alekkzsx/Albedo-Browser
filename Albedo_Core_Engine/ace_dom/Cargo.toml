@@ -26,3 +26,6 @@ memchr = "2.7"
 # Concorrência & Canais Lock-Free
 crossbeam = "0.8"
 
+# Criptografia & Hashes (CSP)
+sha2 = "0.10"
+
