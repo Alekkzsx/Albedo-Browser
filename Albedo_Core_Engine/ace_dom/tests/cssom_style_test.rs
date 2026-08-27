@@ -72,3 +72,120 @@ fn test_css_cascading_and_computed_style_resolution() {
     // !important da stylesheet sobrescreve background
     assert_eq!(computed.get_property_value("background-color"), Some("blue"));
 }
+
+#[test]
+fn test_css_declaration_comments_and_quote_aware_important() {
+    let css = r#"
+        /* Comentário inicial */
+        color: /* c1 */ #123456 /* c2 */;
+        /* font-size: 999px; */
+        font-size: 16px /* c3 */ ! /* c4 */ important /* c5 */;
+        content: "hello !important string";
+        background-image: url("https://example.com/asset!important.png");
+        z-index: 10 ! IMPORTANT;
+    "#;
+
+    let decl = CSSStyleDeclaration::parse(css);
+    assert_eq!(decl.get_property_value("color"), Some("#123456"));
+    assert_eq!(decl.get_property_priority("color"), "");
+
+    assert_eq!(decl.get_property_value("font-size"), Some("16px"));
+    assert_eq!(decl.get_property_priority("font-size"), "important");
+
+    assert_eq!(decl.get_property_value("content"), Some("\"hello !important string\""));
+    assert_eq!(decl.get_property_priority("content"), "");
+
+    assert_eq!(
+        decl.get_property_value("background-image"),
+        Some("url(\"https://example.com/asset!important.png\")")
+    );
+    assert_eq!(decl.get_property_priority("background-image"), "");
+
+    assert_eq!(decl.get_property_value("z-index"), Some("10"));
+    assert_eq!(decl.get_property_priority("z-index"), "important");
+}
+
+#[test]
+fn test_stylesheet_case_insensitive_at_rules() {
+    let css = r#"
+        @IMPORT url("imported.css");
+        @MeDiA screen and (min-width: 300px) {
+            .box { color: red; }
+        }
+        @KEYFRAMES pulse {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        @-WEBKIT-KEYFRAMES fade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    "#;
+
+    let sheet = CSSStyleSheet::parse(css);
+    assert_eq!(sheet.rules.len(), 4);
+
+    match &sheet.rules[0] {
+        ace_dom::cssom::CSSRule::Import { href } => assert_eq!(href.as_str(), "imported.css"),
+        _ => panic!("Expected Import rule"),
+    }
+
+    match &sheet.rules[1] {
+        ace_dom::cssom::CSSRule::Media { condition, rules } => {
+            assert_eq!(condition.as_str(), "screen and (min-width: 300px)");
+            assert_eq!(rules.len(), 1);
+        }
+        _ => panic!("Expected Media rule"),
+    }
+
+    match &sheet.rules[2] {
+        ace_dom::cssom::CSSRule::Keyframes { name, .. } => {
+            assert_eq!(name.as_str(), "pulse");
+        }
+        _ => panic!("Expected Keyframes rule"),
+    }
+
+    match &sheet.rules[3] {
+        ace_dom::cssom::CSSRule::Keyframes { name, .. } => {
+            assert_eq!(name.as_str(), "fade");
+        }
+        _ => panic!("Expected Keyframes rule"),
+    }
+}
+
+#[test]
+fn test_compound_selector_matching_and_cascade() {
+    let doc = parse_html(r#"
+        <div id="main" class="highlight header">Match 1</div>
+        <div id="sidebar" class="highlight">No match</div>
+        <div id="footer" class="header">No match</div>
+    "#);
+
+    let main_id = doc.get_element_by_id("main").unwrap();
+    let sidebar_id = doc.get_element_by_id("sidebar").unwrap();
+    let footer_id = doc.get_element_by_id("footer").unwrap();
+
+    let css = r#"
+        .highlight.header {
+            color: purple;
+            font-weight: bold;
+        }
+        #main.highlight {
+            border: 1px solid black;
+        }
+    "#;
+
+    let sheet = CSSStyleSheet::parse(css);
+    let computed_main = StyleResolver::resolve_element_style(&doc, main_id, std::slice::from_ref(&sheet));
+    let computed_sidebar = StyleResolver::resolve_element_style(&doc, sidebar_id, std::slice::from_ref(&sheet));
+    let computed_footer = StyleResolver::resolve_element_style(&doc, footer_id, std::slice::from_ref(&sheet));
+
+    // main matches both compound selectors
+    assert_eq!(computed_main.get_property_value("color"), Some("purple"));
+    assert_eq!(computed_main.get_property_value("font-weight"), Some("bold"));
+    assert_eq!(computed_main.get_property_value("border"), Some("1px solid black"));
+
+    // sidebar and footer do not match .highlight.header
+    assert_eq!(computed_sidebar.get_property_value("color"), None);
+    assert_eq!(computed_footer.get_property_value("color"), None);
+}
