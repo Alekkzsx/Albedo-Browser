@@ -24,6 +24,26 @@ pub enum CSSRule {
         condition: SmolStr,
         rules: Vec<CSSRule>,
     },
+    /// Regra `@supports` — CSS Conditional Rules Level 3.
+    /// Avalia suporte a propriedades/valores CSS antes de aplicar as regras internas.
+    Supports {
+        condition: SmolStr,
+        rules: Vec<CSSRule>,
+    },
+    /// Regra `@layer` — CSS Cascade Layers.
+    /// Agrupa regras em camadas de cascata nomeadas para controle explícito de prioridade.
+    Layer {
+        /// Nome da camada (pode ser vazia para declaração de layer anônima).
+        name: SmolStr,
+        rules: Vec<CSSRule>,
+    },
+    /// Regra `@container` — CSS Container Queries.
+    /// Aplica regras condicionalmente baseadas nas dimensões do container pai.
+    Container {
+        /// Nome do container (opcional) e condição (ex: `sidebar (min-width: 700px)`).
+        condition: SmolStr,
+        rules: Vec<CSSRule>,
+    },
     Keyframes {
         name: SmolStr,
         css_text: SmolStr,
@@ -108,6 +128,30 @@ impl CSSStyleSheet {
                         let condition = preamble[6..].trim();
                         let inner_sheet = CSSStyleSheet::parse(body);
                         sheet.rules.push(CSSRule::Media {
+                            condition: SmolStr::new(condition),
+                            rules: inner_sheet.rules,
+                        });
+                    } else if preamble.len() >= 9 && preamble[..9].eq_ignore_ascii_case("@supports") {
+                        // CSS Conditional Rules Level 3 — @supports (min-width: 768px)
+                        let condition = preamble[9..].trim();
+                        let inner_sheet = CSSStyleSheet::parse(body);
+                        sheet.rules.push(CSSRule::Supports {
+                            condition: SmolStr::new(condition),
+                            rules: inner_sheet.rules,
+                        });
+                    } else if preamble.len() >= 6 && preamble[..6].eq_ignore_ascii_case("@layer") {
+                        // CSS Cascade Layers — @layer utilities { ... }
+                        let name = preamble[6..].trim();
+                        let inner_sheet = CSSStyleSheet::parse(body);
+                        sheet.rules.push(CSSRule::Layer {
+                            name: SmolStr::new(name),
+                            rules: inner_sheet.rules,
+                        });
+                    } else if preamble.len() >= 10 && preamble[..10].eq_ignore_ascii_case("@container") {
+                        // CSS Container Queries — @container sidebar (min-width: 700px) { ... }
+                        let condition = preamble[10..].trim();
+                        let inner_sheet = CSSStyleSheet::parse(body);
+                        sheet.rules.push(CSSRule::Container {
                             condition: SmolStr::new(condition),
                             rules: inner_sheet.rules,
                         });
