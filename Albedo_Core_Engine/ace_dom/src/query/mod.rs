@@ -17,9 +17,18 @@ use crate::tree::Document;
 use ace_core::id::NodeId;
 
 impl Document {
-    /// Encontra o primeiro elemento com o ID especificado.
+    /// Encontra o primeiro elemento com o ID especificado em O(1) via índice acelerado.
     pub fn get_element_by_id(&self, id: &str) -> Option<NodeId> {
         let target_atom = ace_core::intern::Atom::new(id);
+        if let Some(node_id) = self.element_index.get_by_id(id) {
+            if let Some(node) = self.get_node(node_id) {
+                if let Some(el) = node.as_element() {
+                    if el.id_attr.as_ref() == Some(&target_atom) {
+                        return Some(node_id);
+                    }
+                }
+            }
+        }
         for (node_id, node) in self.descendants(self.root()) {
             if let Some(el) = node.as_element() {
                 if el.id_attr.as_ref() == Some(&target_atom) {
@@ -46,8 +55,25 @@ impl Document {
         results
     }
 
-    /// Encontra todos os elementos que contêm a classe informada.
+    /// Encontra todos os elementos que contêm a classe informada em O(1) via índice acelerado.
     pub fn get_elements_by_class_name(&self, class_name: &str) -> Vec<NodeId> {
+        let indexed = self.element_index.get_by_class(class_name);
+        if !indexed.is_empty() {
+            let mut valid = Vec::with_capacity(indexed.len());
+            for &node_id in indexed {
+                if let Some(node) = self.get_node(node_id) {
+                    if let Some(el) = node.as_element() {
+                        if el.has_class(class_name) {
+                            valid.push(node_id);
+                        }
+                    }
+                }
+            }
+            if !valid.is_empty() {
+                return valid;
+            }
+        }
+
         let mut results = Vec::new();
         for (node_id, node) in self.descendants(self.root()) {
             if let Some(el) = node.as_element() {
