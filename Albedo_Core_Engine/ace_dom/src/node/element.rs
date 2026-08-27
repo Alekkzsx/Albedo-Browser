@@ -51,6 +51,8 @@ pub struct ElementRareData {
     pub shadow_root: Option<NodeId>,
     pub template_content: Option<NodeId>,
     pub custom_element_definition: Option<Atom>,
+    pub custom_element_state: crate::custom_elements::CustomElementState,
+    pub is_value: Option<Atom>,
     pub form_owner: Option<NodeId>,
     pub inline_style: Option<SmolStr>,
     pub inline_style_decl: Option<Box<crate::cssom::CSSStyleDeclaration>>,
@@ -233,6 +235,110 @@ impl ElementData {
     #[inline]
     pub fn has_class(&self, class_name: &str) -> bool {
         self.classes.as_slice().iter().any(|c| c.eq_ignore_ascii_case(class_name))
+    }
+
+    /// Retorna o estado do elemento customizado (WHATWG §4.13.2).
+    pub fn custom_element_state(&self) -> crate::custom_elements::CustomElementState {
+        if let Some(rare) = self.rare_data.as_ref() {
+            rare.custom_element_state
+        } else if self.namespace == Namespace::Html
+            && crate::custom_elements::is_valid_custom_element_name(self.tag_name.as_str())
+        {
+            crate::custom_elements::CustomElementState::Undefined
+        } else {
+            crate::custom_elements::CustomElementState::Uncustomized
+        }
+    }
+
+    /// Define o estado do elemento customizado.
+    pub fn set_custom_element_state(&mut self, state: crate::custom_elements::CustomElementState) {
+        if state != crate::custom_elements::CustomElementState::Uncustomized || self.rare_data.is_some() {
+            self.ensure_rare_data().custom_element_state = state;
+        }
+    }
+
+    /// Retorna o nome da definição do elemento customizado associado.
+    pub fn custom_element_definition(&self) -> Option<Atom> {
+        self.rare_data.as_ref().and_then(|r| r.custom_element_definition.clone())
+    }
+
+    /// Define o nome da definição do elemento customizado associado.
+    pub fn set_custom_element_definition(&mut self, def: Option<Atom>) {
+        if def.is_some() || self.rare_data.is_some() {
+            self.ensure_rare_data().custom_element_definition = def;
+        }
+    }
+
+    /// Retorna o valor do atributo `is` para elementos customizados estendidos.
+    pub fn is_value(&self) -> Option<Atom> {
+        self.rare_data.as_ref().and_then(|r| r.is_value.clone())
+    }
+
+    /// Define o valor do atributo `is`.
+    pub fn set_is_value(&mut self, is_value: Option<Atom>) {
+        if is_value.is_some() || self.rare_data.is_some() {
+            self.ensure_rare_data().is_value = is_value;
+        }
+    }
+
+    /// Adiciona ou substitui um atributo, enfileirando reações se for um elemento customizado com atributo observado.
+    pub fn set_attribute_with_reaction(
+        &mut self,
+        node_id: NodeId,
+        name: impl Into<Atom>,
+        value: impl Into<SmolStr>,
+        reactions: &mut crate::custom_elements::CustomElementReactionsStack,
+        registry: &crate::custom_elements::CustomElementRegistry,
+    ) {
+        let name_atom: Atom = name.into();
+        let value_str: SmolStr = value.into();
+        let old_value = self.get_attribute(name_atom.as_str()).map(SmolStr::new);
+
+        let value_changed = old_value.as_ref() != Some(&value_str);
+
+        self.set_attribute(name_atom.clone(), value_str.clone());
+
+        if value_changed && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom {
+            let def_name = self.custom_element_definition().unwrap_or_else(|| self.tag_name.clone());
+            if let Some(def) = registry.get(def_name.as_str()) {
+                if def.observes_attribute(name_atom.as_str()) {
+                    reactions.enqueue_attribute_changed(
+                        node_id,
+                        name_atom.as_str(),
+                        old_value,
+                        Some(value_str),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Remove um atributo, enfileirando reação se for um elemento customizado com atributo observado.
+    pub fn remove_attribute_with_reaction(
+        &mut self,
+        node_id: NodeId,
+        name: &str,
+        reactions: &mut crate::custom_elements::CustomElementReactionsStack,
+        registry: &crate::custom_elements::CustomElementRegistry,
+    ) -> bool {
+        let old_value = self.get_attribute(name).map(SmolStr::new);
+        let removed = self.remove_attribute(name);
+
+        if removed && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom {
+            let def_name = self.custom_element_definition().unwrap_or_else(|| self.tag_name.clone());
+            if let Some(def) = registry.get(def_name.as_str()) {
+                if def.observes_attribute(name) {
+                    reactions.enqueue_attribute_changed(
+                        node_id,
+                        name,
+                        old_value,
+                        None,
+                    );
+                }
+            }
+        }
+
+        removed
     }
 
     /// Retorna a interface mutável `DOMStringMap` para manipulação de atributos `data-*`.
