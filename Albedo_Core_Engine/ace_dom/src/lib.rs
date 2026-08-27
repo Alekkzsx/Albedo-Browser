@@ -44,6 +44,14 @@ pub mod traversal;
 pub mod tree;
 pub mod tree_builder;
 
+pub use bindings::{
+    DOMDataStore, DOMWrapper, DocumentBindings, ElementBindings, JSObjectId, JSValue, NodeBindings,
+    WebIDLException, WebIDLResult,
+};
+pub use cssom::{
+    CSSProperty, CSSRule, CSSStyleDeclaration, CSSStyleRule, CSSStyleSheet, ComputedStyle,
+    StyleResolver,
+};
 pub use custom_elements::{
     is_valid_custom_element_name, CustomElementDefinition, CustomElementRegistry, LifecycleQueue,
     LifecycleReaction,
@@ -65,6 +73,7 @@ pub use node::{
     NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
 };
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
+pub use parser::{BackgroundHTMLParser, BackgroundParserHandle, HTMLParserScheduler, ParsedChunk};
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
     AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,
@@ -72,8 +81,13 @@ pub use query::{
 };
 pub use range::{BoundaryPoint, LiveRangeHandle, LiveRangeRegistry, Range, RangeComparison};
 pub use sanitizer::{HTMLSanitizer, SanitizerConfig};
+pub use security::{
+    CSPDirective, CSPPolicy, CSPSource, TrustedHTML, TrustedScript, TrustedScriptURL,
+    TrustedTypePolicy,
+};
 pub use serializer::{serialize_inner_html, serialize_node};
 pub use tokenizer::{
+    find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close, find_unquoted_attr_end,
     tokenize_to_compact_tokens, CompactHTMLToken, HTMLTokenizer, StreamingTokenSink, Token,
     TokenSink, TokenizerAction, TokenizerState,
 };
@@ -86,29 +100,7 @@ pub use tree_builder::{
 
 use ace_core::text::SegmentedString;
 
-/// Faz o parsing de uma string HTML completa e retorna a árvore `Document` construída.
-///
-/// # Exemplo
-/// ```
-/// use ace_dom::parse_html;
-///
-/// let html = r#"<!DOCTYPE html>
-/// <html>
-///   <head><title>Albedo Engine</title></head>
-///   <body>
-///     <div id="app" class="container">
-///       <h1>Olá, Albedo!</h1>
-///     </div>
-///   </body>
-/// </html>"#;
-///
-/// let doc = parse_html(html);
-/// assert!(doc.document_element.is_some());
-/// assert!(doc.body.is_some());
-///
-/// let app_div = doc.get_element_by_id("app");
-/// assert!(app_div.is_some());
-/// ```
+/// Faz o parsing síncrono de uma string HTML completa e retorna a árvore `Document` construída.
 pub fn parse_html(html: &str) -> Document {
     let mut builder = HTMLTreeBuilder::new(None);
     let mut tokenizer = HTMLTokenizer::new();
@@ -116,4 +108,9 @@ pub fn parse_html(html: &str) -> Document {
 
     tokenizer.tokenize(&mut input, &mut builder);
     builder.finish()
+}
+
+/// Faz o parsing assíncrono e multithread de uma string HTML, desacoplando o Tokenizer em background.
+pub fn parse_html_threaded(html: impl Into<String>) -> Document {
+    BackgroundHTMLParser::parse_threaded(html)
 }
