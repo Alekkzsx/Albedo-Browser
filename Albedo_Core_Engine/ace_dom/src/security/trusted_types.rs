@@ -51,11 +51,14 @@ impl TrustedScriptURL {
     }
 }
 
+/// Função de transformação e higienização para Trusted Types.
+pub type TrustedTransformFn = Box<dyn Fn(&str) -> SmolStr + Send + Sync>;
+
 /// Política de geração e transformação de Trusted Types.
 pub struct TrustedTypePolicy {
     pub name: SmolStr,
-    create_html_fn: Option<Box<dyn Fn(&str) -> SmolStr + Send + Sync>>,
-    create_script_fn: Option<Box<dyn Fn(&str) -> SmolStr + Send + Sync>>,
+    create_html_fn: Option<TrustedTransformFn>,
+    create_script_fn: Option<TrustedTransformFn>,
 }
 
 impl TrustedTypePolicy {
