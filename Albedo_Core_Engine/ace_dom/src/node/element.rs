@@ -53,6 +53,7 @@ pub struct ElementRareData {
     pub custom_element_definition: Option<Atom>,
     pub form_owner: Option<NodeId>,
     pub inline_style: Option<SmolStr>,
+    pub inline_style_decl: Option<Box<crate::cssom::CSSStyleDeclaration>>,
     pub aria_role: Option<Atom>,
 }
 
