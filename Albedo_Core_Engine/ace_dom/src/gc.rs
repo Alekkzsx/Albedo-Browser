@@ -99,6 +99,12 @@ impl MarkTracer {
         }
     }
 
+    /// Retorna `true` se o nó foi visitado durante o ciclo de marcação do GC.
+    #[inline]
+    pub fn is_marked(&self, node_id: NodeId) -> bool {
+        self.visited_nodes.contains(&node_id)
+    }
+
     /// Rastreia recursivamente todos os nós alcançáveis a partir das raízes do documento.
     pub fn trace_document(&mut self, doc: &Document) {
         doc.trace(self);
