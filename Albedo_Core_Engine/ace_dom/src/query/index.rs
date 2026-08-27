@@ -23,10 +23,16 @@ impl ElementIndex {
 
     /// Reconstrói o índice completo a partir de um documento.
     pub fn rebuild(&mut self, doc: &Document) {
+        self.rebuild_from_arena(&doc.arena, doc.root());
+    }
+
+    /// Reconstrói o índice diretamente da arena e nó raiz sem conflito de empréstimo.
+    pub fn rebuild_from_arena(&mut self, arena: &ace_core::arena::Arena<NodeData>, root: NodeId) {
         self.id_map.clear();
         self.class_map.clear();
 
-        for (node_id, node) in doc.descendants(doc.root()) {
+        let descendants = crate::node::iter::DescendantsIter::new(arena, root);
+        for (node_id, node) in descendants {
             if let Some(el) = node.as_element() {
                 // Mapeia ID
                 if let Some(ref id_atom) = el.id_attr {
