@@ -81,6 +81,7 @@ pub struct Event {
     pub bubbles: bool,
     pub cancelable: bool,
     pub composed: bool,
+    pub composed_path: Vec<NodeId>,
     propagation_stopped: Arc<AtomicBool>,
     immediate_propagation_stopped: Arc<AtomicBool>,
     default_prevented: Arc<AtomicBool>,
@@ -97,10 +98,17 @@ impl Event {
             bubbles,
             cancelable,
             composed: false,
+            composed_path: Vec::new(),
             propagation_stopped: Arc::new(AtomicBool::new(false)),
             immediate_propagation_stopped: Arc::new(AtomicBool::new(false)),
             default_prevented: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Retorna o caminho composto de nós pelos quais o evento transitou (WHATWG DOM §2.8).
+    #[inline]
+    pub fn composed_path(&self) -> &[NodeId] {
+        &self.composed_path
     }
 
     /// Interrompe a propagação do evento para os próximos nós na cadeia.
