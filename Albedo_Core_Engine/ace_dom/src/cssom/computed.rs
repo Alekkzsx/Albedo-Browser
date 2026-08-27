@@ -2,6 +2,12 @@
 //!
 //! Algoritmo de resolução de estilos combinando regras de folhas de estilo e estilos em linha,
 //! resolução de variáveis customizadas (`var()`), herança automática W3C e avaliação de `@media` queries.
+//!
+//! ## Performance
+//! O `StyleResolver` suporta resolução com cache (`StyleCache`) que evita recomputar o estilo do
+//! elemento pai recursivamente a cada chamada, reduzindo a complexidade de O(n²) para O(n) em
+//! árvores profundas. Use `StyleResolver::resolve_with_cache` para resolver múltiplos elementos
+//! de uma só vez, ou `StyleResolver::resolve_element_style_with_context` para resolução avulsa.
 
 use crate::cssom::declaration::CSSProperty;
 use crate::cssom::media::{evaluate_media_query, MediaContext};
@@ -12,6 +18,10 @@ use ace_core::id::NodeId;
 use ace_core::intern::Atom;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smol_str::SmolStr;
+
+/// Cache de estilos computados por `NodeId`. Reutilize entre múltiplas chamadas de resolução
+/// para evitar recomputação do estilo do elemento pai (O(n²) → O(n)).
+pub type StyleCache = FxHashMap<NodeId, ComputedStyle>;
 
 /// Representação do conjunto de estilos computados para um elemento DOM.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -201,20 +211,58 @@ impl StyleResolver {
         Self::resolve_element_style_with_context(doc, element_id, sheets, &MediaContext::default())
     }
 
-    /// Computa o estilo final para um elemento considerando folhas de estilo, regras `@media`,
-    /// herança automática da árvore DOM, variáveis `var()` com detecção de ciclo e palavras-chave CSS.
+    /// Computa o estilo final para um elemento. Versão sem cache — adequada para chamadas avulsas.
+    /// Para resolver estilos de múltiplos elementos de uma mesma árvore de forma eficiente,
+    /// prefira `resolve_with_cache` que reutiliza o cache entre chamadas (O(n²) → O(n)).
     pub fn resolve_element_style_with_context(
         doc: &Document,
         element_id: NodeId,
         sheets: &[CSSStyleSheet],
         media_ctx: &MediaContext,
     ) -> ComputedStyle {
+        let mut cache = StyleCache::default();
+        Self::resolve_with_cache(doc, element_id, sheets, media_ctx, &mut cache)
+    }
+
+    /// Computa o estilo final com memoização dos estilos dos ancestrais.
+    ///
+    /// ## Complexidade
+    /// - **Sem cache compartilhado:** O(depth²) — cada elemento pai é resolvido do zero.
+    /// - **Com cache compartilhado:** O(n × rules) — cada nó é resolvido no máximo uma vez.
+    ///
+    /// Passe o mesmo `cache: &mut StyleCache` para todos os elementos do documento a fim de
+    /// obter desempenho O(n) total.
+    pub fn resolve_with_cache(
+        doc: &Document,
+        element_id: NodeId,
+        sheets: &[CSSStyleSheet],
+        media_ctx: &MediaContext,
+        cache: &mut StyleCache,
+    ) -> ComputedStyle {
+        if let Some(cached) = cache.get(&element_id) {
+            return cached.clone();
+        }
+
+        let result = Self::resolve_inner(doc, element_id, sheets, media_ctx, cache);
+        cache.insert(element_id, result.clone());
+        result
+    }
+
+    /// Implementação interna da cascata. Separada para evitar borrow duplo no cache.
+    fn resolve_inner(
+        doc: &Document,
+        element_id: NodeId,
+        sheets: &[CSSStyleSheet],
+        media_ctx: &MediaContext,
+        cache: &mut StyleCache,
+    ) -> ComputedStyle {
         let mut computed = ComputedStyle::new();
 
         // 1. Resolve o estilo do elemento pai (para herança automática e variáveis)
+        // Usa o cache para evitar O(n²): cada pai é resolvido no máximo uma vez.
         let parent_element_id = find_parent_element(doc, element_id);
         let parent_style = parent_element_id.map(|pid| {
-            Self::resolve_element_style_with_context(doc, pid, sheets, media_ctx)
+            Self::resolve_with_cache(doc, pid, sheets, media_ctx, cache)
         });
 
         // 2. Coleta declarações casadas das folhas de estilo e de estilos inline
