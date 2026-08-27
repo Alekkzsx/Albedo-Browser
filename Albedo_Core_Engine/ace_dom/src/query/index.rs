@@ -59,6 +59,22 @@ impl ElementIndex {
         }
     }
 
+    /// Desindexa um nó removido.
+    pub fn unindex_node(&mut self, node_id: NodeId, node: &NodeData) {
+        if let Some(el) = node.as_element() {
+            if let Some(ref id_atom) = el.id_attr {
+                if self.id_map.get(id_atom) == Some(&node_id) {
+                    self.id_map.remove(id_atom);
+                }
+            }
+            for class_atom in el.classes.as_slice() {
+                if let Some(vec) = self.class_map.get_mut(class_atom) {
+                    vec.retain(|&id| id != node_id);
+                }
+            }
+        }
+    }
+
     /// Obtém o `NodeId` correspondente a um ID HTML em $O(1)$.
     #[inline]
     pub fn get_by_id(&self, id: &str) -> Option<NodeId> {
