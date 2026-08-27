@@ -95,18 +95,25 @@ pub enum CustomElementState {
     Failed,
 }
 
+/// Tipo de callback de ciclo de vida simples (connected / disconnected).
+pub type LifecycleCallback = Arc<dyn Fn(NodeId) + Send + Sync>;
+/// Tipo de callback invocado quando o elemento é adotado por outro documento.
+pub type AdoptedCallback = Arc<dyn Fn(NodeId, Option<&str>, Option<&str>) + Send + Sync>;
+/// Tipo de callback invocado quando um atributo observado é alterado ou removido.
+pub type AttributeChangedCallback =
+    Arc<dyn Fn(NodeId, &str, Option<&str>, Option<&str>) + Send + Sync>;
+
 /// Callbacks de ciclo de vida de elementos customizados.
 #[derive(Clone, Default)]
 pub struct CustomElementCallbacks {
     /// Callback invocado quando o elemento é conectado ao documento.
-    pub connected_callback: Option<Arc<dyn Fn(NodeId) + Send + Sync>>,
+    pub connected_callback: Option<LifecycleCallback>,
     /// Callback invocado quando o elemento é desconectado do documento.
-    pub disconnected_callback: Option<Arc<dyn Fn(NodeId) + Send + Sync>>,
+    pub disconnected_callback: Option<LifecycleCallback>,
     /// Callback invocado quando o elemento é adotado por outro documento.
-    pub adopted_callback: Option<Arc<dyn Fn(NodeId, Option<&str>, Option<&str>) + Send + Sync>>,
+    pub adopted_callback: Option<AdoptedCallback>,
     /// Callback invocado quando um atributo observado é alterado ou removido.
-    pub attribute_changed_callback:
-        Option<Arc<dyn Fn(NodeId, &str, Option<&str>, Option<&str>) + Send + Sync>>,
+    pub attribute_changed_callback: Option<AttributeChangedCallback>,
 }
 
 impl CustomElementCallbacks {
