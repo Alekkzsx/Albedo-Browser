@@ -23,3 +23,6 @@ thiserror = "2.0"
 # Otimização SIMD de Baixo Nível
 memchr = "2.7"
 
+# Concorrência & Canais Lock-Free
+crossbeam = "0.8"
+
