@@ -5,7 +5,6 @@
 
 use ace_core::arena::{Arena, ArenaId};
 use ace_core::id::NodeId;
-use ace_core::intern::Atom;
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
 use std::collections::VecDeque;
