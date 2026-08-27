@@ -18,7 +18,7 @@ pub struct CSSStyleRule {
 /// Tipos de regras suportadas em uma folha de estilo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CSSRule {
-    Style(CSSStyleRule),
+    Style(Box<CSSStyleRule>),
     Media {
         condition: SmolStr,
         rules: Vec<CSSRule>,
@@ -85,11 +85,11 @@ impl CSSStyleSheet {
                         }
 
                         let style_decl = CSSStyleDeclaration::parse(body_str);
-                        sheet.rules.push(CSSRule::Style(CSSStyleRule {
+                        sheet.rules.push(CSSRule::Style(Box::new(CSSStyleRule {
                             selector_text: SmolStr::new(selector_str),
                             selectors: parsed_selectors,
                             style: style_decl,
-                        }));
+                        })));
                     }
 
                     let consumed_len = open_brace + 1 + close_brace + 1;
