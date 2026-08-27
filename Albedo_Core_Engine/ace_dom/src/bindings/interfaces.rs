@@ -3,6 +3,7 @@
 //! Tabela de funções e despachantes para as interfaces `Node`, `Element`, `Document`, etc.
 
 use crate::bindings::webidl::{WebIDLException, WebIDLResult};
+use crate::events::Event;
 use crate::fragment::parse_fragment;
 use crate::node::element::Namespace;
 use crate::node::NodeKind;
@@ -132,6 +133,11 @@ impl NodeBindings {
     /// WebIDL: `boolean contains(Node? other);`
     pub fn contains(doc: &Document, parent: NodeId, other: NodeId) -> bool {
         doc.contains(parent, other)
+    }
+
+    /// WebIDL: `undefined normalize();`
+    pub fn normalize(doc: &mut Document, id: NodeId) -> WebIDLResult<()> {
+        doc.normalize(id).map_err(WebIDLException::from)
     }
 }
 
@@ -328,5 +334,100 @@ impl DocumentBindings {
     /// WebIDL: `Element? getElementById(DOMString elementId);`
     pub fn get_element_by_id(doc: &Document, id: &str) -> Option<NodeId> {
         doc.get_element_by_id(id)
+    }
+}
+
+/// Implementação WebIDL para a interface `Text` (WHATWG DOM §4.6).
+pub struct TextBindings;
+
+impl TextBindings {
+    /// WebIDL: `Text splitText(unsigned long offset);`
+    pub fn split_text(doc: &mut Document, id: NodeId, offset: usize) -> WebIDLResult<NodeId> {
+        doc.split_text(id, offset).map_err(WebIDLException::from)
+    }
+
+    /// WebIDL: `attribute DOMString data;` (Getter)
+    pub fn get_data(doc: &Document, id: NodeId) -> Option<SmolStr> {
+        let node = doc.get_node(id)?;
+        if let NodeKind::Text(ref t) = node.kind {
+            Some(t.data.clone())
+        } else {
+            None
+        }
+    }
+
+    /// WebIDL: `readonly attribute unsigned long length;`
+    pub fn get_length(doc: &Document, id: NodeId) -> Option<usize> {
+        let node = doc.get_node(id)?;
+        if let NodeKind::Text(ref t) = node.kind {
+            Some(t.data.len())
+        } else {
+            None
+        }
+    }
+}
+
+/// Implementação WebIDL para a interface `Event` (WHATWG DOM §2).
+pub struct EventBindings;
+
+impl EventBindings {
+    /// WebIDL: `sequence<EventTarget> composedPath();`
+    pub fn composed_path(event: &Event) -> Vec<NodeId> {
+        event.composed_path().to_vec()
+    }
+
+    /// WebIDL: `readonly attribute DOMString type;`
+    pub fn get_type(event: &Event) -> SmolStr {
+        SmolStr::new(event.event_type.as_str())
+    }
+
+    /// WebIDL: `readonly attribute EventTarget? target;`
+    pub fn get_target(event: &Event) -> Option<NodeId> {
+        event.target
+    }
+
+    /// WebIDL: `readonly attribute EventTarget? currentTarget;`
+    pub fn get_current_target(event: &Event) -> Option<NodeId> {
+        event.current_target
+    }
+
+    /// WebIDL: `readonly attribute unsigned short eventPhase;`
+    pub fn get_event_phase(event: &Event) -> u16 {
+        event.phase as u16
+    }
+
+    /// WebIDL: `readonly attribute boolean bubbles;`
+    pub fn get_bubbles(event: &Event) -> bool {
+        event.bubbles
+    }
+
+    /// WebIDL: `readonly attribute boolean cancelable;`
+    pub fn get_cancelable(event: &Event) -> bool {
+        event.cancelable
+    }
+
+    /// WebIDL: `readonly attribute boolean defaultPrevented;`
+    pub fn get_default_prevented(event: &Event) -> bool {
+        event.is_default_prevented()
+    }
+
+    /// WebIDL: `readonly attribute boolean composed;`
+    pub fn get_composed(event: &Event) -> bool {
+        event.composed
+    }
+
+    /// WebIDL: `undefined stopPropagation();`
+    pub fn stop_propagation(event: &Event) {
+        event.stop_propagation();
+    }
+
+    /// WebIDL: `undefined stopImmediatePropagation();`
+    pub fn stop_immediate_propagation(event: &Event) {
+        event.stop_immediate_propagation();
+    }
+
+    /// WebIDL: `undefined preventDefault();`
+    pub fn prevent_default(event: &Event) {
+        event.prevent_default();
     }
 }
