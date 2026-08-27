@@ -101,7 +101,9 @@ impl NodeBindings {
         parent: NodeId,
         child: NodeId,
     ) -> WebIDLResult<NodeId> {
-        doc.append_child(parent, child).map_err(WebIDLException::from)
+        doc.append_child(parent, child)
+            .map(|()| child)
+            .map_err(WebIDLException::from)
     }
 
     /// WebIDL: `Node removeChild(Node child);`
@@ -110,7 +112,9 @@ impl NodeBindings {
         parent: NodeId,
         child: NodeId,
     ) -> WebIDLResult<NodeId> {
-        doc.remove_child(parent, child).map_err(WebIDLException::from)
+        doc.remove_child(parent, child)
+            .map(|()| child)
+            .map_err(WebIDLException::from)
     }
 
     /// WebIDL: `Node insertBefore(Node node, Node? child);`
@@ -121,6 +125,7 @@ impl NodeBindings {
         ref_child: Option<NodeId>,
     ) -> WebIDLResult<NodeId> {
         doc.insert_before(parent, new_child, ref_child)
+            .map(|()| new_child)
             .map_err(WebIDLException::from)
     }
 
@@ -171,7 +176,7 @@ impl ElementBindings {
     pub fn get_attribute(doc: &Document, id: NodeId, name: &str) -> Option<SmolStr> {
         let node = doc.get_node(id)?;
         let el = node.as_element()?;
-        el.get_attribute(name).map(|s| SmolStr::new(s.as_str()))
+        el.get_attribute(name).map(SmolStr::new)
     }
 
     /// WebIDL: `undefined setAttribute(DOMString qualifiedName, DOMString value);`
@@ -226,12 +231,13 @@ impl ElementBindings {
         let node = doc.get_node(id).ok_or_else(|| {
             WebIDLException::NotFoundError(format!("Elemento #{:?} não encontrado", id.raw()))
         })?;
-        let el = node.as_element().ok_or_else(|| {
-            WebIDLException::TypeError("innerHTML só pode ser definido em nós Elemento".to_string())
-        })?;
-        let tag_name = el.tag_name.as_str().to_string();
+        if !node.is_element() {
+            return Err(WebIDLException::TypeError(
+                "innerHTML só pode ser definido em nós Elemento".to_string(),
+            ));
+        }
 
-        let fragment = parse_fragment(doc, &tag_name, html);
+        let frag_id = parse_fragment(doc, Some(id), html);
 
         // Remove filhos existentes
         let children: Vec<NodeId> = doc.children(id).map(|(c_id, _)| c_id).collect();
@@ -240,7 +246,9 @@ impl ElementBindings {
         }
 
         // Anexa novos nós do fragmento
-        for frag_child in fragment.nodes {
+        let frag_children: Vec<NodeId> = doc.children(frag_id).map(|(c_id, _)| c_id).collect();
+        for frag_child in frag_children {
+            let _ = doc.remove_child(frag_id, frag_child);
             let _ = doc.append_child(id, frag_child);
         }
 
