@@ -157,7 +157,14 @@ impl ElementData {
             }
         }
 
-        // 3. Insere ou substitui na lista de atributos
+        // 3. Atualiza cache de estilos CSS inline
+        if name_atom.eq_ignore_ascii_case("style") {
+            let decl = crate::cssom::CSSStyleDeclaration::parse(&value_str);
+            self.ensure_rare_data().inline_style_decl = Some(Box::new(decl));
+            self.ensure_rare_data().inline_style = Some(value_str.clone());
+        }
+
+        // 4. Insere ou substitui na lista de atributos
         for attr in self.attributes.as_mut_slice() {
             if attr.name == name_atom {
                 attr.value = value_str;
@@ -197,10 +204,29 @@ impl ElementData {
                 self.id_attr = None;
             } else if name.eq_ignore_ascii_case("class") {
                 self.classes.clear();
+            } else if name.eq_ignore_ascii_case("style") {
+                if let Some(rare) = self.rare_data.as_mut() {
+                    rare.inline_style = None;
+                    rare.inline_style_decl = None;
+                }
             }
         }
 
         removed
+    }
+
+    /// Retorna uma referência à declaração de estilo inline (`CSSStyleDeclaration`), se existir.
+    pub fn style(&self) -> Option<&crate::cssom::CSSStyleDeclaration> {
+        self.rare_data.as_ref().and_then(|r| r.inline_style_decl.as_deref())
+    }
+
+    /// Retorna uma referência mutável à declaração de estilo inline, criando-a sob demanda se necessário.
+    pub fn style_mut(&mut self) -> &mut crate::cssom::CSSStyleDeclaration {
+        let rare = self.ensure_rare_data();
+        if rare.inline_style_decl.is_none() {
+            rare.inline_style_decl = Some(Box::default());
+        }
+        rare.inline_style_decl.as_deref_mut().unwrap()
     }
 
     /// Retorna `true` se o elemento contiver a classe especificada.
@@ -214,3 +240,4 @@ impl ElementData {
         crate::node::dataset::DOMStringMap::new(self)
     }
 }
+
