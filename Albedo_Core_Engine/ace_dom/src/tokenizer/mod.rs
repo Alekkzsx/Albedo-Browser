@@ -2,9 +2,11 @@
 //!
 //! Processamento de streaming de alto desempenho desacoplado via trait `TokenSink`.
 
+pub mod simd;
 pub mod state;
 pub mod token;
 
+pub use simd::{find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close, find_unquoted_attr_end};
 pub use state::TokenizerState;
 pub use token::{CompactHTMLToken, DoctypeToken, EndTagToken, StartTagToken, Token};
 
