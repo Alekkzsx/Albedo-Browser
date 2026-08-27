@@ -1,10 +1,16 @@
 //! # Web Components & Custom Elements (WHATWG HTML §4.13)
 //!
-//! Fornece o registro de componentes web e fila de reações de ciclo de vida.
+//! Fornece o registro central de componentes customizados (`CustomElementRegistry`),
+//! validação estrita PCENChar, callbacks de ciclo de vida e pilha de reações (`[CEReactions]`).
 
+pub mod reaction_stack;
 pub mod registry;
 
-pub use registry::{is_valid_custom_element_name, CustomElementDefinition, CustomElementRegistry};
+pub use reaction_stack::{CustomElementReaction, CustomElementReactionsStack};
+pub use registry::{
+    is_pcen_char, is_valid_custom_element_name, CustomElementCallbacks, CustomElementDefinition,
+    CustomElementRegistry, CustomElementState, ElementDefinitionOptions,
+};
 
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
@@ -27,6 +33,52 @@ pub enum LifecycleReaction {
     },
     /// O elemento foi adotado por um novo documento (`adoptedCallback`).
     Adopted(NodeId),
+}
+
+impl From<CustomElementReaction> for LifecycleReaction {
+    fn from(r: CustomElementReaction) -> Self {
+        match r {
+            CustomElementReaction::Connected(id) => LifecycleReaction::Connected(id),
+            CustomElementReaction::Disconnected(id) => LifecycleReaction::Disconnected(id),
+            CustomElementReaction::AttributeChanged {
+                node,
+                name,
+                old_value,
+                new_value,
+            } => LifecycleReaction::AttributeChanged {
+                node,
+                name: Atom::new(name.as_str()),
+                old_value,
+                new_value,
+            },
+            CustomElementReaction::Adopted { node, .. } => LifecycleReaction::Adopted(node),
+        }
+    }
+}
+
+impl From<LifecycleReaction> for CustomElementReaction {
+    fn from(r: LifecycleReaction) -> Self {
+        match r {
+            LifecycleReaction::Connected(id) => CustomElementReaction::Connected(id),
+            LifecycleReaction::Disconnected(id) => CustomElementReaction::Disconnected(id),
+            LifecycleReaction::AttributeChanged {
+                node,
+                name,
+                old_value,
+                new_value,
+            } => CustomElementReaction::AttributeChanged {
+                node,
+                name: SmolStr::new(name.as_str()),
+                old_value,
+                new_value,
+            },
+            LifecycleReaction::Adopted(id) => CustomElementReaction::Adopted {
+                node: id,
+                old_document: None,
+                new_document: None,
+            },
+        }
+    }
 }
 
 /// Fila de reações de ciclo de vida de elementos customizados.
@@ -56,5 +108,10 @@ impl LifecycleQueue {
     /// Retorna `true` se a fila estiver vazia.
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
+    }
+
+    /// Retorna a contagem de reações pendentes.
+    pub fn len(&self) -> usize {
+        self.queue.len()
     }
 }
