@@ -1,7 +1,7 @@
 use ace_dom::bindings::{
-    DOMDataStore, DocumentBindings, ElementBindings, JSObjectId, NodeBindings,
+    DOMDataStore, ElementBindings, JSObjectId, NodeBindings,
 };
-use ace_dom::gc::{GcTracer, MarkTracer, Traceable};
+use ace_dom::gc::{MarkTracer, Traceable};
 use ace_dom::parse_html;
 
 #[test]
