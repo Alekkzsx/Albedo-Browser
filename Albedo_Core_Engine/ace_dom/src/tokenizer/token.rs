@@ -104,4 +104,57 @@ impl CompactHTMLToken {
             Token::Null => None,
         }
     }
+
+    /// Converte um `CompactHTMLToken` de volta para o `Token` do WHATWG TreeBuilder.
+    #[inline]
+    pub fn to_token(self) -> Token {
+        match self {
+            CompactHTMLToken::Doctype {
+                name,
+                public_id,
+                system_id,
+                force_quirks,
+            } => Token::Doctype(DoctypeToken {
+                name,
+                public_identifier: public_id,
+                system_identifier: system_id,
+                force_quirks,
+            }),
+            CompactHTMLToken::StartTag {
+                name,
+                self_closing,
+                attributes,
+            } => Token::StartTag(StartTagToken {
+                name,
+                self_closing,
+                attributes,
+            }),
+            CompactHTMLToken::EndTag { name } => Token::EndTag(EndTagToken { name }),
+            CompactHTMLToken::Comment(c) => Token::Comment(c),
+            CompactHTMLToken::Character(c) => Token::Character(c),
+            CompactHTMLToken::Eof => Token::Eof,
+        }
+    }
+
+    /// Retorna o nome da tag se for `StartTag` ou `EndTag`.
+    #[inline]
+    pub fn tag_name(&self) -> Option<&Atom> {
+        match self {
+            CompactHTMLToken::StartTag { name, .. } => Some(name),
+            CompactHTMLToken::EndTag { name } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Retorna `true` se for uma tag de abertura.
+    #[inline]
+    pub fn is_start_tag(&self) -> bool {
+        matches!(self, CompactHTMLToken::StartTag { .. })
+    }
+
+    /// Retorna `true` se for EOF.
+    #[inline]
+    pub fn is_eof(&self) -> bool {
+        matches!(self, CompactHTMLToken::Eof)
+    }
 }
