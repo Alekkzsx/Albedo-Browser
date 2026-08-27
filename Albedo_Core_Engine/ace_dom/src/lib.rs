@@ -45,8 +45,8 @@ pub mod tree;
 pub mod tree_builder;
 
 pub use bindings::{
-    DOMDataStore, DOMWrapper, DocumentBindings, ElementBindings, JSObjectId, JSValue, NodeBindings,
-    WebIDLException, WebIDLResult,
+    DOMDataStore, DOMWrapper, DocumentBindings, ElementBindings, EventBindings, JSObjectId,
+    JSValue, NodeBindings, TextBindings, WebIDLException, WebIDLResult,
 };
 pub use cssom::{
     CSSProperty, CSSRule, CSSStyleDeclaration, CSSStyleRule, CSSStyleSheet, ComputedStyle,
