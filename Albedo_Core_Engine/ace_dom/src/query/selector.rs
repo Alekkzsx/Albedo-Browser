@@ -232,10 +232,42 @@ impl SimpleSelector {
         }
 
         if let Some(id_str) = trimmed.strip_prefix('#') {
+            if id_str.is_empty()
+                || id_str.contains('.')
+                || id_str.contains('#')
+                || id_str.contains(':')
+                || id_str.contains('[')
+                || id_str.contains(']')
+                || id_str.contains('(')
+                || id_str.contains(')')
+                || id_str.contains('>')
+                || id_str.contains('+')
+                || id_str.contains('~')
+                || id_str.contains(',')
+                || id_str.contains(|c: char| c.is_whitespace())
+            {
+                return None;
+            }
             return Some(Self::Id(Atom::new(id_str)));
         }
 
         if let Some(class_str) = trimmed.strip_prefix('.') {
+            if class_str.is_empty()
+                || class_str.contains('.')
+                || class_str.contains('#')
+                || class_str.contains(':')
+                || class_str.contains('[')
+                || class_str.contains(']')
+                || class_str.contains('(')
+                || class_str.contains(')')
+                || class_str.contains('>')
+                || class_str.contains('+')
+                || class_str.contains('~')
+                || class_str.contains(',')
+                || class_str.contains(|c: char| c.is_whitespace())
+            {
+                return None;
+            }
             return Some(Self::Class(Atom::new(class_str)));
         }
 
@@ -318,6 +350,25 @@ impl SimpleSelector {
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
             let inner = &trimmed[1..trimmed.len() - 1];
 
+            // Verify that this is a single bracket expression (no unquoted '[' or ']')
+            let mut in_q: Option<char> = None;
+            for ch in inner.chars() {
+                match ch {
+                    '"' | '\'' => {
+                        if in_q == Some(ch) {
+                            in_q = None;
+                        } else if in_q.is_none() {
+                            in_q = Some(ch);
+                        }
+                    }
+                    '[' | ']' if in_q.is_none() => return None,
+                    _ => {}
+                }
+            }
+            if in_q.is_some() {
+                return None;
+            }
+
             fn parse_val_and_case(v: &str) -> (String, bool) {
                 let trimmed_v = v.trim();
                 if let Some(rest) = trimmed_v.strip_suffix(" i").or_else(|| trimmed_v.strip_suffix(" I")) {
@@ -398,6 +449,14 @@ impl SimpleSelector {
             && !trimmed.contains('#')
             && !trimmed.contains(':')
             && !trimmed.contains('[')
+            && !trimmed.contains(']')
+            && !trimmed.contains('(')
+            && !trimmed.contains(')')
+            && !trimmed.contains('>')
+            && !trimmed.contains('+')
+            && !trimmed.contains('~')
+            && !trimmed.contains(',')
+            && !trimmed.contains(|c: char| c.is_whitespace())
         {
             Some(Self::Tag(Atom::new(&trimmed.to_ascii_lowercase())))
         } else {
