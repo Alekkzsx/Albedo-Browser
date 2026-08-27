@@ -122,13 +122,11 @@ impl HTMLTokenizer {
         let tag_atom = Atom::new(&self.current_tag_name.to_ascii_lowercase());
 
         let action = if self.current_tag_is_end {
+            self.current_attributes.clear();
             sink.process_token(Token::EndTag(EndTagToken { name: tag_atom }))
         } else {
             self.last_start_tag_name = Some(tag_atom.clone());
-            let mut attrs = InlineVec::new();
-            for attr in self.current_attributes.as_slice() {
-                attrs.push(attr.clone());
-            }
+            let attrs = std::mem::take(&mut self.current_attributes);
 
             sink.process_token(Token::StartTag(StartTagToken {
                 name: tag_atom,
