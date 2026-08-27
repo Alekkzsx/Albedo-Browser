@@ -43,6 +43,50 @@ pub struct CSSStyleDeclaration {
     pub properties: InlineVec<CSSProperty, 8>,
 }
 
+/// Remove comentários CSS `/* ... */` fora de strings literais (`'...'` ou `"..."`),
+/// substituindo-os por um espaço em branco conforme W3C CSS Syntax Level 3 §4.1.3.
+fn strip_css_comments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+
+    while i < len {
+        let ch = chars[i];
+        if ch == '\\' && i + 1 < len && (in_single || in_double) {
+            out.push(ch);
+            out.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
+
+        if !in_single && !in_double && ch == '/' && i + 1 < len && chars[i + 1] == '*' {
+            i += 2;
+            while i < len {
+                if chars[i] == '*' && i + 1 < len && chars[i + 1] == '/' {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            out.push(' ');
+            continue;
+        }
+
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+        } else if ch == '"' && !in_single {
+            in_double = !in_double;
+        }
+
+        out.push(ch);
+        i += 1;
+    }
+    out
+}
+
 impl CSSStyleDeclaration {
     /// Cria uma nova declaração de estilo vazia.
     pub fn new() -> Self {
@@ -52,10 +96,11 @@ impl CSSStyleDeclaration {
     }
 
     /// Faz o parsing de uma string de estilo em linha (ex: `color: #fff; font-size: 16px;`),
-    /// respeitando aspas simples/duplas e parênteses ao delimitar declarações.
+    /// respeitando comentários `/* ... */`, aspas simples/duplas e parênteses ao delimitar declarações.
     pub fn parse(css_text: &str) -> Self {
+        let clean_text = strip_css_comments(css_text);
         let mut decl = Self::new();
-        let chars: Vec<char> = css_text.chars().collect();
+        let chars: Vec<char> = clean_text.chars().collect();
         let len = chars.len();
         let mut i = 0;
         let mut chunk_start = 0;
@@ -101,11 +146,20 @@ impl CSSStyleDeclaration {
             return;
         }
 
+        let chars: Vec<char> = trimmed.chars().collect();
+        let len = chars.len();
         let mut colon_pos = None;
         let mut in_single = false;
         let mut in_double = false;
         let mut paren_depth: usize = 0;
-        for (idx, ch) in trimmed.char_indices() {
+        let mut i = 0;
+
+        while i < len {
+            let ch = chars[i];
+            if ch == '\\' && i + 1 < len {
+                i += 2;
+                continue;
+            }
             if ch == '\'' && !in_double {
                 in_single = !in_single;
             } else if ch == '"' && !in_single {
@@ -116,36 +170,76 @@ impl CSSStyleDeclaration {
                 } else if ch == ')' {
                     paren_depth = paren_depth.saturating_sub(1);
                 } else if ch == ':' && paren_depth == 0 {
-                    colon_pos = Some(idx);
+                    colon_pos = Some(i);
                     break;
                 }
             }
+            i += 1;
         }
 
         if let Some(pos) = colon_pos {
-            let name_part = trimmed[..pos].trim();
-            let mut val = trimmed[pos + 1..].trim();
-            if name_part.is_empty() || val.is_empty() {
+            let name_part: String = chars[..pos].iter().collect();
+            let name_trimmed = name_part.trim();
+            let val_part: String = chars[pos + 1..].iter().collect();
+            let val_trimmed = val_part.trim();
+            if name_trimmed.is_empty() || val_trimmed.is_empty() {
                 return;
             }
 
-            let mut important = false;
-            if let Some(idx) = val.rfind('!') {
-                let suffix = val[idx + 1..].trim();
-                if suffix.eq_ignore_ascii_case("important") {
-                    val = val[..idx].trim();
-                    important = true;
+            // Localiza o último '!' no nível zero (fora de aspas e parênteses, não escapado)
+            let val_chars: Vec<char> = val_trimmed.chars().collect();
+            let val_len = val_chars.len();
+            let mut last_top_level_exclamation = None;
+            let mut in_s = false;
+            let mut in_d = false;
+            let mut p_depth: usize = 0;
+            let mut vi = 0;
+
+            while vi < val_len {
+                let ch = val_chars[vi];
+                if ch == '\\' && vi + 1 < val_len {
+                    vi += 2;
+                    continue;
                 }
+                if ch == '\'' && !in_d {
+                    in_s = !in_s;
+                } else if ch == '"' && !in_s {
+                    in_d = !in_d;
+                } else if !in_s && !in_d {
+                    if ch == '(' {
+                        p_depth += 1;
+                    } else if ch == ')' {
+                        p_depth = p_depth.saturating_sub(1);
+                    } else if ch == '!' && p_depth == 0 {
+                        last_top_level_exclamation = Some(vi);
+                    }
+                }
+                vi += 1;
             }
 
-            let name = if name_part.starts_with("--") {
-                SmolStr::new(name_part)
+            let mut important = false;
+            let final_val: String;
+
+            if let Some(idx) = last_top_level_exclamation {
+                let suffix: String = val_chars[idx + 1..].iter().collect();
+                if suffix.trim().eq_ignore_ascii_case("important") {
+                    important = true;
+                    final_val = val_chars[..idx].iter().collect::<String>().trim().to_string();
+                } else {
+                    final_val = val_trimmed.to_string();
+                }
             } else {
-                SmolStr::new(name_part.to_ascii_lowercase())
+                final_val = val_trimmed.to_string();
+            }
+
+            let name = if name_trimmed.starts_with("--") {
+                SmolStr::new(name_trimmed)
+            } else {
+                SmolStr::new(name_trimmed.to_ascii_lowercase())
             };
 
-            if !name.is_empty() && !val.is_empty() {
-                decl.set_property(name.as_str(), val, important);
+            if !name.is_empty() && !final_val.is_empty() {
+                decl.set_property(name.as_str(), final_val.as_str(), important);
             }
         }
     }
