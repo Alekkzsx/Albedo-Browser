@@ -83,12 +83,12 @@ impl From<DomError> for WebIDLException {
     fn from(err: DomError) -> Self {
         match err {
             DomError::HierarchyRequestError(msg) => WebIDLException::HierarchyRequestError(msg),
-            DomError::NotFoundError(msg) => WebIDLException::NotFoundError(msg),
+            DomError::NotFoundError => WebIDLException::NotFoundError("Nó não encontrado".to_string()),
             DomError::NotSupportedError(msg) => WebIDLException::NotSupportedError(msg),
-            DomError::InvalidStateError(msg) => WebIDLException::InvalidStateError(msg),
             DomError::SyntaxError(msg) => WebIDLException::SyntaxError(msg),
-            DomError::SecurityError(msg) => WebIDLException::SecurityError(msg),
-            other => WebIDLException::TypeError(other.to_string()),
+            DomError::IndexSizeError => WebIDLException::TypeError("Índice fora dos limites".to_string()),
+            DomError::InvalidNodeId(id) => WebIDLException::TypeError(format!("Nó inválido #{:?}", id.raw())),
+            DomError::ParseError { message, .. } => WebIDLException::SyntaxError(message),
         }
     }
 }
