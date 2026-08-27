@@ -25,6 +25,7 @@ pub struct Document {
     pub head: Option<NodeId>,
     pub body: Option<NodeId>,
     pub mode: DocumentMode,
+    pub(crate) element_index: crate::query::ElementIndex,
 }
 
 impl Default for Document {
@@ -45,11 +46,11 @@ impl Document {
             prev_sibling: None,
             next_sibling: None,
             flags: ace_core::flags::NodeFlags::empty(),
-            kind: NodeKind::Document(DocumentData {
+            kind: NodeKind::Document(Box::new(DocumentData {
                 mode: DocumentMode::NoQuirks,
                 title: None,
                 url: url.map(String::from),
-            }),
+            })),
         };
 
         let arena_id = arena.alloc(root_node);
@@ -67,7 +68,13 @@ impl Document {
             head: None,
             body: None,
             mode: DocumentMode::NoQuirks,
+            element_index: crate::query::ElementIndex::new(),
         }
+    }
+
+    /// Reconstrói o índice de busca rápida de IDs e Classes do documento.
+    pub fn rebuild_index(&mut self) {
+        self.element_index.rebuild(self);
     }
 
     /// Retorna o `NodeId` do nó raiz do documento.
@@ -128,7 +135,7 @@ impl Document {
             system_id,
             force_quirks,
         };
-        let node = NodeData::new(dummy_id, NodeKind::DocumentType(doctype_data));
+        let node = NodeData::new(dummy_id, NodeKind::DocumentType(Box::new(doctype_data)));
         let arena_id = self.arena.alloc(node);
         let real_id = arena_id.to_node_id();
         if let Some(n) = self.arena.get_mut(arena_id) {
@@ -211,7 +218,7 @@ impl Document {
 
         let dummy_id = NodeId::new();
         let shadow_data = crate::node::ShadowRootData { mode, host: host_id };
-        let shadow_node = NodeData::new(dummy_id, NodeKind::ShadowRoot(shadow_data));
+        let shadow_node = NodeData::new(dummy_id, NodeKind::ShadowRoot(Box::new(shadow_data)));
         let arena_id = self.arena.alloc(shadow_node);
         let shadow_root_id = arena_id.to_node_id();
         if let Some(n) = self.arena.get_mut(arena_id) {
