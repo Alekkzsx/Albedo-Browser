@@ -54,13 +54,17 @@ impl BackgroundChunkSink {
                 let is_preload = rel.as_deref().is_some_and(|r| r.eq_ignore_ascii_case("preload"));
                 if is_stylesheet || (is_preload && as_kind.as_deref() == Some("style")) {
                     return Some(PreloadRequest {
-                        url: h,
-                        kind: PreloadKind::Style,
+                        url: SmolStr::new(h),
+                        kind: PreloadKind::Stylesheet,
+                        as_type: as_kind.map(SmolStr::new),
+                        media: None,
                     });
                 } else if is_preload && as_kind.as_deref() == Some("script") {
                     return Some(PreloadRequest {
-                        url: h,
+                        url: SmolStr::new(h),
                         kind: PreloadKind::Script,
+                        as_type: Some(SmolStr::new("script")),
+                        media: None,
                     });
                 }
             }
@@ -68,8 +72,10 @@ impl BackgroundChunkSink {
             for attr in attributes.as_slice() {
                 if attr.name.eq_ignore_ascii_case("src") {
                     return Some(PreloadRequest {
-                        url: attr.value.to_string(),
+                        url: attr.value.clone(),
                         kind: PreloadKind::Script,
+                        as_type: None,
+                        media: None,
                     });
                 }
             }
@@ -77,8 +83,10 @@ impl BackgroundChunkSink {
             for attr in attributes.as_slice() {
                 if attr.name.eq_ignore_ascii_case("src") {
                     return Some(PreloadRequest {
-                        url: attr.value.to_string(),
+                        url: attr.value.clone(),
                         kind: PreloadKind::Image,
+                        as_type: None,
+                        media: None,
                     });
                 }
             }
