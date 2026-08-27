@@ -50,7 +50,7 @@ pub use bindings::{
 };
 pub use cssom::{
     CSSProperty, CSSRule, CSSStyleDeclaration, CSSStyleRule, CSSStyleSheet, ComputedStyle,
-    StyleResolver,
+    StyleCache, StyleResolver,
 };
 pub use custom_elements::{
     is_pcen_char, is_valid_custom_element_name, CustomElementCallbacks, CustomElementDefinition,
