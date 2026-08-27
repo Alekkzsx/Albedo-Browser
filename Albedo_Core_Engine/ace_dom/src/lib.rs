@@ -20,6 +20,8 @@
 //! - **Consultas & Índices:** `ElementIndex`, `getElementById`, `querySelector` com combinadores CSS e `dataset`.
 //! - **Eventos DOM 3/4:** Pipeline de Captura, Target e Borbulhamento com `AddEventListenerOptions` e `AbortSignal`.
 
+pub mod bindings;
+pub mod cssom;
 pub mod custom_elements;
 pub mod dom_parser;
 pub mod entities;
@@ -30,10 +32,12 @@ pub mod fragment;
 pub mod gc;
 pub mod node;
 pub mod observer;
+pub mod parser;
 pub mod preload_scanner;
 pub mod query;
 pub mod range;
 pub mod sanitizer;
+pub mod security;
 pub mod serializer;
 pub mod tokenizer;
 pub mod traversal;
