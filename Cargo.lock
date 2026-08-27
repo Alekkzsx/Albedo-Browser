@@ -45,6 +45,7 @@ dependencies = [
  "memchr",
  "phf",
  "rustc-hash",
+ "sha2",
  "smol_str",
  "thiserror",
  "tracing",
