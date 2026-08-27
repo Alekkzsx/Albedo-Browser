@@ -11,6 +11,7 @@ pub use bloom::AncestorFilter;
 pub use index::{ElementIndex, RuleBucketIndex};
 pub use selector::{
     AttributeOp, Combinator, ComplexSelector, CompoundSelector, PseudoClass, SimpleSelector,
+    Specificity,
 };
 
 use crate::tree::Document;
@@ -107,5 +108,25 @@ impl Document {
             }
         }
         results
+    }
+
+    /// Retorna `true` se o nó element_id satisfaz o seletor CSS fornecido (WHATWG DOM Element.matches).
+    pub fn element_matches(&self, element_id: NodeId, selector_str: &str) -> bool {
+        if let Some(selector) = ComplexSelector::parse(selector_str) {
+            selector.matches(self, element_id)
+        } else {
+            false
+        }
+    }
+
+    /// Retorna o elemento mais próximo (ele mesmo ou ancestral) que satisfaz o seletor CSS (WHATWG DOM Element.closest).
+    pub fn element_closest(&self, element_id: NodeId, selector_str: &str) -> Option<NodeId> {
+        let selector = ComplexSelector::parse(selector_str)?;
+        if selector.matches(self, element_id) {
+            return Some(element_id);
+        }
+        self.ancestors(element_id)
+            .map(|(ancestor_id, _)| ancestor_id)
+            .find(|&ancestor_id| selector.matches(self, ancestor_id))
     }
 }
