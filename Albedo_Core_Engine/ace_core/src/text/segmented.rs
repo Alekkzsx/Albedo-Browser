@@ -46,7 +46,7 @@ pub fn preprocess_html_input(input: &str) -> SmolStr {
     SmolStr::new(result)
 }
 
-/// Buffer de texto segmentado com suporte a chunks dinâmicos e devolução de caracteres (*unconsume*).
+/// Buffer de texto segmentado com suporte a chunks dinâmicos, inserção no fluxo (document.write) e devolução de caracteres (*unconsume*).
 #[derive(Debug, Clone, Default)]
 pub struct SegmentedString {
     /// Caracteres devolvidos (*unconsumed*) prontos para re-leitura prioritária.
@@ -55,6 +55,8 @@ pub struct SegmentedString {
     chunks: VecDeque<SmolStr>,
     /// Posição do cursor em bytes dentro do chunk frontal.
     current_chunk_offset: usize,
+    /// Pilha de índices de pontos de inserção dinâmicos (WHATWG §12.2.3).
+    insertion_points: Vec<usize>,
     /// Linha atual (1-indexada).
     line: usize,
     /// Coluna atual (1-indexada).
@@ -72,6 +74,7 @@ impl SegmentedString {
             pushed_back: Vec::new(),
             chunks: VecDeque::new(),
             current_chunk_offset: 0,
+            insertion_points: Vec::new(),
             line: 1,
             column: 1,
             byte_offset: 0,
@@ -124,7 +127,9 @@ impl SegmentedString {
     pub fn push_front_char(&mut self, c: char) {
         self.pushed_back.push(c);
         self.byte_offset = self.byte_offset.saturating_sub(c.len_utf8());
-        if self.column > 1 {
+        if c == '\n' {
+            self.line = self.line.saturating_sub(1).max(1);
+        } else if self.column > 1 {
             self.column -= 1;
         }
     }
@@ -316,12 +321,136 @@ impl SegmentedString {
         }
     }
 
-    /// Remove chunks frontais que já foram completamente consumidos.
+    /// Estabelece um novo ponto de inserção dinâmico (WHATWG HTML §12.2.3) antes do próximo caractere não consumido.
+    pub fn push_insertion_point(&mut self) {
+        self.normalize_front();
+        self.insertion_points.push(0);
+    }
+
+    /// Remove o ponto de inserção dinâmico corrente no topo da pilha.
+    pub fn pop_insertion_point(&mut self) -> Option<usize> {
+        self.insertion_points.pop()
+    }
+
+    /// Retorna `true` se houver pelo menos um ponto de inserção ativo na pilha.
+    pub fn has_insertion_point(&self) -> bool {
+        !self.insertion_points.is_empty()
+    }
+
+    /// Retorna a profundidade de aninhamento de pontos de inserção ativos.
+    pub fn insertion_point_depth(&self) -> usize {
+        self.insertion_points.len()
+    }
+
+    /// Limpa todos os pontos de inserção ativos.
+    pub fn clear_insertion_points(&mut self) {
+        self.insertion_points.clear();
+    }
+
+    /// Insere texto pré-processado no ponto de inserção ativo ou no cabeçalho do fluxo (WHATWG §12.2.3).
+    ///
+    /// Preserva a ordem cronológica FIFO para escritas consecutivas no mesmo ponto de inserção,
+    /// e a semântica LIFO para chamadas reentrantes/aninhadas com novos pontos de inserção.
+    pub fn insert_stream_content(&mut self, content: &str) {
+        if content.is_empty() {
+            return;
+        }
+        let preprocessed = preprocess_html_input(content);
+        if preprocessed.is_empty() {
+            return;
+        }
+
+        self.normalize_front();
+
+        if let Some(&target_idx) = self.insertion_points.last() {
+            let insert_idx = target_idx.min(self.chunks.len());
+            self.chunks.insert(insert_idx, preprocessed);
+
+            // Avança este ponto de inserção para depois do chunk recém-inserido
+            if let Some(top) = self.insertion_points.last_mut() {
+                *top += 1;
+            }
+
+            // Ajusta outros pontos de inserção na pilha cujo índice seja posterior
+            let stack_len = self.insertion_points.len();
+            if stack_len > 1 {
+                for ip in &mut self.insertion_points[..stack_len - 1] {
+                    if *ip >= insert_idx {
+                        *ip += 1;
+                    }
+                }
+            }
+        } else {
+            // Sem ponto de inserção explícito: insere diretamente no cabeçalho
+            self.chunks.push_front(preprocessed);
+        }
+    }
+
+    /// Insere texto no ponto de inserção ativo ou no cabeçalho do fluxo (alias para `insert_stream_content`).
+    pub fn insert_at_current(&mut self, content: &str) {
+        self.insert_stream_content(content);
+    }
+
+    /// Retorna a quantidade de caracteres restantes a serem consumidos no buffer.
+    pub fn remaining_chars(&self) -> usize {
+        let mut count = self.pushed_back.len();
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let start = if i == 0 { self.current_chunk_offset } else { 0 };
+            if start < chunk.len() {
+                count += chunk[start..].chars().count();
+            }
+        }
+        count
+    }
+
+    /// Retorna uma representação em `String` de todos os caracteres ainda não consumidos no buffer.
+    pub fn unconsumed_str(&self) -> String {
+        let mut s = String::new();
+        for &c in self.pushed_back.iter().rev() {
+            s.push(c);
+        }
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let start = if i == 0 { self.current_chunk_offset } else { 0 };
+            if start < chunk.len() {
+                s.push_str(&chunk[start..]);
+            }
+        }
+        s
+    }
+
+    /// Normaliza `current_chunk_offset` e `pushed_back` para que o cabeçalho fique alinhado no chunk 0.
+    fn normalize_front(&mut self) {
+        self.clean_empty_chunks();
+        if self.current_chunk_offset > 0 {
+            if let Some(front) = self.chunks.pop_front() {
+                if self.current_chunk_offset < front.len() {
+                    let remainder = &front[self.current_chunk_offset..];
+                    self.chunks.push_front(SmolStr::new(remainder));
+                }
+            }
+            self.current_chunk_offset = 0;
+        }
+        if !self.pushed_back.is_empty() {
+            let mut s = String::with_capacity(self.pushed_back.len());
+            while let Some(c) = self.pushed_back.pop() {
+                s.push(c);
+            }
+            self.chunks.push_front(SmolStr::new(s));
+            for ip in &mut self.insertion_points {
+                *ip += 1;
+            }
+        }
+    }
+
+    /// Remove chunks frontais que já foram completamente consumidos, ajustando pontos de inserção.
     fn clean_empty_chunks(&mut self) {
         while let Some(chunk) = self.chunks.front() {
             if self.current_chunk_offset >= chunk.len() {
                 self.chunks.pop_front();
                 self.current_chunk_offset = 0;
+                for ip in &mut self.insertion_points {
+                    *ip = ip.saturating_sub(1);
+                }
             } else {
                 break;
             }
