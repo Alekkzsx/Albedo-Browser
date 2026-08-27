@@ -279,6 +279,16 @@ impl ElementBindings {
             .map(|(desc_id, _)| desc_id)
             .collect()
     }
+
+    /// WebIDL: `boolean matches(DOMString selectors);`
+    pub fn matches(doc: &Document, id: NodeId, selectors: &str) -> bool {
+        doc.element_matches(id, selectors)
+    }
+
+    /// WebIDL: `Element? closest(DOMString selectors);`
+    pub fn closest(doc: &Document, id: NodeId, selectors: &str) -> Option<NodeId> {
+        doc.element_closest(id, selectors)
+    }
 }
 
 /// Implementação WebIDL para a interface `Document` (WHATWG DOM §5).
