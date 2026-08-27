@@ -184,10 +184,23 @@ pub enum PseudoClass {
     Enabled,
     Required,
     Optional,
+    /// Pseudo-classes interativas de ponteiro/teclado.
+    ///
+    /// **Comportamento em modo headless (sem rendering loop):**
+    /// `:hover`, `:active`, `:focus` e `:focus-visible` avaliam sempre como `false`
+    /// neste engine DOM estático, pois não existe rastreamento de estado de interação
+    /// de ponteiro ou teclado. Isto é normativo e consistente com o comportamento de
+    /// engines como Servo em execução headless e WPT harnesses sem simulação de eventos.
+    ///
+    /// Para implementar suporte real, conecte os eventos de ponteiro/foco do motor de
+    /// janela ao `Document` e atualize `NodeFlags::HOVER`, `ACTIVE`, `FOCUS` durante
+    /// o processamento de eventos.
     Hover,
     Active,
     Focus,
     FocusVisible,
+    /// `:target` — corresponde ao elemento cujo ID é o fragmento da URL atual.
+    /// Avalia como `false` em contexto headless sem URL de navegação ativa.
     Target,
     NthChild(i32, i32),
     NthLastChild(i32, i32),

@@ -92,42 +92,70 @@ impl Range {
 
         if pt_this.node == pt_other.node {
             if pt_this.offset < pt_other.offset {
-                Ok(-1)
+                return Ok(-1);
             } else if pt_this.offset == pt_other.offset {
-                Ok(0)
+                return Ok(0);
             } else {
-                Ok(1)
-            }
-        } else {
-            // Compara ordem de pré-ordem na árvore
-            let mut this_pos = None;
-            let mut other_pos = None;
-            for (idx, (n_id, _)) in doc.descendants(doc.root()).enumerate() {
-                if n_id == pt_this.node {
-                    this_pos = Some(idx);
-                }
-                if n_id == pt_other.node {
-                    other_pos = Some(idx);
-                }
-                if this_pos.is_some() && other_pos.is_some() {
-                    break;
-                }
-            }
-
-            match (this_pos, other_pos) {
-                (Some(t), Some(o)) => {
-                    if t < o {
-                        Ok(-1)
-                    } else {
-                        Ok(1)
-                    }
-                }
-                _ => Err(DomError::HierarchyRequestError("Nós pertencem a raízes incompatíveis".into())),
+                return Ok(1);
             }
         }
+
+        // O(depth) comparison using ancestor chains instead of O(n) descendants traversal.
+        // Build root→node paths for both boundary points and compare positionally.
+        let path_a = ancestor_chain_to_root(doc, pt_this.node);
+        let path_b = ancestor_chain_to_root(doc, pt_other.node);
+
+        // Find the lowest common ancestor (LCA) by comparing paths from root down.
+        // path_a[0] == root, path_a[last] == pt_this.node
+        let common_depth = path_a
+            .iter()
+            .zip(path_b.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+
+        if common_depth == 0 {
+            return Err(DomError::HierarchyRequestError(
+                "Nós pertencem a raízes incompatíveis".into(),
+            ));
+        }
+
+        // If one node is an ancestor of the other, the ancestor comes first.
+        if common_depth == path_a.len() {
+            // pt_this.node is an ancestor of pt_other.node → pt_this comes before pt_other
+            return Ok(-1);
+        }
+        if common_depth == path_b.len() {
+            // pt_other.node is an ancestor of pt_this.node → pt_this comes after pt_other
+            return Ok(1);
+        }
+
+        // Compare the two diverging children at the LCA level by sibling order.
+        let lca_id = path_a[common_depth - 1];
+        let child_a = path_a[common_depth];
+        let child_b = path_b[common_depth];
+
+        // Walk children of LCA in order to determine which diverging child comes first.
+        for (sibling_id, _) in doc.children(lca_id) {
+            if sibling_id == child_a {
+                return Ok(-1); // pt_this comes before pt_other
+            }
+            if sibling_id == child_b {
+                return Ok(1); // pt_other comes before pt_this
+            }
+        }
+
+        Err(DomError::HierarchyRequestError(
+            "Falha ao comparar pontos de contorno".into(),
+        ))
     }
 
-    /// Clona o conteúdo delimitado por este Range em um novo `DocumentFragment`.
+    /// Clona o conteúdo delimitado por este Range em um novo `DocumentFragment` (WHATWG DOM §5.4).
+    ///
+    /// ## Correção de Conformidade
+    /// O algoritmo normativo recorta corretamente os nós parcialmente incluídos nas bordas do Range:
+    /// - **Nó de início parcial:** copia apenas o texto de `start.offset` até o final do nó.
+    /// - **Nós completamente contidos:** clonados na íntegra (`deep = true`).
+    /// - **Nó de fim parcial:** copia apenas o texto do início do nó até `end.offset`.
     pub fn clone_contents(&self, doc: &mut Document) -> Result<NodeId, DomError> {
         let frag_id = doc.create_document_fragment();
 
@@ -135,13 +163,16 @@ impl Range {
             return Ok(frag_id);
         }
 
+        // Caso 1: Start e End estão no mesmo nó.
         if self.start.node == self.end.node {
             let node_id = self.start.node;
-            let text_slice_opt = if let Some(node) = doc.get_node(node_id) {
+            // Para nós de texto, extraímos apenas o substring delimitado.
+            let text_slice = if let Some(node) = doc.get_node(node_id) {
                 if let crate::node::NodeKind::Text(ref t) = node.kind {
-                    let s_off = self.start.offset.min(t.data.len());
-                    let e_off = self.end.offset.min(t.data.len()).max(s_off);
-                    Some(t.data[s_off..e_off].to_string())
+                    let data = t.data.as_str();
+                    let s_off = self.start.offset.min(data.len());
+                    let e_off = self.end.offset.min(data.len()).max(s_off);
+                    Some(data[s_off..e_off].to_string())
                 } else {
                     None
                 }
@@ -149,20 +180,90 @@ impl Range {
                 None
             };
 
-            if let Some(sliced_text) = text_slice_opt {
-                let text_clone = doc.create_text_node(sliced_text);
+            if let Some(sliced) = text_slice {
+                let text_clone = doc.create_text_node(sliced);
                 doc.append_child(frag_id, text_clone)?;
-                return Ok(frag_id);
+            } else {
+                // Para outros nós (Element, Comment, etc.), clonamos o nó inteiro.
+                let cloned = doc.clone_node(node_id, true)?;
+                doc.append_child(frag_id, cloned)?;
+            }
+            return Ok(frag_id);
+        }
+
+        // Caso 2: Start e End estão em nós diferentes.
+        // Identifica o ancestral comum e todos os filhos diretos do LCA que estão no Range.
+        let common = self.common_ancestor_container(doc);
+        let child_ids: Vec<NodeId> = doc.children(common).map(|(c_id, _)| c_id).collect();
+
+        // Encontra os índices do filho do LCA que contém start e do filho que contém end.
+        let start_top = topmost_child_in(doc, common, self.start.node);
+        let end_top = topmost_child_in(doc, common, self.end.node);
+
+        let mut in_range = false;
+
+        for child_id in &child_ids {
+            let is_start_child = Some(*child_id) == start_top;
+            let is_end_child = Some(*child_id) == end_top;
+
+            if is_start_child {
+                in_range = true;
+                // Nó de início parcial: para texto, inclui apenas a parte a partir de start.offset.
+                if *child_id == self.start.node {
+                    // Extrai os dados textuais antes de qualquer borrow mutável.
+                    let text_slice: Option<String> = doc.get_node(*child_id).and_then(|node| {
+                        if let crate::node::NodeKind::Text(ref t) = node.kind {
+                            let data = t.data.as_str();
+                            let s_off = self.start.offset.min(data.len());
+                            Some(data[s_off..].to_string())
+                        } else {
+                            None
+                        }
+                    });
+                    if let Some(partial) = text_slice {
+                        let text_clone = doc.create_text_node(partial);
+                        doc.append_child(frag_id, text_clone)?;
+                    } else {
+                        let cloned = doc.clone_node(*child_id, true)?;
+                        doc.append_child(frag_id, cloned)?;
+                    }
+                } else if !is_end_child {
+                    let cloned = doc.clone_node(*child_id, true)?;
+                    doc.append_child(frag_id, cloned)?;
+                }
+            } else if in_range && !is_end_child {
+                // Nó completamente contido no Range: clonagem completa.
+                let cloned = doc.clone_node(*child_id, true)?;
+                doc.append_child(frag_id, cloned)?;
             }
 
-            let cloned = doc.clone_node(self.start.node, true)?;
-            doc.append_child(frag_id, cloned)?;
-        } else {
-            let common = self.common_ancestor_container(doc);
-            let child_ids: Vec<NodeId> = doc.children(common).map(|(c_id, _)| c_id).collect();
-            for child_id in child_ids {
-                let cloned = doc.clone_node(child_id, true)?;
-                doc.append_child(frag_id, cloned)?;
+            if is_end_child {
+                // Nó de fim parcial: para texto, inclui apenas a parte até end.offset.
+                if in_range || is_start_child {
+                    if *child_id == self.end.node {
+                        // Extrai os dados textuais antes de qualquer borrow mutável.
+                        let text_slice: Option<String> = doc.get_node(*child_id).and_then(|node| {
+                            if let crate::node::NodeKind::Text(ref t) = node.kind {
+                                let data = t.data.as_str();
+                                let e_off = self.end.offset.min(data.len());
+                                Some(data[..e_off].to_string())
+                            } else {
+                                None
+                            }
+                        });
+                        if let Some(partial) = text_slice {
+                            let text_clone = doc.create_text_node(partial);
+                            doc.append_child(frag_id, text_clone)?;
+                        } else {
+                            let cloned = doc.clone_node(*child_id, true)?;
+                            doc.append_child(frag_id, cloned)?;
+                        }
+                    } else {
+                        let cloned = doc.clone_node(*child_id, true)?;
+                        doc.append_child(frag_id, cloned)?;
+                    }
+                }
+                break;
             }
         }
 
@@ -319,5 +420,40 @@ impl Range {
         if self.end.node == parent_id && self.end.offset >= insertion_index {
             self.end.offset += 1;
         }
+    }
+}
+
+/// Constrói o caminho da raiz até `node_id` usando links de pai (O(depth)).
+/// O resultado é um `Vec<NodeId>` onde `result[0]` é a raiz e `result[last]` é `node_id`.
+fn ancestor_chain_to_root(doc: &Document, node_id: NodeId) -> Vec<NodeId> {
+    let mut chain = Vec::new();
+    let mut curr = node_id;
+    loop {
+        chain.push(curr);
+        match doc.get_node(curr).and_then(|n| n.parent) {
+            Some(parent) => curr = parent,
+            None => break,
+        }
+    }
+    chain.reverse(); // agora chain[0] == raiz, chain[last] == node_id
+    chain
+}
+
+/// Encontra o filho direto de `ancestor_id` que é ancestral ou igual a `descendant_id`.
+/// Retorna `None` se `descendant_id` não for descendente de `ancestor_id`.
+///
+/// Usado pelo algoritmo `clone_contents` para identificar qual filho do ancestral comum
+/// contém cada ponto de contorno do Range.
+fn topmost_child_in(doc: &Document, ancestor_id: NodeId, descendant_id: NodeId) -> Option<NodeId> {
+    if ancestor_id == descendant_id {
+        return None;
+    }
+    let mut curr = descendant_id;
+    loop {
+        let parent = doc.get_node(curr).and_then(|n| n.parent)?;
+        if parent == ancestor_id {
+            return Some(curr);
+        }
+        curr = parent;
     }
 }
