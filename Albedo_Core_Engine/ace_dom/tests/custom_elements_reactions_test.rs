@@ -10,12 +10,12 @@
 
 use ace_core::id::NodeId;
 use ace_dom::custom_elements::{
-    CustomElementCallbacks, CustomElementDefinition, CustomElementReaction,
-    CustomElementReactionsStack, CustomElementRegistry, CustomElementState,
+    CustomElementCallbacks, CustomElementReaction, CustomElementReactionsStack,
+    CustomElementRegistry, CustomElementState,
 };
 use ace_dom::node::element::Namespace;
 use ace_dom::tree::mutation::{
-    append_child_with_reactions, insert_after_with_reactions, insert_before_with_reactions,
+    append_child_with_reactions, insert_after_with_reactions,
     prepend_child_with_reactions, remove_child_with_reactions, replace_child_with_reactions,
 };
 use ace_dom::tree::Document;
@@ -108,16 +108,17 @@ fn test_connected_callback_on_tree_insertion_and_ordering() {
 
     // 1. Monta a subárvore fora do documento: parent -> child1, child2
     // Não deve disparar reações de conexão pois a subárvore ainda está desconectada!
-    append_child_with_reactions(&mut doc.arena, parent_elem, child1, &mut reactions).unwrap();
-    append_child_with_reactions(&mut doc.arena, parent_elem, child2, &mut reactions).unwrap();
-    reactions.process_reactions(&doc.arena, &registry);
+    append_child_with_reactions(doc.arena_mut(), parent_elem, child1, &mut reactions).unwrap();
+    append_child_with_reactions(doc.arena_mut(), parent_elem, child2, &mut reactions).unwrap();
+    reactions.process_reactions(doc.arena(), &registry);
 
     assert!(connection_log.lock().unwrap().is_empty(), "Não deve disparar em árvore desconectada");
 
     // 2. Anexa a subárvore completa à raiz do Document
     // Deve disparar connectedCallback em ordem pré-ordem (parent -> child1 -> child2)
-    append_child_with_reactions(&mut doc.arena, doc.root(), parent_elem, &mut reactions).unwrap();
-    reactions.process_reactions(&doc.arena, &registry);
+    let doc_root = doc.root();
+    append_child_with_reactions(doc.arena_mut(), doc_root, parent_elem, &mut reactions).unwrap();
+    reactions.process_reactions(doc.arena(), &registry);
 
     let log_result = connection_log.lock().unwrap().clone();
     assert_eq!(
@@ -162,15 +163,16 @@ fn test_disconnected_callback_on_node_removal_and_replace() {
     }
 
     // Monta: Document -> root_node -> branch_node -> leaf_node
-    append_child_with_reactions(&mut doc.arena, branch_node, leaf_node, &mut reactions).unwrap();
-    append_child_with_reactions(&mut doc.arena, root_node, branch_node, &mut reactions).unwrap();
-    append_child_with_reactions(&mut doc.arena, doc.root(), root_node, &mut reactions).unwrap();
+    append_child_with_reactions(doc.arena_mut(), branch_node, leaf_node, &mut reactions).unwrap();
+    append_child_with_reactions(doc.arena_mut(), root_node, branch_node, &mut reactions).unwrap();
+    let doc_root = doc.root();
+    append_child_with_reactions(doc.arena_mut(), doc_root, root_node, &mut reactions).unwrap();
     reactions.drain_all(); // Limpa reações de conexão
 
     // Remove root_node da raiz do documento:
     // Deve disparar desconexão para root_node, branch_node e leaf_node em ordem da árvore
-    remove_child_with_reactions(&mut doc.arena, doc.root(), root_node, &mut reactions).unwrap();
-    reactions.process_reactions(&doc.arena, &registry);
+    remove_child_with_reactions(doc.arena_mut(), doc_root, root_node, &mut reactions).unwrap();
+    reactions.process_reactions(doc.arena(), &registry);
 
     let log_result = disconnection_log.lock().unwrap().clone();
     assert_eq!(log_result.len(), 3);
@@ -183,11 +185,11 @@ fn test_disconnected_callback_on_node_removal_and_replace() {
     if let Some(el) = doc.get_node_mut(new_node).and_then(|n| n.as_element_mut()) {
         el.set_custom_element_state(CustomElementState::Custom);
     }
-    append_child_with_reactions(&mut doc.arena, doc.root(), root_node, &mut reactions).unwrap();
+    append_child_with_reactions(doc.arena_mut(), doc_root, root_node, &mut reactions).unwrap();
     reactions.drain_all();
 
     disconnection_log.lock().unwrap().clear();
-    replace_child_with_reactions(&mut doc.arena, doc.root(), new_node, root_node, &mut reactions).unwrap();
+    replace_child_with_reactions(doc.arena_mut(), doc_root, new_node, root_node, &mut reactions).unwrap();
 
     let queued_reactions = reactions.drain_all();
     assert!(queued_reactions.contains(&CustomElementReaction::Disconnected(root_node)));
@@ -227,37 +229,37 @@ fn test_attribute_changed_callback_lifecycle_and_filters() {
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.set_attribute_with_reaction(panel_id, "theme", "dark", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     // 2. Modificação de atributo observado ("theme" de "dark" para "light")
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.set_attribute_with_reaction(panel_id, "theme", "light", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     // 3. Atribuição de valor idêntico ("theme" = "light") -> NÃO deve gerar reação
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.set_attribute_with_reaction(panel_id, "theme", "light", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     // 4. Atribuição de atributo não-observado ("unobserved" = "foo") -> NÃO deve gerar reação
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.set_attribute_with_reaction(panel_id, "unobserved", "foo", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     // 5. Remoção de atributo observado ("theme")
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.remove_attribute_with_reaction(panel_id, "theme", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     // 6. Remoção de atributo não-observado -> NÃO deve gerar reação
     if let Some(el) = doc.get_node_mut(panel_id).and_then(|n| n.as_element_mut()) {
         el.remove_attribute_with_reaction(panel_id, "unobserved", &mut reactions, &registry);
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     let log_result = attr_log.lock().unwrap().clone();
     assert_eq!(log_result.len(), 3);
@@ -295,9 +297,9 @@ fn test_insert_after_and_prepend_with_reactions() {
     doc.append_child(parent_id, ref_node).unwrap();
 
     // Prepend
-    prepend_child_with_reactions(&mut doc.arena, parent_id, custom_first, &mut reactions).unwrap();
+    prepend_child_with_reactions(doc.arena_mut(), parent_id, custom_first, &mut reactions).unwrap();
     // Insert after
-    insert_after_with_reactions(&mut doc.arena, parent_id, custom_after, ref_node, &mut reactions).unwrap();
+    insert_after_with_reactions(doc.arena_mut(), parent_id, custom_after, ref_node, &mut reactions).unwrap();
 
     let drained = reactions.drain_all();
     assert!(drained.contains(&CustomElementReaction::Connected(custom_first)));
@@ -351,21 +353,21 @@ fn test_custom_elements_stress_500_nodes() {
                 &registry,
             );
         }
-        append_child_with_reactions(&mut doc.arena, container_id, node_id, &mut reactions).unwrap();
+        append_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions).unwrap();
         created_nodes.push(node_id);
     }
 
     // Processa todas as reações da criação e inserção em massa
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     assert_eq!(connected_total.load(Ordering::SeqCst), NODE_COUNT);
     assert_eq!(attr_total.load(Ordering::SeqCst), NODE_COUNT);
 
     // Remove todos os nós
     for node_id in created_nodes {
-        remove_child_with_reactions(&mut doc.arena, container_id, node_id, &mut reactions).unwrap();
+        remove_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions).unwrap();
     }
-    reactions.process_reactions(&doc.arena, &registry);
+    reactions.process_reactions(doc.arena(), &registry);
 
     assert_eq!(disconnected_total.load(Ordering::SeqCst), NODE_COUNT);
 }
