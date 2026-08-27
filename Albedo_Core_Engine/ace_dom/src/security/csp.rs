@@ -220,16 +220,8 @@ impl CSPPolicy {
                         return true;
                     }
                 }
-                CSPSource::Host(host) => {
-                    if url.contains(host) {
-                        return true;
-                    }
-                }
-                CSPSource::Scheme(scheme) => {
-                    if url.starts_with(scheme) {
-                        return true;
-                    }
-                }
+                CSPSource::Host(host) if url.contains(host) => return true,
+                CSPSource::Scheme(scheme) if url.starts_with(scheme) => return true,
                 _ => {}
             }
         }
