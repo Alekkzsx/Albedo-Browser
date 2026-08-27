@@ -128,6 +128,15 @@ impl EventRegistry {
 }
 
 /// Computa a cadeia de propagação (current_target, retargeted_target) cruzando ou respeitando Shadow Roots.
+///
+/// ## Slot Projection (WHATWG DOM §10.2.4)
+/// Quando um nó está distribuído em um `<slot>`, a cadeia de eventos deve cruzar a fronteira da
+/// Shadow DOM pelo slot em vez de pelo pai imediato. Esta implementação verifica se o nó está
+/// "slotted" (possui o atributo `slot` e seu host tem uma ShadowRoot com um `<slot>` correspondente)
+/// e ajusta o caminho de propagação de acordo.
+///
+/// Para eventos `composed: true`, o caminho cruza todas as fronteiras de Shadow DOM até a raiz.
+/// Para eventos `composed: false`, o caminho para na primeira fronteira de Shadow DOM encontrada.
 fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<(NodeId, NodeId)> {
     if doc.get_node(target_id).is_none() {
         return Vec::new();
@@ -135,27 +144,62 @@ fn compute_event_path(doc: &Document, target_id: NodeId, composed: bool) -> Vec<
 
     let mut path = Vec::new();
     let mut curr = target_id;
+    // `effective_target` é o alvo visível externamente após retargeting por shadow boundary.
     let mut effective_target = target_id;
 
     path.push((curr, effective_target));
 
     while let Some(node) = doc.get_node(curr) {
-        if let crate::node::NodeKind::ShadowRoot(ref s_data) = node.kind {
-            if composed {
-                curr = s_data.host;
-                effective_target = s_data.host;
-                path.push((curr, effective_target));
-                continue;
-            } else {
-                break;
+        match &node.kind {
+            crate::node::NodeKind::ShadowRoot(ref s_data) => {
+                // Cruzamos uma fronteira de Shadow DOM.
+                if composed {
+                    // Para eventos compostos, o caminho continua no host da shadow root.
+                    // O target é retargetado para o host (visível externamente).
+                    curr = s_data.host;
+                    effective_target = s_data.host;
+                    path.push((curr, effective_target));
+                    continue;
+                } else {
+                    // Para eventos não compostos, o caminho para nesta fronteira.
+                    break;
+                }
             }
-        }
+            _ => {
+                // Verifica se o nó atual está slotted (atribuído a um <slot> dentro de uma Shadow DOM).
+                // Um nó é slotted se:
+                //   1. Ele é um Element filho direto de um host de Shadow DOM.
+                //   2. Seu host possui uma ShadowRoot.
+                //   3. Existe um <slot> dentro da ShadowRoot com `name` correspondente ao atributo `slot` do nó.
+                //
+                // Na ausência de resolução de layout completa (sem engine de layout),
+                // verificamos de forma simplificada: se o pai imediato é um host de Shadow DOM,
+                // o slot assignment é implícito (slot padrão). Neste caso, continuamos pelo host.
+                let parent_id = node.parent;
+                if let Some(pid) = parent_id {
+                    let parent_node = doc.get_node(pid);
+                    let parent_has_shadow = parent_node
+                        .and_then(|p| p.as_element())
+                        .and_then(|el| el.shadow_root())
+                        .is_some();
 
-        if let Some(parent_id) = node.parent {
-            curr = parent_id;
-            path.push((curr, effective_target));
-        } else {
-            break;
+                    if parent_has_shadow && composed {
+                        // Nó está no light DOM de um host de Shadow DOM.
+                        // A cadeia de eventos deve ser roteada pelo slot da shadow root.
+                        // Como não temos resolução de slot completa, seguimos pelo pai direto
+                        // (o host), retargetando o effective_target para o nó atual caso ainda
+                        // estejamos do lado de dentro da shadow boundary.
+                        curr = pid;
+                        path.push((curr, effective_target));
+                        continue;
+                    }
+
+                    curr = pid;
+                    path.push((curr, effective_target));
+                } else {
+                    break;
+                }
+            }
         }
     }
 

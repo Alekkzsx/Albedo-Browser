@@ -561,6 +561,54 @@ fn collect_from_rule<'a>(
                 }
             }
         }
+        // @supports — CSS Conditional Rules Level 3.
+        // Atualmente avaliado como sempre verdadeiro (stub de feature detection).
+        // Em um engine com motor de valores computados completo, avaliar a declaração.
+        CSSRule::Supports { ref rules, .. } => {
+            for inner_rule in rules {
+                collect_from_rule(
+                    doc,
+                    element_id,
+                    inner_rule,
+                    media_ctx,
+                    normal_decls,
+                    important_decls,
+                    order_counter,
+                );
+            }
+        }
+        // @layer — CSS Cascade Layers.
+        // Atualmente as regras de uma camada são incluídas na cascata sem distinção de camada.
+        // Uma implementação completa exigiria rastrear a ordem de declaração das camadas.
+        CSSRule::Layer { ref rules, .. } => {
+            for inner_rule in rules {
+                collect_from_rule(
+                    doc,
+                    element_id,
+                    inner_rule,
+                    media_ctx,
+                    normal_decls,
+                    important_decls,
+                    order_counter,
+                );
+            }
+        }
+        // @container — CSS Container Queries.
+        // Atualmente avaliado como sempre verdadeiro (sem contexto de layout de container).
+        // Uma implementação completa requer propagação das dimensões do container.
+        CSSRule::Container { ref rules, .. } => {
+            for inner_rule in rules {
+                collect_from_rule(
+                    doc,
+                    element_id,
+                    inner_rule,
+                    media_ctx,
+                    normal_decls,
+                    important_decls,
+                    order_counter,
+                );
+            }
+        }
         CSSRule::Keyframes { .. } | CSSRule::Import { .. } => {}
     }
 }
