@@ -53,11 +53,9 @@ impl NodeBindings {
             NodeKind::Comment(ref c) => Some(c.data.clone()),
             NodeKind::Element(_) | NodeKind::DocumentFragment | NodeKind::ShadowRoot(_) => {
                 let mut buf = String::new();
-                for desc_id in doc.descendants(id) {
-                    if let Some(desc_node) = doc.get_node(desc_id) {
-                        if let NodeKind::Text(ref t) = desc_node.kind {
-                            buf.push_str(t.data.as_str());
-                        }
+                for (_desc_id, desc_node) in doc.descendants(id) {
+                    if let NodeKind::Text(ref t) = desc_node.kind {
+                        buf.push_str(t.data.as_str());
                     }
                 }
                 Some(SmolStr::new(buf))
@@ -82,7 +80,7 @@ impl NodeBindings {
             }
             NodeKind::Element(_) | NodeKind::DocumentFragment | NodeKind::ShadowRoot(_) => {
                 // Remove todos os filhos existentes
-                let children: Vec<NodeId> = doc.children(id).collect();
+                let children: Vec<NodeId> = doc.children(id).map(|(c_id, _)| c_id).collect();
                 for child in children {
                     let _ = doc.remove_child(id, child);
                 }
