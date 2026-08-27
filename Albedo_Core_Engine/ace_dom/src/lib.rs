@@ -53,8 +53,9 @@ pub use cssom::{
     StyleResolver,
 };
 pub use custom_elements::{
-    is_valid_custom_element_name, CustomElementDefinition, CustomElementRegistry, LifecycleQueue,
-    LifecycleReaction,
+    is_pcen_char, is_valid_custom_element_name, CustomElementCallbacks, CustomElementDefinition,
+    CustomElementReaction, CustomElementReactionsStack, CustomElementRegistry, CustomElementState,
+    ElementDefinitionOptions, LifecycleQueue, LifecycleReaction,
 };
 pub use dom_parser::{DOMParser, SupportedType};
 pub use entities::{decode_character_reference, resolve_named_entity, resolve_numeric_entity};
