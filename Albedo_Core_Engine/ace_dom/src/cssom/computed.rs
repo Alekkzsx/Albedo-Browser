@@ -3,7 +3,6 @@
 //! Algoritmo de resolução de estilos combinando regras de folhas de estilo e estilos em linha
 //! com suporte a especificidade CSS e ordenação normatizada.
 
-use crate::cssom::declaration::CSSStyleDeclaration;
 use crate::cssom::stylesheet::{CSSRule, CSSStyleSheet};
 use crate::tree::Document;
 use ace_core::id::NodeId;
