@@ -18,7 +18,7 @@ use smol_str::SmolStr;
 /// A raiz de uma árvore DOM completa gerida em memória contígua na `Arena<NodeData>`.
 #[derive(Debug, Clone)]
 pub struct Document {
-    pub(crate) arena: Arena<NodeData>,
+    pub arena: Arena<NodeData>,
     root: NodeId,
     pub doctype: Option<NodeId>,
     pub document_element: Option<NodeId>,
@@ -156,6 +156,18 @@ impl Document {
     pub fn get_node_mut(&mut self, id: NodeId) -> Option<&mut NodeData> {
         let arena_id = ArenaId::<NodeData>::from_node_id(id)?;
         self.arena.get_mut(arena_id)
+    }
+
+    /// Retorna uma referência imutável à arena de nós do documento.
+    #[inline]
+    pub fn arena(&self) -> &Arena<NodeData> {
+        &self.arena
+    }
+
+    /// Retorna uma referência mutável à arena de nós do documento.
+    #[inline]
+    pub fn arena_mut(&mut self) -> &mut Arena<NodeData> {
+        &mut self.arena
     }
 
     /// Obtém o `NodeId` do primeiro filho de um nó, se existir.
@@ -320,16 +332,14 @@ impl Document {
 
     /// Divide um nó de texto em dois nós consecutivos no deslocamento `offset` especificado (WHATWG Text §4.6).
     pub fn split_text(&mut self, text_id: NodeId, offset: usize) -> Result<NodeId, DomError> {
-        let parent_id = self.get_node(text_id).and_then(|n| n.parent).ok_or(DomError::NotFoundError)?;
-
-        let (left_text, right_text) = {
+        let (parent_id, left_text, right_text) = {
             let node = self.get_node(text_id).ok_or(DomError::InvalidNodeId(text_id))?;
             if let NodeKind::Text(ref t) = node.kind {
                 let s = t.data.as_str();
-                if offset > s.len() {
+                if offset > s.len() || !s.is_char_boundary(offset) {
                     return Err(DomError::IndexSizeError);
                 }
-                (s[..offset].to_string(), s[offset..].to_string())
+                (node.parent, s[..offset].to_string(), s[offset..].to_string())
             } else {
                 return Err(DomError::HierarchyRequestError("Nó não é do tipo Text".into()));
             }
@@ -342,12 +352,18 @@ impl Document {
         }
 
         let new_text_id = self.create_text_node(&right_text);
-        self.insert_after(parent_id, new_text_id, text_id)?;
+        if let Some(parent_id) = parent_id {
+            self.insert_after(parent_id, new_text_id, text_id)?;
+        }
         Ok(new_text_id)
     }
 
     /// Normaliza a subárvore unificando nós de texto adjacentes e removendo nós de texto vazios (Node.normalize).
     pub fn normalize(&mut self, root_id: NodeId) -> Result<(), DomError> {
+        if self.get_node(root_id).is_none() {
+            return Err(DomError::InvalidNodeId(root_id));
+        }
+
         let children_ids: Vec<NodeId> = self.children(root_id).map(|(c_id, _)| c_id).collect();
         let mut prev_text_id: Option<NodeId> = None;
 
