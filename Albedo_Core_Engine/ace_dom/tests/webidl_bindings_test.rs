@@ -47,7 +47,7 @@ fn test_webidl_node_and_element_bindings() {
 
 #[test]
 fn test_dom_data_store_wrapper_uniqueness_and_gc_tracing() {
-    let mut doc = parse_html(r#"<div id="test"></div>"#);
+    let doc = parse_html(r#"<div id="test"></div>"#);
     let test_id = doc.get_element_by_id("test").unwrap();
 
     let mut data_store = DOMDataStore::new();
