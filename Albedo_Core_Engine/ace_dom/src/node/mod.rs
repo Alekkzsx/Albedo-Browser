@@ -40,13 +40,13 @@ pub struct ShadowRootData {
 /// As diferentes variantes de nós suportadas na árvore DOM.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeKind {
-    Document(DocumentData),
-    DocumentType(DoctypeData),
+    Document(Box<DocumentData>),
+    DocumentType(Box<DoctypeData>),
     Element(Box<ElementData>),
     Text(TextData),
     Comment(CommentData),
     DocumentFragment,
-    ShadowRoot(ShadowRootData),
+    ShadowRoot(Box<ShadowRootData>),
 }
 
 /// A estrutura primária de um nó na árvore DOM do Albedo.
