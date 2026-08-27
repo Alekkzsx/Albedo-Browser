@@ -12,6 +12,7 @@ use crate::tree::Document;
 use crate::tree_builder::HTMLTreeBuilder;
 use ace_core::text::SegmentedString;
 use crossbeam::channel::{bounded, Receiver, Sender};
+use smol_str::SmolStr;
 use std::thread::JoinHandle;
 
 /// Receptor de tokens interno que agrupa tokens em `ParsedChunk`s e detecta sub-recursos.
