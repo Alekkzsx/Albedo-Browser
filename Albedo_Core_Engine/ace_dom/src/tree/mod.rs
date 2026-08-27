@@ -74,7 +74,7 @@ impl Document {
 
     /// Reconstrói o índice de busca rápida de IDs e Classes do documento.
     pub fn rebuild_index(&mut self) {
-        self.element_index.rebuild(self);
+        self.element_index.rebuild_from_arena(&self.arena, self.root);
     }
 
     /// Retorna o `NodeId` do nó raiz do documento.
