@@ -234,7 +234,7 @@ impl ElementBindings {
         let fragment = parse_fragment(doc, &tag_name, html);
 
         // Remove filhos existentes
-        let children: Vec<NodeId> = doc.children(id).collect();
+        let children: Vec<NodeId> = doc.children(id).map(|(c_id, _)| c_id).collect();
         for child in children {
             let _ = doc.remove_child(id, child);
         }
@@ -255,10 +255,9 @@ impl ElementBindings {
     /// WebIDL: `Element? querySelector(DOMString selectors);`
     pub fn query_selector(doc: &Document, id: NodeId, selectors: &str) -> Option<NodeId> {
         let selector = ComplexSelector::parse(selectors)?;
-        doc.descendants(id).find(|&desc_id| {
-            doc.get_node(desc_id)
-                .is_some_and(|n| n.is_element() && selector.matches(doc, desc_id))
-        })
+        doc.descendants(id)
+            .find(|&(desc_id, desc_node)| desc_node.is_element() && selector.matches(doc, desc_id))
+            .map(|(desc_id, _)| desc_id)
     }
 
     /// WebIDL: `NodeList querySelectorAll(DOMString selectors);`
@@ -268,10 +267,8 @@ impl ElementBindings {
             None => return Vec::new(),
         };
         doc.descendants(id)
-            .filter(|&desc_id| {
-                doc.get_node(desc_id)
-                    .is_some_and(|n| n.is_element() && selector.matches(doc, desc_id))
-            })
+            .filter(|&(desc_id, desc_node)| desc_node.is_element() && selector.matches(doc, desc_id))
+            .map(|(desc_id, _)| desc_id)
             .collect()
     }
 }
