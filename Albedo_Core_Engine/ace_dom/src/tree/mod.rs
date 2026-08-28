@@ -1,0 +1,444 @@
+//! # Estrutura Principal do Documento e Árvore DOM
+//!
+//! Gerenciamento centralizado da `Arena<NodeData>`, ciclo de vida e mutações.
+
+pub mod mutation;
+
+use crate::error::DomError;
+use crate::node::iter::{AncestorsIter, ChildrenIter, DescendantsIter};
+use crate::node::{
+    CommentData, DoctypeData, DocumentData, DocumentMode, ElementData, Namespace, NodeData,
+    NodeKind, TextData,
+};
+use ace_core::arena::{Arena, ArenaId};
+use ace_core::id::NodeId;
+use ace_core::intern::Atom;
+use smol_str::SmolStr;
+
+/// A raiz de uma árvore DOM completa gerida em memória contígua na `Arena<NodeData>`.
+#[derive(Debug, Clone)]
+pub struct Document {
+    pub arena: Arena<NodeData>,
+    root: NodeId,
+    pub doctype: Option<NodeId>,
+    pub document_element: Option<NodeId>,
+    pub head: Option<NodeId>,
+    pub body: Option<NodeId>,
+    pub mode: DocumentMode,
+    pub(crate) element_index: crate::query::ElementIndex,
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl Document {
+    /// Inicializa um novo `Document` com uma URL opcional.
+    pub fn new(url: Option<&str>) -> Self {
+        let mut arena = Arena::with_capacity(256);
+        let root_node = NodeData {
+            id: NodeId::new(),
+            parent: None,
+            first_child: None,
+            last_child: None,
+            prev_sibling: None,
+            next_sibling: None,
+            flags: ace_core::flags::NodeFlags::empty(),
+            kind: NodeKind::Document(Box::new(DocumentData {
+                mode: DocumentMode::NoQuirks,
+                title: None,
+                url: url.map(String::from),
+            })),
+        };
+
+        let arena_id = arena.alloc(root_node);
+        let root_id = arena_id.to_node_id();
+        // Sincroniza o ID dentro da struct
+        if let Some(node) = arena.get_mut(arena_id) {
+            node.id = root_id;
+        }
+
+        Self {
+            arena,
+            root: root_id,
+            doctype: None,
+            document_element: None,
+            head: None,
+            body: None,
+            mode: DocumentMode::NoQuirks,
+            element_index: crate::query::ElementIndex::new(),
+        }
+    }
+
+    /// Reconstrói o índice de busca rápida de IDs e Classes do documento.
+    pub fn rebuild_index(&mut self) {
+        self.element_index.rebuild_from_arena(&self.arena, self.root);
+    }
+
+    /// Retorna o `NodeId` do nó raiz do documento.
+    #[inline]
+    pub const fn root(&self) -> NodeId {
+        self.root
+    }
+
+    /// Cria um novo nó Elemento na arena do documento.
+    pub fn create_element(&mut self, tag_name: impl Into<Atom>, namespace: Namespace) -> NodeId {
+        let dummy_id = NodeId::new();
+        let el_data = ElementData::new(tag_name, namespace);
+        let node = NodeData::new(dummy_id, NodeKind::Element(Box::new(el_data)));
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Cria um novo nó de Texto na arena do documento.
+    pub fn create_text_node(&mut self, data: impl Into<SmolStr>) -> NodeId {
+        let dummy_id = NodeId::new();
+        let node = NodeData::new(dummy_id, NodeKind::Text(TextData::new(data)));
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Cria um novo nó de Comentário na arena do documento.
+    pub fn create_comment(&mut self, data: impl Into<SmolStr>) -> NodeId {
+        let dummy_id = NodeId::new();
+        let node = NodeData::new(dummy_id, NodeKind::Comment(CommentData::new(data)));
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Cria um nó Doctype na arena do documento.
+    pub fn create_doctype(
+        &mut self,
+        name: impl Into<SmolStr>,
+        public_id: Option<SmolStr>,
+        system_id: Option<SmolStr>,
+        force_quirks: bool,
+    ) -> NodeId {
+        let dummy_id = NodeId::new();
+        let doctype_data = DoctypeData {
+            name: name.into(),
+            public_id,
+            system_id,
+            force_quirks,
+        };
+        let node = NodeData::new(dummy_id, NodeKind::DocumentType(Box::new(doctype_data)));
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Obtém uma referência imutável a um nó da árvore em $O(1)$.
+    #[inline]
+    pub fn get_node(&self, id: NodeId) -> Option<&NodeData> {
+        let arena_id = ArenaId::<NodeData>::from_node_id(id)?;
+        self.arena.get(arena_id)
+    }
+
+    /// Obtém uma referência mutável a um nó da árvore em $O(1)$.
+    #[inline]
+    pub fn get_node_mut(&mut self, id: NodeId) -> Option<&mut NodeData> {
+        let arena_id = ArenaId::<NodeData>::from_node_id(id)?;
+        self.arena.get_mut(arena_id)
+    }
+
+    /// Retorna uma referência imutável à arena de nós do documento.
+    #[inline]
+    pub fn arena(&self) -> &Arena<NodeData> {
+        &self.arena
+    }
+
+    /// Retorna uma referência mutável à arena de nós do documento.
+    #[inline]
+    pub fn arena_mut(&mut self) -> &mut Arena<NodeData> {
+        &mut self.arena
+    }
+
+    /// Obtém o `NodeId` do primeiro filho de um nó, se existir.
+    #[inline]
+    pub fn first_child(&self, node_id: NodeId) -> Option<NodeId> {
+        self.get_node(node_id).and_then(|n| n.first_child)
+    }
+
+    /// Obtém o `NodeId` do último filho de um nó, se existir.
+    #[inline]
+    pub fn last_child(&self, node_id: NodeId) -> Option<NodeId> {
+        self.get_node(node_id).and_then(|n| n.last_child)
+    }
+
+    /// Anexa um filho ao final da lista de filhos de um pai.
+    #[inline]
+    pub fn append_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
+        mutation::append_child(&mut self.arena, parent_id, child_id)
+    }
+
+    /// Insere um novo filho imediatamente antes de um nó de referência.
+    #[inline]
+    pub fn insert_before(
+        &mut self,
+        parent_id: NodeId,
+        new_child_id: NodeId,
+        ref_child_id: Option<NodeId>,
+    ) -> Result<(), DomError> {
+        mutation::insert_before(&mut self.arena, parent_id, new_child_id, ref_child_id)
+    }
+
+    /// Cria um novo nó de Fragmento de Documento (`DocumentFragment`).
+    pub fn create_document_fragment(&mut self) -> NodeId {
+        let dummy_id = NodeId::new();
+        let node = NodeData::new(dummy_id, NodeKind::DocumentFragment);
+        let arena_id = self.arena.alloc(node);
+        let real_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = real_id;
+        }
+        real_id
+    }
+
+    /// Conecta uma Shadow DOM a um elemento hospedeiro (WHATWG DOM Standard §4.2.2).
+    pub fn attach_shadow(
+        &mut self,
+        host_id: NodeId,
+        mode: crate::node::ShadowMode,
+    ) -> Result<NodeId, DomError> {
+        let host_node = self.get_node(host_id).ok_or(DomError::InvalidNodeId(host_id))?;
+        let el_data = host_node
+            .as_element()
+            .ok_or_else(|| DomError::HierarchyRequestError("Apenas Elementos podem hospedar Shadow DOM".into()))?;
+
+        if el_data.shadow_root().is_some() {
+            return Err(DomError::HierarchyRequestError(
+                "O elemento já possui uma ShadowRoot anexada".into(),
+            ));
+        }
+
+        let dummy_id = NodeId::new();
+        let shadow_data = crate::node::ShadowRootData { mode, host: host_id };
+        let shadow_node = NodeData::new(dummy_id, NodeKind::ShadowRoot(Box::new(shadow_data)));
+        let arena_id = self.arena.alloc(shadow_node);
+        let shadow_root_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = shadow_root_id;
+        }
+
+        if let Some(host_mut) = self.get_node_mut(host_id) {
+            if let Some(el_mut) = host_mut.as_element_mut() {
+                el_mut.set_shadow_root(Some(shadow_root_id));
+            }
+        }
+
+        Ok(shadow_root_id)
+    }
+
+    /// Obtém o `NodeId` da ShadowRoot associada a um elemento, se existir e for acessível.
+    pub fn get_shadow_root(&self, host_id: NodeId) -> Option<NodeId> {
+        self.get_node(host_id)
+            .and_then(|n| n.as_element())
+            .and_then(|el| el.shadow_root())
+    }
+
+    /// Clona um nó existente no documento. Se `deep == true`, clona recursivamente todos os descendentes.
+    pub fn clone_node(&mut self, node_id: NodeId, deep: bool) -> Result<NodeId, DomError> {
+        let original_node = self.get_node(node_id).ok_or(DomError::InvalidNodeId(node_id))?;
+        let new_kind = original_node.kind.clone();
+
+        let dummy_id = NodeId::new();
+        let mut new_node = NodeData::new(dummy_id, new_kind);
+        new_node.flags = original_node.flags;
+
+        let arena_id = self.arena.alloc(new_node);
+        let new_id = arena_id.to_node_id();
+        if let Some(n) = self.arena.get_mut(arena_id) {
+            n.id = new_id;
+        }
+
+        if deep {
+            let mut children_to_clone = Vec::new();
+            for (child_id, _) in self.children(node_id) {
+                children_to_clone.push(child_id);
+            }
+
+            for child_id in children_to_clone {
+                let cloned_child = self.clone_node(child_id, true)?;
+                self.append_child(new_id, cloned_child)?;
+            }
+        }
+
+        Ok(new_id)
+    }
+
+    /// Remove um filho do nó pai.
+    #[inline]
+    pub fn remove_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
+        mutation::remove_child(&mut self.arena, parent_id, child_id)
+    }
+
+    /// Substitui um nó filho por outro nó sob o mesmo pai.
+    #[inline]
+    pub fn replace_child(
+        &mut self,
+        parent_id: NodeId,
+        new_child: NodeId,
+        old_child: NodeId,
+    ) -> Result<(), DomError> {
+        mutation::replace_child(&mut self.arena, parent_id, new_child, old_child)
+    }
+
+    /// Insere um nó como o primeiro filho do nó pai.
+    #[inline]
+    pub fn prepend_child(&mut self, parent_id: NodeId, child_id: NodeId) -> Result<(), DomError> {
+        mutation::prepend_child(&mut self.arena, parent_id, child_id)
+    }
+
+    /// Insere um nó imediatamente após um nó de referência.
+    #[inline]
+    pub fn insert_after(
+        &mut self,
+        parent_id: NodeId,
+        new_child: NodeId,
+        ref_child: NodeId,
+    ) -> Result<(), DomError> {
+        mutation::insert_after(&mut self.arena, parent_id, new_child, ref_child)
+    }
+
+    /// Verifica se um nó contém outro nó como descendente ou a si mesmo (WHATWG §4.2.2).
+    pub fn contains(&self, parent_id: NodeId, node_id: NodeId) -> bool {
+        if parent_id == node_id {
+            return true;
+        }
+        for (ancestor_id, _) in self.ancestors(node_id) {
+            if ancestor_id == parent_id {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Divide um nó de texto em dois nós consecutivos no deslocamento `offset` especificado (WHATWG Text §4.6).
+    pub fn split_text(&mut self, text_id: NodeId, offset: usize) -> Result<NodeId, DomError> {
+        let (parent_id, left_text, right_text) = {
+            let node = self.get_node(text_id).ok_or(DomError::InvalidNodeId(text_id))?;
+            if let NodeKind::Text(ref t) = node.kind {
+                let s = t.data.as_str();
+                if offset > s.len() || !s.is_char_boundary(offset) {
+                    return Err(DomError::IndexSizeError);
+                }
+                (node.parent, s[..offset].to_string(), s[offset..].to_string())
+            } else {
+                return Err(DomError::HierarchyRequestError("Nó não é do tipo Text".into()));
+            }
+        };
+
+        if let Some(node_mut) = self.get_node_mut(text_id) {
+            if let NodeKind::Text(ref mut t) = node_mut.kind {
+                t.data = SmolStr::new(left_text);
+            }
+        }
+
+        let new_text_id = self.create_text_node(&right_text);
+        if let Some(parent_id) = parent_id {
+            self.insert_after(parent_id, new_text_id, text_id)?;
+        }
+        Ok(new_text_id)
+    }
+
+    /// Normaliza a subárvore unificando nós de texto adjacentes e removendo nós de texto vazios (Node.normalize).
+    pub fn normalize(&mut self, root_id: NodeId) -> Result<(), DomError> {
+        if self.get_node(root_id).is_none() {
+            return Err(DomError::InvalidNodeId(root_id));
+        }
+
+        let children_ids: Vec<NodeId> = self.children(root_id).map(|(c_id, _)| c_id).collect();
+        let mut prev_text_id: Option<NodeId> = None;
+
+        for child_id in children_ids {
+            let is_text = self.get_node(child_id).map(|n| matches!(n.kind, NodeKind::Text(_))).unwrap_or(false);
+
+            if is_text {
+                let is_empty = self.get_node(child_id).and_then(|n| n.text_content()).map(|t| t.is_empty()).unwrap_or(false);
+                if is_empty {
+                    self.remove_child(root_id, child_id)?;
+                    continue;
+                }
+
+                if let Some(prev_id) = prev_text_id {
+                    let next_content = self.get_node(child_id).and_then(|n| n.text_content()).unwrap_or_default().to_string();
+                    if let Some(prev_node) = self.get_node_mut(prev_id) {
+                        if let NodeKind::Text(ref mut t) = prev_node.kind {
+                            let mut merged = t.data.to_string();
+                            merged.push_str(&next_content);
+                            t.data = SmolStr::new(merged);
+                        }
+                    }
+                    self.remove_child(root_id, child_id)?;
+                } else {
+                    prev_text_id = Some(child_id);
+                }
+            } else {
+                prev_text_id = None;
+                self.normalize(child_id)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Retorna um iterador sobre os filhos imediatos de um nó.
+    pub fn children(&self, parent_id: NodeId) -> ChildrenIter<'_> {
+        let first_child = self.get_node(parent_id).and_then(|n| n.first_child);
+        ChildrenIter::new(&self.arena, first_child)
+    }
+
+    /// Retorna um iterador sobre os ancestrais de um nó.
+    pub fn ancestors(&self, node_id: NodeId) -> AncestorsIter<'_> {
+        let parent = self.get_node(node_id).and_then(|n| n.parent);
+        AncestorsIter::new(&self.arena, parent)
+    }
+
+    /// Retorna um iterador de travessia pré-ordem em profundidade (DFS) a partir do nó raiz informado.
+    pub fn descendants(&self, root_id: NodeId) -> DescendantsIter<'_> {
+        DescendantsIter::new(&self.arena, root_id)
+    }
+
+    /// Retorna a lista de nós filhos imediatos na visão achatada (*Flat Tree / Composed Tree*).
+    pub fn flat_tree_children(&self, node_id: NodeId) -> Vec<NodeId> {
+        crate::node::FlatTreeResolver::flat_tree_children(self, node_id)
+    }
+
+    /// Serializa o nó e seus descendentes em uma string HTML normativa (`outerHTML`).
+    pub fn outer_html(&self, node_id: NodeId) -> String {
+        crate::serializer::serialize_node(self, node_id)
+    }
+
+    /// Serializa os filhos do nó em uma string HTML normativa (`innerHTML`).
+    pub fn inner_html(&self, node_id: NodeId) -> String {
+        crate::serializer::serialize_inner_html(self, node_id)
+    }
+
+    /// Compara a posição deste nó em relação a outro na árvore DOM conforme o padrão WHATWG DOM §4.2.
+    pub fn compare_document_position(&self, node_a: NodeId, node_b: NodeId) -> crate::node::DocumentPosition {
+        crate::node::compare_document_position(self, node_a, node_b)
+    }
+
+    /// Retorna o número total de nós vivos alocados na arena.
+    #[inline]
+    pub fn node_count(&self) -> usize {
+        self.arena.len()
+    }
+}

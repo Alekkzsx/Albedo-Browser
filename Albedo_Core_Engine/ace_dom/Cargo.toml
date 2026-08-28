@@ -4,3 +4,28 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Fundação Interna do Motor
+ace_core = { path = "../ace_core" }
+
+# Encoding & Texto WHATWG
+encoding_rs = "0.8"
+smol_str = "0.3"
+phf = { version = "0.11", features = ["macros"] }
+
+# Estruturas de Dados & Bitmasks
+rustc-hash = "2.1"
+bitflags = "2.6"
+
+# Observabilidade & Erros
+tracing = "0.1"
+thiserror = "2.0"
+
+# Otimização SIMD de Baixo Nível
+memchr = "2.7"
+
+# Concorrência & Canais Lock-Free
+crossbeam = "0.8"
+
+# Criptografia & Hashes (CSP)
+sha2 = "0.10"
+
