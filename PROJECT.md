@@ -1,77 +1,61 @@
-# Project: ace_core Refactoring, Security Hardening & Normative Alignment
+# Project: Albedo Browser — ace_dom Subsystem Audit & Master Plan
 
 ## Architecture
-`ace_core` is the core foundational engine of Albedo Browser. It provides primitives for memory management, collections, security tokens & origins, networking utilities, the WHATWG event loop, CSS math/color processing, and layout units.
-
-Modules and boundaries:
-- `ace_core/src/collections/`: Data structures (`InlineVec`, `TripleBuffer`, `RingBuffer`, etc.)
-- `ace_core/src/arena/`: Generational arena allocation (`Arena<T>`, `SlotMap`)
-- `ace_core/src/diagnostics/`: Telemetry & breadcrumbs (`BreadcrumbBuffer`)
-- `ace_core/src/security/`: Origin, Referrer Policy, UnguessableToken, CSP domain matching
-- `ace_core/src/net/`: MIME sniffing, percent decoding, URL helpers
-- `ace_core/src/event_loop/`: WHATWG §8.1.6 compliant event loop, task queues, microtask drain, timers
-- `ace_core/src/math/`: CSS Color 4/5, Bradford chromatic adaptation, `LayoutUnit` fixed-point math & snapping
-- `ace_core/src/flags/`: Bitflags and style change hints to node flag mapping
+`ace_dom` is the foundational DOM and HTML5 parsing subsystem of the Albedo Browser engine.
+- **Memory & Storage**: Generational slotmap arena (`Arena<NodeData>`) backed by `ace_core`, using compact 64-bit generational `NodeId` references (0 cyclic leaks, $O(1)$ amortized teardown, 100% Safe Rust).
+- **HTML5 Parser**: WHATWG §12 streaming tokenizer with SIMD fast paths (`memchr3`), state machine, Tree Builder with 16-step Adoption Agency Algorithm (AAA) + Noah's Ark clause, Declarative Shadow DOM (DSD), and Foreign Content (SVG/MathML) fixup tables.
+- **CSS4 Selector Engine**: Right-to-Left (RTL) compound selector matcher, 64-bucket Counting Ancestor Bloom Filter (`AncestorFilter`), and rule-partitioned `RuleBucketIndex`.
+- **DOM Features**: MutationObserver, Live Range boundary auto-adjustment, Form Validity (10-flag `ValidityState`), HTML Sanitizer, and unified GC Tracing (`GcTracer` / `Traceable`).
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | `InlineVec` Memory Shift Fix | Fix inverted range `(*len..index).rev()` in `insert()` using `ptr::copy` | M1 | R2 Survey |
-| 2 | `InlineVec` Double Free Fix | Fix `retain()` bit duplication & illegal drop using `RetainGuard` and `vec.retain` | M1 | R2 Survey |
-| 3 | `TripleBuffer` Lock-Free Zero-Copy | Implement atomic 3-state transition (`AtomicU8`) & `UnsafeCell` zero-copy | M1 | R2 Survey |
-| 4 | `Arena<T>` Deterministic `clear()` | Clean `free_list` and rebuild `(0..len).rev()` without slot duplication | M1 | R2 Survey |
-| 5 | `BreadcrumbBuffer` $O(1)$ Deque & Zero Guard | Switch to `VecDeque` with `CAPACITY == 0` guard | M1 | R2 Survey |
-| 6 | `UnguessableToken` CSPRNG | Use OS CSPRNG (`getrandom`) for 128-bit unguessable tokens (CWE-330) | M2 | R3 Survey |
-| 7 | `compute_referrer` RFC 9110 / CWE-200 | Use `same_origin()` comparison and strip `userinfo` (credentials) | M2 | R3 Survey |
-| 8 | `Origin` Serialization & File Isolation | Omit `:0` port on file/custom schemes per RFC 6454 | M2 | R3 Survey |
-| 9 | `matches_domain_pattern` CSP3 §6.7.2 | Wildcard `*.domain.com` matches only subdomains, not apex domain | M2 | R3 Survey |
-| 10 | `percent_decode` Byte Preservation | Preserve bytes on malformed `%` sequences (e.g. `"100%_concluido"`) | M2 | R3 Survey |
-| 11 | `sniff_mime_type` UTF-8 Boundary | Handle multi-byte UTF-8 split at 512-byte boundary gracefully | M2 | R3 Survey |
-| 12 | Event Loop Starvation Prevention | Fair queuing with starvation counters across all `TaskSource` queues | M3 | R4 Survey |
-| 13 | Microtask Checkpoint Reentrancy Guard | Implement `performing_microtask_checkpoint` guard per WHATWG §8.1.6.3 | M3 | R4 Survey |
-| 14 | Atomic Timer Macrotask Dispatch | Enqueue expired timers as individual `TaskSource::Timer` macrotasks | M3 | R4 Survey |
-| 15 | Dynamic Timer Nesting Clamping | Propagate nesting depth via TLS and enforce 4ms minimum clamp for depth >= 5 | M3 | R4 Survey |
-| 16 | Bradford Chromatic Adaptation | Implement D65 <-> D50 adaptation matrices for sRGB <-> Lab/Lch | M4 | R5 Survey |
-| 17 | CSS Color 4 Polar Interpolation | Implement 4 hue methods, powerless component handling & alpha premul | M4 | R5 Survey |
-| 18 | `LayoutUnit` Box Snapping | Box snapping with zero pixel cracking ($\text{right}_1 \equiv \text{left}_2$) | M4 | R5 Survey |
-| 19 | `style_hint_to_node_flags` Mapping | Map `StyleChangeHint::SUBTREE_RECALC` -> `NodeFlags::SUBTREE_DIRTY` | M4 | R5 Survey |
-| 20 | Full Workspace Verification & E2E Validation | Run all 80+ unit/integration tests, zero clippy warnings, memory integrity | M5 | Acceptance Criteria |
+| 1 | Tokenizer & FSM Compliance | WHATWG §12.2 Tokenizer FSM, entity decoding, ambiguous ampersand in attributes, script escaping states, doctype identifiers | M1 | Survey (explorer_1) |
+| 2 | Tree Builder & 16-Step AAA | Full 16-step Adoption Agency Algorithm, bookmark shifting fix, Noah's ark limit, DSD (<template shadowrootmode>), Foreign Content (SVG/MathML) | M1 | Survey (explorer_1) |
+| 3 | Form Validity & Associations | 10-flag ValidityState, form attribute association, checkValidity/reportValidity | M1 | Survey (explorer_1) |
+| 4 | Memory Density & Struct Layout | NodeData (144B -> 88B via boxed Doctype/Document data), ElementData (inline attributes/classes), TextData (SmolStr 24B), exact byte breakdown | M2 | Survey (explorer_2) |
+| 5 | GC Tracing & Soundness | Generational arena lifecycle, non-owning NodeId handles, GcTracer trait, cycle-freedom, 0 unsafe blocks, Send+Sync | M2 | Survey (explorer_2) |
+| 6 | Engine Comparative Matrix | Detailed architectural comparison vs Blink (Oilpan/Compact DOM), WebKit (JSC GC), Gecko (Stylo/nsINode), Ladybird (LibWeb GC), Servo (DomRef) | M2 | Survey (explorer_2) |
+| 7 | CSS4 Selectors & Bloom Filter | RTL selector matching, :is(), :where(), :has(), :not(), Ancestor Bloom Filter fast rejection pipeline | M3 | Survey (explorer_3) |
+| 8 | MutationObserver & Live Ranges | Mutation records, subtree observation, microtask delivery, LiveRangeRegistry boundary points auto-adjustment, LCA-based comparison | M3 | Survey (explorer_3) |
+| 9 | HTML Sanitizer | Configurable element/attribute allowlists/denylists, event handler purging, javascript: URI filtering, node unwrapping | M3 | Survey (explorer_3) |
+| 10 | Asymptotic Complexity Optimizations | O(1) getElementById via ElementIndex, O(depth) LCA position comparison, O(1) Bloom filter rejection | M3 | Survey (explorer_3) |
+| 11 | Clippy & Test Suite Hardening | Fix 2 clippy warnings in hardening_phase5_master_test.rs, ensure cargo clippy --workspace --all-targets --all-features -- -D warnings = 0 warnings, 100% tests pass | M4 | Survey (all explorers) |
+| 12 | Definitive Master Plan Consolidation | Deliver complete Master Plan with Quick Wins, Architectural Refactorings, SIMD/Zero-Copy, WPT Hardening, and Technical Audit Report | M5 | Synthesis & Final Gate |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Memory Soundness & Collections (R2) | `collections/inline_vec.rs`, `triple_buffer.rs`, `arena/slab.rs`, `diagnostics/breadcrumbs.rs` | none | IN_PROGRESS |
-| M2 | Web Security & Net Hardening (R3) | `Cargo.toml`, `security/token.rs`, `referrer.rs`, `origin.rs`, `utils.rs`, `net/utils.rs`, `net/mime.rs` | none | PLANNED |
-| M3 | WHATWG Event Loop Alignment (R4) | `event_loop/mod.rs`, `event_loop/source.rs` | none | PLANNED |
-| M4 | W3C Math, Color & LayoutUnit (R5) | `math/color.rs`, `math/layout_unit.rs`, `flags/utils.rs` | none | PLANNED |
-| M5 | Comprehensive Verification & Hardening | Full workspace tests, clippy check, regression tests, adversarial audit | M1, M2, M3, M4 | PLANNED |
+| M1 | WHATWG HTML §12 & Tree Construction Audit | Tokenizer states, entity decoding, AAA step 3.17 bookmark fix, DSD, SVG/MathML | None | DONE (Explored) |
+| M2 | Memory Soundness & Competitive SOTA Analysis | Exact byte footprint per node, GC cycle-freedom, 100% Safe Rust invariants, Comparative Matrix | None | DONE (Explored) |
+| M3 | Query, Observer, Range & Asymptotic Complexity | CSS4 RTL engine, Ancestor Bloom Filter, MutationObserver hooks, Live Range LCA, Sanitizer | None | DONE (Explored) |
+| M4 | Clippy & Test Suite Remediation | Fix clippy warnings in `tests/hardening_phase5_master_test.rs`, run full workspace clippy & test validation | M1, M2, M3 | DONE (0 warnings, 100% pass) |
+| M5 | Master Plan & Technical Report Consolidation | Deliver `ACE_DOM_MASTER_PLAN.md`, verify via Reviewer, Challenger, and Auditor | M4 | DONE (Pass Gate) |
 
 ## Interface Contracts
-### `TripleBuffer` Consumer Contract
-- Producer: `write(&mut self, value: T)` writes to back buffer and atomically updates shared state.
-- Consumer: `consume(&mut self) -> Option<&T>` or `read(&self) -> &T` returns zero-copy reference without heap allocations.
+### `ace_dom` ↔ `ace_core`
+- `Arena<NodeData>`: Generational slotmap for node allocation and indexing. `NodeId` = 64-bit `(version: u32, index: u32)`.
+- `InlineVec<T, N>`: Small-vector optimization (0 heap allocations for $\le N$ elements).
+- `Atom`: Fast interned atomic strings for tag names and attribute names.
 
-### `LayoutUnit` Box Snapping Contract
-- `snap_box(origin: LayoutUnit, size: LayoutUnit) -> (i32, i32)`
-- Invariant: `origin.snap_box(s1).0 + origin.snap_box(s1).1 == (origin + s1).snap_box(s2).0`.
+### `ace_dom` ↔ `ace_css` & `ace_style`
+- `ComplexSelector`: AST for CSS selectors compiled from selector strings.
+- `AncestorFilter`: 64-bucket counting Bloom filter pushed/popped during DOM tree traversal for $O(1)$ fast rejection.
+- `RuleBucketIndex`: Rule index partitioned by ID, Class, Tag, and Universal selectors.
 
-### `UnguessableToken` Contract
-- `UnguessableToken::new() -> Self` must use OS CSPRNG (`getrandom::getrandom`) and never return all-zeros.
+### `ace_dom` ↔ `ace_js`
+- `GcTracer`: Tri-color GC visitor trait for marking reachable DOM nodes from JS root objects without cyclic memory retention.
 
 ## Code Layout
-- `ace_core/Cargo.toml`: crate dependencies (`getrandom = "0.2"`)
-- `ace_core/src/collections/inline_vec.rs`: `InlineVec<T, N>`
-- `ace_core/src/collections/triple_buffer.rs`: `TripleBuffer<T>`
-- `ace_core/src/arena/slab.rs`: `Arena<T>`
-- `ace_core/src/diagnostics/breadcrumbs.rs`: `BreadcrumbBuffer`
-- `ace_core/src/security/token.rs`: `UnguessableToken`
-- `ace_core/src/security/referrer.rs`: `compute_referrer`
-- `ace_core/src/security/origin.rs`: `Origin`
-- `ace_core/src/security/utils.rs`: `matches_domain_pattern`
-- `ace_core/src/net/utils.rs`: `percent_decode`
-- `ace_core/src/net/mime.rs`: `sniff_mime_type`
-- `ace_core/src/event_loop/mod.rs`: `EventLoop`, `TaskSourceQueues`, `drain_microtasks`
-- `ace_core/src/event_loop/source.rs`: `TaskSource`
-- `ace_core/src/math/color.rs`: `Color`, `ColorSpace`, Bradford D65<->D50, polar interpolation
-- `ace_core/src/math/layout_unit.rs`: `LayoutUnit::snap_box`
-- `ace_core/src/flags/utils.rs`: `style_hint_to_node_flags`
+- `Albedo_Core_Engine/ace_dom/src/lib.rs`: Subsystem root and public exports.
+- `Albedo_Core_Engine/ace_dom/src/node/`: `NodeData`, `ElementData`, `TextData`, `CommentData`, `DocumentData`, `DoctypeData`.
+- `Albedo_Core_Engine/ace_dom/src/tree/`: Tree mutations (`append_child`, `insert_before`, `remove_child`, `replace_child`), iterators (`descendants`, `ancestors`, `children`).
+- `Albedo_Core_Engine/ace_dom/src/tokenizer/`: HTML5 tokenizer, state machine, entity decoder, SIMD fast-path.
+- `Albedo_Core_Engine/ace_dom/src/tree_builder/`: HTML5 tree construction, insertion modes, AAA, DSD, foreign content.
+- `Albedo_Core_Engine/ace_dom/src/query/`: CSS selectors, Ancestor Bloom Filter, `ElementIndex`, `RuleBucketIndex`.
+- `Albedo_Core_Engine/ace_dom/src/observer/`: MutationObserver and mutation records.
+- `Albedo_Core_Engine/ace_dom/src/range/`: Live Range, boundary points, `LiveRangeRegistry`.
+- `Albedo_Core_Engine/ace_dom/src/form/`: Form validity and association algorithms.
+- `Albedo_Core_Engine/ace_dom/src/sanitizer/`: HTML Sanitizer API.
+- `Albedo_Core_Engine/ace_dom/src/gc.rs`: Tracing GC integration (`GcTracer`, `Traceable`).
+- `Albedo_Core_Engine/ace_dom/tests/`: Integration test suites and hardening tests.
