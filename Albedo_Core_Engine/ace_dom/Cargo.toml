@@ -10,7 +10,7 @@ ace_core = { path = "../ace_core" }
 # Encoding & Texto WHATWG
 encoding_rs = "0.8"
 smol_str = "0.3"
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 
 # Estruturas de Dados & Bitmasks
 rustc-hash = "2.1"
