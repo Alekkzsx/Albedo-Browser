@@ -24,7 +24,7 @@ url = "2.5"
 
 # Cryptography & Security
 getrandom = "0.2"
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Math & Geometry
 euclid = "0.22"

@@ -27,5 +27,5 @@ memchr = "2.7"
 crossbeam = "0.8"
 
 # Criptografia & Hashes (CSP)
-sha2 = "0.10"
+sha2 = "0.11"
 
