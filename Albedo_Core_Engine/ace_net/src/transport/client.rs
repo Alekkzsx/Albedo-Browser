@@ -3,6 +3,8 @@
 //! Orquestra o pool de conexões assíncronas, ALPN para negociação h2/http1.1,
 //! handshake TLS seguro via `rustls` (WebPKI roots) e suporte nativo a `data:` URIs.
 
+use crate::compression::{decompress_payload, ContentEncoding};
+use crate::contention::RetryAfter;
 use crate::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
 use crate::request::Request;
@@ -52,6 +54,11 @@ impl TransportClient {
     pub async fn execute(&self, req: &Request) -> NetResult<Response> {
         let start_time = Instant::now();
 
+        // 0. Verificação imediata de cancelamento
+        if req.cancellation_token.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+
         // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
         if req.url.scheme() == "data" {
             return self.execute_data_url(&req.url, start_time);
@@ -87,39 +94,55 @@ impl TransportClient {
             .body(Full::new(body_payload))
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
 
-        // 4. Disparo com controle de timeout
+        // 4. Disparo com controle de timeout e cancelamento atômico
         let timeout_duration = req.timeout.unwrap_or(Duration::from_secs(30));
         let request_future = self.client.request(hyper_req);
 
-        let hyper_resp = tokio::time::timeout(timeout_duration, request_future)
-            .await
-            .map_err(|_| NetError::Timeout)?
-            .map_err(|e| {
-                let err_msg = e.to_string();
-                if err_msg.contains("dns") || err_msg.contains("resolve") {
-                    NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                } else if err_msg.contains("tls") || err_msg.contains("certificate") {
-                    NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                } else {
-                    NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                }
-            })?;
+        let hyper_resp = tokio::select! {
+            _ = req.cancellation_token.cancelled() => {
+                return Err(NetError::Cancelled);
+            }
+            res = tokio::time::timeout(timeout_duration, request_future) => {
+                res.map_err(|_| NetError::Timeout)?
+                    .map_err(|e| {
+                        let err_msg = e.to_string();
+                        if err_msg.contains("dns") || err_msg.contains("resolve") {
+                            NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                        } else if err_msg.contains("tls") || err_msg.contains("certificate") {
+                            NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                        } else {
+                            NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                        }
+                    })?
+            }
+        };
 
         let ttfb = start_time.elapsed();
         let status = hyper_resp.status();
         let headers = hyper_resp.headers().clone();
 
-        // 5. Coleta e streaming de bytes do corpo
-        let body_bytes = hyper_resp
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?
-            .to_bytes();
+        // 5. Coleta de bytes do corpo com suporte a cancelamento
+        let raw_body_bytes = tokio::select! {
+            _ = req.cancellation_token.cancelled() => {
+                return Err(NetError::Cancelled);
+            }
+            res = hyper_resp.into_body().collect() => {
+                res.map_err(|e| NetError::HttpProtocolError(e.to_string()))?.to_bytes()
+            }
+        };
 
+        // 6. Descompressão transparente de conteúdo (Content-Encoding)
+        let content_encoding = ContentEncoding::from_headers(&headers);
+        let body_bytes = if let Some(encoding) = content_encoding {
+            decompress_payload(encoding, &raw_body_bytes)?
+        } else {
+            raw_body_bytes
+        };
+
+        let retry_after = RetryAfter::from_headers(&headers);
         let total_duration = start_time.elapsed();
 
-        // 6. Resolução de MIME Type e Charset (Content Sniffing WHATWG)
+        // 7. Resolução de MIME Type e Charset (Content Sniffing WHATWG)
         let content_type_str = headers
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
@@ -147,6 +170,8 @@ impl TransportClient {
             body: ResponseBody::Full(body_bytes),
             mime_type,
             charset,
+            content_encoding,
+            retry_after,
             from_cache: false,
             timing: ResponseTiming {
                 total_duration,
@@ -181,6 +206,8 @@ impl TransportClient {
             body: ResponseBody::Full(body_bytes),
             mime_type: mime_essence.into(),
             charset,
+            content_encoding: None,
+            retry_after: None,
             from_cache: false,
             timing: ResponseTiming {
                 total_duration: elapsed,

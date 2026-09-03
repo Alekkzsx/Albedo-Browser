@@ -7,11 +7,14 @@
 use crate::cache::partition::NetworkIsolationKey;
 use crate::error::{NetError, NetResult};
 use crate::priority::PriorityLevel;
+use ace_core::id::RequestId;
 use ace_core::security::referrer::ReferrerPolicy;
 use bytes::Bytes;
+use http::header::ACCEPT_ENCODING;
 pub use http::header::{HeaderMap, HeaderName, HeaderValue};
 pub use http::Method;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 /// Destino semântico do recurso segundo a especificação WHATWG Fetch §2.2.8.
@@ -95,6 +98,8 @@ impl Default for RedirectPolicy {
 /// Requisição de rede encapsulada e imutável para despacho pelo `ResourceFetcher`.
 #[derive(Debug, Clone)]
 pub struct Request {
+    pub id: RequestId,
+    pub cancellation_token: CancellationToken,
     pub url: Url,
     pub method: Method,
     pub headers: HeaderMap,
@@ -133,6 +138,8 @@ impl Request {
 /// Construtor fluente para montagem ergonômica de requisições.
 #[derive(Debug)]
 pub struct RequestBuilder {
+    id: Option<RequestId>,
+    cancellation_token: Option<CancellationToken>,
     url: Url,
     method: Method,
     headers: HeaderMap,
@@ -151,6 +158,8 @@ pub struct RequestBuilder {
 impl RequestBuilder {
     pub fn new(url: Url, method: Method) -> Self {
         Self {
+            id: None,
+            cancellation_token: None,
             url,
             method,
             headers: HeaderMap::new(),
@@ -165,6 +174,18 @@ impl RequestBuilder {
             network_isolation_key: None,
             timeout: Some(Duration::from_secs(30)),
         }
+    }
+
+    /// Define explicitamente o identificador da requisição.
+    pub fn id(mut self, id: RequestId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    /// Associa um token de cancelamento à requisição.
+    pub fn cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
+        self
     }
 
     /// Adiciona um cabeçalho HTTP à requisição.
@@ -211,10 +232,28 @@ impl RequestBuilder {
     }
 
     /// Finaliza e constrói a instância de `Request`.
-    pub fn build(self) -> Request {
+    pub fn build(mut self) -> Request {
         let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
 
+        // Injeção automática de Accept-Encoding se ausente
+        if !self.headers.contains_key(ACCEPT_ENCODING) {
+            self.headers.insert(
+                ACCEPT_ENCODING,
+                HeaderValue::from_static("gzip, deflate, br"),
+            );
+        }
+
+        // Injeção de prioridade HTTP moderna RFC 9218
+        if !self.headers.contains_key("priority") {
+            self.headers.insert(
+                HeaderName::from_static("priority"),
+                priority.to_rfc9218_header(),
+            );
+        }
+
         Request {
+            id: self.id.unwrap_or_default(),
+            cancellation_token: self.cancellation_token.unwrap_or_default(),
             url: self.url,
             method: self.method,
             headers: self.headers,

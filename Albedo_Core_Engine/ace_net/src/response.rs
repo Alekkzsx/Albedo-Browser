@@ -3,6 +3,8 @@
 //! Representa os metadados HTTP, cabeçalhos, métricas de performance (Navigation Timing)
 //! e stream assíncrono do corpo de bytes recebido.
 
+use crate::compression::ContentEncoding;
+use crate::contention::RetryAfter;
 use bytes::Bytes;
 pub use http::header::HeaderMap;
 pub use http::StatusCode;
@@ -75,6 +77,10 @@ pub struct Response {
     pub mime_type: SmolStr,
     /// Codificação de caracteres detectada (ex: "utf-8", "iso-8859-1").
     pub charset: Option<SmolStr>,
+    /// Codificação de compressão de conteúdo (ex: gzip, br, deflate) que foi descomprimida.
+    pub content_encoding: Option<ContentEncoding>,
+    /// Indicação de espera estruturada caso o servidor tenha enviado `Retry-After`.
+    pub retry_after: Option<RetryAfter>,
     /// Indica se a resposta foi servida diretamente do cache HTTP RFC 9111 (0 ms de rede).
     pub from_cache: bool,
     /// Métricas de latência e tempos de resposta.
@@ -100,6 +106,11 @@ impl Response {
     /// Tenta interpretar o corpo da resposta como texto, usando `String::from_utf8_lossy`.
     pub fn text_lossy(&self) -> std::borrow::Cow<'_, str> {
         String::from_utf8_lossy(self.body.as_bytes())
+    }
+
+    /// Retorna a duração de espera sugerida caso exista cabeçalho `Retry-After`.
+    pub fn retry_delay(&self, now: std::time::SystemTime) -> Option<Duration> {
+        self.retry_after.map(|r| r.retry_delay(now))
     }
 }
 
