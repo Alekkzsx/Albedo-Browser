@@ -5,6 +5,7 @@
 
 use crate::compression::ContentEncoding;
 use crate::contention::RetryAfter;
+use crate::range::ContentRange;
 use bytes::Bytes;
 pub use http::header::HeaderMap;
 pub use http::StatusCode;
@@ -81,6 +82,8 @@ pub struct Response {
     pub content_encoding: Option<ContentEncoding>,
     /// Indicação de espera estruturada caso o servidor tenha enviado `Retry-After`.
     pub retry_after: Option<RetryAfter>,
+    /// Faixa de bytes recebida caso seja resposta parcial (206 Partial Content).
+    pub content_range: Option<ContentRange>,
     /// Indica se a resposta foi servida diretamente do cache HTTP RFC 9111 (0 ms de rede).
     pub from_cache: bool,
     /// Métricas de latência e tempos de resposta.
@@ -91,6 +94,11 @@ impl Response {
     /// Verifica se o status code representa sucesso (200..=299).
     pub fn is_success(&self) -> bool {
         self.status.is_success()
+    }
+
+    /// Verifica se o status code é 206 Partial Content.
+    pub fn is_partial(&self) -> bool {
+        self.status == StatusCode::PARTIAL_CONTENT
     }
 
     /// Retorna os bytes do corpo.
