@@ -37,6 +37,17 @@ impl PriorityLevel {
     pub const fn is_render_blocking(self) -> bool {
         matches!(self, Self::High | Self::VeryHigh)
     }
+
+    /// Converte o nível de prioridade no cabeçalho padronizado RFC 9218 (`Priority: u=..., i`).
+    pub fn to_rfc9218_header(self) -> http::HeaderValue {
+        match self {
+            Self::VeryHigh => http::HeaderValue::from_static("u=0"),
+            Self::High => http::HeaderValue::from_static("u=1"),
+            Self::Medium => http::HeaderValue::from_static("u=3, i"),
+            Self::Low => http::HeaderValue::from_static("u=5, i"),
+            Self::Lowest => http::HeaderValue::from_static("u=7, i"),
+        }
+    }
 }
 
 /// Item ordenável por prioridade para processamento em filas de prioridade.
