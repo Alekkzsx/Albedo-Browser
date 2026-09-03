@@ -8,6 +8,8 @@ ace_core = { path = "../ace_core" }
 
 # Async & Concurrency
 tokio = { version = "1.37", features = ["full"] }
+tokio-util = "0.7"
+futures-core = "0.3"
 parking_lot = "0.12"
 crossbeam = "0.8"
 
@@ -19,6 +21,10 @@ hyper-util = { version = "0.1", features = ["full", "client-legacy"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["webpki-tokio", "http1", "http2", "ring"] }
 http-body-util = "0.1"
 bytes = "1.0"
+
+# Compression & Content-Encoding (RFC 9110, RFC 7932)
+flate2 = "1.0"
+brotli = "7.0"
 
 # Data Structures & Fast Hashing
 rustc-hash = "2.1"
@@ -34,3 +40,4 @@ encoding_rs = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
+ace_dom = { path = "../ace_dom" }
