@@ -7,11 +7,12 @@ use crate::compression::{decompress_payload, ContentEncoding};
 use crate::contention::RetryAfter;
 use crate::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
+use crate::range::ContentRange;
 use crate::request::Request;
 use crate::response::{Response, ResponseBody, ResponseTiming};
 use ace_core::net::{data_url::parse_data_url, sniff_mime_type};
 use bytes::Bytes;
-use http::HeaderValue;
+use http::{HeaderValue, StatusCode};
 use http_body_util::{BodyExt, Full};
 use hyper::header::{CONTENT_TYPE, USER_AGENT};
 use hyper::Request as HyperRequest;
@@ -140,6 +141,11 @@ impl TransportClient {
         };
 
         let retry_after = RetryAfter::from_headers(&headers);
+        let content_range = if status == StatusCode::PARTIAL_CONTENT {
+            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+        } else {
+            None
+        };
         let total_duration = start_time.elapsed();
 
         // 7. Resolução de MIME Type e Charset (Content Sniffing WHATWG)
@@ -172,6 +178,7 @@ impl TransportClient {
             charset,
             content_encoding,
             retry_after,
+            content_range,
             from_cache: false,
             timing: ResponseTiming {
                 total_duration,
@@ -208,6 +215,7 @@ impl TransportClient {
             charset,
             content_encoding: None,
             retry_after: None,
+            content_range: None,
             from_cache: false,
             timing: ResponseTiming {
                 total_duration: elapsed,

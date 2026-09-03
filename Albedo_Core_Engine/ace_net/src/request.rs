@@ -5,9 +5,13 @@
 //! chaves de isolamento e prioridades de escalonamento.
 
 use crate::cache::partition::NetworkIsolationKey;
+use crate::client_hints::inject_default_client_hints;
 use crate::error::{NetError, NetResult};
+use crate::fetch_metadata::{inject_fetch_metadata, SecFetchDest, SecFetchMode, SecFetchSite};
 use crate::priority::PriorityLevel;
+use crate::range::ByteRangeSpec;
 use ace_core::id::RequestId;
+use ace_core::security::origin::Origin;
 use ace_core::security::referrer::ReferrerPolicy;
 use bytes::Bytes;
 use http::header::ACCEPT_ENCODING;
@@ -113,6 +117,9 @@ pub struct Request {
     pub referrer: Option<Url>,
     pub network_isolation_key: Option<NetworkIsolationKey>,
     pub timeout: Option<Duration>,
+    pub initiator: Option<Origin>,
+    pub is_user_activated: bool,
+    pub range: Option<ByteRangeSpec>,
 }
 
 impl Request {
@@ -153,6 +160,9 @@ pub struct RequestBuilder {
     referrer: Option<Url>,
     network_isolation_key: Option<NetworkIsolationKey>,
     timeout: Option<Duration>,
+    initiator: Option<Origin>,
+    is_user_activated: bool,
+    range: Option<ByteRangeSpec>,
 }
 
 impl RequestBuilder {
@@ -173,6 +183,9 @@ impl RequestBuilder {
             referrer: None,
             network_isolation_key: None,
             timeout: Some(Duration::from_secs(30)),
+            initiator: None,
+            is_user_activated: false,
+            range: None,
         }
     }
 
@@ -185,6 +198,36 @@ impl RequestBuilder {
     /// Associa um token de cancelamento à requisição.
     pub fn cancellation_token(mut self, token: CancellationToken) -> Self {
         self.cancellation_token = Some(token);
+        self
+    }
+
+    /// Define o modo de requisição (CORS, Navigate, SameOrigin, etc.).
+    pub fn mode(mut self, mode: RequestMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Define o modo de envio de credenciais (cookies, HTTP Auth).
+    pub fn credentials(mut self, credentials: CredentialsMode) -> Self {
+        self.credentials = credentials;
+        self
+    }
+
+    /// Define a origem iniciadora da requisição para cálculo de Sec-Fetch-Site.
+    pub fn initiator(mut self, origin: Origin) -> Self {
+        self.initiator = Some(origin);
+        self
+    }
+
+    /// Sinaliza se a requisição decorre de uma ação do usuário (clique, formulário).
+    pub fn user_activated(mut self, activated: bool) -> Self {
+        self.is_user_activated = activated;
+        self
+    }
+
+    /// Define uma faixa de bytes para download parcial (RFC 9110 §14).
+    pub fn range(mut self, range: ByteRangeSpec) -> Self {
+        self.range = Some(range);
         self
     }
 
@@ -251,6 +294,30 @@ impl RequestBuilder {
             );
         }
 
+        // Injeção de cabeçalho Range se especificado
+        if let Some(r) = self.range {
+            if !self.headers.contains_key(http::header::RANGE) {
+                self.headers.insert(http::header::RANGE, r.to_header_value());
+            }
+        }
+
+        // Injeção de W3C Fetch Metadata
+        let site = SecFetchSite::compute(self.initiator.as_ref(), &self.url);
+        let sec_mode = SecFetchMode::from_request_mode(self.mode);
+        let sec_dest = SecFetchDest::from_destination(self.destination);
+        inject_fetch_metadata(&mut self.headers, site, sec_mode, sec_dest, self.is_user_activated);
+
+        // Injeção de Upgrade-Insecure-Requests para navegação de documentos
+        if self.destination == RequestDestination::Document && !self.headers.contains_key("upgrade-insecure-requests") {
+            self.headers.insert(
+                HeaderName::from_static("upgrade-insecure-requests"),
+                HeaderValue::from_static("1"),
+            );
+        }
+
+        // Injeção de Client Hints modernos RFC 8942
+        inject_default_client_hints(&mut self.headers);
+
         Request {
             id: self.id.unwrap_or_default(),
             cancellation_token: self.cancellation_token.unwrap_or_default(),
@@ -267,6 +334,9 @@ impl RequestBuilder {
             referrer: self.referrer,
             network_isolation_key: self.network_isolation_key,
             timeout: self.timeout,
+            initiator: self.initiator,
+            is_user_activated: self.is_user_activated,
+            range: self.range,
         }
     }
 }
