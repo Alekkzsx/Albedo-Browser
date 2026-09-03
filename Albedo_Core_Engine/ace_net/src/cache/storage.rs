@@ -1,0 +1,219 @@
+//! # Armazenamento de Cache em Memória com Despejo LRU (`HttpCache`)
+//!
+//! Gerencia o ciclo de vida, cotas em bytes e algoritmo de Least Recently Used (LRU)
+//! para armazenamento de respostas em conformidade com a RFC 9111.
+
+use super::entry::CacheEntry;
+use super::partition::NetworkIsolationKey;
+use parking_lot::RwLock;
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::SystemTime;
+use url::Url;
+
+/// Estatísticas de operação do cache HTTP para telemetria.
+#[derive(Debug, Default)]
+pub struct CacheStats {
+    pub hits: AtomicU64,
+    pub misses: AtomicU64,
+    pub evictions: AtomicU64,
+    pub current_bytes: AtomicU64,
+}
+
+/// Mecanismo de cache HTTP particionado em memória com política LRU.
+#[derive(Debug)]
+pub struct HttpCache {
+    inner: RwLock<HttpCacheInner>,
+    pub stats: CacheStats,
+    pub max_capacity_bytes: usize,
+}
+
+#[derive(Debug)]
+struct HttpCacheInner {
+    entries: HashMap<String, CacheEntry>,
+    order: VecDeque<String>,
+    total_bytes: usize,
+}
+
+impl HttpCache {
+    /// Cria uma nova instância com capacidade máxima em bytes (padrão recomendado: 64MB).
+    pub fn new(max_capacity_bytes: usize) -> Self {
+        Self {
+            inner: RwLock::new(HttpCacheInner {
+                entries: HashMap::new(),
+                order: VecDeque::new(),
+                total_bytes: 0,
+            }),
+            stats: CacheStats::default(),
+            max_capacity_bytes,
+        }
+    }
+
+    /// Gera uma chave de cache canônica combinando NIK e URL.
+    pub fn make_key(nik: Option<&NetworkIsolationKey>, url: &Url) -> String {
+        match nik {
+            Some(k) => format!("{}|{}", k.serialize(), url),
+            None => format!("global|{}", url),
+        }
+    }
+
+    /// Busca uma entrada no cache. Se encontrada, move-a para o topo da ordem LRU.
+    pub fn get(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
+        let key = Self::make_key(nik, url);
+        let mut inner = self.inner.write();
+
+        if let Some(entry) = inner.entries.get(&key).cloned() {
+            // Atualiza ordem LRU (move para o final da fila)
+            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                inner.order.remove(pos);
+                inner.order.push_back(key);
+            }
+            self.stats.hits.fetch_add(1, Ordering::Relaxed);
+            Some(entry)
+        } else {
+            self.stats.misses.fetch_add(1, Ordering::Relaxed);
+            None
+        }
+    }
+
+    /// Insere ou atualiza uma resposta no cache, aplicando desalocação LRU se necessário.
+    pub fn put(&self, nik: Option<&NetworkIsolationKey>, url: Url, entry: CacheEntry) {
+        let key = Self::make_key(nik, &url);
+        let entry_size = entry.body.len() + 256; // Overhead aproximado de headers/metadados
+
+        // Se o recurso for maior que a capacidade total do cache, não armazena
+        if entry_size > self.max_capacity_bytes {
+            return;
+        }
+
+        let mut inner = self.inner.write();
+
+        // Se já existia, remove o tamanho antigo
+        if let Some(old) = inner.entries.remove(&key) {
+            inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
+            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                inner.order.remove(pos);
+            }
+        }
+
+        // Despeja entradas antigas (LRU) até caber a nova entrada
+        while inner.total_bytes + entry_size > self.max_capacity_bytes {
+            if let Some(evicted_key) = inner.order.pop_front() {
+                if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
+                    inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                    self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                }
+            } else {
+                break;
+            }
+        }
+
+        inner.total_bytes += entry_size;
+        inner.order.push_back(key.clone());
+        inner.entries.insert(key, entry);
+
+        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+    }
+
+    /// Atualiza uma entrada existente após validação `304 Not Modified`.
+    pub fn update_304(
+        &self,
+        nik: Option<&NetworkIsolationKey>,
+        url: &Url,
+        new_headers: &http::HeaderMap,
+        response_time: SystemTime,
+    ) -> Option<CacheEntry> {
+        let key = Self::make_key(nik, url);
+        let mut inner = self.inner.write();
+
+        if let Some(entry) = inner.entries.get_mut(&key) {
+            entry.update_from_304(new_headers, response_time);
+            Some(entry.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Invalida entradas associadas a uma URL após métodos não seguros (POST, PUT, DELETE) - RFC 9111 §4.4.
+    pub fn invalidate(&self, url: &Url) {
+        let mut inner = self.inner.write();
+        let url_str = url.to_string();
+
+        let keys_to_remove: Vec<String> = inner
+            .entries
+            .keys()
+            .filter(|k| k.ends_with(&url_str))
+            .cloned()
+            .collect();
+
+        for key in keys_to_remove {
+            if let Some(entry) = inner.entries.remove(&key) {
+                inner.total_bytes = inner.total_bytes.saturating_sub(entry.body.len() + 256);
+                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                    inner.order.remove(pos);
+                }
+            }
+        }
+
+        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+    }
+
+    /// Limpa integralmente todo o cache em memória.
+    pub fn clear(&self) {
+        let mut inner = self.inner.write();
+        inner.entries.clear();
+        inner.order.clear();
+        inner.total_bytes = 0;
+        self.stats.current_bytes.store(0, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use http::{HeaderMap, StatusCode};
+
+    #[test]
+    fn test_cache_lru_eviction() {
+        // Cache com capacidade pequena para 2 itens
+        let cache = HttpCache::new(600);
+
+        let now = SystemTime::now();
+        let url1 = Url::parse("https://example.com/1").unwrap();
+        let url2 = Url::parse("https://example.com/2").unwrap();
+        let url3 = Url::parse("https://example.com/3").unwrap();
+
+        let e1 = CacheEntry::new(url1.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data1"), now, now);
+        let e2 = CacheEntry::new(url2.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data2"), now, now);
+        let e3 = CacheEntry::new(url3.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data3"), now, now);
+
+        cache.put(None, url1.clone(), e1);
+        cache.put(None, url2.clone(), e2);
+
+        // Acessa url1 para torná-lo mais recentemente usado
+        assert!(cache.get(None, &url1).is_some());
+
+        // Inserir url3 deve despejar url2 (menos recentemente usado)
+        cache.put(None, url3.clone(), e3);
+
+        assert!(cache.get(None, &url1).is_some());
+        assert!(cache.get(None, &url3).is_some());
+        assert!(cache.get(None, &url2).is_none());
+    }
+
+    #[test]
+    fn test_cache_invalidation_on_unsafe_method() {
+        let cache = HttpCache::new(1024 * 1024);
+        let url = Url::parse("https://example.com/form").unwrap();
+        let now = SystemTime::now();
+        let entry = CacheEntry::new(url.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"form"), now, now);
+
+        cache.put(None, url.clone(), entry);
+        assert!(cache.get(None, &url).is_some());
+
+        // Invalida a URL
+        cache.invalidate(&url);
+        assert!(cache.get(None, &url).is_none());
+    }
+}
