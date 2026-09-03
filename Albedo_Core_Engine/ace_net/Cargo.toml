@@ -5,3 +5,32 @@ edition = "2021"
 
 [dependencies]
 ace_core = { path = "../ace_core" }
+
+# Async & Concurrency
+tokio = { version = "1.37", features = ["full"] }
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# HTTP & Transport
+http = "1.0"
+httpdate = "1.0"
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full", "client-legacy"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["webpki-tokio", "http1", "http2", "ring"] }
+http-body-util = "0.1"
+bytes = "1.0"
+
+# Data Structures & Fast Hashing
+rustc-hash = "2.1"
+smol_str = "0.3"
+
+# Observability & Errors
+tracing = "0.1"
+thiserror = "2.0"
+
+# Web Standards, URLs & Encodings
+url = "2.5"
+encoding_rs = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"
