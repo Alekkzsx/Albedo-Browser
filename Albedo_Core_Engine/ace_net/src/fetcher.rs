@@ -470,7 +470,7 @@ impl ResourceFetcher {
         &self,
         req: Request,
         nik: Option<crate::cache::NetworkIsolationKey>,
-        mut stale_entry: CacheEntry,
+        _stale_entry: CacheEntry,
     ) -> NetResult<()> {
         let resp_time = SystemTime::now();
         if let Ok(network_response) = self.transport.execute(&req).await {

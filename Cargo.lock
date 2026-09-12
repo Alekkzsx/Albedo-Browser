@@ -94,6 +94,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
+ "tower-service",
  "tracing",
  "tungstenite",
  "url",
