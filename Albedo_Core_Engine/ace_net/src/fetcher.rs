@@ -62,6 +62,7 @@ pub struct ResourceFetcher {
     hsts_store: Arc<HstsStore>,
     doh_resolver: Arc<TokioAsyncResolver>,
     service_worker_hook: Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>>,
+    metrics: Arc<crate::metrics::FetcherMetrics>,
 }
 
 impl ResourceFetcher {
@@ -85,6 +86,7 @@ impl ResourceFetcher {
         let cookie_jar = Arc::new(CookieJar::new());
         let hsts_store = Arc::new(HstsStore::new());
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
+        let metrics = Arc::new(crate::metrics::FetcherMetrics::new());
 
         Ok(Self {
             transport,
@@ -95,6 +97,7 @@ impl ResourceFetcher {
             hsts_store,
             doh_resolver,
             service_worker_hook,
+            metrics,
         })
     }
 
