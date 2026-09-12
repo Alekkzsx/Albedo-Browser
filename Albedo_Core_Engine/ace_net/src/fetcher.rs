@@ -72,16 +72,18 @@ impl ResourceFetcher {
 
     /// Cria uma nova instância com capacidade de cache personalizada em bytes.
     pub fn with_cache_capacity(cache_capacity_bytes: usize) -> NetResult<Self> {
-        let transport = TransportClient::new()?;
+        let doh_resolver = Arc::new(TokioAsyncResolver::tokio(
+            ResolverConfig::cloudflare_https(),
+            ResolverOpts::default(),
+        ));
+        let transport = TransportClient::with_resolver(
+            crate::transport::DohHappyEyeballsResolver::with_resolver(doh_resolver.clone())
+        )?;
         let cache = Arc::new(HttpCache::new(cache_capacity_bytes));
         let cancellation_registry = Arc::new(CancellationRegistry::new());
         let alt_svc_registry = Arc::new(AltSvcRegistry::new());
         let cookie_jar = Arc::new(CookieJar::new());
         let hsts_store = Arc::new(HstsStore::new());
-        let doh_resolver = Arc::new(TokioAsyncResolver::tokio(
-            ResolverConfig::cloudflare_https(),
-            ResolverOpts::default(),
-        ));
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
 
         Ok(Self {
