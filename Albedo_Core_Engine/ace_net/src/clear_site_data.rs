@@ -26,12 +26,12 @@ impl ClearSiteDataAction {
         let mut action = Self::default();
 
         for part in s.split(',') {
-            let directive = part.trim().trim_matches('"').trim();
-            match directive {
+            let directive = part.trim().trim_matches('"').trim().to_ascii_lowercase();
+            match directive.as_str() {
                 "cache" => action.clear_cache = true,
                 "cookies" => action.clear_cookies = true,
                 "storage" => action.clear_storage = true,
-                "executionContexts" => action.clear_execution_contexts = true,
+                "executioncontexts" => action.clear_execution_contexts = true,
                 "*" => {
                     action.clear_cache = true;
                     action.clear_cookies = true;
@@ -72,6 +72,17 @@ mod tests {
     #[test]
     fn test_parse_clear_site_data_wildcard() {
         let val = HeaderValue::from_static("\"*\"");
+        let action = ClearSiteDataAction::parse(&val);
+
+        assert!(action.clear_cache);
+        assert!(action.clear_cookies);
+        assert!(action.clear_storage);
+        assert!(action.clear_execution_contexts);
+    }
+
+    #[test]
+    fn test_parse_clear_site_data_case_insensitive() {
+        let val = HeaderValue::from_static("\"CACHE\", \"COOKIES\", \"STORAGE\", \"ExecutionContexts\"");
         let action = ClearSiteDataAction::parse(&val);
 
         assert!(action.clear_cache);
