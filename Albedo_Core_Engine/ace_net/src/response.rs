@@ -23,43 +23,118 @@ pub struct ResponseTiming {
     pub ttfb: Duration,
 }
 
-/// Corpo de uma resposta HTTP, suportando armazenamento em memória contígua ou streaming.
-#[derive(Debug, Clone)]
+use crate::error::{NetError, NetResult};
+use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+/// Stream assíncrono de chunks de bytes para consumo em fluxo contínuo com contrapressão (backpressure).
+pub type BoxByteStream = Pin<Box<dyn futures_core::Stream<Item = NetResult<Bytes>> + Send>>;
+
+/// Stream de chunk único para conversão transparente de buffers contíguos em fluxo reativo.
+struct SingleChunkStream(Option<Bytes>);
+
+impl futures_core::Stream for SingleChunkStream {
+    type Item = NetResult<Bytes>;
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        std::task::Poll::Ready(self.0.take().map(Ok))
+    }
+}
+
+/// Corpo de uma resposta HTTP, suportando buffer contíguo em RAM, vazio ou streaming reativo (WHATWG Fetch ReadableStream).
+#[derive(Clone)]
 pub enum ResponseBody {
     /// Corpo completo mantido em buffer de bytes contíguo.
     Full(Bytes),
     /// Corpo vazio (ex: status 204 No Content ou 304 Not Modified).
     Empty,
+    /// Stream reativo desacoplado com contrapressão e consumo sob demanda.
+    Stream(Arc<Mutex<Option<BoxByteStream>>>),
+}
+
+impl std::fmt::Debug for ResponseBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Full(b) => write!(f, "ResponseBody::Full({} bytes)", b.len()),
+            Self::Empty => write!(f, "ResponseBody::Empty"),
+            Self::Stream(_) => write!(f, "ResponseBody::Stream(<reactive>)"),
+        }
+    }
 }
 
 impl ResponseBody {
-    /// Retorna os bytes completos do corpo como uma fatia imutável.
+    /// Cria um novo corpo a partir de um stream assíncrono.
+    pub fn from_stream<S>(stream: S) -> Self
+    where
+        S: futures_core::Stream<Item = NetResult<Bytes>> + Send + 'static,
+    {
+        Self::Stream(Arc::new(Mutex::new(Some(Box::pin(stream)))))
+    }
+
+    /// Retorna os bytes completos do corpo como uma fatia imutável (apenas se estiver em memória).
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             Self::Full(b) => b.as_ref(),
-            Self::Empty => &[],
+            Self::Empty | Self::Stream(_) => &[],
         }
     }
 
-    /// Consome e retorna a estrutura `Bytes` subjacente.
+    /// Consome e retorna a estrutura `Bytes` síncrona (se em memória) ou vazia.
     pub fn into_bytes(self) -> Bytes {
         match self {
             Self::Full(b) => b,
-            Self::Empty => Bytes::new(),
+            Self::Empty | Self::Stream(_) => Bytes::new(),
         }
     }
 
-    /// Retorna o tamanho total do corpo em bytes.
+    /// Coleta todos os bytes do corpo de forma assíncrona, drenando o stream se necessário.
+    pub async fn collect_bytes(self) -> NetResult<Bytes> {
+        match self {
+            Self::Full(b) => Ok(b),
+            Self::Empty => Ok(Bytes::new()),
+            Self::Stream(stream_mutex) => {
+                let mut guard = stream_mutex.lock().await;
+                if let Some(mut stream) = guard.take() {
+                    let mut buf = bytes::BytesMut::new();
+                    while let Some(chunk_res) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+                        let chunk = chunk_res?;
+                        buf.extend_from_slice(&chunk);
+                    }
+                    Ok(buf.freeze())
+                } else {
+                    Err(NetError::HttpProtocolError("Corpo de streaming já foi consumido (disturbed body)".into()))
+                }
+            }
+        }
+    }
+
+    /// Extrai o stream reativo para consumo progressivo em pipeline.
+    pub async fn take_stream(&self) -> Option<BoxByteStream> {
+        match self {
+            Self::Full(b) => Some(Box::pin(SingleChunkStream(Some(b.clone())))),
+            Self::Empty => None,
+            Self::Stream(m) => {
+                let mut guard = m.lock().await;
+                guard.take()
+            }
+        }
+    }
+
+    /// Retorna o tamanho total do corpo em bytes se conhecido antecipadamente.
     pub fn len(&self) -> usize {
         match self {
             Self::Full(b) => b.len(),
-            Self::Empty => 0,
+            Self::Empty | Self::Stream(_) => 0,
         }
     }
 
     /// Verifica se o corpo é vazio.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        match self {
+            Self::Full(b) => b.is_empty(),
+            Self::Empty => true,
+            Self::Stream(_) => false,
+        }
     }
 }
 
@@ -106,7 +181,18 @@ impl Response {
         self.body.as_bytes()
     }
 
-    /// Tenta interpretar o corpo da resposta como texto UTF-8.
+    /// Coleta todos os bytes da resposta de forma assíncrona, consumindo o stream se aplicável.
+    pub async fn collect_bytes(self) -> NetResult<Bytes> {
+        self.body.collect_bytes().await
+    }
+
+    /// Interpreta o corpo da resposta como texto UTF-8 de forma assíncrona.
+    pub async fn text_async(self) -> NetResult<String> {
+        let b = self.collect_bytes().await?;
+        String::from_utf8(b.to_vec()).map_err(|e| NetError::HttpProtocolError(e.to_string()))
+    }
+
+    /// Tenta interpretar o corpo da resposta como texto UTF-8 se já carregado em memória.
     pub fn text(&self) -> Result<String, std::string::FromUtf8Error> {
         String::from_utf8(self.body.as_bytes().to_vec())
     }
@@ -137,4 +223,41 @@ mod tests {
         assert_eq!(empty.len(), 0);
         assert!(empty.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_response_body_streaming_consumption() {
+        // Simula um stream de chunks de rede: chunk1 + chunk2
+        struct TwoChunkStream {
+            chunk1: Option<Bytes>,
+            chunk2: Option<Bytes>,
+        }
+
+        impl futures_core::Stream for TwoChunkStream {
+            type Item = NetResult<Bytes>;
+            fn poll_next(
+                mut self: Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Option<Self::Item>> {
+                if let Some(c1) = self.chunk1.take() {
+                    std::task::Poll::Ready(Some(Ok(c1)))
+                } else if let Some(c2) = self.chunk2.take() {
+                    std::task::Poll::Ready(Some(Ok(c2)))
+                } else {
+                    std::task::Poll::Ready(None)
+                }
+            }
+        }
+
+        let stream = TwoChunkStream {
+            chunk1: Some(Bytes::from_static(b"Hello ")),
+            chunk2: Some(Bytes::from_static(b"Streaming World!")),
+        };
+
+        let body = ResponseBody::from_stream(stream);
+        assert!(!body.is_empty());
+
+        let collected = body.collect_bytes().await.unwrap();
+        assert_eq!(collected.as_ref(), b"Hello Streaming World!");
+    }
 }
+
