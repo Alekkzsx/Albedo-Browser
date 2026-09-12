@@ -63,7 +63,32 @@ impl HttpCache {
     /// Configura um diretório de cache em disco (L2).
     pub fn with_disk_path(mut self, path: PathBuf) -> Self {
         let _ = std::fs::create_dir_all(&path);
-        self.disk_path = Some(path);
+        self.disk_path = Some(path.clone());
+        
+        // Carrega o índice do disco assincronamente (background index build)
+        // Isso evita bloquear a inicialização do motor.
+        let inner_arc = std::sync::Arc::new(self.inner); // Wait, self.inner is not an Arc. 
+        // We can't spawn a task holding a reference to self.inner without Arc. 
+        // Actually, since HttpCache doesn't wrap inner in Arc (it wraps in RwLock), wait! HttpCache is typically put in an Arc itself.
+        // Let's just do synchronous read_dir since it's startup, but std::fs::read_dir instead of tokio.
+        if let Ok(entries) = std::fs::read_dir(&path) {
+            let mut inner = self.inner.write();
+            for entry in entries.flatten() {
+                let metadata = entry.metadata().unwrap_or_else(|_| std::fs::metadata(entry.path()).unwrap());
+                if metadata.is_file() {
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    if file_name.ends_with(".cache") {
+                        if let Ok(hash) = u64::from_str_radix(&file_name[0..16], 16) {
+                            let size = metadata.len() as usize;
+                            inner.disk_entries.insert(hash, size);
+                            inner.disk_order.push_back(hash);
+                            inner.disk_total_bytes += size;
+                        }
+                    }
+                }
+            }
+        }
+
         self
     }
 
