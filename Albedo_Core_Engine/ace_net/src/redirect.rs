@@ -10,7 +10,7 @@ use crate::error::{NetError, NetResult};
 use crate::request::Request;
 use ace_core::security::origin::Origin;
 use bytes::Bytes;
-use http::header::{HeaderMap, AUTHORIZATION, COOKIE, LOCATION};
+use http::header::{HeaderMap, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION};
 use http::{Method, StatusCode};
 use std::collections::HashSet;
 use url::Url;
@@ -96,6 +96,14 @@ pub fn handle_redirect(
 
     // Higienização de cabeçalhos para proteção de privacidade
     let mut new_headers = current_req.headers.clone();
+
+    // Se o método foi convertido para GET (ex: 301, 302, 303 de um POST),
+    // remove cabeçalhos de representação de corpo para cumprir WHATWG Fetch e RFC 9110 §8.6.
+    if new_method == Method::GET && current_req.method != Method::GET {
+        new_headers.remove(CONTENT_TYPE);
+        new_headers.remove(CONTENT_LENGTH);
+        new_headers.remove(CONTENT_ENCODING);
+    }
 
     let current_origin = Origin::parse(current_req.url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
     let target_origin = Origin::parse(new_url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
@@ -194,5 +202,36 @@ mod tests {
         );
 
         assert!(matches!(result, Err(NetError::TooManyRedirects(_))));
+    }
+
+    #[test]
+    fn test_post_to_get_redirect_strips_body_headers() {
+        let mut req = Request::post("https://example.com/submit").unwrap().build();
+        req.headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        req.headers.insert(CONTENT_LENGTH, HeaderValue::from_static("42"));
+        req.headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+
+        let mut resp_headers = HeaderMap::new();
+        resp_headers.insert(LOCATION, HeaderValue::from_static("/thank-you"));
+        let mut visited = HashSet::new();
+
+        let action = handle_redirect(
+            &req,
+            StatusCode::SEE_OTHER, // 303 converte sempre para GET
+            &resp_headers,
+            &mut visited,
+            20,
+        )
+        .unwrap();
+
+        match action {
+            RedirectAction::Follow(follow) => {
+                assert_eq!(follow.new_method, Method::GET);
+                assert!(!follow.new_headers.contains_key(CONTENT_TYPE));
+                assert!(!follow.new_headers.contains_key(CONTENT_LENGTH));
+                assert!(!follow.new_headers.contains_key(CONTENT_ENCODING));
+            }
+            _ => panic!("Esperado Follow redirect"),
+        }
     }
 }
