@@ -533,4 +533,55 @@ mod tests {
 
         assert!(matches!(result, Err(NetError::Cancelled)));
     }
+
+    struct MockServiceWorker;
+    impl ServiceWorkerHook for MockServiceWorker {
+        fn on_fetch(
+            &self,
+            req: &Request,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = NetResult<Option<Response>>> + Send + '_>> {
+            let url = req.url.clone();
+            Box::pin(async move {
+                if url.as_str() == "https://sw-intercepted.local/offline" {
+                    let mut headers = http::HeaderMap::new();
+                    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/html"));
+                    Ok(Some(Response {
+                        url,
+                        status: StatusCode::OK,
+                        headers,
+                        body: ResponseBody::Full(bytes::Bytes::from_static(b"<h1>From ServiceWorker</h1>")),
+                        mime_type: "text/html".into(),
+                        charset: Some("utf-8".into()),
+                        content_encoding: None,
+                        retry_after: None,
+                        content_range: None,
+                        from_cache: false,
+                        timing: ResponseTiming::default(),
+                    }))
+                } else {
+                    Ok(None)
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetcher_service_worker_interception() {
+        let fetcher = ResourceFetcher::new().unwrap();
+        fetcher.set_service_worker_hook(Arc::new(MockServiceWorker));
+
+        // URL interceptada pelo Service Worker
+        let req = Request::get("https://sw-intercepted.local/offline").unwrap().build();
+        let resp = fetcher.fetch(req).await.unwrap();
+
+        assert_eq!(resp.status, StatusCode::OK);
+        assert_eq!(resp.text().unwrap(), "<h1>From ServiceWorker</h1>");
+        assert_eq!(resp.mime_type.as_str(), "text/html");
+
+        // Limpa o hook e verifica que não intercepta mais
+        fetcher.clear_service_worker_hook();
+        let req2 = Request::get("data:text/plain,direct").unwrap().build();
+        let resp2 = fetcher.fetch(req2).await.unwrap();
+        assert_eq!(resp2.text().unwrap(), "direct");
+    }
 }
