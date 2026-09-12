@@ -22,19 +22,24 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use smol_str::SmolStr;
 use std::time::{Duration, Instant};
+use crate::transport::dns::DohHappyEyeballsResolver;
 use url::Url;
 
-/// Cliente de transporte HTTP de baixo nível com pool de sockets seguro.
+/// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
 pub struct TransportClient {
-    client: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
+    client: Client<HttpsConnector<HttpConnector<DohHappyEyeballsResolver>>, Full<Bytes>>,
     user_agent: HeaderValue,
-    // h3_endpoint: Option<quinn::Endpoint>, // Arquitetura para M2: HTTP/3
 }
 
 impl TransportClient {
-    /// Cria uma nova instância de `TransportClient` com certificados WebPKI e ALPN habilitado.
+    /// Cria uma nova instância de `TransportClient` com certificados WebPKI, DoH Cloudflare e Happy Eyeballs v2.
     pub fn new() -> NetResult<Self> {
+        Self::with_resolver(DohHappyEyeballsResolver::new())
+    }
+
+    /// Cria uma nova instância configurada com um resolver DoH customizado.
+    pub fn with_resolver(resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(
             webpki_roots::TLS_SERVER_ROOTS
@@ -56,12 +61,16 @@ impl TransportClient {
         // Milestone 5: Telemetria Preditiva & 0-RTT
         config.enable_early_data = true;
 
+        // Conector HTTP/TCP configurado com DoH e Happy Eyeballs v2 (RFC 8305)
+        let mut http_connector = HttpConnector::new_with_resolver(resolver);
+        http_connector.enforce_http(false);
+
         let https = HttpsConnectorBuilder::new()
             .with_tls_config(config)
             .https_or_http()
             .enable_http1()
             .enable_http2()
-            .build();
+            .wrap_connector(http_connector);
 
         let client = Client::builder(TokioExecutor::new())
             .pool_idle_timeout(Duration::from_secs(90))
