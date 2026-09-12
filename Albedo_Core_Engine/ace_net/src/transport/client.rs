@@ -74,6 +74,7 @@ impl TransportClient {
     }
 
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
+    #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method))]
     pub async fn execute(&self, req: &Request) -> NetResult<Response> {
         let start_time = Instant::now();
 
