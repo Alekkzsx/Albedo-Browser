@@ -38,6 +38,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::SystemTime;
 use url::Url;
+use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 
 /// Guarda RAII para remoção automática da requisição da tabela de cancelamento ao concluir.
 struct RequestRegistrationGuard<'a>(&'a CancellationRegistry, RequestId);
@@ -57,6 +59,7 @@ pub struct ResourceFetcher {
     alt_svc_registry: Arc<AltSvcRegistry>,
     cookie_jar: Arc<CookieJar>,
     hsts_store: Arc<HstsStore>,
+    doh_resolver: Arc<TokioAsyncResolver>,
 }
 
 impl ResourceFetcher {
@@ -73,6 +76,10 @@ impl ResourceFetcher {
         let alt_svc_registry = Arc::new(AltSvcRegistry::new());
         let cookie_jar = Arc::new(CookieJar::new());
         let hsts_store = Arc::new(HstsStore::new());
+        let doh_resolver = Arc::new(TokioAsyncResolver::tokio(
+            ResolverConfig::cloudflare_https(),
+            ResolverOpts::default(),
+        ));
 
         Ok(Self {
             transport,
@@ -81,6 +88,7 @@ impl ResourceFetcher {
             alt_svc_registry,
             cookie_jar,
             hsts_store,
+            doh_resolver,
         })
     }
 
@@ -116,7 +124,7 @@ impl ResourceFetcher {
 
     /// Executa pré-resolução DNS para um host em background (Resource Hint).
     pub async fn dns_prefetch(&self, host: &str) -> NetResult<()> {
-        let _ = tokio::net::lookup_host((host, 80))
+        let _ = self.doh_resolver.lookup_ip(host)
             .await
             .map_err(|e| NetError::DnsResolutionFailed(host.into(), e.to_string()))?;
         Ok(())
