@@ -52,7 +52,7 @@ pub use clear_site_data::ClearSiteDataAction;
 pub use client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
 pub use compression::{decompress_payload, ContentEncoding};
 pub use contention::RetryAfter;
-pub use cookie::{Cookie, CookieJar, SameSite};
+pub use cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, SameSite, MAX_COOKIES_PER_DOMAIN};
 pub use encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
 pub use error::{NetError, NetResult};
 pub use fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
@@ -66,10 +66,12 @@ pub use request::{
     CredentialsMode, HeaderMap, HeaderName, HeaderValue, Method, RedirectPolicy, Request,
     RequestBuilder, RequestDestination, RequestMode, TryIntoUrl,
 };
-pub use response::{Response, ResponseBody, ResponseTiming, StatusCode};
+pub use response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
+pub use service_worker_hook::ServiceWorkerHook;
 pub use tokio_util::sync::CancellationToken;
-pub use transport::TransportClient;
+pub use transport::{DohHappyEyeballsResolver, TransportClient};
 pub use url::Url;
+pub use websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
 
 /// Cria uma instância padrão do `ResourceFetcher` para uso imediato pelo motor.
 pub fn create_default_fetcher() -> NetResult<ResourceFetcher> {
