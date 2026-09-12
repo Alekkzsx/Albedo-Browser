@@ -48,6 +48,7 @@ hickory-resolver = { version = "0.24", features = ["tokio-runtime", "dns-over-ht
 
 # M4: WebSockets reativos
 tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["http3", "rustls"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
