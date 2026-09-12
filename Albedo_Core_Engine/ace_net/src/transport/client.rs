@@ -41,18 +41,7 @@ impl TransportClient {
     /// Cria uma nova instância configurada com um resolver DoH customizado.
     pub fn with_resolver(resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
         let mut root_store = rustls::RootCertStore::empty();
-        root_store.extend(
-            webpki_roots::TLS_SERVER_ROOTS
-                .iter()
-                .map(|ta| {
-                    rustls::pki_types::trust_anchor::TrustAnchor {
-                        subject: ta.subject.clone(),
-                        subject_public_key_info: ta.subject_public_key_info.clone(),
-                        name_constraints: ta.name_constraints.clone(),
-                    }
-                })
-                .map(|ta| rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(ta.subject, ta.subject_public_key_info, ta.name_constraints))
-        );
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
         let mut config = rustls::ClientConfig::builder()
             .with_root_certificates(root_store)
