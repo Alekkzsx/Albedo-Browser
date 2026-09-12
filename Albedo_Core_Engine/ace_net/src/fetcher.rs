@@ -129,9 +129,15 @@ impl ResourceFetcher {
         &self.hsts_store
     }
 
-    /// Registra um interceptador global de Service Workers (W3C Service Worker Fetch Event).
+    /// Registra um gancho de Service Worker na engine de rede.
     pub fn set_service_worker_hook(&self, hook: Arc<dyn ServiceWorkerHook>) {
-        *self.service_worker_hook.write() = Some(hook);
+        let mut w = self.service_worker_hook.write();
+        *w = Some(hook);
+    }
+
+    /// Retorna o gancho do Service Worker.
+    pub fn service_worker_hook(&self) -> &Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>> {
+        &self.service_worker_hook
     }
 
     /// Remove o interceptador de Service Workers.
