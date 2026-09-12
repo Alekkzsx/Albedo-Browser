@@ -35,6 +35,8 @@ pub mod fetch_metadata;
 pub mod fetcher;
 pub mod hints;
 pub mod hsts;
+pub mod metrics;
+pub mod net_log;
 pub mod priority;
 pub mod range;
 pub mod redirect;
