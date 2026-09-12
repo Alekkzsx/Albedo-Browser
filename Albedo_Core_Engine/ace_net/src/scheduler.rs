@@ -80,7 +80,7 @@ impl ResourceScheduler {
             };
         }
 
-        let mut rx = {
+        let rx = {
             let mut state = self.state.lock();
 
             // Tenta adquirir imediatamente
