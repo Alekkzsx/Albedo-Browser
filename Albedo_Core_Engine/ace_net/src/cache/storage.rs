@@ -31,9 +31,15 @@ pub struct HttpCache {
 
 #[derive(Debug)]
 struct HttpCacheInner {
+    // RAM L1 Cache
     entries: HashMap<String, CacheEntry>,
     order: VecDeque<String>,
     total_bytes: usize,
+    
+    // Disk L2 Cache Index
+    disk_entries: HashMap<u64, usize>,
+    disk_order: VecDeque<u64>,
+    disk_total_bytes: usize,
 }
 
 impl HttpCache {
@@ -44,6 +50,9 @@ impl HttpCache {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
                 total_bytes: 0,
+                disk_entries: HashMap::new(),
+                disk_order: VecDeque::new(),
+                disk_total_bytes: 0,
             }),
             stats: CacheStats::default(),
             max_capacity_bytes,
