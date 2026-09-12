@@ -197,7 +197,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_websocket_session_messaging() {
-        let (tx, rx) = mpsc::channel(10);
+        let (tx, _rx) = mpsc::channel(10);
         let (server_tx, client_rx) = mpsc::channel(10);
         let url = Url::parse("ws://test.local").unwrap();
 
