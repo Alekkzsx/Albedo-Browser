@@ -21,7 +21,7 @@ pub enum NetEventType {
 }
 
 impl fmt::Display for NetEventType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Formatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::DnsStart => "DNS_START",
             Self::DnsEnd => "DNS_END",
