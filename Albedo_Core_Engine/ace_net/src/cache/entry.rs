@@ -18,6 +18,8 @@ pub struct CacheEntry {
     pub body: Bytes,
     pub request_time: SystemTime,
     pub response_time: SystemTime,
+    /// Chave e cabeçalhos da requisição original para validação de `Vary` (RFC 9111 §4.1).
+    pub req_headers: HeaderMap,
 }
 
 impl CacheEntry {
@@ -37,7 +39,14 @@ impl CacheEntry {
             body,
             request_time,
             response_time,
+            req_headers: HeaderMap::new(),
         }
+    }
+
+    /// Associa os cabeçalhos da requisição que gerou esta resposta para validação de `Vary`.
+    pub fn with_request_headers(mut self, req_headers: HeaderMap) -> Self {
+        self.req_headers = req_headers;
+        self
     }
 
     /// Determina se a resposta pode ser armazenada em cache conforme RFC 9111 §3.
@@ -47,10 +56,21 @@ impl CacheEntry {
             return false;
         }
 
+        // RFC 9111 §4.1: Respostas com 'Vary: *' não podem ser armazenadas em cache
+        if let Some(vary) = headers.get(http::header::VARY).and_then(|v| v.to_str().ok()) {
+            for v in vary.split(',') {
+                if v.trim() == "*" {
+                    return false;
+                }
+            }
+        }
+
         // Verifica diretiva Cache-Control
         if let Some(cc) = headers.get(CACHE_CONTROL).and_then(|v| v.to_str().ok()) {
             let cc_lower = cc.to_ascii_lowercase();
-            if cc_lower.contains("no-store") || cc_lower.contains("private") {
+            // RFC 9111 §5.2.2.9: 'no-store' proíbe expressamente armazenamento.
+            // NOTA: 'private' (RFC 9111 §5.2.2.4) É PERMITIDO em caches privados como navegadores!
+            if cc_lower.contains("no-store") {
                 return false;
             }
         }
@@ -70,6 +90,59 @@ impl CacheEntry {
                 | StatusCode::URI_TOO_LONG
                 | StatusCode::NOT_IMPLEMENTED
         )
+    }
+
+    /// Valida conformidade com RFC 9111 §4.1 (Vary):
+    /// Se a resposta contiver cabeçalho Vary, todos os campos nomeados
+    /// devem coincidir com os cabeçalhos da requisição que busca o cache.
+    pub fn matches_request_headers(&self, req_headers: &HeaderMap) -> bool {
+        let vary_str = match self.headers.get(http::header::VARY).and_then(|v| v.to_str().ok()) {
+            Some(v) => v,
+            None => return true, // Sem Vary, qualquer requisição para a mesma URL/NIK é compatível
+        };
+
+        for field in vary_str.split(',') {
+            let field_name = field.trim();
+            if field_name == "*" {
+                return false;
+            }
+            if let Ok(hdr_name) = http::header::HeaderName::try_from(field_name) {
+                let original_val = self.req_headers.get(&hdr_name);
+                let current_val = req_headers.get(&hdr_name);
+                if original_val != current_val {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Retorna a janela de tolerância a conteúdo obsoleto (RFC 5861 stale-while-revalidate).
+    pub fn stale_while_revalidate_lifetime(&self) -> Duration {
+        if let Some(cc) = self.headers.get(CACHE_CONTROL).and_then(|v| v.to_str().ok()) {
+            for directive in cc.split(',') {
+                let part = directive.trim().to_ascii_lowercase();
+                if let Some(stripped) = part.strip_prefix("stale-while-revalidate=") {
+                    if let Ok(seconds) = stripped.trim().parse::<u64>() {
+                        return Duration::from_secs(seconds);
+                    }
+                }
+            }
+        }
+        Duration::ZERO
+    }
+
+    /// Determina se a entrada está obsoleta, mas dentro do período permitido de stale-while-revalidate (RFC 5861).
+    pub fn is_stale_revalidatable(&self, now: SystemTime) -> bool {
+        let age = self.current_age(now);
+        let freshness = self.freshness_lifetime();
+        if age >= freshness {
+            let swr = self.stale_while_revalidate_lifetime();
+            age < freshness + swr
+        } else {
+            false
+        }
     }
 
     /// Calcula o tempo de vida de frescor (Freshness Lifetime) da entrada (RFC 9111 §4.2.1).
@@ -209,6 +282,17 @@ impl CacheEntry {
         let res_duration = self.response_time.duration_since(std::time::UNIX_EPOCH).unwrap_or(Duration::ZERO);
         buf.put_u64_le(res_duration.as_secs());
         buf.put_u32_le(res_duration.subsec_nanos());
+
+        // req_headers (RFC 9111 Vary validation)
+        buf.put_u32_le(self.req_headers.len() as u32);
+        for (name, value) in &self.req_headers {
+            let name_bytes = name.as_str().as_bytes();
+            buf.put_u16_le(name_bytes.len() as u16);
+            buf.put_slice(name_bytes);
+            let value_bytes = value.as_bytes();
+            buf.put_u32_le(value_bytes.len() as u32);
+            buf.put_slice(value_bytes);
+        }
         
         buf.freeze()
     }
@@ -262,6 +346,35 @@ impl CacheEntry {
         let res_secs = buf.get_u64_le();
         let res_nanos = buf.get_u32_le();
         let response_time = std::time::UNIX_EPOCH + Duration::new(res_secs, res_nanos);
+
+        let mut req_headers = HeaderMap::new();
+        if buf.remaining() >= 4 {
+            let num_req_headers = buf.get_u32_le() as usize;
+            for _ in 0..num_req_headers {
+                if buf.remaining() < 2 { break; }
+                let name_len = buf.get_u16_le() as usize;
+                if buf.remaining() < name_len { break; }
+                let name_str = match std::str::from_utf8(&buf[..name_len]) {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+                let header_name = match http::header::HeaderName::try_from(name_str) {
+                    Ok(n) => n,
+                    Err(_) => break,
+                };
+                buf.advance(name_len);
+
+                if buf.remaining() < 4 { break; }
+                let val_len = buf.get_u32_le() as usize;
+                if buf.remaining() < val_len { break; }
+                let header_val = match http::header::HeaderValue::from_bytes(&buf[..val_len]) {
+                    Ok(v) => v,
+                    Err(_) => break,
+                };
+                buf.advance(val_len);
+                req_headers.insert(header_name, header_val);
+            }
+        }
         
         Some(Self {
             url,
@@ -270,6 +383,7 @@ impl CacheEntry {
             body,
             request_time,
             response_time,
+            req_headers,
         })
     }
 }
@@ -322,4 +436,79 @@ mod tests {
         assert_eq!(cond.get(IF_NONE_MATCH).unwrap(), "\"xyz123\"");
         assert_eq!(cond.get(IF_MODIFIED_SINCE).unwrap(), "Wed, 21 Oct 2025 07:28:00 GMT");
     }
+
+    #[test]
+    fn test_private_cacheable_in_browser() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
+        assert!(CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    }
+
+    #[test]
+    fn test_vary_asterisk_is_not_cacheable() {
+        let mut headers = HeaderMap::new();
+        headers.insert(http::header::VARY, HeaderValue::from_static("*"));
+        assert!(!CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    }
+
+    #[test]
+    fn test_vary_header_matching() {
+        let mut resp_headers = HeaderMap::new();
+        resp_headers.insert(http::header::VARY, HeaderValue::from_static("Accept-Encoding"));
+
+        let mut orig_req_headers = HeaderMap::new();
+        orig_req_headers.insert(http::header::ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
+
+        let now = SystemTime::now();
+        let entry = CacheEntry::new(
+            Url::parse("https://example.com/script.js").unwrap(),
+            StatusCode::OK,
+            resp_headers,
+            Bytes::from_static(b"console.log('hi');"),
+            now,
+            now,
+        ).with_request_headers(orig_req_headers);
+
+        let mut matching_req = HeaderMap::new();
+        matching_req.insert(http::header::ACCEPT_ENCODING, HeaderValue::from_static("gzip, br"));
+        assert!(entry.matches_request_headers(&matching_req));
+
+        let mut mismatching_req = HeaderMap::new();
+        mismatching_req.insert(http::header::ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+        assert!(!entry.matches_request_headers(&mismatching_req));
+    }
+
+    #[test]
+    fn test_stale_while_revalidate_window() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("max-age=60, stale-while-revalidate=300"));
+
+        let now = SystemTime::now();
+        let entry = CacheEntry::new(
+            Url::parse("https://example.com/api/news").unwrap(),
+            StatusCode::OK,
+            headers,
+            Bytes::from_static(b"{\"news\":[]}"),
+            now,
+            now,
+        );
+
+        assert_eq!(entry.freshness_lifetime(), Duration::from_secs(60));
+        assert_eq!(entry.stale_while_revalidate_lifetime(), Duration::from_secs(300));
+
+        // Em 30s: fresh
+        assert!(entry.is_fresh(now + Duration::from_secs(30)));
+        assert!(!entry.is_stale_revalidatable(now + Duration::from_secs(30)));
+
+        // Em 100s: stale, mas dentro da janela stale-while-revalidate (60..360)
+        let t100 = now + Duration::from_secs(100);
+        assert!(!entry.is_fresh(t100));
+        assert!(entry.is_stale_revalidatable(t100));
+
+        // Em 400s: expirado além da janela (stale)
+        let t400 = now + Duration::from_secs(400);
+        assert!(!entry.is_fresh(t400));
+        assert!(!entry.is_stale_revalidatable(t400));
+    }
 }
+
