@@ -45,14 +45,17 @@ pub fn sniff_bom(bytes: &[u8]) -> Option<DetectedEncoding> {
 pub fn extract_charset_from_content_type(content_type: &str) -> Option<SmolStr> {
     for param in content_type.split(';') {
         let trimmed = param.trim();
-        if let Some(stripped) = trimmed.strip_prefix("charset=") {
-            let mut val = stripped.trim();
-            // Remove aspas se houver
-            if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
-                val = &val[1..val.len() - 1];
-            }
-            if !val.is_empty() {
-                return Some(val.to_ascii_lowercase().into());
+        if let Some(eq_idx) = trimmed.find('=') {
+            let key = trimmed[..eq_idx].trim();
+            if key.eq_ignore_ascii_case("charset") {
+                let mut val = trimmed[eq_idx + 1..].trim();
+                // Remove aspas se houver
+                if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
+                    val = &val[1..val.len() - 1];
+                }
+                if !val.is_empty() {
+                    return Some(val.to_ascii_lowercase().into());
+                }
             }
         }
     }
@@ -91,6 +94,14 @@ mod tests {
         assert_eq!(
             extract_charset_from_content_type("text/html; charset=UTF-8").as_deref(),
             Some("utf-8")
+        );
+        assert_eq!(
+            extract_charset_from_content_type("text/html; CHARSET=UTF-8").as_deref(),
+            Some("utf-8")
+        );
+        assert_eq!(
+            extract_charset_from_content_type("text/html; Charset = \"windows-1252\"").as_deref(),
+            Some("windows-1252")
         );
         assert_eq!(
             extract_charset_from_content_type("text/html; charset=\"iso-8859-1\"").as_deref(),
