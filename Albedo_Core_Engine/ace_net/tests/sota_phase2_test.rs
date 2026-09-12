@@ -179,6 +179,8 @@ fn test_public_suffix_super_cookie_defense() {
     let valid_cookie = Cookie::parse("session=legit; Domain=example.co.uk", &url, None, now);
     assert!(valid_cookie.is_some());
     assert_eq!(valid_cookie.unwrap().domain, "example.co.uk");
+    assert!(is_valid_cookie_domain("bank.example.co.uk", "example.co.uk"));
+    assert!(!is_valid_cookie_domain("bank.example.co.uk", "co.uk"));
 }
 
 // 7. CookieJar: Cota e evicção LRU por domínio
@@ -271,7 +273,7 @@ async fn test_websocket_upgrade_and_session() {
     assert_eq!(req.headers.get("upgrade").unwrap(), "websocket");
     assert_eq!(req.headers.get("connection").unwrap(), "Upgrade");
 
-    let (tx, rx) = mpsc::channel(5);
+    let (tx, _rx) = mpsc::channel(5);
     let (srv_tx, client_rx) = mpsc::channel(5);
     let session = WebSocketSession::new(Url::parse("ws://chat.example.com").unwrap(), tx, client_rx);
 
