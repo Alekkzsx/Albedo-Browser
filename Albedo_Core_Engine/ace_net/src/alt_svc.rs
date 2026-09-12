@@ -113,6 +113,9 @@ pub type AltSvcKey = (Option<String>, String);
 /// Mapa de registros de serviços alternativos indexados por chave particionada.
 pub type AltSvcMap = FxHashMap<AltSvcKey, Vec<AltSvcRecord>>;
 
+/// Capacidade máxima de hosts rastreados no registro Alt-Svc para proteção de memória.
+pub const MAX_ALT_SVC_ENTRIES: usize = 1000;
+
 /// Registro compartilhado em memória de serviços alternativos.
 #[derive(Debug, Default)]
 pub struct AltSvcRegistry {
@@ -127,7 +130,7 @@ impl AltSvcRegistry {
         }
     }
 
-    /// Registra novos serviços alternativos para um host.
+    /// Registra novos serviços alternativos para um host, respeitando a quota máxima de segurança.
     pub fn insert(
         &self,
         nik: Option<&NetworkIsolationKey>,
@@ -136,6 +139,11 @@ impl AltSvcRegistry {
     ) {
         let key = (nik.map(|k| k.serialize()), origin_host.to_ascii_lowercase());
         let mut map = self.entries.write();
+        if map.len() >= MAX_ALT_SVC_ENTRIES && !map.contains_key(&key) {
+            if let Some(evict_key) = map.keys().next().cloned() {
+                map.remove(&evict_key);
+            }
+        }
         map.insert(key, records);
     }
 
@@ -143,6 +151,25 @@ impl AltSvcRegistry {
     pub fn clear(&self, nik: Option<&NetworkIsolationKey>, origin_host: &str) {
         let key = (nik.map(|k| k.serialize()), origin_host.to_ascii_lowercase());
         self.entries.write().remove(&key);
+    }
+
+    /// Remove todos os registros alternativos cuja data de validade já expirou.
+    pub fn cleanup_expired(&self, now: SystemTime) {
+        let mut map = self.entries.write();
+        map.retain(|_, records| {
+            records.retain(|r| r.is_valid(now));
+            !records.is_empty()
+        });
+    }
+
+    /// Retorna a quantidade de hosts registrados no AltSvcRegistry.
+    pub fn len(&self) -> usize {
+        self.entries.read().len()
+    }
+
+    /// Verifica se o registro está vazio.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Retorna os serviços alternativos válidos para o host informado.
@@ -203,5 +230,24 @@ mod tests {
 
         registry.clear(None, "example.com");
         assert!(registry.get_alternatives(None, "example.com", now).is_empty());
+    }
+
+    #[test]
+    fn test_alt_svc_registry_cleanup_expired() {
+        let registry = AltSvcRegistry::new();
+        let now = SystemTime::now();
+
+        // Registro expirando em 10 segundos
+        let records = parse_alt_svc("h3=\":443\"; ma=10", now);
+        registry.insert(None, "shortlived.com", records);
+        assert_eq!(registry.len(), 1);
+
+        // Limpeza no momento `now` não deve remover
+        registry.cleanup_expired(now);
+        assert_eq!(registry.len(), 1);
+
+        // Limpeza 20 segundos depois (já expirado)
+        registry.cleanup_expired(now + Duration::from_secs(20));
+        assert_eq!(registry.len(), 0);
     }
 }
