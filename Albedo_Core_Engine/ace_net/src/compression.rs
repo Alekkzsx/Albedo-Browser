@@ -56,6 +56,25 @@ impl std::str::FromStr for ContentEncoding {
     }
 }
 
+/// Limite máximo de segurança para descompressão de conteúdo em memória (256 MB).
+/// Previne ataques de negação de serviço por exaustão de memória (Zip Bomb / Decompression Bomb).
+pub const MAX_DECOMPRESSED_PAYLOAD_BYTES: usize = 256 * 1024 * 1024;
+
+/// Lê um stream descomprimido até o fim respeitando a cota máxima de segurança anti-bomba.
+fn safe_read_to_end<R: Read>(reader: R, initial_capacity: usize) -> NetResult<Vec<u8>> {
+    let mut decompressed = Vec::with_capacity(initial_capacity.min(1024 * 1024));
+    let mut limited = reader.take((MAX_DECOMPRESSED_PAYLOAD_BYTES + 1) as u64);
+    limited.read_to_end(&mut decompressed).map_err(|e| {
+        NetError::HttpProtocolError(format!("Falha na leitura do stream descomprimido: {}", e))
+    })?;
+
+    if decompressed.len() > MAX_DECOMPRESSED_PAYLOAD_BYTES {
+        return Err(NetError::PayloadTooLarge);
+    }
+
+    Ok(decompressed)
+}
+
 /// Descomprime o payload binário bruto de acordo com a codificação informada.
 pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<Bytes> {
     if raw.is_empty() {
@@ -65,35 +84,25 @@ pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<B
     match encoding {
         ContentEncoding::Identity => Ok(raw.clone()),
         ContentEncoding::Gzip => {
-            let mut decoder = flate2::read::GzDecoder::new(&raw[..]);
-            let mut decompressed = Vec::with_capacity(raw.len() * 2);
-            decoder.read_to_end(&mut decompressed).map_err(|e| {
-                NetError::HttpProtocolError(format!("Falha ao descomprimir payload gzip: {}", e))
-            })?;
+            let decoder = flate2::read::GzDecoder::new(&raw[..]);
+            let decompressed = safe_read_to_end(decoder, raw.len() * 2)?;
             Ok(Bytes::from(decompressed))
         }
         ContentEncoding::Deflate => {
             // Tenta decodificar primeiro como zlib padrão
-            let mut zlib_decoder = flate2::read::ZlibDecoder::new(&raw[..]);
-            let mut decompressed = Vec::with_capacity(raw.len() * 2);
-            if zlib_decoder.read_to_end(&mut decompressed).is_ok() {
+            let zlib_decoder = flate2::read::ZlibDecoder::new(&raw[..]);
+            if let Ok(decompressed) = safe_read_to_end(zlib_decoder, raw.len() * 2) {
                 return Ok(Bytes::from(decompressed));
             }
 
             // Fallback para raw deflate sem cabeçalhos zlib
-            let mut raw_decoder = flate2::read::DeflateDecoder::new(&raw[..]);
-            let mut raw_decompressed = Vec::with_capacity(raw.len() * 2);
-            raw_decoder.read_to_end(&mut raw_decompressed).map_err(|e| {
-                NetError::HttpProtocolError(format!("Falha ao descomprimir payload deflate: {}", e))
-            })?;
-            Ok(Bytes::from(raw_decompressed))
+            let raw_decoder = flate2::read::DeflateDecoder::new(&raw[..]);
+            let decompressed = safe_read_to_end(raw_decoder, raw.len() * 2)?;
+            Ok(Bytes::from(decompressed))
         }
         ContentEncoding::Brotli => {
-            let mut decompressed = Vec::with_capacity(raw.len() * 2);
-            let mut reader = brotli::Decompressor::new(&raw[..], 4096);
-            reader.read_to_end(&mut decompressed).map_err(|e| {
-                NetError::HttpProtocolError(format!("Falha ao descomprimir payload brotli: {}", e))
-            })?;
+            let reader = brotli::Decompressor::new(&raw[..], 4096);
+            let decompressed = safe_read_to_end(reader, raw.len() * 2)?;
             Ok(Bytes::from(decompressed))
         }
     }
