@@ -15,6 +15,16 @@ use url::Url;
 /// Cota máxima normativa de cookies por domínio (RFC 6265bis recomenda no mínimo 180 cookies por domínio).
 pub const MAX_COOKIES_PER_DOMAIN: usize = 180;
 
+/// Verifica se `host` é um subdomínio válido de `parent` sem alocação dinâmica.
+#[inline]
+fn is_subdomain_of(host: &str, parent: &str) -> bool {
+    if host.len() > parent.len() && host.ends_with(parent) {
+        host.as_bytes()[host.len() - parent.len() - 1] == b'.'
+    } else {
+        false
+    }
+}
+
 /// Armazenamento em memória de cookies do navegador, indexado por domínio com política de cotas LRU.
 #[derive(Debug, Default)]
 pub struct CookieJar {
@@ -87,9 +97,14 @@ impl CookieJar {
         let map = self.cookies.read();
         let mut matching_cookies = Vec::new();
 
-        // Otimização O(domain_depth): consulta apenas domínios compatíveis com req_host
-        for (domain, list) in map.iter() {
-            if req_host == *domain || req_host.ends_with(&format!(".{}", domain)) {
+        // Otimização O(domain_depth): consulta apenas o host e seus domínios ancestrais O(1)
+        let mut candidates = vec![req_host.as_str()];
+        for (dot_idx, _) in req_host.match_indices('.') {
+            candidates.push(&req_host[dot_idx + 1..]);
+        }
+
+        for cand in candidates {
+            if let Some(list) = map.get(cand) {
                 for cookie in list.iter() {
                     if cookie.is_valid_for_request(
                         url,
@@ -117,7 +132,7 @@ impl CookieJar {
     pub fn clear_for_domain(&self, domain: &str) {
         let clean = domain.trim_start_matches('.').to_ascii_lowercase();
         let mut map = self.cookies.write();
-        map.retain(|d, _| d != &clean && !d.ends_with(&format!(".{}", clean)));
+        map.retain(|d, _| d != &clean && !is_subdomain_of(d, &clean));
     }
 
     /// Remove todos os cookies do jar.
