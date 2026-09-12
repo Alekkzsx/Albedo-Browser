@@ -163,6 +163,11 @@ impl ResourceFetcher {
         Ok(())
     }
 
+    /// Retorna uma referência às métricas de rede
+    pub fn metrics(&self) -> &Arc<crate::metrics::FetcherMetrics> {
+        &self.metrics
+    }
+
     /// Busca um sub-recurso especulativo identificado pelo `PreloadScanner`.
     pub async fn fetch_preload_hint(
         &self,
@@ -177,11 +182,34 @@ impl ResourceFetcher {
     }
 
     /// Executa uma requisição completa de recurso, orquestrando HSTS, cookies, cancelamento, cache, rede e redirecionamentos.
+    #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method, id = %req.id))]
     pub async fn fetch(&self, mut req: Request) -> NetResult<Response> {
+        self.metrics.inc_total_requests();
+        self.metrics.inc_in_flight();
+        
+        let result = self.fetch_internal(req).await;
+        
+        self.metrics.dec_in_flight();
+        match &result {
+            Ok(_) => {}
+            Err(NetError::Cancelled) => {
+                self.metrics.cancelled_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, "", "Request cancelled");
+            }
+            Err(e) => {
+                self.metrics.failed_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::net_log::log_net_error(crate::net_log::NetEventType::Error, "", e);
+            }
+        }
+        result
+    }
+
+    async fn fetch_internal(&self, mut req: Request) -> NetResult<Response> {
         let now = SystemTime::now();
 
         // 0. HSTS Auto-Upgrade: se a URL for http e o host exigir HSTS, reescreve em memória para https
         if let Some(upgraded_url) = self.hsts_store.upgrade_url(&req.url, now) {
+            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "HSTS Upgrade");
             req.url = upgraded_url;
         }
 
