@@ -274,6 +274,9 @@ impl ResourceFetcher {
                 // Validação de cabeçalhos secundários Vary (RFC 9111 §4.1)
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
+                        self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Fresh Hit");
+                        
                         // Cache Hit completo! Zero latência de rede.
                         return Ok(Response {
                             url: req.url,
@@ -298,6 +301,10 @@ impl ResourceFetcher {
                             timing: ResponseTiming::default(),
                         });
                     } else if entry.is_stale_revalidatable(now) {
+                        self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Stale-While-Revalidate Hit");
+                        
                         // RFC 5861: Stale-While-Revalidate Hit!
                         // Entrega o conteúdo imediatamente ao renderer (0ms de espera)
                         // e dispara revalidação assíncrona desacoplada em background
@@ -339,6 +346,10 @@ impl ResourceFetcher {
                         });
                     } else {
                         // Entrada expirada (stale) - injeta cabeçalhos de revalidação condicional
+                        self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Stale - Needs Revalidation");
+
                         let cond_headers = entry.conditional_headers();
                         for (k, v) in cond_headers {
                             if let Some(name) = k {
@@ -347,7 +358,13 @@ impl ResourceFetcher {
                         }
                         cached_entry = Some(entry);
                     }
+                } else {
+                    self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Vary Mismatch");
                 }
+            } else {
+                self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Not found in cache");
             }
         }
 
