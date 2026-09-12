@@ -61,6 +61,8 @@ pub use fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
 pub use fetcher::ResourceFetcher;
 pub use hints::ResourceHint;
 pub use hsts::{HstsPolicy, HstsStore};
+pub use metrics::FetcherMetrics;
+pub use net_log::{log_net_error, log_net_event, NetEventType};
 pub use priority::{PrioritizedItem, PriorityLevel};
 pub use range::{ByteRangeSpec, ContentRange};
 pub use redirect::{handle_redirect, RedirectAction};
