@@ -65,12 +65,7 @@ impl HttpCache {
         let _ = std::fs::create_dir_all(&path);
         self.disk_path = Some(path.clone());
         
-        // Carrega o índice do disco assincronamente (background index build)
-        // Isso evita bloquear a inicialização do motor.
-        let inner_arc = std::sync::Arc::new(self.inner); // Wait, self.inner is not an Arc. 
-        // We can't spawn a task holding a reference to self.inner without Arc. 
-        // Actually, since HttpCache doesn't wrap inner in Arc (it wraps in RwLock), wait! HttpCache is typically put in an Arc itself.
-        // Let's just do synchronous read_dir since it's startup, but std::fs::read_dir instead of tokio.
+        // Carrega o índice do disco síncronamente (fast-path index build)
         if let Ok(entries) = std::fs::read_dir(&path) {
             let mut inner = self.inner.write();
             for entry in entries.flatten() {
