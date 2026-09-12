@@ -210,19 +210,12 @@ impl ResourceFetcher {
     async fn fetch_internal(&self, mut req: Request) -> NetResult<Response> {
         let now = SystemTime::now();
 
-        // 0. HSTS Auto-Upgrade: se a URL for http e o host exigir HSTS, reescreve em memória para https
-        if let Some(upgraded_url) = self.hsts_store.upgrade_url(&req.url, now) {
-            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "HSTS Upgrade");
-            req.url = upgraded_url;
-        }
+        // 0. HSTS Auto-Upgrade
+        crate::pipeline::apply_hsts(&mut req, self, now);
 
         // 0.1. Interceptação de Service Worker (W3C Fetch Spec §4.2)
-        // Dispara o evento 'fetch' no Service Worker correspondente antes de tocar cache ou rede
-        let sw_hook = self.service_worker_hook.read().clone();
-        if let Some(sw) = sw_hook {
-            if let Ok(Some(sw_response)) = sw.on_fetch(&req).await {
-                return Ok(sw_response);
-            }
+        if let Some(sw_response) = crate::pipeline::apply_service_worker(&req, self).await? {
+            return Ok(sw_response);
         }
 
         let nik = req.network_isolation_key.clone();
