@@ -206,7 +206,7 @@ impl ResourceFetcher {
         // 4. Consulta ao Cache HTTP RFC 9111 (apenas para requisições idempotentes GET/HEAD)
         let mut cached_entry = None;
         if req.method == Method::GET || req.method == Method::HEAD {
-            if let Some(entry) = self.cache.get(nik.as_ref(), &req.url) {
+            if let Some(entry) = self.cache.get(nik.as_ref(), &req.url).await {
                 if entry.is_fresh(now) {
                     // Cache Hit completo! Zero latência de rede.
                     return Ok(Response {
@@ -367,7 +367,7 @@ impl ResourceFetcher {
                     current_req.method = follow.new_method;
                     current_req.body = follow.new_body;
                     current_req.headers = follow.new_headers;
-                    current_cached_entry = self.cache.get(nik.as_ref(), &current_req.url);
+                    current_cached_entry = self.cache.get(nik.as_ref(), &current_req.url).await;
                     continue;
                 }
             }
