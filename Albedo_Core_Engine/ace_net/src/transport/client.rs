@@ -29,6 +29,7 @@ use url::Url;
 #[derive(Clone)]
 pub struct TransportClient {
     client: Client<HttpsConnector<HttpConnector<DohHappyEyeballsResolver>>, Full<Bytes>>,
+    reqwest_h3_client: reqwest::Client,
     user_agent: HeaderValue,
 }
 
@@ -68,9 +69,18 @@ impl TransportClient {
             .pool_max_idle_per_host(6)
             .build(https);
 
+        // Cliente reqwest para fallback HTTP/3 (QUIC)
+        // Usamos reqwest experimental HTTP/3 para simplificar o contorno dos problemas do ecossistema quinn
+        let reqwest_h3_client = reqwest::Client::builder()
+            .http3_prior_knowledge()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine H3)")
+            .pool_idle_timeout(Duration::from_secs(90))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new()); // Fallback se H3 falhar na compilação do builder
+
         let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
 
-        Ok(Self { client, user_agent })
+        Ok(Self { client, reqwest_h3_client, user_agent })
     }
 
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
@@ -84,9 +94,10 @@ impl TransportClient {
         }
 
         // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2)
-        // if let Some(alt) = self.check_h3_availability(&req.url) {
-        //     return self.execute_h3(req, alt).await;
-        // }
+        if req.force_h3 {
+            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "Roteando para QUIC HTTP/3 (Alt-Svc)");
+            return self.execute_h3(req, start_time).await;
+        }
 
         // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
         if req.url.scheme() == "data" {
