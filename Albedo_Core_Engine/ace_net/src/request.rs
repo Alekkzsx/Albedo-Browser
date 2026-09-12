@@ -120,6 +120,7 @@ pub struct Request {
     pub initiator: Option<Origin>,
     pub is_user_activated: bool,
     pub range: Option<ByteRangeSpec>,
+    pub force_h3: bool,
 }
 
 impl Request {
@@ -163,6 +164,7 @@ pub struct RequestBuilder {
     initiator: Option<Origin>,
     is_user_activated: bool,
     range: Option<ByteRangeSpec>,
+    force_h3: bool,
 }
 
 impl RequestBuilder {
@@ -186,6 +188,7 @@ impl RequestBuilder {
             initiator: None,
             is_user_activated: false,
             range: None,
+            force_h3: false,
         }
     }
 
