@@ -63,6 +63,7 @@ pub struct ResourceFetcher {
     doh_resolver: Arc<TokioAsyncResolver>,
     service_worker_hook: Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>>,
     metrics: Arc<crate::metrics::FetcherMetrics>,
+    scheduler: Arc<crate::scheduler::ResourceScheduler>,
 }
 
 impl ResourceFetcher {
@@ -87,6 +88,7 @@ impl ResourceFetcher {
         let hsts_store = Arc::new(HstsStore::new());
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
         let metrics = Arc::new(crate::metrics::FetcherMetrics::new());
+        let scheduler = crate::scheduler::ResourceScheduler::new(crate::scheduler::SchedulerConfig::default());
 
         Ok(Self {
             transport,
@@ -98,6 +100,7 @@ impl ResourceFetcher {
             doh_resolver,
             service_worker_hook,
             metrics,
+            scheduler,
         })
     }
 
@@ -393,6 +396,11 @@ impl ResourceFetcher {
 
         loop {
             let request_time = SystemTime::now();
+            
+            // Adquire permissão no ResourceScheduler (throttling e limits por host)
+            let host_smol = current_req.url.host_str().unwrap_or("").into();
+            let _permit = self.scheduler.acquire(current_req.priority, host_smol).await;
+            
             let network_response = self.transport.execute(&current_req).await?;
             let response_time = SystemTime::now();
 
