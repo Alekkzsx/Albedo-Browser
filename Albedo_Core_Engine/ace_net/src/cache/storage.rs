@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 use url::Url;
-
+use std::path::PathBuf;
 /// Estatísticas de operação do cache HTTP para telemetria.
 #[derive(Debug, Default)]
 pub struct CacheStats {
@@ -26,6 +26,7 @@ pub struct HttpCache {
     inner: RwLock<HttpCacheInner>,
     pub stats: CacheStats,
     pub max_capacity_bytes: usize,
+    pub disk_path: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -46,7 +47,15 @@ impl HttpCache {
             }),
             stats: CacheStats::default(),
             max_capacity_bytes,
+            disk_path: None,
         }
+    }
+
+    /// Configura um diretório de cache em disco (L2).
+    pub fn with_disk_path(mut self, path: PathBuf) -> Self {
+        let _ = std::fs::create_dir_all(&path);
+        self.disk_path = Some(path);
+        self
     }
 
     /// Gera uma chave de cache canônica combinando NIK e URL.
@@ -58,22 +67,66 @@ impl HttpCache {
     }
 
     /// Busca uma entrada no cache. Se encontrada, move-a para o topo da ordem LRU.
-    pub fn get(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
+    pub async fn get(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
         let key = Self::make_key(nik, url);
-        let mut inner = self.inner.write();
-
-        if let Some(entry) = inner.entries.get(&key).cloned() {
-            // Atualiza ordem LRU (move para o final da fila)
-            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
-                inner.order.remove(pos);
-                inner.order.push_back(key);
+        
+        {
+            let mut inner = self.inner.write();
+            if let Some(entry) = inner.entries.get(&key).cloned() {
+                // Atualiza ordem LRU (move para o final da fila)
+                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                    inner.order.remove(pos);
+                    inner.order.push_back(key.clone());
+                }
+                self.stats.hits.fetch_add(1, Ordering::Relaxed);
+                return Some(entry);
             }
-            self.stats.hits.fetch_add(1, Ordering::Relaxed);
-            Some(entry)
-        } else {
-            self.stats.misses.fetch_add(1, Ordering::Relaxed);
-            None
         }
+        
+        // Lookup no Disco (L2)
+        if let Some(disk_path) = &self.disk_path {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            key.hash(&mut hasher);
+            let file_name = format!("{:x}.cache", hasher.finish());
+            let file_path = disk_path.join(file_name);
+
+            if let Ok(bytes) = tokio::fs::read(&file_path).await {
+                if let Some(entry) = CacheEntry::from_bytes(&bytes) {
+                    let entry_size = entry.body.len() + 256;
+                    
+                    if entry_size <= self.max_capacity_bytes {
+                        let mut inner = self.inner.write();
+                        if let Some(old) = inner.entries.remove(&key) {
+                            inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
+                            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                                inner.order.remove(pos);
+                            }
+                        }
+                        while inner.total_bytes + entry_size > self.max_capacity_bytes {
+                            if let Some(evicted_key) = inner.order.pop_front() {
+                                if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
+                                    inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                                    self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        inner.total_bytes += entry_size;
+                        inner.order.push_back(key.clone());
+                        inner.entries.insert(key, entry.clone());
+                        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+                    }
+                    self.stats.hits.fetch_add(1, Ordering::Relaxed);
+                    return Some(entry);
+                }
+            }
+        }
+
+        self.stats.misses.fetch_add(1, Ordering::Relaxed);
+        None
     }
 
     /// Insere ou atualiza uma resposta no cache, aplicando desalocação LRU se necessário.
@@ -81,38 +134,49 @@ impl HttpCache {
         let key = Self::make_key(nik, &url);
         let entry_size = entry.body.len() + 256; // Overhead aproximado de headers/metadados
 
-        // Se o recurso for maior que a capacidade total do cache, não armazena
-        if entry_size > self.max_capacity_bytes {
-            return;
-        }
-
-        let mut inner = self.inner.write();
-
-        // Se já existia, remove o tamanho antigo
-        if let Some(old) = inner.entries.remove(&key) {
-            inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
-            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
-                inner.order.remove(pos);
-            }
-        }
-
-        // Despeja entradas antigas (LRU) até caber a nova entrada
-        while inner.total_bytes + entry_size > self.max_capacity_bytes {
-            if let Some(evicted_key) = inner.order.pop_front() {
-                if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
-                    inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
-                    self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+        if entry_size <= self.max_capacity_bytes {
+            let mut inner = self.inner.write();
+            
+            // Se já existia, remove o tamanho antigo
+            if let Some(old) = inner.entries.remove(&key) {
+                inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
+                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                    inner.order.remove(pos);
                 }
-            } else {
-                break;
             }
+
+            // Despeja entradas antigas (LRU) até caber a nova entrada
+            while inner.total_bytes + entry_size > self.max_capacity_bytes {
+                if let Some(evicted_key) = inner.order.pop_front() {
+                    if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
+                        inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                        self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            inner.total_bytes += entry_size;
+            inner.order.push_back(key.clone());
+            inner.entries.insert(key.clone(), entry.clone());
+
+            self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
         }
 
-        inner.total_bytes += entry_size;
-        inner.order.push_back(key.clone());
-        inner.entries.insert(key, entry);
-
-        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+        if let Some(disk_path) = &self.disk_path {
+            let disk_path = disk_path.clone();
+            let entry_bytes = entry.to_bytes();
+            tokio::spawn(async move {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                key.hash(&mut hasher);
+                let file_name = format!("{:x}.cache", hasher.finish());
+                let file_path = disk_path.join(file_name);
+                let _ = tokio::fs::write(file_path, entry_bytes).await;
+            });
+        }
     }
 
     /// Atualiza uma entrada existente após validação `304 Not Modified`.
@@ -174,8 +238,8 @@ mod tests {
     use bytes::Bytes;
     use http::{HeaderMap, StatusCode};
 
-    #[test]
-    fn test_cache_lru_eviction() {
+    #[tokio::test]
+    async fn test_cache_lru_eviction() {
         // Cache com capacidade pequena para 2 itens
         let cache = HttpCache::new(600);
 
@@ -192,28 +256,28 @@ mod tests {
         cache.put(None, url2.clone(), e2);
 
         // Acessa url1 para torná-lo mais recentemente usado
-        assert!(cache.get(None, &url1).is_some());
+        assert!(cache.get(None, &url1).await.is_some());
 
         // Inserir url3 deve despejar url2 (menos recentemente usado)
         cache.put(None, url3.clone(), e3);
 
-        assert!(cache.get(None, &url1).is_some());
-        assert!(cache.get(None, &url3).is_some());
-        assert!(cache.get(None, &url2).is_none());
+        assert!(cache.get(None, &url1).await.is_some());
+        assert!(cache.get(None, &url3).await.is_some());
+        assert!(cache.get(None, &url2).await.is_none());
     }
 
-    #[test]
-    fn test_cache_invalidation_on_unsafe_method() {
+    #[tokio::test]
+    async fn test_cache_invalidation_on_unsafe_method() {
         let cache = HttpCache::new(1024 * 1024);
         let url = Url::parse("https://example.com/form").unwrap();
         let now = SystemTime::now();
         let entry = CacheEntry::new(url.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"form"), now, now);
 
         cache.put(None, url.clone(), entry);
-        assert!(cache.get(None, &url).is_some());
+        assert!(cache.get(None, &url).await.is_some());
 
         // Invalida a URL
         cache.invalidate(&url);
-        assert!(cache.get(None, &url).is_none());
+        assert!(cache.get(None, &url).await.is_none());
     }
 }
