@@ -66,14 +66,39 @@ impl HttpCache {
         }
     }
 
-    /// Busca uma entrada no cache. Se encontrada, move-a para o topo da ordem LRU.
+    /// Função de hash determinística e estável entre execuções do processo (FxHash 64-bit).
+    pub fn hash_key(key: &str) -> u64 {
+        use rustc_hash::FxHasher;
+        use std::hash::Hasher;
+        let mut hasher = FxHasher::default();
+        hasher.write(key.as_bytes());
+        hasher.finish()
+    }
+
+    /// Consulta rápida síncrona exclusivamente no cache L1 (Memória RAM).
+    pub fn get_memory(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
+        let key = Self::make_key(nik, url);
+        let mut inner = self.inner.write();
+        if let Some(entry) = inner.entries.get(&key).cloned() {
+            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                inner.order.remove(pos);
+                inner.order.push_back(key);
+            }
+            self.stats.hits.fetch_add(1, Ordering::Relaxed);
+            Some(entry)
+        } else {
+            None
+        }
+    }
+
+    /// Busca uma entrada no cache. Se encontrada na memória (L1) ou disco (L2), move-a para o topo da ordem LRU.
     pub async fn get(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
         let key = Self::make_key(nik, url);
         
+        // 1. Lookup em memória (L1)
         {
             let mut inner = self.inner.write();
             if let Some(entry) = inner.entries.get(&key).cloned() {
-                // Atualiza ordem LRU (move para o final da fila)
                 if let Some(pos) = inner.order.iter().position(|k| k == &key) {
                     inner.order.remove(pos);
                     inner.order.push_back(key.clone());
@@ -83,13 +108,9 @@ impl HttpCache {
             }
         }
         
-        // Lookup no Disco (L2)
+        // 2. Lookup no Disco (L2) com hash determinístico estável
         if let Some(disk_path) = &self.disk_path {
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            key.hash(&mut hasher);
-            let file_name = format!("{:x}.cache", hasher.finish());
+            let file_name = format!("{:016x}.cache", Self::hash_key(&key));
             let file_path = disk_path.join(file_name);
 
             if let Ok(bytes) = tokio::fs::read(&file_path).await {
@@ -168,11 +189,7 @@ impl HttpCache {
             let disk_path = disk_path.clone();
             let entry_bytes = entry.to_bytes();
             tokio::spawn(async move {
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                key.hash(&mut hasher);
-                let file_name = format!("{:x}.cache", hasher.finish());
+                let file_name = format!("{:016x}.cache", Self::hash_key(&key));
                 let file_path = disk_path.join(file_name);
                 let _ = tokio::fs::write(file_path, entry_bytes).await;
             });
@@ -192,7 +209,19 @@ impl HttpCache {
 
         if let Some(entry) = inner.entries.get_mut(&key) {
             entry.update_from_304(new_headers, response_time);
-            Some(entry.clone())
+            let updated = entry.clone();
+
+            if let Some(disk_path) = &self.disk_path {
+                let disk_path = disk_path.clone();
+                let entry_bytes = updated.to_bytes();
+                tokio::spawn(async move {
+                    let file_name = format!("{:016x}.cache", Self::hash_key(&key));
+                    let file_path = disk_path.join(file_name);
+                    let _ = tokio::fs::write(file_path, entry_bytes).await;
+                });
+            }
+
+            Some(updated)
         } else {
             None
         }
@@ -210,25 +239,50 @@ impl HttpCache {
             .cloned()
             .collect();
 
-        for key in keys_to_remove {
-            if let Some(entry) = inner.entries.remove(&key) {
+        for key in &keys_to_remove {
+            if let Some(entry) = inner.entries.remove(key) {
                 inner.total_bytes = inner.total_bytes.saturating_sub(entry.body.len() + 256);
-                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                if let Some(pos) = inner.order.iter().position(|k| k == key) {
                     inner.order.remove(pos);
                 }
             }
         }
 
         self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+
+        // Exclui arquivos físicos do disco para não ressuscitar dados invalidados
+        if let Some(disk_path) = &self.disk_path {
+            let disk_path = disk_path.clone();
+            tokio::spawn(async move {
+                for key in keys_to_remove {
+                    let file_name = format!("{:016x}.cache", Self::hash_key(&key));
+                    let file_path = disk_path.join(file_name);
+                    let _ = tokio::fs::remove_file(file_path).await;
+                }
+            });
+        }
     }
 
-    /// Limpa integralmente todo o cache em memória.
+    /// Limpa integralmente todo o cache em memória e no disco.
     pub fn clear(&self) {
         let mut inner = self.inner.write();
         inner.entries.clear();
         inner.order.clear();
         inner.total_bytes = 0;
         self.stats.current_bytes.store(0, Ordering::Relaxed);
+
+        if let Some(disk_path) = &self.disk_path {
+            let disk_path = disk_path.clone();
+            tokio::spawn(async move {
+                if let Ok(mut dir_entries) = tokio::fs::read_dir(disk_path).await {
+                    while let Ok(Some(entry)) = dir_entries.next_entry().await {
+                        if entry.file_name().to_string_lossy().ends_with(".cache") {
+                            let _ = tokio::fs::remove_file(entry.path()).await;
+                        }
+                    }
+                }
+            });
+        }
     }
 }
 
