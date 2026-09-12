@@ -35,6 +35,16 @@ const PRELOADED_HSTS_DOMAINS: &[(&str, bool)] = &[
     ("albedo.browser", true),
 ];
 
+/// Verifica se `host` é um subdomínio válido de `parent` sem alocação dinâmica.
+#[inline]
+fn is_subdomain_of(host: &str, parent: &str) -> bool {
+    if host.len() > parent.len() && host.ends_with(parent) {
+        host.as_bytes()[host.len() - parent.len() - 1] == b'.'
+    } else {
+        false
+    }
+}
+
 /// Registro compartilhado em memória de políticas HSTS ativas.
 #[derive(Debug, Default)]
 pub struct HstsStore {
@@ -93,33 +103,33 @@ impl HstsStore {
     pub fn should_upgrade(&self, host: &str, now: SystemTime) -> bool {
         let clean_host = host.to_ascii_lowercase();
 
-        // 1. Checa HSTS Preload List
+        // 1. Checa HSTS Preload List (zero alocação)
         for &(domain, include_sub) in PRELOADED_HSTS_DOMAINS {
             if clean_host == domain {
                 return true;
             }
-            if include_sub && clean_host.ends_with(&format!(".{}", domain)) {
+            if include_sub && is_subdomain_of(&clean_host, domain) {
                 return true;
             }
         }
 
-        // 2. Checa HSTS dinâmico em memória
+        // 2. Checa HSTS dinâmico em memória com parent-domain walking O(depth)
         let map = self.entries.read();
 
-        // Correspondência exata
+        // Correspondência exata do host
         if let Some(policy) = map.get(&clean_host) {
             if policy.is_fresh(now) {
                 return true;
             }
         }
 
-        // Correspondência de subdomínio
-        for (domain, policy) in map.iter() {
-            if policy.include_subdomains
-                && clean_host.ends_with(&format!(".{}", domain))
-                && policy.is_fresh(now)
-            {
-                return true;
+        // Caminhamento de domínios ancestrais (ex: sub.example.com -> example.com)
+        for (dot_idx, _) in clean_host.match_indices('.') {
+            let parent = &clean_host[dot_idx + 1..];
+            if let Some(policy) = map.get(parent) {
+                if policy.include_subdomains && policy.is_fresh(now) {
+                    return true;
+                }
             }
         }
 
