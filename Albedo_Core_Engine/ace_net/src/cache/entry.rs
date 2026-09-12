@@ -177,6 +177,101 @@ impl CacheEntry {
         let header_str = self.headers.get(header_name)?.to_str().ok()?;
         httpdate::parse_http_date(header_str).ok()
     }
+
+    /// Serializa a entrada de cache para formato binário compacto.
+    pub fn to_bytes(&self) -> Bytes {
+        use bytes::BufMut;
+        let mut buf = bytes::BytesMut::new();
+        // url length & string
+        let url_bytes = self.url.as_str().as_bytes();
+        buf.put_u32_le(url_bytes.len() as u32);
+        buf.put_slice(url_bytes);
+        // status code
+        buf.put_u16_le(self.status.as_u16());
+        // headers
+        buf.put_u32_le(self.headers.len() as u32);
+        for (name, value) in &self.headers {
+            let name_bytes = name.as_str().as_bytes();
+            buf.put_u16_le(name_bytes.len() as u16);
+            buf.put_slice(name_bytes);
+            let value_bytes = value.as_bytes();
+            buf.put_u32_le(value_bytes.len() as u32);
+            buf.put_slice(value_bytes);
+        }
+        // body
+        buf.put_u32_le(self.body.len() as u32);
+        buf.put_slice(&self.body);
+        // request_time
+        let req_duration = self.request_time.duration_since(std::time::UNIX_EPOCH).unwrap_or(Duration::ZERO);
+        buf.put_u64_le(req_duration.as_secs());
+        buf.put_u32_le(req_duration.subsec_nanos());
+        // response_time
+        let res_duration = self.response_time.duration_since(std::time::UNIX_EPOCH).unwrap_or(Duration::ZERO);
+        buf.put_u64_le(res_duration.as_secs());
+        buf.put_u32_le(res_duration.subsec_nanos());
+        
+        buf.freeze()
+    }
+
+    /// Desserializa a entrada de cache a partir de um buffer binário.
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        use bytes::Buf;
+        let mut buf = data;
+        if buf.remaining() < 4 { return None; }
+        let url_len = buf.get_u32_le() as usize;
+        if buf.remaining() < url_len { return None; }
+        let url_str = std::str::from_utf8(&buf[..url_len]).ok()?;
+        let url = Url::parse(url_str).ok()?;
+        buf.advance(url_len);
+        
+        if buf.remaining() < 2 { return None; }
+        let status = StatusCode::from_u16(buf.get_u16_le()).ok()?;
+        
+        if buf.remaining() < 4 { return None; }
+        let num_headers = buf.get_u32_le() as usize;
+        let mut headers = HeaderMap::with_capacity(num_headers);
+        for _ in 0..num_headers {
+            if buf.remaining() < 2 { return None; }
+            let name_len = buf.get_u16_le() as usize;
+            if buf.remaining() < name_len { return None; }
+            let name_str = std::str::from_utf8(&buf[..name_len]).ok()?;
+            let header_name = http::header::HeaderName::try_from(name_str).ok()?;
+            buf.advance(name_len);
+            
+            if buf.remaining() < 4 { return None; }
+            let val_len = buf.get_u32_le() as usize;
+            if buf.remaining() < val_len { return None; }
+            let header_val = http::header::HeaderValue::from_bytes(&buf[..val_len]).ok()?;
+            buf.advance(val_len);
+            
+            headers.insert(header_name, header_val);
+        }
+        
+        if buf.remaining() < 4 { return None; }
+        let body_len = buf.get_u32_le() as usize;
+        if buf.remaining() < body_len { return None; }
+        let body = Bytes::copy_from_slice(&buf[..body_len]);
+        buf.advance(body_len);
+        
+        if buf.remaining() < 12 { return None; }
+        let req_secs = buf.get_u64_le();
+        let req_nanos = buf.get_u32_le();
+        let request_time = std::time::UNIX_EPOCH + Duration::new(req_secs, req_nanos);
+        
+        if buf.remaining() < 12 { return None; }
+        let res_secs = buf.get_u64_le();
+        let res_nanos = buf.get_u32_le();
+        let response_time = std::time::UNIX_EPOCH + Duration::new(res_secs, res_nanos);
+        
+        Some(Self {
+            url,
+            status,
+            headers,
+            body,
+            request_time,
+            response_time,
+        })
+    }
 }
 
 #[cfg(test)]
