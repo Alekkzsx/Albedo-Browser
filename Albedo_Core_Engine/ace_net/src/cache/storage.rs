@@ -237,10 +237,45 @@ impl HttpCache {
         }
 
         if let Some(disk_path) = &self.disk_path {
+            let mut inner = self.inner.write();
+            
+            if let Some(old_size) = inner.disk_entries.remove(&hash) {
+                inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(old_size);
+                if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
+                    inner.disk_order.remove(pos);
+                }
+            }
+
+            // Exemplo: Limite de disco é 10x a capacidade da memória
+            let max_disk_capacity = self.max_capacity_bytes.saturating_mul(10);
+            let mut evictions_to_disk = Vec::new();
+
+            while inner.disk_total_bytes + entry_size > max_disk_capacity {
+                if let Some(evicted_hash) = inner.disk_order.pop_front() {
+                    if let Some(evicted_size) = inner.disk_entries.remove(&evicted_hash) {
+                        inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(evicted_size);
+                        evictions_to_disk.push(evicted_hash);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            inner.disk_total_bytes += entry_size;
+            inner.disk_order.push_back(hash);
+            inner.disk_entries.insert(hash, entry_size);
+            
             let disk_path = disk_path.clone();
             let entry_bytes = entry.to_bytes();
             tokio::spawn(async move {
-                let file_name = format!("{:016x}.cache", Self::hash_key(&key));
+                // Remove evicted files
+                for evicted_hash in evictions_to_disk {
+                    let file_name = format!("{:016x}.cache", evicted_hash);
+                    let _ = tokio::fs::remove_file(disk_path.join(file_name)).await;
+                }
+                
+                // Write new file
+                let file_name = format!("{:016x}.cache", hash);
                 let file_path = disk_path.join(file_name);
                 let _ = tokio::fs::write(file_path, entry_bytes).await;
             });
