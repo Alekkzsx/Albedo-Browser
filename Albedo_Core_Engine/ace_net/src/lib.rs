@@ -40,7 +40,9 @@ pub mod range;
 pub mod redirect;
 pub mod request;
 pub mod response;
+pub mod service_worker_hook;
 pub mod transport;
+pub mod websocket;
 
 pub use ace_core::id::RequestId;
 pub use alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
