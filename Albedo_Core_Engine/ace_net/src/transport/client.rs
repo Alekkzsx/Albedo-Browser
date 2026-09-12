@@ -29,13 +29,35 @@ use url::Url;
 pub struct TransportClient {
     client: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
     user_agent: HeaderValue,
+    // h3_endpoint: Option<quinn::Endpoint>, // Arquitetura para M2: HTTP/3
 }
 
 impl TransportClient {
     /// Cria uma nova instância de `TransportClient` com certificados WebPKI e ALPN habilitado.
     pub fn new() -> NetResult<Self> {
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(
+            webpki_roots::TLS_SERVER_ROOTS
+                .iter()
+                .map(|ta| {
+                    rustls::pki_types::trust_anchor::TrustAnchor {
+                        subject: ta.subject.clone(),
+                        subject_public_key_info: ta.subject_public_key_info.clone(),
+                        name_constraints: ta.name_constraints.clone(),
+                    }
+                })
+                .map(|ta| rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(ta.subject, ta.subject_public_key_info, ta.name_constraints))
+        );
+
+        let mut config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        // Milestone 5: Telemetria Preditiva & 0-RTT
+        config.enable_early_data = true;
+
         let https = HttpsConnectorBuilder::new()
-            .with_webpki_roots()
+            .with_tls_config(config)
             .https_or_http()
             .enable_http1()
             .enable_http2()
@@ -59,6 +81,11 @@ impl TransportClient {
         if req.cancellation_token.is_cancelled() {
             return Err(NetError::Cancelled);
         }
+
+        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2)
+        // if let Some(alt) = self.check_h3_availability(&req.url) {
+        //     return self.execute_h3(req, alt).await;
+        // }
 
         // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
         if req.url.scheme() == "data" {
