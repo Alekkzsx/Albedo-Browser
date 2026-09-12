@@ -138,39 +138,60 @@ impl HttpCache {
         }
         
         // 2. Lookup no Disco (L2) com hash determinístico estável
+        let hash = Self::hash_key(&key);
         if let Some(disk_path) = &self.disk_path {
-            let file_name = format!("{:016x}.cache", Self::hash_key(&key));
-            let file_path = disk_path.join(file_name);
+            // Index check: fast-fail se não estiver no disco
+            let is_in_disk = self.inner.read().disk_entries.contains_key(&hash);
+            if is_in_disk {
+                let file_name = format!("{:016x}.cache", hash);
+                let file_path = disk_path.join(file_name);
 
-            if let Ok(bytes) = tokio::fs::read(&file_path).await {
-                if let Some(entry) = CacheEntry::from_bytes(&bytes) {
-                    let entry_size = entry.body.len() + 256;
-                    
-                    if entry_size <= self.max_capacity_bytes {
-                        let mut inner = self.inner.write();
-                        if let Some(old) = inner.entries.remove(&key) {
-                            inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
-                            if let Some(pos) = inner.order.iter().position(|k| k == &key) {
-                                inner.order.remove(pos);
-                            }
-                        }
-                        while inner.total_bytes + entry_size > self.max_capacity_bytes {
-                            if let Some(evicted_key) = inner.order.pop_front() {
-                                if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
-                                    inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
-                                    self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                if let Ok(bytes) = tokio::fs::read(&file_path).await {
+                    if let Some(entry) = CacheEntry::from_bytes(&bytes) {
+                        let entry_size = entry.body.len() + 256;
+                        
+                        if entry_size <= self.max_capacity_bytes {
+                            let mut inner = self.inner.write();
+                            if let Some(old) = inner.entries.remove(&key) {
+                                inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
+                                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                                    inner.order.remove(pos);
                                 }
-                            } else {
-                                break;
                             }
+                            while inner.total_bytes + entry_size > self.max_capacity_bytes {
+                                if let Some(evicted_key) = inner.order.pop_front() {
+                                    if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
+                                        inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                                        self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                            inner.total_bytes += entry_size;
+                            inner.order.push_back(key.clone());
+                            inner.entries.insert(key, entry.clone());
+                            
+                            // Atualiza a posição no índice do disco (LRU)
+                            if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
+                                inner.disk_order.remove(pos);
+                                inner.disk_order.push_back(hash);
+                            }
+
+                            self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
                         }
-                        inner.total_bytes += entry_size;
-                        inner.order.push_back(key.clone());
-                        inner.entries.insert(key, entry.clone());
-                        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+                        self.stats.hits.fetch_add(1, Ordering::Relaxed);
+                        return Some(entry);
                     }
-                    self.stats.hits.fetch_add(1, Ordering::Relaxed);
-                    return Some(entry);
+                } else {
+                    // Arquivo corrompido ou apagado por fora, remove do índice
+                    let mut inner = self.inner.write();
+                    if let Some(size) = inner.disk_entries.remove(&hash) {
+                        inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(size);
+                        if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
+                            inner.disk_order.remove(pos);
+                        }
+                    }
                 }
             }
         }
@@ -182,6 +203,7 @@ impl HttpCache {
     /// Insere ou atualiza uma resposta no cache, aplicando desalocação LRU se necessário.
     pub fn put(&self, nik: Option<&NetworkIsolationKey>, url: Url, entry: CacheEntry) {
         let key = Self::make_key(nik, &url);
+        let hash = Self::hash_key(&key);
         let entry_size = entry.body.len() + 256; // Overhead aproximado de headers/metadados
 
         if entry_size <= self.max_capacity_bytes {
