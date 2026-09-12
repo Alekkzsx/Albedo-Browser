@@ -236,6 +236,98 @@ impl TransportClient {
         })
     }
 
+    /// Processamento paralelo dedicado a HTTP/3 QUIC (Fase 6)
+    async fn execute_h3(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
+        let reqwest_method = match req.method.as_str() {
+            "GET" => reqwest::Method::GET,
+            "POST" => reqwest::Method::POST,
+            "HEAD" => reqwest::Method::HEAD,
+            "PUT" => reqwest::Method::PUT,
+            "DELETE" => reqwest::Method::DELETE,
+            _ => reqwest::Method::GET,
+        };
+
+        let mut h3_req = self.reqwest_h3_client.request(reqwest_method, req.url.clone());
+        for (k, v) in &req.headers {
+            h3_req = h3_req.header(k.as_str(), v.as_bytes());
+        }
+        if let Some(body) = &req.body {
+            h3_req = h3_req.body(body.clone());
+        }
+
+        let timeout = req.timeout.unwrap_or(Duration::from_secs(30));
+        let request_future = h3_req.send();
+
+        let reqwest_resp = tokio::select! {
+            _ = req.cancellation_token.cancelled() => {
+                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, req.url.as_str(), "H3 Cancelled");
+                return Err(NetError::Cancelled);
+            }
+            res = tokio::time::timeout(timeout, request_future) => {
+                res.map_err(|_| NetError::Timeout)?
+                   .map_err(|e| NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), e.to_string()))?
+            }
+        };
+
+        let ttfb = start_time.elapsed();
+        let status = StatusCode::from_u16(reqwest_resp.status().as_u16()).unwrap_or(StatusCode::OK);
+        
+        let mut headers = http::HeaderMap::new();
+        for (k, v) in reqwest_resp.headers() {
+            if let (Ok(name), Ok(value)) = (http::HeaderName::from_bytes(k.as_str().as_bytes()), http::HeaderValue::from_bytes(v.as_bytes())) {
+                headers.insert(name, value);
+            }
+        }
+
+        let raw_body_bytes = tokio::select! {
+            _ = req.cancellation_token.cancelled() => return Err(NetError::Cancelled),
+            res = reqwest_resp.bytes() => res.map_err(|e| NetError::HttpProtocolError(e.to_string()))?
+        };
+
+        let content_encoding = ContentEncoding::from_headers(&headers);
+        let body_bytes = if let Some(encoding) = content_encoding {
+            decompress_payload(encoding, &raw_body_bytes)?
+        } else {
+            raw_body_bytes
+        };
+
+        let retry_after = RetryAfter::from_headers(&headers);
+        let content_range = if status == StatusCode::PARTIAL_CONTENT {
+            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+        } else {
+            None
+        };
+        let total_duration = start_time.elapsed();
+
+        let content_type_str = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+        let mime_type: SmolStr = if !content_type_str.is_empty() {
+            content_type_str.split(';').next().unwrap_or("application/octet-stream").trim().to_ascii_lowercase().into()
+        } else {
+            sniff_mime_type(&body_bytes).into()
+        };
+        let charset = extract_charset_from_content_type(content_type_str);
+
+        Ok(Response {
+            url: req.url.clone(),
+            status,
+            headers,
+            body: ResponseBody::Full(body_bytes),
+            mime_type,
+            charset,
+            content_encoding,
+            retry_after,
+            content_range,
+            from_cache: false,
+            timing: ResponseTiming {
+                total_duration,
+                dns_duration: None,
+                tcp_duration: None,
+                tls_duration: None,
+                ttfb,
+            },
+        })
+    }
+
     /// Processamento de data: URLs em memória.
     fn execute_data_url(&self, url: &Url, start_time: Instant) -> NetResult<Response> {
         let record = parse_data_url(url.as_str())
