@@ -42,6 +42,7 @@ pub mod range;
 pub mod redirect;
 pub mod request;
 pub mod response;
+pub mod scheduler;
 pub mod service_worker_hook;
 pub mod transport;
 pub mod websocket;
@@ -71,6 +72,7 @@ pub use request::{
     RequestBuilder, RequestDestination, RequestMode, TryIntoUrl,
 };
 pub use response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
+pub use scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
 pub use service_worker_hook::ServiceWorkerHook;
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{DohHappyEyeballsResolver, TransportClient};
