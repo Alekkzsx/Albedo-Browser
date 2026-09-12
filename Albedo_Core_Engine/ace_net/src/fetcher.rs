@@ -403,6 +403,13 @@ impl ResourceFetcher {
         loop {
             let request_time = SystemTime::now();
             
+            // 0.5 Upgrade dinâmico para HTTP/3 baseado em cache Alt-Svc
+            if let Some(alt_svc) = self.alt_svc_registry.get(current_req.url.host_str().unwrap_or(""), current_req.url.port().unwrap_or(443)) {
+                if alt_svc.protocol_id.starts_with("h3") {
+                    current_req.force_h3 = true;
+                }
+            }
+            
             // Adquire permissão no ResourceScheduler (throttling e limits por host)
             let host_smol = current_req.url.host_str().unwrap_or("").into();
             let _permit = self.scheduler.acquire(current_req.priority, host_smol).await;
