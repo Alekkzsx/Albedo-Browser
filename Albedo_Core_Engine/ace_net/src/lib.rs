@@ -38,6 +38,7 @@ pub mod hints;
 pub mod hsts;
 pub mod metrics;
 pub mod net_log;
+pub mod pipeline;
 pub mod priority;
 pub mod range;
 pub mod redirect;
