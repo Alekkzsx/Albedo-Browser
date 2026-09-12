@@ -332,6 +332,14 @@ impl HttpCache {
                     inner.order.remove(pos);
                 }
             }
+            
+            let hash = Self::hash_key(key);
+            if let Some(size) = inner.disk_entries.remove(&hash) {
+                inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(size);
+                if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
+                    inner.disk_order.remove(pos);
+                }
+            }
         }
 
         self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
@@ -355,6 +363,11 @@ impl HttpCache {
         inner.entries.clear();
         inner.order.clear();
         inner.total_bytes = 0;
+        
+        inner.disk_entries.clear();
+        inner.disk_order.clear();
+        inner.disk_total_bytes = 0;
+        
         self.stats.current_bytes.store(0, Ordering::Relaxed);
 
         if let Some(disk_path) = &self.disk_path {
