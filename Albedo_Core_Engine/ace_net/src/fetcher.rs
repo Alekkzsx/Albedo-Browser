@@ -183,7 +183,7 @@ impl ResourceFetcher {
 
     /// Executa uma requisição completa de recurso, orquestrando HSTS, cookies, cancelamento, cache, rede e redirecionamentos.
     #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method, id = %req.id))]
-    pub async fn fetch(&self, mut req: Request) -> NetResult<Response> {
+    pub async fn fetch(&self, req: Request) -> NetResult<Response> {
         self.metrics.inc_total_requests();
         self.metrics.inc_in_flight();
         
