@@ -277,6 +277,12 @@ impl RequestBuilder {
         self
     }
 
+    /// Força o uso de HTTP/3 (QUIC) se disponível (bypass de Alt-Svc cache).
+    pub fn force_h3(mut self) -> Self {
+        self.force_h3 = true;
+        self
+    }
+
     /// Finaliza e constrói a instância de `Request`.
     pub fn build(mut self) -> Request {
         let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
@@ -340,6 +346,7 @@ impl RequestBuilder {
             initiator: self.initiator,
             is_user_activated: self.is_user_activated,
             range: self.range,
+            force_h3: self.force_h3,
         }
     }
 }
