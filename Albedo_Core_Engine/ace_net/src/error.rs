@@ -60,6 +60,10 @@ pub enum NetError {
     /// Erro de I/O subjacente do sistema operacional.
     #[error("Erro de E/S de rede: {0}")]
     Io(#[from] io::Error),
+
+    /// Violação da política de mesma origem (CORS).
+    #[error("Bloqueado por política CORS: {0}")]
+    CorsError(String),
 }
 
 /// Tipo `Result` especializado para operações em `ace_net`.
