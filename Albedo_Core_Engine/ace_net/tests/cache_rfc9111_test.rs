@@ -43,11 +43,12 @@ fn test_cache_entry_no_store_is_not_cacheable() {
 }
 
 #[test]
-fn test_cache_entry_private_is_not_cacheable() {
+fn test_cache_entry_private_is_cacheable_in_browser() {
     let mut headers = HeaderMap::new();
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
 
-    assert!(!CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    // Conforme RFC 9111 §5.2.2.4, navegadores são caches privados e DEVEM armazenar respostas private
+    assert!(CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
 }
 
 #[test]
@@ -105,12 +106,12 @@ fn test_cache_partitioning_via_nik() {
     cache.put(Some(&nik1), url.clone(), entry1);
 
     // Site A deve ter cache hit
-    let hit_a = cache.get(Some(&nik1), &url);
+    let hit_a = cache.get_memory(Some(&nik1), &url);
     assert!(hit_a.is_some());
     assert_eq!(hit_a.unwrap().body.as_ref(), b"code_for_a");
 
     // Site B NÃO deve ter cache hit (isolamento completo de estado de rede)
-    let hit_b = cache.get(Some(&nik2), &url);
+    let hit_b = cache.get_memory(Some(&nik2), &url);
     assert!(hit_b.is_none());
 }
 
@@ -138,6 +139,6 @@ fn test_cache_lru_capacity_and_stats() {
     cache.put(None, url3.clone(), e3);
 
     assert_eq!(cache.stats.evictions.load(std::sync::atomic::Ordering::Relaxed), 1);
-    assert!(cache.get(None, &url1).is_none());
-    assert!(cache.get(None, &url3).is_some());
+    assert!(cache.get_memory(None, &url1).is_none());
+    assert!(cache.get_memory(None, &url3).is_some());
 }
