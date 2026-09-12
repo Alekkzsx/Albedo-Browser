@@ -6,11 +6,13 @@
 
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::TokioAsyncResolver;
-use hyper_util::client::legacy::connect::dns::{Name, Resolve};
+use hyper_util::client::legacy::connect::dns::Name;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use tower_service::Service;
 
 /// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305).
 #[derive(Clone)]
@@ -77,12 +79,16 @@ impl Default for DohHappyEyeballsResolver {
     }
 }
 
-impl Resolve for DohHappyEyeballsResolver {
-    type Addr = SocketAddr;
-    type Iterator = std::vec::IntoIter<SocketAddr>;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Iterator, std::io::Error>> + Send>>;
+impl Service<Name> for DohHappyEyeballsResolver {
+    type Response = std::vec::IntoIter<SocketAddr>;
+    type Error = std::io::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn resolve(&self, name: Name) -> Self::Future {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
         let resolver = self.resolver.clone();
         let host_str = name.as_str().to_string();
 

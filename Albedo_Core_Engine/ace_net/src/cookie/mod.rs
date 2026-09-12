@@ -3,5 +3,5 @@
 pub mod entry;
 pub mod jar;
 
-pub use entry::{Cookie, SameSite};
-pub use jar::CookieJar;
+pub use entry::{is_public_suffix, is_valid_cookie_domain, Cookie, SameSite};
+pub use jar::{CookieJar, MAX_COOKIES_PER_DOMAIN};
