@@ -129,20 +129,27 @@ impl TransportClient {
 
         let hyper_resp = tokio::select! {
             _ = req.cancellation_token.cancelled() => {
+                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, req.url.as_str(), "Cancelled before connecting");
                 return Err(NetError::Cancelled);
             }
             res = tokio::time::timeout(timeout_duration, request_future) => {
-                res.map_err(|_| NetError::Timeout)?
-                    .map_err(|e| {
-                        let err_msg = e.to_string();
-                        if err_msg.contains("dns") || err_msg.contains("resolve") {
-                            NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                        } else if err_msg.contains("tls") || err_msg.contains("certificate") {
-                            NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                        } else {
-                            NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
-                        }
-                    })?
+                res.map_err(|_| {
+                    crate::net_log::log_net_event(crate::net_log::NetEventType::Error, req.url.as_str(), "Connection timeout");
+                    NetError::Timeout
+                })?
+                .map_err(|e| {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("dns") || err_msg.contains("resolve") {
+                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    } else if err_msg.contains("tls") || err_msg.contains("certificate") {
+                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    } else {
+                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    }
+                })?
             }
         };
 
