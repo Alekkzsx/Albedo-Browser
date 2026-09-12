@@ -45,6 +45,54 @@ pub struct Cookie {
     pub partition_key: Option<String>,
 }
 
+/// Lista canônica de sufixos públicos (TLDs e sufixos de múltiplos níveis como .co.uk e .com.br).
+/// Impede ataques de super-cookies conforme RFC 6265bis §5.4.
+pub const KNOWN_PUBLIC_SUFFIXES: &[&str] = &[
+    "com", "org", "net", "edu", "gov", "mil", "io", "ai", "co", "dev", "app",
+    "co.uk", "org.uk", "gov.uk", "ac.uk",
+    "com.br", "org.br", "gov.br", "edu.br", "net.br",
+    "com.au", "net.au", "org.au",
+    "co.jp", "ne.jp", "ac.jp",
+    "github.io", "gitlab.io", "pages.dev", "vercel.app", "netlify.app",
+];
+
+/// Verifica se uma cadeia de domínio representa um sufixo público registrado.
+pub fn is_public_suffix(domain: &str) -> bool {
+    let clean = domain.trim_start_matches('.').to_ascii_lowercase();
+    if !clean.contains('.') {
+        // TLDs de primeiro nível como "com", "org", "io" sempre são sufixos públicos
+        return true;
+    }
+    for &suffix in KNOWN_PUBLIC_SUFFIXES {
+        if clean == suffix {
+            return true;
+        }
+    }
+    false
+}
+
+/// Valida se o atributo Domain é seguro para o host requisitante (RFC 6265bis §5.4):
+/// 1. Não pode ser um sufixo público (ex: "com" ou "co.uk").
+/// 2. O host requisitante deve ser idêntico ou terminar com "." + cookie_domain (domain-matching).
+pub fn is_valid_cookie_domain(cookie_domain: &str, request_host: &str) -> bool {
+    let clean_cookie = cookie_domain.trim_start_matches('.').to_ascii_lowercase();
+    let clean_req = request_host.trim_start_matches('.').to_ascii_lowercase();
+
+    if is_public_suffix(&clean_cookie) {
+        return false;
+    }
+
+    if clean_req == clean_cookie {
+        return true;
+    }
+
+    if clean_req.ends_with(&format!(".{}", clean_cookie)) {
+        return true;
+    }
+
+    false
+}
+
 impl Cookie {
     /// Verifica se o cookie ainda não expirou.
     pub fn is_fresh(&self, now: SystemTime) -> bool {
@@ -72,8 +120,14 @@ impl Cookie {
             return None;
         }
 
+        // RFC 6265bis: Limite normativo máximo de tamanho por cookie (4096 bytes)
+        if name.len() + value.len() > 4096 {
+            return None;
+        }
+
         let default_domain = request_url.host_str().unwrap_or("").to_ascii_lowercase();
-        let mut domain = default_domain;
+        let mut domain = default_domain.clone();
+        let mut custom_domain = None;
         let mut path = "/".to_string();
         let mut expires_at = None;
         let mut secure = false;
@@ -99,7 +153,7 @@ impl Cookie {
                     if let Some(d) = attr_val {
                         let clean = d.trim_start_matches('.').to_ascii_lowercase();
                         if !clean.is_empty() {
-                            domain = clean;
+                            custom_domain = Some(clean);
                         }
                     }
                 }
@@ -142,6 +196,16 @@ impl Cookie {
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Validação de segurança de domínio (RFC 6265bis §5.4):
+        // Rejeita a diretiva Domain se for um sufixo público ou não bater com o host de requisição
+        if let Some(d) = custom_domain {
+            if is_valid_cookie_domain(&d, &default_domain) {
+                domain = d;
+            } else {
+                return None;
             }
         }
 
@@ -242,3 +306,58 @@ impl Cookie {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_public_suffix_detection() {
+        assert!(is_public_suffix("com"));
+        assert!(is_public_suffix("org"));
+        assert!(is_public_suffix("co.uk"));
+        assert!(is_public_suffix("com.br"));
+        assert!(is_public_suffix("github.io"));
+
+        assert!(!is_public_suffix("example.com"));
+        assert!(!is_public_suffix("albedo.org"));
+        assert!(!is_public_suffix("myproject.github.io"));
+    }
+
+    #[test]
+    fn test_super_cookie_rejection() {
+        let url = Url::parse("https://evil.example.co.uk/page").unwrap();
+        let now = SystemTime::now();
+
+        // Tentativa de injetar super-cookie para .co.uk
+        let super_cookie = Cookie::parse("session=hacked; Domain=co.uk", &url, None, now);
+        assert!(super_cookie.is_none(), "Super-cookie para .co.uk deve ser rejeitado");
+
+        // Tentativa de injetar super-cookie para .com
+        let url_com = Url::parse("https://evil.com/page").unwrap();
+        let super_com = Cookie::parse("session=hacked; Domain=com", &url_com, None, now);
+        assert!(super_com.is_none(), "Super-cookie para .com deve ser rejeitado");
+
+        // Tentativa de injetar domínio fora do escopo (ex: evil.com tentando definir para other.com)
+        let mismatch = Cookie::parse("session=hacked; Domain=other.com", &url_com, None, now);
+        assert!(mismatch.is_none(), "Domínio divergente deve ser rejeitado");
+
+        // Domínio válido para subdomínio
+        let valid = Cookie::parse("session=ok; Domain=example.co.uk", &url, None, now);
+        assert!(valid.is_some(), "Domínio de escopo correto deve ser aceito");
+        assert_eq!(valid.unwrap().domain, "example.co.uk");
+    }
+
+    #[test]
+    fn test_max_cookie_size() {
+        let url = Url::parse("https://example.com").unwrap();
+        let now = SystemTime::now();
+
+        // Cookie gigante de 5000 bytes (excede limite de 4096)
+        let huge_val = "x".repeat(5000);
+        let header = format!("token={}", huge_val);
+        let parsed = Cookie::parse(&header, &url, None, now);
+        assert!(parsed.is_none(), "Cookie maior que 4096 bytes deve ser rejeitado");
+    }
+}
+
