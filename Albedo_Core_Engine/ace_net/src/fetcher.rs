@@ -220,6 +220,13 @@ impl ResourceFetcher {
 
         let nik = req.network_isolation_key.clone();
 
+        // 0.2 CORS Preflight
+        if crate::cors::requires_preflight(&req) {
+            let preflight_req = crate::cors::build_preflight_request(&req)?;
+            let preflight_resp = self.transport.execute(&preflight_req).await?;
+            crate::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
+        }
+
         // 1. Registra o token de cancelamento na tabela de requisições ativas
         self.cancellation_registry
             .register(req.id, req.cancellation_token.clone());
@@ -509,6 +516,8 @@ impl ResourceFetcher {
                 ).with_request_headers(current_req.headers.clone());
                 self.cache.put(nik.as_ref(), current_req.url.clone(), entry);
             }
+
+            crate::cors::validate_cors_response(&current_req, &network_response)?;
 
             return Ok(network_response);
         }
