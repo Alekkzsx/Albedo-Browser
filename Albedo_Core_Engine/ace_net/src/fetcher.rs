@@ -28,6 +28,7 @@ use crate::priority::PriorityLevel;
 use crate::redirect::{handle_redirect, RedirectAction};
 use crate::request::{Request, RequestDestination, TryIntoUrl};
 use crate::response::{Response, ResponseBody, ResponseTiming};
+use crate::service_worker_hook::ServiceWorkerHook;
 use crate::transport::TransportClient;
 use ace_core::id::RequestId;
 use ace_core::security::origin::Origin;
@@ -60,6 +61,7 @@ pub struct ResourceFetcher {
     cookie_jar: Arc<CookieJar>,
     hsts_store: Arc<HstsStore>,
     doh_resolver: Arc<TokioAsyncResolver>,
+    service_worker_hook: Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>>,
 }
 
 impl ResourceFetcher {
@@ -80,6 +82,7 @@ impl ResourceFetcher {
             ResolverConfig::cloudflare_https(),
             ResolverOpts::default(),
         ));
+        let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
 
         Ok(Self {
             transport,
@@ -89,6 +92,7 @@ impl ResourceFetcher {
             cookie_jar,
             hsts_store,
             doh_resolver,
+            service_worker_hook,
         })
     }
 
@@ -115,6 +119,16 @@ impl ResourceFetcher {
     /// Retorna uma referência ao registro HSTS de domínios seguros.
     pub fn hsts_store(&self) -> &Arc<HstsStore> {
         &self.hsts_store
+    }
+
+    /// Registra um interceptador global de Service Workers (W3C Service Worker Fetch Event).
+    pub fn set_service_worker_hook(&self, hook: Arc<dyn ServiceWorkerHook>) {
+        *self.service_worker_hook.write() = Some(hook);
+    }
+
+    /// Remove o interceptador de Service Workers.
+    pub fn clear_service_worker_hook(&self) {
+        *self.service_worker_hook.write() = None;
     }
 
     /// Cancela uma requisição em voo pelo seu `RequestId`.
@@ -166,6 +180,15 @@ impl ResourceFetcher {
             req.url = upgraded_url;
         }
 
+        // 0.1. Interceptação de Service Worker (W3C Fetch Spec §4.2)
+        // Dispara o evento 'fetch' no Service Worker correspondente antes de tocar cache ou rede
+        let sw_hook = self.service_worker_hook.read().clone();
+        if let Some(sw) = sw_hook {
+            if let Ok(Some(sw_response)) = sw.on_fetch(&req).await {
+                return Ok(sw_response);
+            }
+        }
+
         let nik = req.network_isolation_key.clone();
 
         // 1. Registra o token de cancelamento na tabela de requisições ativas
@@ -215,39 +238,82 @@ impl ResourceFetcher {
         let mut cached_entry = None;
         if req.method == Method::GET || req.method == Method::HEAD {
             if let Some(entry) = self.cache.get(nik.as_ref(), &req.url).await {
-                if entry.is_fresh(now) {
-                    // Cache Hit completo! Zero latência de rede.
-                    return Ok(Response {
-                        url: req.url,
-                        status: entry.status,
-                        headers: entry.headers.clone(),
-                        body: ResponseBody::Full(entry.body.clone()),
-                        mime_type: entry
-                            .headers
-                            .get(CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                            .unwrap_or_else(|| "application/octet-stream".into()),
-                        charset: entry
-                            .headers
-                            .get(CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .and_then(extract_charset_from_content_type),
-                        content_encoding: None,
-                        retry_after: None,
-                        content_range: None,
-                        from_cache: true,
-                        timing: ResponseTiming::default(),
-                    });
-                } else {
-                    // Entrada expirada (stale) - injeta cabeçalhos de revalidação condicional
-                    let cond_headers = entry.conditional_headers();
-                    for (k, v) in cond_headers {
-                        if let Some(name) = k {
-                            req.headers.insert(name, v);
+                // Validação de cabeçalhos secundários Vary (RFC 9111 §4.1)
+                if entry.matches_request_headers(&req.headers) {
+                    if entry.is_fresh(now) {
+                        // Cache Hit completo! Zero latência de rede.
+                        return Ok(Response {
+                            url: req.url,
+                            status: entry.status,
+                            headers: entry.headers.clone(),
+                            body: ResponseBody::Full(entry.body.clone()),
+                            mime_type: entry
+                                .headers
+                                .get(CONTENT_TYPE)
+                                .and_then(|v| v.to_str().ok())
+                                .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                .unwrap_or_else(|| "application/octet-stream".into()),
+                            charset: entry
+                                .headers
+                                .get(CONTENT_TYPE)
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(extract_charset_from_content_type),
+                            content_encoding: None,
+                            retry_after: None,
+                            content_range: None,
+                            from_cache: true,
+                            timing: ResponseTiming::default(),
+                        });
+                    } else if entry.is_stale_revalidatable(now) {
+                        // RFC 5861: Stale-While-Revalidate Hit!
+                        // Entrega o conteúdo imediatamente ao renderer (0ms de espera)
+                        // e dispara revalidação assíncrona desacoplada em background
+                        let bg_fetcher = self.clone();
+                        let mut bg_req = req.clone();
+                        let cond_headers = entry.conditional_headers();
+                        for (k, v) in cond_headers {
+                            if let Some(name) = k {
+                                bg_req.headers.insert(name, v);
+                            }
                         }
+                        let bg_nik = nik.clone();
+                        let bg_entry = entry.clone();
+                        tokio::spawn(async move {
+                            let _ = bg_fetcher.revalidate_background(bg_req, bg_nik, bg_entry).await;
+                        });
+
+                        return Ok(Response {
+                            url: req.url,
+                            status: entry.status,
+                            headers: entry.headers.clone(),
+                            body: ResponseBody::Full(entry.body.clone()),
+                            mime_type: entry
+                                .headers
+                                .get(CONTENT_TYPE)
+                                .and_then(|v| v.to_str().ok())
+                                .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                .unwrap_or_else(|| "application/octet-stream".into()),
+                            charset: entry
+                                .headers
+                                .get(CONTENT_TYPE)
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(extract_charset_from_content_type),
+                            content_encoding: None,
+                            retry_after: None,
+                            content_range: None,
+                            from_cache: true,
+                            timing: ResponseTiming::default(),
+                        });
+                    } else {
+                        // Entrada expirada (stale) - injeta cabeçalhos de revalidação condicional
+                        let cond_headers = entry.conditional_headers();
+                        for (k, v) in cond_headers {
+                            if let Some(name) = k {
+                                req.headers.insert(name, v);
+                            }
+                        }
+                        cached_entry = Some(entry);
                     }
-                    cached_entry = Some(entry);
                 }
             }
         }
@@ -389,12 +455,38 @@ impl ResourceFetcher {
                     network_response.body.as_bytes().to_vec().into(),
                     request_time,
                     response_time,
-                );
+                ).with_request_headers(current_req.headers.clone());
                 self.cache.put(nik.as_ref(), current_req.url.clone(), entry);
             }
 
             return Ok(network_response);
         }
+    }
+
+    /// Executa revalidação de cache assíncrona em background para RFC 5861 (stale-while-revalidate).
+    async fn revalidate_background(
+        &self,
+        req: Request,
+        nik: Option<crate::cache::NetworkIsolationKey>,
+        mut stale_entry: CacheEntry,
+    ) -> NetResult<()> {
+        let resp_time = SystemTime::now();
+        if let Ok(network_response) = self.transport.execute(&req).await {
+            if network_response.status == StatusCode::NOT_MODIFIED {
+                self.cache.update_304(nik.as_ref(), &req.url, &network_response.headers, resp_time);
+            } else if CacheEntry::is_cacheable(&req.method, network_response.status, &network_response.headers) {
+                let entry = CacheEntry::new(
+                    req.url.clone(),
+                    network_response.status,
+                    network_response.headers.clone(),
+                    network_response.body.as_bytes().to_vec().into(),
+                    resp_time,
+                    resp_time,
+                ).with_request_headers(req.headers);
+                self.cache.put(nik.as_ref(), req.url, entry);
+            }
+        }
+        Ok(())
     }
 
     /// Método ergonômico para buscar uma URL com prioridade especificada.
