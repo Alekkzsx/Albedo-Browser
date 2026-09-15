@@ -3,8 +3,7 @@ use crate::request::{CredentialsMode, Method, Request, RequestMode};
 use crate::response::Response;
 use ace_core::security::origin::Origin;
 use http::header::{
-    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
-    ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE, ORIGIN,
+    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE, ORIGIN,
 };
 
 /// Verifica se a requisição cruza origens.
@@ -53,6 +52,8 @@ fn is_browser_managed_header(name: &str) -> bool {
             | "dnt"
             | "te"
             | "upgrade"
+            | "upgrade-insecure-requests"
+            | "range"
     ) || n.starts_with("sec-")
 }
 
