@@ -149,6 +149,67 @@ impl CookieJar {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Exporta todos os cookies persistentes (com expiração futura) como uma string formatada em linhas.
+    pub fn export_persistent(&self, now: SystemTime) -> String {
+        let mut out = String::new();
+        let map = self.cookies.read();
+        for list in map.values() {
+            for cookie in list {
+                if let Some(exp) = cookie.expires_at {
+                    if exp > now {
+                        if let Some(line) = cookie.to_persistent_line() {
+                            out.push_str(&line);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Importa cookies persistentes a partir de uma cadeia de texto, retornando quantos foram adicionados.
+    pub fn import_persistent(&self, data: &str, now: SystemTime) -> usize {
+        let mut count = 0;
+        for line in data.lines() {
+            if let Some(cookie) = Cookie::from_persistent_line(line) {
+                if cookie.is_fresh(now) {
+                    self.store_cookie(cookie);
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    /// Salva todos os cookies persistentes no arquivo especificado em disco de forma atômica.
+    pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let now = SystemTime::now();
+        let serialized = self.export_persistent(now);
+        
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, serialized)?;
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::rename(tmp_path, path)?;
+        Ok(())
+    }
+
+    /// Carrega cookies persistentes de um arquivo no disco, descartando os já expirados.
+    pub fn load_from_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Ok(0);
+        }
+        let content = std::fs::read_to_string(path)?;
+        let now = SystemTime::now();
+        Ok(self.import_persistent(&content, now))
+    }
 }
 
 #[cfg(test)]
