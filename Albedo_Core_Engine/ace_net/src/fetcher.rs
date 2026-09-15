@@ -74,6 +74,11 @@ impl ResourceFetcher {
 
     /// Cria uma nova instância com capacidade de cache personalizada em bytes.
     pub fn with_cache_capacity(cache_capacity_bytes: usize) -> NetResult<Self> {
+        Self::with_cache_and_disk(cache_capacity_bytes, None::<std::path::PathBuf>)
+    }
+
+    /// Cria uma nova instância com capacidade em memória e diretório opcional para cache persistente em disco (L2).
+    pub fn with_cache_and_disk(cache_capacity_bytes: usize, disk_path: Option<impl Into<std::path::PathBuf>>) -> NetResult<Self> {
         let doh_resolver = Arc::new(TokioAsyncResolver::tokio(
             ResolverConfig::cloudflare_https(),
             ResolverOpts::default(),
@@ -81,7 +86,11 @@ impl ResourceFetcher {
         let transport = TransportClient::with_resolver(
             crate::transport::DohHappyEyeballsResolver::with_resolver(doh_resolver.clone())
         )?;
-        let cache = Arc::new(HttpCache::new(cache_capacity_bytes));
+        let mut http_cache = HttpCache::new(cache_capacity_bytes);
+        if let Some(p) = disk_path {
+            http_cache = http_cache.with_disk_path(p.into());
+        }
+        let cache = Arc::new(http_cache);
         let cancellation_registry = Arc::new(CancellationRegistry::new());
         let alt_svc_registry = Arc::new(AltSvcRegistry::new());
         let cookie_jar = Arc::new(CookieJar::new());
@@ -414,7 +423,88 @@ impl ResourceFetcher {
             let host_smol = current_req.url.host_str().unwrap_or("").into();
             let _permit = self.scheduler.acquire(current_req.priority, host_smol).await;
             
-            let network_response = self.transport.execute(&current_req).await?;
+            let network_result = self.transport.execute(&current_req).await;
+            let network_response = match network_result {
+                Ok(resp) if resp.status.is_server_error() => {
+                    if let Some(ref cached) = current_cached_entry {
+                        if cached.is_stale_if_error(now) {
+                            crate::net_log::log_net_event(
+                                crate::net_log::NetEventType::Warning,
+                                current_req.url.as_str(),
+                                "Servidor retornou 5xx; servindo cache via stale-if-error (RFC 5861)",
+                            );
+                            let mut stale_resp = Response {
+                                url: current_req.url.clone(),
+                                status: cached.status,
+                                headers: cached.headers.clone(),
+                                body: ResponseBody::Full(cached.body.clone()),
+                                mime_type: cached
+                                    .headers
+                                    .get(CONTENT_TYPE)
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                    .unwrap_or_else(|| "application/octet-stream".into()),
+                                charset: cached
+                                    .headers
+                                    .get(CONTENT_TYPE)
+                                    .and_then(|v| v.to_str().ok())
+                                    .and_then(extract_charset_from_content_type),
+                                content_encoding: None,
+                                retry_after: None,
+                                content_range: None,
+                                from_cache: true,
+                                timing: ResponseTiming::default(),
+                            };
+                            stale_resp.headers.insert(
+                                http::header::WARNING,
+                                HeaderValue::from_static("110 - \"Response is Stale\""),
+                            );
+                            return Ok(stale_resp);
+                        }
+                    }
+                    resp
+                }
+                Ok(resp) => resp,
+                Err(err) => {
+                    if let Some(ref cached) = current_cached_entry {
+                        if cached.is_stale_if_error(now) {
+                            crate::net_log::log_net_event(
+                                crate::net_log::NetEventType::Warning,
+                                current_req.url.as_str(),
+                                &format!("Falha de rede ({}); servindo cache via stale-if-error (RFC 5861)", err),
+                            );
+                            let mut stale_resp = Response {
+                                url: current_req.url.clone(),
+                                status: cached.status,
+                                headers: cached.headers.clone(),
+                                body: ResponseBody::Full(cached.body.clone()),
+                                mime_type: cached
+                                    .headers
+                                    .get(CONTENT_TYPE)
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                    .unwrap_or_else(|| "application/octet-stream".into()),
+                                charset: cached
+                                    .headers
+                                    .get(CONTENT_TYPE)
+                                    .and_then(|v| v.to_str().ok())
+                                    .and_then(extract_charset_from_content_type),
+                                content_encoding: None,
+                                retry_after: None,
+                                content_range: None,
+                                from_cache: true,
+                                timing: ResponseTiming::default(),
+                            };
+                            stale_resp.headers.insert(
+                                http::header::WARNING,
+                                HeaderValue::from_static("110 - \"Response is Stale\""),
+                            );
+                            return Ok(stale_resp);
+                        }
+                    }
+                    return Err(err);
+                }
+            };
             let response_time = SystemTime::now();
 
             // Processa cabeçalhos Set-Cookie da resposta
