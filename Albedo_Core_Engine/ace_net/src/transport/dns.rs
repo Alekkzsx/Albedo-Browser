@@ -106,8 +106,7 @@ impl Service<Name> for DohHappyEyeballsResolver {
                         Ok(interleaved.into_iter())
                     }
                 }
-                Err(e) => Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(e) => Err(std::io::Error::other(
                     format!("Falha na resolução DoH para '{}': {}", host_str, e),
                 )),
             }
