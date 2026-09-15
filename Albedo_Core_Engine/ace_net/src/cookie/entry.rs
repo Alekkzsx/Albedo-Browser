@@ -45,6 +45,48 @@ pub struct Cookie {
     pub partition_key: Option<String>,
 }
 
+use ace_core::security::psl::{CompactPslTrie, DomainCategory};
+use std::sync::OnceLock;
+
+static GLOBAL_PSL: OnceLock<CompactPslTrie> = OnceLock::new();
+
+/// Retorna a instância global da Public Suffix List com suporte a regras ICANN e domínios privados.
+pub fn get_psl() -> &'static CompactPslTrie {
+    GLOBAL_PSL.get_or_init(|| {
+        let mut trie = CompactPslTrie::new_with_standard_rules();
+        let extended_rules = [
+            ("mil", DomainCategory::Icann),
+            ("ai", DomainCategory::Icann),
+            ("co", DomainCategory::Icann),
+            ("org.uk", DomainCategory::Icann),
+            ("gov.uk", DomainCategory::Icann),
+            ("ac.uk", DomainCategory::Icann),
+            ("edu.br", DomainCategory::Icann),
+            ("net.br", DomainCategory::Icann),
+            ("net.au", DomainCategory::Icann),
+            ("org.au", DomainCategory::Icann),
+            ("co.jp", DomainCategory::Icann),
+            ("ne.jp", DomainCategory::Icann),
+            ("ac.jp", DomainCategory::Icann),
+            ("de", DomainCategory::Icann),
+            ("fr", DomainCategory::Icann),
+            ("ca", DomainCategory::Icann),
+            ("eu", DomainCategory::Icann),
+            ("github.io", DomainCategory::Private),
+            ("gitlab.io", DomainCategory::Private),
+            ("pages.dev", DomainCategory::Private),
+            ("vercel.app", DomainCategory::Private),
+            ("netlify.app", DomainCategory::Private),
+            ("appspot.com", DomainCategory::Private),
+            ("herokuapp.com", DomainCategory::Private),
+        ];
+        for (rule, cat) in extended_rules {
+            trie.insert(rule, cat);
+        }
+        trie
+    })
+}
+
 /// Lista canônica de sufixos públicos (TLDs e sufixos de múltiplos níveis como .co.uk e .com.br).
 /// Impede ataques de super-cookies conforme RFC 6265bis §5.4.
 pub const KNOWN_PUBLIC_SUFFIXES: &[&str] = &[
@@ -63,6 +105,14 @@ pub fn is_public_suffix(domain: &str) -> bool {
         // TLDs de primeiro nível como "com", "org", "io" sempre são sufixos públicos
         return true;
     }
+
+    let labels: Vec<&str> = clean.split('.').collect();
+    if let Some(psl_match) = get_psl().find_public_suffix_labels(&labels) {
+        if psl_match.suffix_labels == labels.len() {
+            return true;
+        }
+    }
+
     for &suffix in KNOWN_PUBLIC_SUFFIXES {
         if clean == suffix {
             return true;
@@ -100,6 +150,61 @@ impl Cookie {
             Some(exp) => exp > now,
             None => true, // Cookie de sessão vive até o fechamento
         }
+    }
+
+    /// Serializa o cookie em uma linha de texto compacta para persistência em disco.
+    /// Retorna `None` se o cookie for efêmero de sessão (sem `expires_at`).
+    pub fn to_persistent_line(&self) -> Option<String> {
+        let exp = self.expires_at?;
+        let epoch_secs = exp.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        let samesite_str = self.same_site.as_str();
+        let part_key = self.partition_key.as_deref().unwrap_or("");
+        Some(format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            self.name,
+            self.value,
+            self.domain,
+            self.path,
+            epoch_secs,
+            self.secure,
+            self.http_only,
+            samesite_str,
+            part_key
+        ))
+    }
+
+    /// Desserializa um cookie persistente a partir de uma linha de texto.
+    pub fn from_persistent_line(line: &str) -> Option<Self> {
+        let parts: Vec<&str> = line.trim_end_matches(['\r', '\n']).split('\t').collect();
+        if parts.len() < 9 {
+            return None;
+        }
+        let epoch_secs: u64 = parts[4].parse().ok()?;
+        let expires_at = Some(std::time::UNIX_EPOCH + Duration::from_secs(epoch_secs));
+        let secure = parts[5].parse().unwrap_or(false);
+        let http_only = parts[6].parse().unwrap_or(false);
+        let same_site = match parts[7] {
+            "Strict" => SameSite::Strict,
+            "None" => SameSite::None,
+            _ => SameSite::Lax,
+        };
+        let partition_key = if parts[8].is_empty() {
+            None
+        } else {
+            Some(parts[8].to_string())
+        };
+
+        Some(Self {
+            name: parts[0].to_string(),
+            value: parts[1].to_string(),
+            domain: parts[2].to_string(),
+            path: parts[3].to_string(),
+            expires_at,
+            secure,
+            http_only,
+            same_site,
+            partition_key,
+        })
     }
 
     /// Analisa o valor de um cabeçalho `Set-Cookie`.
