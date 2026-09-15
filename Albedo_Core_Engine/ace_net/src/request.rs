@@ -121,6 +121,7 @@ pub struct Request {
     pub is_user_activated: bool,
     pub range: Option<ByteRangeSpec>,
     pub force_h3: bool,
+    pub streaming: bool,
 }
 
 impl Request {
@@ -165,6 +166,7 @@ pub struct RequestBuilder {
     is_user_activated: bool,
     range: Option<ByteRangeSpec>,
     force_h3: bool,
+    streaming: bool,
 }
 
 impl RequestBuilder {
@@ -189,6 +191,7 @@ impl RequestBuilder {
             is_user_activated: false,
             range: None,
             force_h3: false,
+            streaming: false,
         }
     }
 
@@ -283,6 +286,12 @@ impl RequestBuilder {
         self
     }
 
+    /// Habilita streaming reativo sob demanda do corpo da resposta HTTP.
+    pub fn streaming(mut self, enabled: bool) -> Self {
+        self.streaming = enabled;
+        self
+    }
+
     /// Finaliza e constrói a instância de `Request`.
     pub fn build(mut self) -> Request {
         let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
@@ -347,6 +356,7 @@ impl RequestBuilder {
             is_user_activated: self.is_user_activated,
             range: self.range,
             force_h3: self.force_h3,
+            streaming: self.streaming,
         }
     }
 }
