@@ -79,6 +79,9 @@ impl HttpCache {
                             inner.disk_order.push_back(hash);
                             inner.disk_total_bytes += size;
                         }
+                    } else if file_name.ends_with(".tmp") {
+                        // Limpa resíduos temporários de desligamento inesperado
+                        let _ = std::fs::remove_file(entry.path());
                     }
                 }
             }
@@ -274,10 +277,14 @@ impl HttpCache {
                     let _ = tokio::fs::remove_file(disk_path.join(file_name)).await;
                 }
                 
-                // Write new file
-                let file_name = format!("{:016x}.cache", hash);
-                let file_path = disk_path.join(file_name);
-                let _ = tokio::fs::write(file_path, entry_bytes).await;
+                // Gravação atômica: escreve primeiro em .tmp e renomeia para .cache
+                let tmp_name = format!("{:016x}.tmp", hash);
+                let tmp_path = disk_path.join(tmp_name);
+                let cache_name = format!("{:016x}.cache", hash);
+                let cache_path = disk_path.join(cache_name);
+                if tokio::fs::write(&tmp_path, entry_bytes).await.is_ok() {
+                    let _ = tokio::fs::rename(tmp_path, cache_path).await;
+                }
             });
         }
     }
