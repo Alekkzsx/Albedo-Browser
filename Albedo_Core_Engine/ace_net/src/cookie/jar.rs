@@ -44,7 +44,7 @@ impl CookieJar {
     pub fn store_cookie(&self, new_cookie: Cookie) {
         let domain_key = new_cookie.domain.clone();
         let mut map = self.cookies.write();
-        let domain_list = map.entry(domain_key).or_insert_with(Vec::new);
+        let domain_list = map.entry(domain_key).or_default();
 
         let mut found = false;
         for existing in domain_list.iter_mut() {
