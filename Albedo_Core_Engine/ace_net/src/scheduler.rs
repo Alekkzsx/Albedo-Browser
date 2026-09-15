@@ -109,7 +109,7 @@ impl ResourceScheduler {
             });
             
             crate::net_log::log_net_event(
-                crate::net_log::NetEventType::Cancel, // Reusing event type for queue, or use a new one? We can just use tracing directly or add NetEventType::Queue. We'll skip specific event for queue for now.
+                crate::net_log::NetEventType::Queue,
                 host.as_str(),
                 "Request queued by scheduler",
             );

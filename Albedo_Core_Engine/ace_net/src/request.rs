@@ -122,6 +122,7 @@ pub struct Request {
     pub range: Option<ByteRangeSpec>,
     pub force_h3: bool,
     pub streaming: bool,
+    pub integrity: Option<Vec<crate::sri::SriDigest>>,
 }
 
 impl Request {
@@ -167,6 +168,7 @@ pub struct RequestBuilder {
     range: Option<ByteRangeSpec>,
     force_h3: bool,
     streaming: bool,
+    integrity: Option<Vec<crate::sri::SriDigest>>,
 }
 
 impl RequestBuilder {
@@ -192,6 +194,7 @@ impl RequestBuilder {
             range: None,
             force_h3: false,
             streaming: false,
+            integrity: None,
         }
     }
 
@@ -292,6 +295,23 @@ impl RequestBuilder {
         self
     }
 
+    /// Define a política de integridade de sub-recurso (W3C SRI).
+    pub fn integrity(mut self, attr: &str) -> Self {
+        let digests = crate::sri::parse_integrity(attr);
+        if !digests.is_empty() {
+            self.integrity = Some(digests);
+        }
+        self
+    }
+
+    /// Define diretamente a lista de digests SRI pré-calculados.
+    pub fn integrity_digests(mut self, digests: Vec<crate::sri::SriDigest>) -> Self {
+        if !digests.is_empty() {
+            self.integrity = Some(digests);
+        }
+        self
+    }
+
     /// Finaliza e constrói a instância de `Request`.
     pub fn build(mut self) -> Request {
         let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
@@ -357,6 +377,7 @@ impl RequestBuilder {
             range: self.range,
             force_h3: self.force_h3,
             streaming: self.streaming,
+            integrity: self.integrity,
         }
     }
 }

@@ -68,6 +68,14 @@ pub enum NetError {
     /// Violação de segurança de rede ou acesso indevido (ex: Private Network Access).
     #[error("Violação de segurança de rede: {0}")]
     SecurityViolation(String),
+
+    /// Falha na verificação de integridade de sub-recurso (W3C Subresource Integrity - SRI).
+    #[error("Falha de integridade SRI: {0}")]
+    SriMismatch(String),
+
+    /// Falha transitória de rede elegível para retentativa automática (ex: timeout transitório, reset de conexão).
+    #[error("Falha transitória de rede: {0}")]
+    TransientFailure(String),
 }
 
 /// Tipo `Result` especializado para operações em `ace_net`.

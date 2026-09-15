@@ -47,6 +47,7 @@ pub mod request;
 pub mod response;
 pub mod scheduler;
 pub mod service_worker_hook;
+pub mod sri;
 pub mod transport;
 pub mod websocket;
 

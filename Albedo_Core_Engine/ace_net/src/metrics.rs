@@ -9,6 +9,7 @@ pub struct FetcherMetrics {
     pub failed_requests: AtomicU32,
     pub cancelled_requests: AtomicU32,
     pub timed_out_requests: AtomicU32,
+    pub retried_requests: AtomicU32,
 
     // Cache
     pub cache_hits: AtomicU32,
