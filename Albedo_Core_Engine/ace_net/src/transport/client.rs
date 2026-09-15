@@ -21,9 +21,38 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use smol_str::SmolStr;
+use std::pin::Pin;
 use std::time::{Duration, Instant};
 use crate::transport::dns::DohHappyEyeballsResolver;
+use hyper::body::Body as HyperBody;
 use url::Url;
+
+/// Stream assíncrono que encapsula o corpo bruto do Hyper para consumo com backpressure.
+struct HyperIncomingStream {
+    body: hyper::body::Incoming,
+}
+
+impl futures_core::Stream for HyperIncomingStream {
+    type Item = NetResult<Bytes>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        loop {
+            match Pin::new(&mut self.body).poll_frame(cx) {
+                std::task::Poll::Ready(Some(Ok(frame))) => {
+                    if let Ok(data) = frame.into_data() {
+                        return std::task::Poll::Ready(Some(Ok(data)));
+                    }
+                    // Ignora trailers ou continua poll
+                }
+                std::task::Poll::Ready(Some(Err(e))) => {
+                    return std::task::Poll::Ready(Some(Err(NetError::HttpProtocolError(e.to_string()))));
+                }
+                std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
+                std::task::Poll::Pending => return std::task::Poll::Pending,
+            }
+        }
+    }
+}
 
 /// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
@@ -93,10 +122,20 @@ impl TransportClient {
             return Err(NetError::Cancelled);
         }
 
-        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2)
+        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Fallback Gracioso para TCP/TLS
         if req.force_h3 {
-            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "Roteando para QUIC HTTP/3 (Alt-Svc)");
-            return self.execute_h3(req, start_time).await;
+            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 (Alt-Svc)");
+            match self.execute_h3(req, start_time).await {
+                Ok(resp) => return Ok(resp),
+                Err(err) => {
+                    crate::net_log::log_net_event(
+                        crate::net_log::NetEventType::Warning,
+                        req.url.as_str(),
+                        &format!("Falha em conexao QUIC HTTP/3 ({}), realizando fallback gracioso para TCP/TLS", err),
+                    );
+                    tracing::warn!("Fallback de HTTP/3 para TCP/TLS em {}: {}", req.url, err);
+                }
+            }
         }
 
         // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
@@ -168,22 +207,41 @@ impl TransportClient {
         let status = hyper_resp.status();
         let headers = hyper_resp.headers().clone();
 
-        // 5. Coleta de bytes do corpo com suporte a cancelamento
-        let raw_body_bytes = tokio::select! {
-            _ = req.cancellation_token.cancelled() => {
-                return Err(NetError::Cancelled);
-            }
-            res = hyper_resp.into_body().collect() => {
-                res.map_err(|e| NetError::HttpProtocolError(e.to_string()))?.to_bytes()
-            }
-        };
-
-        // 6. Descompressão transparente de conteúdo (Content-Encoding)
         let content_encoding = ContentEncoding::from_headers(&headers);
-        let body_bytes = if let Some(encoding) = content_encoding {
-            decompress_payload(encoding, &raw_body_bytes)?
+        const MAX_BUFFERED_BODY_BYTES: usize = 64 * 1024 * 1024; // Teto de 64 MB
+
+        // 5. Coleta ou streaming reativo de bytes do corpo com suporte a cancelamento
+        let (body_bytes, response_body) = if req.streaming {
+            let stream = HyperIncomingStream { body: hyper_resp.into_body() };
+            (Bytes::new(), ResponseBody::from_stream(stream))
         } else {
-            raw_body_bytes
+            let incoming = hyper_resp.into_body();
+            let limited = http_body_util::Limited::new(incoming, MAX_BUFFERED_BODY_BYTES);
+            let raw_body_bytes = tokio::select! {
+                _ = req.cancellation_token.cancelled() => {
+                    return Err(NetError::Cancelled);
+                }
+                res = limited.collect() => {
+                    res.map_err(|e| {
+                        let err_msg = e.to_string();
+                        if err_msg.contains("length limit") || err_msg.contains("limit exceeded") {
+                            NetError::HttpProtocolError("Payload excedeu o teto de 64MB em memória; utilize o modo streaming".into())
+                        } else {
+                            NetError::HttpProtocolError(err_msg)
+                        }
+                    })?.to_bytes()
+                }
+            };
+
+            // 6. Descompressão transparente de conteúdo (Content-Encoding)
+            let decompressed = if let Some(encoding) = content_encoding {
+                decompress_payload(encoding, &raw_body_bytes)?
+            } else {
+                raw_body_bytes
+            };
+
+            let full_bytes = decompressed.clone();
+            (decompressed, ResponseBody::Full(full_bytes))
         };
 
         let retry_after = RetryAfter::from_headers(&headers);
@@ -208,9 +266,11 @@ impl TransportClient {
                 .trim()
                 .to_ascii_lowercase()
                 .into()
-        } else {
+        } else if !body_bytes.is_empty() {
             // Sniffing nos primeiros 512 bytes
             sniff_mime_type(&body_bytes).into()
+        } else {
+            "application/octet-stream".into()
         };
 
         let charset = extract_charset_from_content_type(content_type_str);
@@ -219,7 +279,7 @@ impl TransportClient {
             url: req.url.clone(),
             status,
             headers,
-            body: ResponseBody::Full(body_bytes),
+            body: response_body,
             mime_type,
             charset,
             content_encoding,
