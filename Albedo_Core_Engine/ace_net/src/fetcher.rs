@@ -437,86 +437,136 @@ impl ResourceFetcher {
             let host_smol = current_req.url.host_str().unwrap_or("").into();
             let _permit = self.scheduler.acquire(current_req.priority, host_smol).await;
             
-            let network_result = self.transport.execute(&current_req).await;
-            let network_response = match network_result {
-                Ok(resp) if resp.status.is_server_error() => {
-                    if let Some(ref cached) = current_cached_entry {
-                        if cached.is_stale_if_error(now) {
+            // Tentativa de execução de rede com retentativa automática (Frente B)
+            let is_idempotent = current_req.method == Method::GET || current_req.method == Method::HEAD || current_req.method == Method::OPTIONS;
+            let max_attempts = if is_idempotent { 3 } else { 1 };
+            let mut attempt = 0;
+
+            let network_response = loop {
+                attempt += 1;
+                let network_result = self.transport.execute(&current_req).await;
+                match network_result {
+                    Ok(resp) => {
+                        let is_transient_status = resp.status == StatusCode::SERVICE_UNAVAILABLE 
+                            || resp.status == StatusCode::TOO_MANY_REQUESTS 
+                            || resp.status == StatusCode::BAD_GATEWAY;
+
+                        if attempt < max_attempts && is_transient_status {
+                            self.metrics.retried_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             crate::net_log::log_net_event(
-                                crate::net_log::NetEventType::Warning,
+                                crate::net_log::NetEventType::Retry,
                                 current_req.url.as_str(),
-                                "Servidor retornou 5xx; servindo cache via stale-if-error (RFC 5861)",
+                                &format!("Status {}, disparando retentativa {}/{}", resp.status, attempt, max_attempts),
                             );
-                            let mut stale_resp = Response {
-                                url: current_req.url.clone(),
-                                status: cached.status,
-                                headers: cached.headers.clone(),
-                                body: ResponseBody::Full(cached.body.clone()),
-                                mime_type: cached
-                                    .headers
-                                    .get(CONTENT_TYPE)
-                                    .and_then(|v| v.to_str().ok())
-                                    .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                    .unwrap_or_else(|| "application/octet-stream".into()),
-                                charset: cached
-                                    .headers
-                                    .get(CONTENT_TYPE)
-                                    .and_then(|v| v.to_str().ok())
-                                    .and_then(extract_charset_from_content_type),
-                                content_encoding: None,
-                                retry_after: None,
-                                content_range: None,
-                                from_cache: true,
-                                timing: ResponseTiming::default(),
+
+                            let delay = if let Some(crate::contention::RetryAfter::Seconds(s)) = resp.retry_after {
+                                Duration::from_millis((s as u64).min(2) * 1000)
+                            } else {
+                                Duration::from_millis(50 * (1 << (attempt - 1)))
                             };
-                            stale_resp.headers.insert(
-                                http::header::WARNING,
-                                HeaderValue::from_static("110 - \"Response is Stale\""),
-                            );
-                            return Ok(stale_resp);
+
+                            tokio::select! {
+                                _ = current_req.cancellation_token.cancelled() => return Err(NetError::Cancelled),
+                                _ = tokio::time::sleep(delay) => {},
+                            }
+                            continue;
                         }
+
+                        if resp.status.is_server_error() {
+                            if let Some(ref cached) = current_cached_entry {
+                                if cached.is_stale_if_error(now) {
+                                    crate::net_log::log_net_event(
+                                        crate::net_log::NetEventType::Warning,
+                                        current_req.url.as_str(),
+                                        "Servidor retornou 5xx; servindo cache via stale-if-error (RFC 5861)",
+                                    );
+                                    let mut stale_resp = Response {
+                                        url: current_req.url.clone(),
+                                        status: cached.status,
+                                        headers: cached.headers.clone(),
+                                        body: ResponseBody::Full(cached.body.clone()),
+                                        mime_type: cached
+                                            .headers
+                                            .get(CONTENT_TYPE)
+                                            .and_then(|v| v.to_str().ok())
+                                            .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                            .unwrap_or_else(|| "application/octet-stream".into()),
+                                        charset: cached
+                                            .headers
+                                            .get(CONTENT_TYPE)
+                                            .and_then(|v| v.to_str().ok())
+                                            .and_then(extract_charset_from_content_type),
+                                        content_encoding: None,
+                                        retry_after: None,
+                                        content_range: None,
+                                        from_cache: true,
+                                        timing: ResponseTiming::default(),
+                                    };
+                                    stale_resp.headers.insert(
+                                        http::header::WARNING,
+                                        HeaderValue::from_static("110 - \"Response is Stale\""),
+                                    );
+                                    return Ok(stale_resp);
+                                }
+                            }
+                        }
+                        break resp;
                     }
-                    resp
-                }
-                Ok(resp) => resp,
-                Err(err) => {
-                    if let Some(ref cached) = current_cached_entry {
-                        if cached.is_stale_if_error(now) {
+                    Err(err) => {
+                        let is_transient_err = matches!(err, NetError::ConnectionFailed(_, _) | NetError::Timeout);
+                        if attempt < max_attempts && is_transient_err {
+                            self.metrics.retried_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             crate::net_log::log_net_event(
-                                crate::net_log::NetEventType::Warning,
+                                crate::net_log::NetEventType::Retry,
                                 current_req.url.as_str(),
-                                &format!("Falha de rede ({}); servindo cache via stale-if-error (RFC 5861)", err),
+                                &format!("Erro transitório ({}), disparando retentativa {}/{}", err, attempt, max_attempts),
                             );
-                            let mut stale_resp = Response {
-                                url: current_req.url.clone(),
-                                status: cached.status,
-                                headers: cached.headers.clone(),
-                                body: ResponseBody::Full(cached.body.clone()),
-                                mime_type: cached
-                                    .headers
-                                    .get(CONTENT_TYPE)
-                                    .and_then(|v| v.to_str().ok())
-                                    .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                    .unwrap_or_else(|| "application/octet-stream".into()),
-                                charset: cached
-                                    .headers
-                                    .get(CONTENT_TYPE)
-                                    .and_then(|v| v.to_str().ok())
-                                    .and_then(extract_charset_from_content_type),
-                                content_encoding: None,
-                                retry_after: None,
-                                content_range: None,
-                                from_cache: true,
-                                timing: ResponseTiming::default(),
-                            };
-                            stale_resp.headers.insert(
-                                http::header::WARNING,
-                                HeaderValue::from_static("110 - \"Response is Stale\""),
-                            );
-                            return Ok(stale_resp);
+                            let delay = Duration::from_millis(50 * (1 << (attempt - 1)));
+                            tokio::select! {
+                                _ = current_req.cancellation_token.cancelled() => return Err(NetError::Cancelled),
+                                _ = tokio::time::sleep(delay) => {},
+                            }
+                            continue;
                         }
+
+                        if let Some(ref cached) = current_cached_entry {
+                            if cached.is_stale_if_error(now) {
+                                crate::net_log::log_net_event(
+                                    crate::net_log::NetEventType::Warning,
+                                    current_req.url.as_str(),
+                                    &format!("Falha de rede ({}); servindo cache via stale-if-error (RFC 5861)", err),
+                                );
+                                let mut stale_resp = Response {
+                                    url: current_req.url.clone(),
+                                    status: cached.status,
+                                    headers: cached.headers.clone(),
+                                    body: ResponseBody::Full(cached.body.clone()),
+                                    mime_type: cached
+                                        .headers
+                                        .get(CONTENT_TYPE)
+                                        .and_then(|v| v.to_str().ok())
+                                        .map(|s| s.split(';').next().unwrap_or("").trim().into())
+                                        .unwrap_or_else(|| "application/octet-stream".into()),
+                                    charset: cached
+                                        .headers
+                                        .get(CONTENT_TYPE)
+                                        .and_then(|v| v.to_str().ok())
+                                        .and_then(extract_charset_from_content_type),
+                                    content_encoding: None,
+                                    retry_after: None,
+                                    content_range: None,
+                                    from_cache: true,
+                                    timing: ResponseTiming::default(),
+                                };
+                                stale_resp.headers.insert(
+                                    http::header::WARNING,
+                                    HeaderValue::from_static("110 - \"Response is Stale\""),
+                                );
+                                return Ok(stale_resp);
+                            }
+                        }
+                        return Err(err);
                     }
-                    return Err(err);
                 }
             };
             let response_time = SystemTime::now();
@@ -621,6 +671,19 @@ impl ResourceFetcher {
                 }
             }
 
+            // 8.5. Validação de CORS e Subresource Integrity (W3C SRI)
+            crate::cors::validate_cors_response(&current_req, &network_response)?;
+
+            if let Some(ref digests) = current_req.integrity {
+                crate::sri::verify_integrity(network_response.body.as_bytes(), digests)?;
+            }
+
+            // Atualiza métrica de bytes transferidos da rede
+            self.metrics.bytes_transferred.fetch_add(
+                network_response.body.as_bytes().len() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+
             // 9. Armazena no Cache se a resposta for elegível
             if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
                 let entry = CacheEntry::new(
@@ -633,8 +696,6 @@ impl ResourceFetcher {
                 ).with_request_headers(current_req.headers.clone());
                 self.cache.put(nik.as_ref(), current_req.url.clone(), entry);
             }
-
-            crate::cors::validate_cors_response(&current_req, &network_response)?;
 
             return Ok(network_response);
         }
