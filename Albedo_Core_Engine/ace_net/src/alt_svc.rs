@@ -186,6 +186,12 @@ impl AltSvcRegistry {
             None => Vec::new(),
         }
     }
+
+    /// Retorna o primeiro serviço alternativo válido para o host especificado (sem NIK isolado).
+    pub fn get(&self, origin_host: &str, _port: u16) -> Option<AltSvcRecord> {
+        let now = SystemTime::now();
+        self.get_alternatives(None, origin_host, now).into_iter().next()
+    }
 }
 
 #[cfg(test)]
