@@ -179,8 +179,8 @@ fn test_public_suffix_super_cookie_defense() {
     let valid_cookie = Cookie::parse("session=legit; Domain=example.co.uk", &url, None, now);
     assert!(valid_cookie.is_some());
     assert_eq!(valid_cookie.unwrap().domain, "example.co.uk");
-    assert!(is_valid_cookie_domain("bank.example.co.uk", "example.co.uk"));
-    assert!(!is_valid_cookie_domain("bank.example.co.uk", "co.uk"));
+    assert!(is_valid_cookie_domain("example.co.uk", "bank.example.co.uk"));
+    assert!(!is_valid_cookie_domain("co.uk", "bank.example.co.uk"));
 }
 
 // 7. CookieJar: Cota e evicção LRU por domínio
