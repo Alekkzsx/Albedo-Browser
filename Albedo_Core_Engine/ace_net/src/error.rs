@@ -64,6 +64,10 @@ pub enum NetError {
     /// Violação da política de mesma origem (CORS).
     #[error("Bloqueado por política CORS: {0}")]
     CorsError(String),
+
+    /// Violação de segurança de rede ou acesso indevido (ex: Private Network Access).
+    #[error("Violação de segurança de rede: {0}")]
+    SecurityViolation(String),
 }
 
 /// Tipo `Result` especializado para operações em `ace_net`.
