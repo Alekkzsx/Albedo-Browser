@@ -145,6 +145,33 @@ impl CacheEntry {
         }
     }
 
+    /// Retorna a janela de tolerância a falhas temporárias do servidor (RFC 5861 stale-if-error).
+    pub fn stale_if_error_lifetime(&self) -> Duration {
+        if let Some(cc) = self.headers.get(CACHE_CONTROL).and_then(|v| v.to_str().ok()) {
+            for directive in cc.split(',') {
+                let part = directive.trim().to_ascii_lowercase();
+                if let Some(stripped) = part.strip_prefix("stale-if-error=") {
+                    if let Ok(seconds) = stripped.trim().parse::<u64>() {
+                        return Duration::from_secs(seconds);
+                    }
+                }
+            }
+        }
+        Duration::ZERO
+    }
+
+    /// Determina se a entrada está obsoleta, mas elegível para entrega como fallback de erro do servidor (RFC 5861).
+    pub fn is_stale_if_error(&self, now: SystemTime) -> bool {
+        let age = self.current_age(now);
+        let freshness = self.freshness_lifetime();
+        if age >= freshness {
+            let sie = self.stale_if_error_lifetime();
+            age < freshness + sie
+        } else {
+            false
+        }
+    }
+
     /// Calcula o tempo de vida de frescor (Freshness Lifetime) da entrada (RFC 9111 §4.2.1).
     pub fn freshness_lifetime(&self) -> Duration {
         // 1. Diretiva max-age no Cache-Control
