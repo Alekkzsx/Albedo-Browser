@@ -73,6 +73,7 @@ version = "0.1.0"
 dependencies = [
  "ace_core",
  "ace_dom",
+ "base64 0.22.1",
  "brotli",
  "bytes",
  "crossbeam",
@@ -90,6 +91,7 @@ dependencies = [
  "reqwest",
  "rustc-hash",
  "rustls 0.23.43",
+ "sha2",
  "smol_str",
  "thiserror 2.0.20",
  "tokio",
