@@ -292,7 +292,14 @@ impl ResourceFetcher {
                 // Validação de cabeçalhos secundários Vary (RFC 9111 §4.1)
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
+                        if let Some(ref digests) = req.integrity {
+                            crate::sri::verify_integrity(entry.body.as_slice(), digests)?;
+                        }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.metrics.bytes_served_from_cache.fetch_add(
+                            entry.body.len() as u64,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
                         crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Fresh Hit");
                         
                         // Cache Hit completo! Zero latência de rede.
@@ -319,8 +326,15 @@ impl ResourceFetcher {
                             timing: ResponseTiming::default(),
                         });
                     } else if entry.is_stale_revalidatable(now) {
+                        if let Some(ref digests) = req.integrity {
+                            crate::sri::verify_integrity(entry.body.as_slice(), digests)?;
+                        }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        self.metrics.bytes_served_from_cache.fetch_add(
+                            entry.body.len() as u64,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
                         crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Stale-While-Revalidate Hit");
                         
                         // RFC 5861: Stale-While-Revalidate Hit!
