@@ -17,6 +17,7 @@ pub enum NetEventType {
     CacheMiss,
     Redirect,
     Cancel,
+    Warning,
     Error,
 }
 
@@ -36,6 +37,7 @@ impl fmt::Display for NetEventType {
             Self::CacheMiss => "CACHE_MISS",
             Self::Redirect => "REDIRECT",
             Self::Cancel => "CANCEL",
+            Self::Warning => "WARNING",
             Self::Error => "ERROR",
         };
         write!(f, "{}", s)
