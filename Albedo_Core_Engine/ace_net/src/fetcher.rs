@@ -37,7 +37,7 @@ use http::header::{HeaderValue, CONTENT_TYPE, REFERER, STRICT_TRANSPORT_SECURITY
 use http::{Method, StatusCode};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use url::Url;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
@@ -293,7 +293,7 @@ impl ResourceFetcher {
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
                         if let Some(ref digests) = req.integrity {
-                            crate::sri::verify_integrity(entry.body.as_slice(), digests)?;
+                            crate::sri::verify_integrity(entry.body.as_ref(), digests)?;
                         }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.bytes_served_from_cache.fetch_add(
@@ -327,7 +327,7 @@ impl ResourceFetcher {
                         });
                     } else if entry.is_stale_revalidatable(now) {
                         if let Some(ref digests) = req.integrity {
-                            crate::sri::verify_integrity(entry.body.as_slice(), digests)?;
+                            crate::sri::verify_integrity(entry.body.as_ref(), digests)?;
                         }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -460,7 +460,7 @@ impl ResourceFetcher {
                             );
 
                             let delay = if let Some(crate::contention::RetryAfter::Seconds(s)) = resp.retry_after {
-                                Duration::from_millis((s as u64).min(2) * 1000)
+                                std::cmp::min(s, Duration::from_secs(2))
                             } else {
                                 Duration::from_millis(50 * (1 << (attempt - 1)))
                             };
