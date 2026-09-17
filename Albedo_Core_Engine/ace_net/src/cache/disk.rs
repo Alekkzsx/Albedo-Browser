@@ -194,6 +194,17 @@ pub struct DiskCacheEngine {
 impl DiskCacheEngine {
     pub async fn new(base_path: PathBuf, max_capacity_bytes: u64) -> std::io::Result<Self> {
         tokio::fs::create_dir_all(&base_path).await?;
+        
+        // Clean up orphan .tmp files
+        let mut read_dir = tokio::fs::read_dir(&base_path).await?;
+        while let Some(entry) = read_dir.next_entry().await? {
+            if let Some(ext) = entry.path().extension() {
+                if ext == "tmp" {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
+            }
+        }
+        
         let wal = WalEngine::new(&base_path).await?;
         
         let mut inner = DiskCacheInner {
