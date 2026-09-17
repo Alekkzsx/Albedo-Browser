@@ -141,7 +141,7 @@ impl ResourceScheduler {
         }
 
         // 2. Procura o próximo elegível na fila (maior prioridade que respeite os limites per-host)
-        let mut skipped = Vec::new();
+        let mut skipped: Vec<(u64, PendingRequest)> = Vec::new();
         
         while let Some(prioritized) = state.queue.pop_last() {
             let seq = prioritized.sequence_id;
