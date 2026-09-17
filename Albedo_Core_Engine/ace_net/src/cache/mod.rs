@@ -3,6 +3,7 @@
 //! Fornece armazenamento LRU particionado com cálculo de frescor normativo,
 //! revalidação condicional via 304 e isolamento de estado contra rastreamento cross-site.
 
+pub mod disk;
 pub mod entry;
 pub mod partition;
 pub mod storage;
