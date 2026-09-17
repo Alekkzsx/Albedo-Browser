@@ -75,7 +75,7 @@ async fn test_streaming_flag_and_stream_consumption() {
 // ---------------------------------------------------------------------------
 // FRENTE 2: Cache L2 Atômico & stale-if-error
 // ---------------------------------------------------------------------------
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_atomic_disk_cache_persistence_and_cleanup() {
     let temp_dir = std::env::temp_dir().join(format!("albedo_cache_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);

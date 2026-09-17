@@ -45,58 +45,7 @@ pub struct Cookie {
     pub partition_key: Option<String>,
 }
 
-use ace_core::security::psl::{CompactPslTrie, DomainCategory};
-use std::sync::OnceLock;
 
-static GLOBAL_PSL: OnceLock<CompactPslTrie> = OnceLock::new();
-
-/// Retorna a instância global da Public Suffix List com suporte a regras ICANN e domínios privados.
-pub fn get_psl() -> &'static CompactPslTrie {
-    GLOBAL_PSL.get_or_init(|| {
-        let mut trie = CompactPslTrie::new_with_standard_rules();
-        let extended_rules = [
-            ("mil", DomainCategory::Icann),
-            ("ai", DomainCategory::Icann),
-            ("co", DomainCategory::Icann),
-            ("org.uk", DomainCategory::Icann),
-            ("gov.uk", DomainCategory::Icann),
-            ("ac.uk", DomainCategory::Icann),
-            ("edu.br", DomainCategory::Icann),
-            ("net.br", DomainCategory::Icann),
-            ("net.au", DomainCategory::Icann),
-            ("org.au", DomainCategory::Icann),
-            ("co.jp", DomainCategory::Icann),
-            ("ne.jp", DomainCategory::Icann),
-            ("ac.jp", DomainCategory::Icann),
-            ("de", DomainCategory::Icann),
-            ("fr", DomainCategory::Icann),
-            ("ca", DomainCategory::Icann),
-            ("eu", DomainCategory::Icann),
-            ("github.io", DomainCategory::Private),
-            ("gitlab.io", DomainCategory::Private),
-            ("pages.dev", DomainCategory::Private),
-            ("vercel.app", DomainCategory::Private),
-            ("netlify.app", DomainCategory::Private),
-            ("appspot.com", DomainCategory::Private),
-            ("herokuapp.com", DomainCategory::Private),
-        ];
-        for (rule, cat) in extended_rules {
-            trie.insert(rule, cat);
-        }
-        trie
-    })
-}
-
-/// Lista canônica de sufixos públicos (TLDs e sufixos de múltiplos níveis como .co.uk e .com.br).
-/// Impede ataques de super-cookies conforme RFC 6265bis §5.4.
-pub const KNOWN_PUBLIC_SUFFIXES: &[&str] = &[
-    "com", "org", "net", "edu", "gov", "mil", "io", "ai", "co", "dev", "app",
-    "co.uk", "org.uk", "gov.uk", "ac.uk",
-    "com.br", "org.br", "gov.br", "edu.br", "net.br",
-    "com.au", "net.au", "org.au",
-    "co.jp", "ne.jp", "ac.jp",
-    "github.io", "gitlab.io", "pages.dev", "vercel.app", "netlify.app",
-];
 
 /// Verifica se uma cadeia de domínio representa um sufixo público registrado.
 pub fn is_public_suffix(domain: &str) -> bool {
@@ -106,19 +55,8 @@ pub fn is_public_suffix(domain: &str) -> bool {
         return true;
     }
 
-    let labels: Vec<&str> = clean.split('.').collect();
-    if let Some(psl_match) = get_psl().find_public_suffix_labels(&labels) {
-        if psl_match.suffix_labels == labels.len() {
-            return true;
-        }
-    }
-
-    for &suffix in KNOWN_PUBLIC_SUFFIXES {
-        if clean == suffix {
-            return true;
-        }
-    }
-    false
+    use psl::Psl;
+    psl::List.domain(clean.as_bytes()).is_none()
 }
 
 /// Valida se o atributo Domain é seguro para o host requisitante (RFC 6265bis §5.4):

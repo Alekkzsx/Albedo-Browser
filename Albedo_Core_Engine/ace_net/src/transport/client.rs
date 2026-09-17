@@ -69,7 +69,7 @@ pub struct TransportClient {
     ech_clients: Arc<RwLock<FxHashMap<String, TimingHttpsClient>>>,
     resolver: DohHappyEyeballsResolver,
     root_store: rustls::RootCertStore,
-    reqwest_h3_client: reqwest::Client,
+    quinn_endpoint: quinn::Endpoint,
     user_agent: HeaderValue,
 }
 
@@ -88,14 +88,19 @@ impl TransportClient {
 
         let default_client = Self::build_hyper_client(&resolver, root_store.clone(), None)?;
 
-        // Cliente reqwest para fallback HTTP/3 (QUIC)
-        // Usamos reqwest experimental HTTP/3 para simplificar o contorno dos problemas do ecossistema quinn
-        let reqwest_h3_client = reqwest::Client::builder()
-            .http3_prior_knowledge()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine H3)")
-            .pool_idle_timeout(Duration::from_secs(90))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new()); // Fallback se H3 falhar na compilação do builder
+        let mut tls_config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(root_store.clone())
+            .with_no_client_auth();
+        tls_config.alpn_protocols = vec![b"h3".to_vec()];
+
+        let quic_client_config = quinn::crypto::rustls::QuicClientConfig::try_from(tls_config)
+            .map_err(|e| NetError::HttpProtocolError(format!("QUIC config error: {}", e)))?;
+        let client_config = quinn::ClientConfig::new(Arc::new(quic_client_config));
+        
+        let mut quinn_endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap()).unwrap();
+        quinn_endpoint.set_default_client_config(client_config);
 
         let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
 
@@ -104,7 +109,7 @@ impl TransportClient {
             ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
             resolver,
             root_store,
-            reqwest_h3_client, 
+            quinn_endpoint, 
             user_agent 
         })
     }
@@ -419,51 +424,62 @@ impl TransportClient {
 
     /// Processamento paralelo dedicado a HTTP/3 QUIC (Fase 6)
     async fn execute_h3(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
-        let reqwest_method = match req.method.as_str() {
-            "GET" => reqwest::Method::GET,
-            "POST" => reqwest::Method::POST,
-            "HEAD" => reqwest::Method::HEAD,
-            "PUT" => reqwest::Method::PUT,
-            "DELETE" => reqwest::Method::DELETE,
-            _ => reqwest::Method::GET,
-        };
-
-        let mut h3_req = self.reqwest_h3_client.request(reqwest_method, req.url.clone());
-        for (k, v) in &req.headers {
-            h3_req = h3_req.header(k.as_str(), v.as_bytes());
-        }
-        if let Some(body) = &req.body {
-            h3_req = h3_req.body(body.clone());
-        }
-
-        let timeout = req.timeout.unwrap_or(Duration::from_secs(30));
-        let request_future = h3_req.send();
-
-        let reqwest_resp = tokio::select! {
-            _ = req.cancellation_token.cancelled() => {
-                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, req.url.as_str(), "H3 Cancelled");
-                return Err(NetError::Cancelled);
-            }
-            res = tokio::time::timeout(timeout, request_future) => {
-                res.map_err(|_| NetError::Timeout)?
-                   .map_err(|e| NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), e.to_string()))?
-            }
-        };
-
-        let ttfb = start_time.elapsed();
-        let status = StatusCode::from_u16(reqwest_resp.status().as_u16()).unwrap_or(StatusCode::OK);
+        let host = req.url.host_str().unwrap_or("");
+        let port = req.url.port().unwrap_or(443);
         
-        let mut headers = http::HeaderMap::new();
-        for (k, v) in reqwest_resp.headers() {
-            if let (Ok(name), Ok(value)) = (http::HeaderName::from_bytes(k.as_str().as_bytes()), http::HeaderValue::from_bytes(v.as_bytes())) {
-                headers.insert(name, value);
-            }
-        }
+        let ips = self.resolver.resolver().lookup_ip(host).await
+            .map_err(|e| NetError::DnsResolutionFailed(host.to_string(), e.to_string()))?;
+        
+        let ip = ips.iter().next().ok_or_else(|| NetError::DnsResolutionFailed(host.to_string(), "No IPs found".into()))?;
+        let addr = std::net::SocketAddr::new(ip, port);
+        
+        let connection = self.quinn_endpoint.connect(addr, host)
+            .map_err(|e| NetError::ConnectionFailed(host.to_string(), e.to_string()))?
+            .await
+            .map_err(|e| NetError::ConnectionFailed(host.to_string(), e.to_string()))?;
 
-        let raw_body_bytes = tokio::select! {
-            _ = req.cancellation_token.cancelled() => return Err(NetError::Cancelled),
-            res = reqwest_resp.bytes() => res.map_err(|e| NetError::HttpProtocolError(e.to_string()))?
-        };
+        let h3_conn = h3_quinn::Connection::new(connection);
+        let (mut driver, mut send_request) = h3::client::new(h3_conn)
+            .await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        tokio::spawn(async move {
+            let res = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
+            tracing::warn!("H3 connection closed: {:?}", res);
+        });
+
+        let uri = req.url.as_str().parse::<http::Uri>().unwrap();
+        let mut builder = http::Request::builder()
+            .method(req.method.clone())
+            .uri(uri);
+            
+        for (k, v) in &req.headers {
+            builder = builder.header(k, v);
+        }
+        
+        let http_req = builder.body(()).unwrap();
+        
+        let mut stream = send_request.send_request(http_req).await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            
+        if let Some(body) = &req.body {
+            stream.send_data(body.clone()).await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+        }
+        stream.finish().await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        let h3_resp = stream.recv_response().await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            
+        let mut body_mut = bytes::BytesMut::new();
+        while let Some(chunk) = stream.recv_data().await.map_err(|e| NetError::HttpProtocolError(e.to_string()))? {
+            bytes::BufMut::put(&mut body_mut, chunk);
+        }
+        
+        let raw_body_bytes = body_mut.freeze();
+        let status = h3_resp.status();
+        let headers = h3_resp.headers().clone();
+        
+        let ttfb = start_time.elapsed();
 
         let content_encoding = ContentEncoding::from_headers(&headers);
         let body_bytes = if let Some(encoding) = content_encoding {

@@ -98,8 +98,8 @@ fn test_cache_partitioning_via_nik() {
     let top2 = Origin::parse("https://site-b.com").unwrap();
     let frame = Origin::parse("https://shared-cdn.com").unwrap();
 
-    let nik1 = NetworkIsolationKey::new(top1, frame.clone());
-    let nik2 = NetworkIsolationKey::new(top2, frame);
+    let nik1 = NetworkIsolationKey::new(top1, frame.clone(), true);
+    let nik2 = NetworkIsolationKey::new(top2, frame, true);
 
     let entry1 = CacheEntry::new(url.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"code_for_a"), now, now);
 

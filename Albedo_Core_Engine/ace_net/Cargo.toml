@@ -48,7 +48,9 @@ hickory-resolver = { version = "0.24", features = ["tokio-runtime", "dns-over-ht
 
 # M4: WebSockets reativos
 tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
-reqwest = { version = "0.13.5", default-features = false, features = ["http3", "rustls"] }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+quinn = { version = "0.11", default-features = false, features = ["rustls", "runtime-tokio"] }
 
 # Crypto & Security (W3C SRI)
 sha2 = "0.10"
@@ -56,6 +58,7 @@ base64 = "0.22"
 async-compression = { version = "0.4.48", features = ["tokio", "gzip", "brotli", "deflate"] }
 futures-util = "0.3.34"
 psl = "2.1.232"
+rustls-pki-types = "1.15.1"
 
 [dev-dependencies]
 tokio-test = "0.4"

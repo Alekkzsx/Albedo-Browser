@@ -14,14 +14,17 @@ pub struct NetworkIsolationKey {
     pub top_frame_origin: Origin,
     /// Origem do frame imediato que disparou o recurso.
     pub frame_origin: Origin,
+    /// Indica se o contexto é cross-site (Triple-Key).
+    pub is_cross_site: bool,
 }
 
 impl NetworkIsolationKey {
     /// Cria uma nova chave de isolamento de rede.
-    pub fn new(top_frame_origin: Origin, frame_origin: Origin) -> Self {
+    pub fn new(top_frame_origin: Origin, frame_origin: Origin, is_cross_site: bool) -> Self {
         Self {
             top_frame_origin,
             frame_origin,
+            is_cross_site,
         }
     }
 
@@ -30,12 +33,13 @@ impl NetworkIsolationKey {
         Self {
             top_frame_origin: origin.clone(),
             frame_origin: origin,
+            is_cross_site: false,
         }
     }
 
     /// Serializa a NIK para inclusão determinística em chaves compostas de cache.
     pub fn serialize(&self) -> String {
-        format!("{}^{}", self.top_frame_origin.ascii_serialization(), self.frame_origin.ascii_serialization())
+        format!("{}^{}^{}", self.top_frame_origin.ascii_serialization(), self.frame_origin.ascii_serialization(), self.is_cross_site)
     }
 }
 
@@ -55,10 +59,12 @@ mod tests {
         let frame = Origin::parse("https://cdn.example.com").unwrap();
         let other = Origin::parse("https://malicious.org").unwrap();
 
-        let nik1 = NetworkIsolationKey::new(top.clone(), frame.clone());
-        let nik2 = NetworkIsolationKey::new(other, frame.clone());
+        let nik1 = NetworkIsolationKey::new(top.clone(), frame.clone(), true);
+        let nik2 = NetworkIsolationKey::new(other, frame.clone(), true);
+        let nik3 = NetworkIsolationKey::new(top.clone(), frame.clone(), false);
 
         assert_ne!(nik1, nik2);
-        assert_eq!(nik1.serialize(), "https://example.com^https://cdn.example.com");
+        assert_ne!(nik1, nik3);
+        assert_eq!(nik1.serialize(), "https://example.com^https://cdn.example.com^true");
     }
 }
