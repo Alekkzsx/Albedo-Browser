@@ -26,6 +26,12 @@ use std::time::{Duration, Instant};
 use crate::transport::dns::DohHappyEyeballsResolver;
 use hyper::body::Body as HyperBody;
 use url::Url;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use rustc_hash::FxHashMap;
+use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
+use hickory_resolver::proto::rr::RecordType;
+use rustls::client::{EchConfig, EchMode};
 
 /// Stream assíncrono que encapsula o corpo bruto do Hyper para consumo com backpressure.
 struct HyperIncomingStream {
@@ -54,10 +60,15 @@ impl futures_core::Stream for HyperIncomingStream {
     }
 }
 
+pub type TimingHttpsClient = Client<crate::transport::timing::TimingConnector<HttpsConnector<crate::transport::timing::TimingConnector<HttpConnector<DohHappyEyeballsResolver>>>>, Full<Bytes>>;
+
 /// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
 pub struct TransportClient {
-    client: Client<HttpsConnector<HttpConnector<DohHappyEyeballsResolver>>, Full<Bytes>>,
+    default_client: TimingHttpsClient,
+    ech_clients: Arc<RwLock<FxHashMap<String, TimingHttpsClient>>>,
+    resolver: DohHappyEyeballsResolver,
+    root_store: rustls::RootCertStore,
     reqwest_h3_client: reqwest::Client,
     user_agent: HeaderValue,
 }
@@ -70,33 +81,12 @@ impl TransportClient {
 
     /// Cria uma nova instância configurada com um resolver DoH customizado.
     pub fn with_resolver(resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        // Milestone 5: Telemetria Preditiva & 0-RTT
-        config.enable_early_data = true;
-
-        // Conector HTTP/TCP configurado com DoH e Happy Eyeballs v2 (RFC 8305)
-        let mut http_connector = HttpConnector::new_with_resolver(resolver);
-        http_connector.enforce_http(false);
-
-        let https = HttpsConnectorBuilder::new()
-            .with_tls_config(config)
-            .https_or_http()
-            .enable_http1()
-            .enable_http2()
-            .wrap_connector(http_connector);
-
-        let client = Client::builder(TokioExecutor::new())
-            .pool_idle_timeout(Duration::from_secs(90))
-            .pool_max_idle_per_host(6)
-            .build(https);
+        let default_client = Self::build_hyper_client(&resolver, root_store.clone(), None)?;
 
         // Cliente reqwest para fallback HTTP/3 (QUIC)
         // Usamos reqwest experimental HTTP/3 para simplificar o contorno dos problemas do ecossistema quinn
@@ -109,7 +99,58 @@ impl TransportClient {
 
         let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
 
-        Ok(Self { client, reqwest_h3_client, user_agent })
+        Ok(Self { 
+            default_client, 
+            ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
+            resolver,
+            root_store,
+            reqwest_h3_client, 
+            user_agent 
+        })
+    }
+
+    fn build_hyper_client(
+        resolver: &DohHappyEyeballsResolver,
+        root_store: rustls::RootCertStore,
+        ech_config: Option<EchConfig>,
+    ) -> NetResult<TimingHttpsClient> {
+        let provider = std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let builder_versions = rustls::ClientConfig::builder_with_provider(provider.clone());
+
+        let builder_verifier = if let Some(ech) = ech_config {
+            builder_versions.with_ech(EchMode::Enable(ech)).map_err(|e| NetError::HttpProtocolError(format!("ECH config error: {}", e)))?
+        } else {
+            builder_versions.with_safe_default_protocol_versions().map_err(|e| NetError::HttpProtocolError(format!("TLS config error: {}", e)))?
+        };
+
+        let mut config = builder_verifier
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        // Milestone 5: Telemetria Preditiva & 0-RTT
+        config.enable_early_data = true;
+
+        // Conector HTTP/TCP configurado com DoH e Happy Eyeballs v2 (RFC 8305)
+        let mut http_connector = HttpConnector::new_with_resolver(resolver.clone());
+        http_connector.enforce_http(false);
+        http_connector.set_happy_eyeballs_timeout(Some(Duration::from_millis(250)));
+
+        let tcp_timing_connector = crate::transport::timing::TimingConnector::new(http_connector, false);
+
+        let https = HttpsConnectorBuilder::new()
+            .with_tls_config(config)
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .wrap_connector(tcp_timing_connector);
+
+        let tls_timing_connector = crate::transport::timing::TimingConnector::new(https, true);
+
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(6)
+            .build(tls_timing_connector);
+
+        Ok(client)
     }
 
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
@@ -173,9 +214,64 @@ impl TransportClient {
             .body(Full::new(body_payload))
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
 
-        // 4. Disparo com controle de timeout e cancelamento atômico
+        // NOVO: Busca do ECH
+        let mut target_client = self.default_client.clone();
+        
+        if let Some(host) = req.url.host_str() {
+            if req.url.scheme() == "https" {
+                let cache_key = host.to_string();
+                
+                // Tenta ler do cache primeiro
+                let cached = {
+                    let map = self.ech_clients.read().await;
+                    map.get(&cache_key).cloned()
+                };
+
+                if let Some(client) = cached {
+                    target_client = client;
+                } else {
+                    // Consulta HTTPS para descobrir EchConfig
+                    if let Ok(lookup) = self.resolver.resolver().lookup(host, RecordType::HTTPS).await {
+                        let mut ech_config_bytes: Option<Vec<u8>> = None;
+                        for record in lookup.iter() {
+                            if let hickory_resolver::proto::rr::RData::HTTPS(svcb) = record {
+                                for (key, val) in svcb.svc_params().iter() {
+                                    if *key == SvcParamKey::EchConfig {
+                                        // Acessar unknown octets
+                                        match val {
+                                            hickory_resolver::proto::rr::rdata::svcb::SvcParamValue::Unknown(data) => {
+                                                ech_config_bytes = Some(data.0.clone());
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if let Some(bytes) = ech_config_bytes {
+                            // Construir novo client configurado para ECH
+                            if let Ok(ech_config) = EchConfig::new(bytes.into(), rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES) {
+                                if let Ok(new_client) = Self::build_hyper_client(&self.resolver, self.root_store.clone(), Some(ech_config)) {
+                                    target_client = new_client.clone();
+                                    let mut map = self.ech_clients.write().await;
+                                    map.insert(cache_key, new_client);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Disparo com controle de timeout, cancelamento atômico e escopo de métricas
         let timeout_duration = req.timeout.unwrap_or(Duration::from_secs(30));
-        let request_future = self.client.request(hyper_req);
+        
+        let timing_state = std::sync::Arc::new(tokio::sync::Mutex::new(crate::transport::timing::ConnectionTiming::default()));
+        let request_future = crate::transport::timing::CONNECTION_TIMING.scope(
+            timing_state.clone(),
+            target_client.request(hyper_req)
+        );
 
         let hyper_resp = tokio::select! {
             _ = req.cancellation_token.cancelled() => {
@@ -210,10 +306,30 @@ impl TransportClient {
         let content_encoding = ContentEncoding::from_headers(&headers);
         const MAX_BUFFERED_BODY_BYTES: usize = 64 * 1024 * 1024; // Teto de 64 MB
 
+        let content_length = headers.get(hyper::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let use_stream = req.streaming || content_length.map_or(true, |len| len > 64 * 1024);
+
         // 5. Coleta ou streaming reativo de bytes do corpo com suporte a cancelamento
-        let (body_bytes, response_body) = if req.streaming {
+        let (body_bytes, response_body) = if use_stream {
             let stream = HyperIncomingStream { body: hyper_resp.into_body() };
-            (Bytes::new(), ResponseBody::from_stream(stream))
+            let raw_stream = ResponseBody::from_stream(stream);
+            
+            // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
+            let final_body = if let Some(encoding) = content_encoding {
+                if let Some(stream_box) = raw_stream.take_stream().await {
+                    let decompressed_stream = crate::compression::decompress_stream(encoding, stream_box);
+                    ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+                } else {
+                    raw_stream
+                }
+            } else {
+                raw_stream
+            };
+            
+            (Bytes::new(), final_body)
         } else {
             let incoming = hyper_resp.into_body();
             let limited = http_body_util::Limited::new(incoming, MAX_BUFFERED_BODY_BYTES);
@@ -275,6 +391,11 @@ impl TransportClient {
 
         let charset = extract_charset_from_content_type(content_type_str);
 
+        let (dns_duration, tcp_duration, tls_duration) = {
+            let guard = timing_state.lock().await;
+            (guard.dns_duration, guard.tcp_duration, guard.tls_duration)
+        };
+
         Ok(Response {
             url: req.url.clone(),
             status,
@@ -288,9 +409,9 @@ impl TransportClient {
             from_cache: false,
             timing: ResponseTiming {
                 total_duration,
-                dns_duration: None,
-                tcp_duration: None,
-                tls_duration: None,
+                dns_duration,
+                tcp_duration,
+                tls_duration,
                 ttfb,
             },
         })
