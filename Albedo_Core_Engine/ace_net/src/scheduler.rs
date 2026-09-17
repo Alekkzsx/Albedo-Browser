@@ -195,6 +195,7 @@ impl ResourceScheduler {
                 // Host limit reached, guarda para devolver pra fila
                 skipped.push((seq, pending));
             }
+            }
         }
 
         // Devolve os pulados
