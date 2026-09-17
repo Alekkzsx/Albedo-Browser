@@ -21,6 +21,8 @@ pub enum ContentEncoding {
     Deflate,
     /// Algoritmo Brotli (RFC 7932)
     Brotli,
+    /// Algoritmo Zstandard (RFC 8878)
+    Zstandard,
     /// Conteúdo bruto sem compressão
     Identity,
 }
@@ -42,6 +44,7 @@ impl ContentEncoding {
             "gzip" | "x-gzip" => Some(Self::Gzip),
             "deflate" => Some(Self::Deflate),
             "br" => Some(Self::Brotli),
+            "zstd" => Some(Self::Zstandard),
             "identity" => Some(Self::Identity),
             _ => None,
         }
@@ -105,7 +108,48 @@ pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<B
             let decompressed = safe_read_to_end(reader, raw.len() * 2)?;
             Ok(Bytes::from(decompressed))
         }
+        ContentEncoding::Zstandard => {
+            // Zstd requer compilação C, desativado temporariamente
+            Err(NetError::HttpProtocolError("Zstandard decompression is currently disabled due to missing native toolchain".into()))
+        }
     }
+}
+
+/// Applica descompressão em pipeline contínuo (zero-copy) sobre uma `BoxByteStream`.
+pub fn decompress_stream(encoding: ContentEncoding, input: crate::response::BoxByteStream) -> crate::response::BoxByteStream {
+    use futures_core::Stream;
+    use std::pin::Pin;
+    use tokio_util::io::{ReaderStream, StreamReader};
+    use futures_util::StreamExt;
+
+    if encoding == ContentEncoding::Identity {
+        return input;
+    }
+
+    // Adapta BoxByteStream para um Stream de Result<Bytes, std::io::Error>
+    let io_stream = input.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+    
+    // Converte o Stream para AsyncRead
+    let reader = StreamReader::new(io_stream);
+
+    // Encapsula no decoder apropriado (que também implementa AsyncRead)
+    let decoded_reader: Box<dyn tokio::io::AsyncRead + Unpin + Send> = match encoding {
+        ContentEncoding::Gzip => Box::new(async_compression::tokio::bufread::GzipDecoder::new(reader)),
+        ContentEncoding::Deflate => Box::new(async_compression::tokio::bufread::DeflateDecoder::new(reader)),
+        ContentEncoding::Brotli => Box::new(async_compression::tokio::bufread::BrotliDecoder::new(reader)),
+        ContentEncoding::Zstandard => return Box::pin(futures_util::stream::once(async {
+            Err(NetError::HttpProtocolError("Zstandard stream decompression is currently disabled".into()))
+        })),
+        ContentEncoding::Identity => unreachable!(),
+    };
+
+    // Converte o AsyncRead de volta para um Stream
+    let out_stream = ReaderStream::new(decoded_reader);
+
+    // Mapeia std::io::Error de volta para NetError
+    let net_stream = out_stream.map(|res| res.map_err(|e| NetError::HttpProtocolError(e.to_string())));
+
+    Box::pin(net_stream)
 }
 
 /// Helper para compressão gzip em testes e servidores mock.
