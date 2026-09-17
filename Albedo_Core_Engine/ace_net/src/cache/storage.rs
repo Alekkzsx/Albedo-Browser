@@ -5,9 +5,11 @@
 
 use super::entry::CacheEntry;
 use super::partition::NetworkIsolationKey;
+use super::disk::DiskCacheEngine;
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::SystemTime;
 use url::Url;
 use std::path::PathBuf;
@@ -26,7 +28,7 @@ pub struct HttpCache {
     inner: RwLock<HttpCacheInner>,
     pub stats: CacheStats,
     pub max_capacity_bytes: usize,
-    pub disk_path: Option<PathBuf>,
+    pub disk_engine: Option<Arc<DiskCacheEngine>>,
 }
 
 #[derive(Debug)]
@@ -35,11 +37,6 @@ struct HttpCacheInner {
     entries: HashMap<String, CacheEntry>,
     order: VecDeque<String>,
     total_bytes: usize,
-    
-    // Disk L2 Cache Index
-    disk_entries: HashMap<u64, usize>,
-    disk_order: VecDeque<u64>,
-    disk_total_bytes: usize,
 }
 
 impl HttpCache {
@@ -50,43 +47,24 @@ impl HttpCache {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
                 total_bytes: 0,
-                disk_entries: HashMap::new(),
-                disk_order: VecDeque::new(),
-                disk_total_bytes: 0,
             }),
             stats: CacheStats::default(),
             max_capacity_bytes,
-            disk_path: None,
+            disk_engine: None,
         }
     }
 
     /// Configura um diretório de cache em disco (L2).
     pub fn with_disk_path(mut self, path: PathBuf) -> Self {
-        let _ = std::fs::create_dir_all(&path);
-        self.disk_path = Some(path.clone());
-        
-        // Carrega o índice do disco síncronamente (fast-path index build)
-        if let Ok(entries) = std::fs::read_dir(&path) {
-            let mut inner = self.inner.write();
-            for entry in entries.flatten() {
-                let metadata = entry.metadata().unwrap_or_else(|_| std::fs::metadata(entry.path()).unwrap());
-                if metadata.is_file() {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    if file_name.ends_with(".cache") {
-                        if let Ok(hash) = u64::from_str_radix(&file_name[0..16], 16) {
-                            let size = metadata.len() as usize;
-                            inner.disk_entries.insert(hash, size);
-                            inner.disk_order.push_back(hash);
-                            inner.disk_total_bytes += size;
-                        }
-                    } else if file_name.ends_with(".tmp") {
-                        // Limpa resíduos temporários de desligamento inesperado
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
+        // Exemplo: Limite de disco é 10x a capacidade da memória
+        let max_disk_capacity = (self.max_capacity_bytes as u64).saturating_mul(10);
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            if let Ok(engine) = tokio::task::block_in_place(|| {
+                handle.block_on(DiskCacheEngine::new(path, max_disk_capacity))
+            }) {
+                self.disk_engine = Some(Arc::new(engine));
             }
         }
-
         self
     }
 
@@ -142,60 +120,36 @@ impl HttpCache {
         
         // 2. Lookup no Disco (L2) com hash determinístico estável
         let hash = Self::hash_key(&key);
-        if let Some(disk_path) = &self.disk_path {
-            // Index check: fast-fail se não estiver no disco
-            let is_in_disk = self.inner.read().disk_entries.contains_key(&hash);
-            if is_in_disk {
-                let file_name = format!("{:016x}.cache", hash);
-                let file_path = disk_path.join(file_name);
-
-                if let Ok(bytes) = tokio::fs::read(&file_path).await {
-                    if let Some(entry) = CacheEntry::from_bytes(&bytes) {
-                        let entry_size = entry.body.len() + 256;
-                        
-                        if entry_size <= self.max_capacity_bytes {
-                            let mut inner = self.inner.write();
-                            if let Some(old) = inner.entries.remove(&key) {
-                                inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
-                                if let Some(pos) = inner.order.iter().position(|k| k == &key) {
-                                    inner.order.remove(pos);
-                                }
-                            }
-                            while inner.total_bytes + entry_size > self.max_capacity_bytes {
-                                if let Some(evicted_key) = inner.order.pop_front() {
-                                    if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
-                                        inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
-                                        self.stats.evictions.fetch_add(1, Ordering::Relaxed);
-                                    }
-                                } else {
-                                    break;
-                                }
-                            }
-                            inner.total_bytes += entry_size;
-                            inner.order.push_back(key.clone());
-                            inner.entries.insert(key, entry.clone());
-                            
-                            // Atualiza a posição no índice do disco (LRU)
-                            if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
-                                inner.disk_order.remove(pos);
-                                inner.disk_order.push_back(hash);
-                            }
-
-                            self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
-                        }
-                        self.stats.hits.fetch_add(1, Ordering::Relaxed);
-                        return Some(entry);
-                    }
-                } else {
-                    // Arquivo corrompido ou apagado por fora, remove do índice
+        if let Some(engine) = &self.disk_engine {
+            if let Some(entry) = engine.get(hash).await {
+                let entry_size = entry.body.len() + 256;
+                
+                if entry_size <= self.max_capacity_bytes {
                     let mut inner = self.inner.write();
-                    if let Some(size) = inner.disk_entries.remove(&hash) {
-                        inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(size);
-                        if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
-                            inner.disk_order.remove(pos);
+                    if let Some(old) = inner.entries.remove(&key) {
+                        inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
+                        if let Some(pos) = inner.order.iter().position(|k| k == &key) {
+                            inner.order.remove(pos);
                         }
                     }
+                    while inner.total_bytes + entry_size > self.max_capacity_bytes {
+                        if let Some(evicted_key) = inner.order.pop_front() {
+                            if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
+                                inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                                self.stats.evictions.fetch_add(1, Ordering::Relaxed);
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    inner.total_bytes += entry_size;
+                    inner.order.push_back(key.clone());
+                    inner.entries.insert(key, entry.clone());
+                    
+                    self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
                 }
+                self.stats.hits.fetch_add(1, Ordering::Relaxed);
+                return Some(entry);
             }
         }
 
@@ -239,52 +193,10 @@ impl HttpCache {
             self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
         }
 
-        if let Some(disk_path) = &self.disk_path {
-            let mut inner = self.inner.write();
-            
-            if let Some(old_size) = inner.disk_entries.remove(&hash) {
-                inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(old_size);
-                if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
-                    inner.disk_order.remove(pos);
-                }
-            }
-
-            // Exemplo: Limite de disco é 10x a capacidade da memória
-            let max_disk_capacity = self.max_capacity_bytes.saturating_mul(10);
-            let mut evictions_to_disk = Vec::new();
-
-            while inner.disk_total_bytes + entry_size > max_disk_capacity {
-                if let Some(evicted_hash) = inner.disk_order.pop_front() {
-                    if let Some(evicted_size) = inner.disk_entries.remove(&evicted_hash) {
-                        inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(evicted_size);
-                        evictions_to_disk.push(evicted_hash);
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            inner.disk_total_bytes += entry_size;
-            inner.disk_order.push_back(hash);
-            inner.disk_entries.insert(hash, entry_size);
-            
-            let disk_path = disk_path.clone();
-            let entry_bytes = entry.to_bytes();
+        if let Some(engine) = &self.disk_engine {
+            let engine = engine.clone();
             tokio::spawn(async move {
-                // Remove evicted files
-                for evicted_hash in evictions_to_disk {
-                    let file_name = format!("{:016x}.cache", evicted_hash);
-                    let _ = tokio::fs::remove_file(disk_path.join(file_name)).await;
-                }
-                
-                // Gravação atômica: escreve primeiro em .tmp e renomeia para .cache
-                let tmp_name = format!("{:016x}.tmp", hash);
-                let tmp_path = disk_path.join(tmp_name);
-                let cache_name = format!("{:016x}.cache", hash);
-                let cache_path = disk_path.join(cache_name);
-                if tokio::fs::write(&tmp_path, entry_bytes).await.is_ok() {
-                    let _ = tokio::fs::rename(tmp_path, cache_path).await;
-                }
+                engine.put(hash, entry).await;
             });
         }
     }
@@ -304,13 +216,12 @@ impl HttpCache {
             entry.update_from_304(new_headers, response_time);
             let updated = entry.clone();
 
-            if let Some(disk_path) = &self.disk_path {
-                let disk_path = disk_path.clone();
-                let entry_bytes = updated.to_bytes();
+            if let Some(engine) = &self.disk_engine {
+                let engine = engine.clone();
+                let hash = Self::hash_key(&key);
+                let value_to_cache = updated.clone();
                 tokio::spawn(async move {
-                    let file_name = format!("{:016x}.cache", Self::hash_key(&key));
-                    let file_path = disk_path.join(file_name);
-                    let _ = tokio::fs::write(file_path, entry_bytes).await;
+                    engine.put(hash, value_to_cache).await;
                 });
             }
 
@@ -339,26 +250,14 @@ impl HttpCache {
                     inner.order.remove(pos);
                 }
             }
-            
-            let hash = Self::hash_key(key);
-            if let Some(size) = inner.disk_entries.remove(&hash) {
-                inner.disk_total_bytes = inner.disk_total_bytes.saturating_sub(size);
-                if let Some(pos) = inner.disk_order.iter().position(|k| k == &hash) {
-                    inner.disk_order.remove(pos);
-                }
-            }
         }
-
-        self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
-
+            
         // Exclui arquivos físicos do disco para não ressuscitar dados invalidados
-        if let Some(disk_path) = &self.disk_path {
-            let disk_path = disk_path.clone();
+        if let Some(engine) = &self.disk_engine {
+            let engine = engine.clone();
             tokio::spawn(async move {
                 for key in keys_to_remove {
-                    let file_name = format!("{:016x}.cache", Self::hash_key(&key));
-                    let file_path = disk_path.join(file_name);
-                    let _ = tokio::fs::remove_file(file_path).await;
+                    engine.delete(Self::hash_key(&key)).await;
                 }
             });
         }
@@ -371,22 +270,12 @@ impl HttpCache {
         inner.order.clear();
         inner.total_bytes = 0;
         
-        inner.disk_entries.clear();
-        inner.disk_order.clear();
-        inner.disk_total_bytes = 0;
-        
         self.stats.current_bytes.store(0, Ordering::Relaxed);
 
-        if let Some(disk_path) = &self.disk_path {
-            let disk_path = disk_path.clone();
+        if let Some(engine) = &self.disk_engine {
+            let engine = engine.clone();
             tokio::spawn(async move {
-                if let Ok(mut dir_entries) = tokio::fs::read_dir(disk_path).await {
-                    while let Ok(Some(entry)) = dir_entries.next_entry().await {
-                        if entry.file_name().to_string_lossy().ends_with(".cache") {
-                            let _ = tokio::fs::remove_file(entry.path()).await;
-                        }
-                    }
-                }
+                engine.clear().await;
             });
         }
     }
