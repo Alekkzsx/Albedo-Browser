@@ -31,6 +31,7 @@ pub mod contention;
 pub mod cookie;
 pub mod encoding;
 pub mod cors;
+pub mod cors_cache;
 pub mod error;
 pub mod fetch_metadata;
 pub mod fetcher;
