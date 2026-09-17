@@ -21,68 +21,47 @@
 //! - **Alt-Svc Registry:** Registro de serviços alternativos (RFC 7838) para preparação HTTP/3.
 //! - **Resource Hints:** Suporte a `dns-prefetch`, `preconnect` e lookahead com `PreloadScanner`.
 
-pub mod alt_svc;
+pub mod http;
+pub mod security;
+pub mod engine;
+pub mod telemetry;
+pub mod protocol;
 pub mod cache;
-pub mod cancel;
-pub mod clear_site_data;
-pub mod client_hints;
-pub mod compression;
-pub mod contention;
 pub mod cookie;
-pub mod encoding;
-pub mod cors;
-pub mod cors_cache;
 pub mod error;
-pub mod fetch_metadata;
-pub mod fetcher;
-pub mod hints;
-pub mod hsts;
-pub mod metrics;
-pub mod net_log;
-pub mod pipeline;
-pub mod pna;
-pub mod priority;
-pub mod range;
-pub mod redirect;
-pub mod request;
-pub mod response;
-pub mod scheduler;
-pub mod service_worker_hook;
-pub mod sri;
 pub mod transport;
-pub mod websocket;
 
 pub use ace_core::id::RequestId;
-pub use alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
 pub use cache::{CacheEntry, CacheStats, HttpCache, NetworkIsolationKey};
-pub use cancel::CancellationRegistry;
-pub use clear_site_data::ClearSiteDataAction;
-pub use client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
-pub use compression::{decompress_payload, ContentEncoding};
-pub use contention::RetryAfter;
 pub use cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, SameSite, MAX_COOKIES_PER_DOMAIN};
-pub use encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
+pub use engine::cancel::CancellationRegistry;
+pub use engine::contention::RetryAfter;
+pub use engine::fetcher::ResourceFetcher;
+pub use engine::priority::{PrioritizedItem, PriorityLevel};
+pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
+pub use engine::service_worker_hook::ServiceWorkerHook;
 pub use error::{NetError, NetResult};
-pub use fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
-pub use fetcher::ResourceFetcher;
-pub use hints::ResourceHint;
-pub use hsts::{HstsPolicy, HstsStore};
-pub use metrics::FetcherMetrics;
-pub use net_log::{log_net_error, log_net_event, NetEventType};
-pub use priority::{PrioritizedItem, PriorityLevel};
-pub use range::{ByteRangeSpec, ContentRange};
-pub use redirect::{handle_redirect, RedirectAction};
-pub use request::{
+pub use http::compression::{decompress_payload, ContentEncoding};
+pub use http::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
+pub use http::range::{ByteRangeSpec, ContentRange};
+pub use http::redirect::{handle_redirect, RedirectAction};
+pub use http::request::{
     CredentialsMode, HeaderMap, HeaderName, HeaderValue, Method, RedirectPolicy, Request,
     RequestBuilder, RequestDestination, RequestMode, TryIntoUrl,
 };
-pub use response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
-pub use scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
-pub use service_worker_hook::ServiceWorkerHook;
+pub use http::response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
+pub use protocol::alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
+pub use protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
+pub use security::clear_site_data::ClearSiteDataAction;
+pub use security::fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
+pub use security::hsts::{HstsPolicy, HstsStore};
+pub use telemetry::client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
+pub use telemetry::hints::ResourceHint;
+pub use telemetry::metrics::FetcherMetrics;
+pub use telemetry::net_log::{log_net_error, log_net_event, NetEventType};
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{DohHappyEyeballsResolver, TransportClient};
 pub use url::Url;
-pub use websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
 
 /// Cria uma instância padrão do `ResourceFetcher` para uso imediato pelo motor.
 pub fn create_default_fetcher() -> NetResult<ResourceFetcher> {
