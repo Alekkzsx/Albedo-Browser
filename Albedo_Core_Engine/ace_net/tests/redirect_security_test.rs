@@ -1,8 +1,8 @@
 //! # Testes de Segurança e Resolução de Redirecionamentos (3xx)
 
 use ace_net::error::NetError;
-use ace_net::redirect::{handle_redirect, RedirectAction};
-use ace_net::request::Request;
+use ace_net::http::redirect::{handle_redirect, RedirectAction};
+use ace_net::http::request::Request;
 use bytes::Bytes;
 use http::header::{AUTHORIZATION, COOKIE, LOCATION};
 use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};

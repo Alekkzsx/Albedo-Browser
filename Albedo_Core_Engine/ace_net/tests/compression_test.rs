@@ -1,8 +1,8 @@
 //! # Testes de Descompressão Transparente de Conteúdo HTTP (RFC 9110, RFC 7932)
 
-use ace_net::compression::{compress_brotli, compress_gzip, decompress_payload, ContentEncoding};
-use ace_net::request::Request;
-use ace_net::response::StatusCode;
+use ace_net::http::compression::{compress_brotli, compress_gzip, decompress_payload, ContentEncoding};
+use ace_net::http::request::Request;
+use ace_net::http::response::StatusCode;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE};

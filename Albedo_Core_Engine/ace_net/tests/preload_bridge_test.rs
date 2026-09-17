@@ -1,8 +1,8 @@
 //! # Testes de Integração com o PreloadScanner do ace_dom (Lookahead Especulativo)
 
 use ace_dom::preload_scanner::{PreloadKind, PreloadScanner};
-use ace_net::priority::PriorityLevel;
-use ace_net::request::{Request, RequestDestination};
+use ace_net::engine::priority::PriorityLevel;
+use ace_net::http::request::{Request, RequestDestination};
 
 #[test]
 fn test_preload_scanner_to_ace_net_requests() {

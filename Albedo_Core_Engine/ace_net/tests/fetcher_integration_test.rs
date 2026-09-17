@@ -2,9 +2,9 @@
 //!
 //! Executa testes ponta a ponta contra data URLs e um servidor mock HTTP local in-process.
 
-use ace_net::priority::PriorityLevel;
-use ace_net::request::{Request, RequestDestination};
-use ace_net::response::StatusCode;
+use ace_net::engine::priority::PriorityLevel;
+use ace_net::http::request::{Request, RequestDestination};
+use ace_net::http::response::StatusCode;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, LOCATION};

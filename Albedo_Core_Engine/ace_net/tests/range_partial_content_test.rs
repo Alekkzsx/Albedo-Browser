@@ -1,8 +1,8 @@
 //! # Testes de Range Requests e HTTP 206 Partial Content (RFC 9110 §14)
 
-use ace_net::range::ByteRangeSpec;
-use ace_net::request::Request;
-use ace_net::response::StatusCode;
+use ace_net::http::range::ByteRangeSpec;
+use ace_net::http::request::Request;
+use ace_net::http::response::StatusCode;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http::header::{CONTENT_RANGE, RANGE};

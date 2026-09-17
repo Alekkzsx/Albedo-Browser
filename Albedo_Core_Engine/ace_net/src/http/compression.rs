@@ -117,8 +117,8 @@ pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<B
 
 /// Applica descompressão em pipeline contínuo (zero-copy) sobre uma `BoxByteStream`.
 pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response::BoxByteStream) -> crate::http::response::BoxByteStream {
-    use futures_core::Stream;
-    use std::pin::Pin;
+    
+    
     use tokio_util::io::{ReaderStream, StreamReader};
     use futures_util::StreamExt;
 

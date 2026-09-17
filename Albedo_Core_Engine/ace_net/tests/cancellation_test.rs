@@ -1,7 +1,7 @@
 //! # Testes de Cancelamento Granular de Requisições (RequestId & CancellationToken)
 
 use ace_net::error::NetError;
-use ace_net::request::Request;
+use ace_net::http::request::Request;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http_body_util::Full;

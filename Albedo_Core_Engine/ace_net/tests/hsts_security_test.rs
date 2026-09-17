@@ -1,7 +1,7 @@
 //! # Testes de HSTS (RFC 6797) e Preload List com Auto-Upgrade
 
-use ace_net::hsts::HstsStore;
-use ace_net::request::Request;
+use ace_net::security::hsts::HstsStore;
+use ace_net::http::request::Request;
 use ace_net::ResourceFetcher;
 use http::HeaderValue;
 use std::time::SystemTime;

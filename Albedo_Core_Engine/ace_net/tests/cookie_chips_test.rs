@@ -1,5 +1,5 @@
 use ace_net::cookie::{Cookie, SameSite};
-use ace_net::request::{CredentialsMode, Request};
+use ace_net::http::request::{CredentialsMode, Request};
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http::header::{COOKIE, SET_COOKIE};

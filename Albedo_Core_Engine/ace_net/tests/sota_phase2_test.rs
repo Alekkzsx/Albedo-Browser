@@ -14,12 +14,12 @@
 
 use ace_net::cache::{CacheEntry, HttpCache};
 use ace_net::cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, MAX_COOKIES_PER_DOMAIN};
-use ace_net::fetcher::ResourceFetcher;
-use ace_net::request::{CredentialsMode, Request};
-use ace_net::response::{ResponseBody, ResponseTiming};
-use ace_net::service_worker_hook::ServiceWorkerHook;
+use ace_net::engine::fetcher::ResourceFetcher;
+use ace_net::http::request::{CredentialsMode, Request};
+use ace_net::http::response::{ResponseBody, ResponseTiming};
+use ace_net::engine::service_worker_hook::ServiceWorkerHook;
 use ace_net::transport::DohHappyEyeballsResolver;
-use ace_net::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
+use ace_net::protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
 use bytes::Bytes;
 use http::header::{ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_TYPE, VARY};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
@@ -227,13 +227,13 @@ async fn test_service_worker_fetch_hook_integration() {
         fn on_fetch(
             &self,
             req: &Request,
-        ) -> Pin<Box<dyn std::future::Future<Output = ace_net::error::NetResult<Option<ace_net::response::Response>>> + Send + '_>> {
+        ) -> Pin<Box<dyn std::future::Future<Output = ace_net::error::NetResult<Option<ace_net::http::response::Response>>> + Send + '_>> {
             let url = req.url.clone();
             Box::pin(async move {
                 if url.as_str() == "https://sw.test/cached" {
                     let mut headers = HeaderMap::new();
                     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
-                    Ok(Some(ace_net::response::Response {
+                    Ok(Some(ace_net::http::response::Response {
                         url,
                         status: StatusCode::OK,
                         headers,

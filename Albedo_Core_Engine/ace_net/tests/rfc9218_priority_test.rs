@@ -1,7 +1,7 @@
 //! # Testes de Priorização Extensível HTTP (RFC 9218) e Injeção de Cabeçalhos Padrão
 
-use ace_net::priority::PriorityLevel;
-use ace_net::request::{Request, RequestDestination};
+use ace_net::engine::priority::PriorityLevel;
+use ace_net::http::request::{Request, RequestDestination};
 use http::header::ACCEPT_ENCODING;
 
 #[test]

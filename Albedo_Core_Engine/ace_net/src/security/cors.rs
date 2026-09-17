@@ -3,7 +3,7 @@ use crate::http::request::{CredentialsMode, Method, Request, RequestMode};
 use crate::http::response::Response;
 use ace_core::security::origin::Origin;
 use http::header::{
-    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE, ORIGIN,
+    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN, CONTENT_TYPE,
 };
 
 /// Verifica se a requisição cruza origens.

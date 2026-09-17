@@ -1,7 +1,7 @@
 //! # Testes de Escalonamento e Prioridade de Recursos
 
-use ace_net::priority::{PrioritizedItem, PriorityLevel};
-use ace_net::request::RequestDestination;
+use ace_net::engine::priority::{PrioritizedItem, PriorityLevel};
+use ace_net::http::request::RequestDestination;
 use std::collections::BinaryHeap;
 
 #[test]

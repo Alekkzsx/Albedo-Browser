@@ -1,8 +1,8 @@
 //! # Testes de W3C Fetch Metadata Request Headers
 
 use ace_core::security::origin::Origin;
-use ace_net::fetch_metadata::SecFetchSite;
-use ace_net::request::{Request, RequestDestination, RequestMode};
+use ace_net::security::fetch_metadata::SecFetchSite;
+use ace_net::http::request::{Request, RequestDestination, RequestMode};
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http_body_util::Full;

@@ -1,8 +1,8 @@
 //! # Testes de Contenção (Retry-After) e Serviços Alternativos (Alt-Svc)
 
-use ace_net::contention::RetryAfter;
-use ace_net::request::Request;
-use ace_net::response::StatusCode;
+use ace_net::engine::contention::RetryAfter;
+use ace_net::http::request::Request;
+use ace_net::http::response::StatusCode;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http::header::{RETRY_AFTER};

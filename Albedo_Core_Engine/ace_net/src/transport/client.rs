@@ -29,7 +29,7 @@ use url::Url;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use rustc_hash::FxHashMap;
-use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
+use hickory_resolver::proto::rr::rdata::svcb::SvcParamKey;
 use hickory_resolver::proto::rr::RecordType;
 use rustls::client::{EchConfig, EchMode};
 

@@ -11,9 +11,9 @@
 use ace_net::cache::entry::CacheEntry;
 use ace_net::cache::storage::HttpCache;
 use ace_net::cookie::{is_public_suffix, is_valid_cookie_domain, CookieJar};
-use ace_net::pna::{classify_ip, is_host_private_or_local, validate_private_network_access, IpAddressSpace};
-use ace_net::request::Request;
-use ace_net::response::ResponseBody;
+use ace_net::security::pna::{classify_ip, is_host_private_or_local, validate_private_network_access, IpAddressSpace};
+use ace_net::http::request::Request;
+use ace_net::http::response::ResponseBody;
 use bytes::Bytes;
 use http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -217,7 +217,7 @@ fn test_cookie_persistence_disk_roundtrip() {
     assert_eq!(new_jar.len(), 2);
 
     let hdr = new_jar
-        .build_cookie_header(&url, None, ace_net::request::CredentialsMode::SameOrigin, true, true, now)
+        .build_cookie_header(&url, None, ace_net::http::request::CredentialsMode::SameOrigin, true, true, now)
         .unwrap();
     let hdr_str = hdr.to_str().unwrap();
     assert!(hdr_str.contains("auth_token=secret_xyz"), "Cookie persistente deve estar presente");

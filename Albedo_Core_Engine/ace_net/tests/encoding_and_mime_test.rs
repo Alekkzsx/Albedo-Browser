@@ -1,6 +1,6 @@
 //! # Testes de Detecção de Encodings e Content Sniffing
 
-use ace_net::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom};
+use ace_net::http::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom};
 
 #[test]
 fn test_content_type_charset_parsing() {
