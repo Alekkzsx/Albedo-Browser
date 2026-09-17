@@ -5,8 +5,8 @@
 //! ou a rede, conforme a especificação de Service Workers do W3C.
 
 use crate::error::NetResult;
-use crate::request::Request;
-use crate::response::Response;
+use crate::http::request::Request;
+use crate::http::response::Response;
 use std::future::Future;
 use std::pin::Pin;
 

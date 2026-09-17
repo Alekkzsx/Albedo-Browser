@@ -1,4 +1,4 @@
-use crate::priority::{PrioritizedItem, PriorityLevel};
+use crate::engine::priority::{PrioritizedItem, PriorityLevel};
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
@@ -113,8 +113,8 @@ impl ResourceScheduler {
                 priority,
             });
             
-            crate::net_log::log_net_event(
-                crate::net_log::NetEventType::Queue,
+            crate::telemetry::net_log::log_net_event(
+                crate::telemetry::net_log::NetEventType::Queue,
                 host.as_str(),
                 "Request queued by scheduler",
             );

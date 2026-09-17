@@ -4,7 +4,7 @@
 //! `SameSite=Lax` por padrão, expiração via `Max-Age` / `Expires`, restrições
 //! de segurança `Secure` / `HttpOnly` e isolamento de estado particionado (**CHIPS**).
 
-use crate::request::CredentialsMode;
+use crate::http::request::CredentialsMode;
 use std::time::{Duration, SystemTime};
 use url::Url;
 

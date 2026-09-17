@@ -3,9 +3,9 @@
 //! Representa os metadados HTTP, cabeçalhos, métricas de performance (Navigation Timing)
 //! e stream assíncrono do corpo de bytes recebido.
 
-use crate::compression::ContentEncoding;
-use crate::contention::RetryAfter;
-use crate::range::ContentRange;
+use crate::http::compression::ContentEncoding;
+use crate::engine::contention::RetryAfter;
+use crate::http::range::ContentRange;
 use bytes::Bytes;
 pub use http::header::HeaderMap;
 pub use http::StatusCode;

@@ -4,7 +4,7 @@
 //! expiração, higienização e particionamento CHIPS.
 
 use super::entry::Cookie;
-use crate::request::CredentialsMode;
+use crate::http::request::CredentialsMode;
 use http::header::SET_COOKIE;
 use http::{HeaderMap, HeaderValue};
 use parking_lot::RwLock;

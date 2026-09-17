@@ -2,9 +2,9 @@ use std::time::{Instant, Duration};
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
 use ace_core::security::origin::Origin;
-use crate::request::{Method, Request, CredentialsMode};
+use crate::http::request::{Method, Request, CredentialsMode};
 use http::header::ORIGIN;
-use crate::cors::{is_safelisted_method, get_non_safelisted_headers};
+use crate::security::cors::{is_safelisted_method, get_non_safelisted_headers};
 
 #[derive(Debug, Clone)]
 pub struct PreflightCacheEntry {

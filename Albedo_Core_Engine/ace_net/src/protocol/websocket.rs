@@ -4,7 +4,7 @@
 //! com suporte a enquadramento de frames, handshake HTTP Upgrade e canais assíncronos.
 
 use crate::error::{NetError, NetResult};
-use crate::request::Request;
+use crate::http::request::Request;
 use bytes::Bytes;
 use http::header::{CONNECTION, UPGRADE};
 use http::{HeaderMap, HeaderValue, Method};

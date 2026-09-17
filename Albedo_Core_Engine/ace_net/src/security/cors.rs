@@ -1,6 +1,6 @@
 use crate::error::{NetError, NetResult};
-use crate::request::{CredentialsMode, Method, Request, RequestMode};
-use crate::response::Response;
+use crate::http::request::{CredentialsMode, Method, Request, RequestMode};
+use crate::http::response::Response;
 use ace_core::security::origin::Origin;
 use http::header::{
     ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE, ORIGIN,
@@ -145,8 +145,8 @@ pub fn validate_cors_response(req: &Request, resp: &Response) -> NetResult<()> {
 
     // Se for uma resposta a preflight OPTIONS, status deve ser de sucesso (200..=299)
     if req.method == Method::OPTIONS && !resp.status.is_success() {
-        crate::net_log::log_net_event(
-            crate::net_log::NetEventType::Error,
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::Error,
             req.url.as_str(),
             &format!("CORS preflight falhou com status {}", resp.status),
         );
@@ -168,8 +168,8 @@ pub fn validate_cors_response(req: &Request, resp: &Response) -> NetResult<()> {
         .unwrap_or("");
 
     if allow_origin.is_empty() {
-        crate::net_log::log_net_event(
-            crate::net_log::NetEventType::Error,
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::Error,
             req.url.as_str(),
             "CORS falhou: cabeçalho Access-Control-Allow-Origin ausente",
         );
@@ -181,8 +181,8 @@ pub fn validate_cors_response(req: &Request, resp: &Response) -> NetResult<()> {
     if allow_origin == "*" {
         // Se credentials mode for 'include', '*' é estritamente proibido pela especificação
         if req.credentials == CredentialsMode::Include {
-            crate::net_log::log_net_event(
-                crate::net_log::NetEventType::Error,
+            crate::telemetry::net_log::log_net_event(
+                crate::telemetry::net_log::NetEventType::Error,
                 req.url.as_str(),
                 "CORS falhou: '*' com credentials 'include'",
             );
@@ -202,8 +202,8 @@ pub fn validate_cors_response(req: &Request, resp: &Response) -> NetResult<()> {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
             if allow_cred != "true" {
-                crate::net_log::log_net_event(
-                    crate::net_log::NetEventType::Error,
+                crate::telemetry::net_log::log_net_event(
+                    crate::telemetry::net_log::NetEventType::Error,
                     req.url.as_str(),
                     "CORS falhou: Access-Control-Allow-Credentials != true",
                 );
@@ -216,8 +216,8 @@ pub fn validate_cors_response(req: &Request, resp: &Response) -> NetResult<()> {
         return Ok(());
     }
 
-    crate::net_log::log_net_event(
-        crate::net_log::NetEventType::Error,
+    crate::telemetry::net_log::log_net_event(
+        crate::telemetry::net_log::NetEventType::Error,
         req.url.as_str(),
         "CORS falhou: Access-Control-Allow-Origin mismatch",
     );

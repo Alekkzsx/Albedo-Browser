@@ -1,13 +1,13 @@
 use crate::error::NetResult;
-use crate::fetcher::ResourceFetcher;
-use crate::request::Request;
-use crate::response::Response;
+use crate::engine::fetcher::ResourceFetcher;
+use crate::http::request::Request;
+use crate::http::response::Response;
 use std::time::SystemTime;
 
 /// HSTS Auto-Upgrade Step
 pub fn apply_hsts(req: &mut Request, fetcher: &ResourceFetcher, now: SystemTime) {
     if let Some(upgraded_url) = fetcher.hsts_store().upgrade_url(&req.url, now) {
-        crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "HSTS Upgrade");
+        crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "HSTS Upgrade");
         req.url = upgraded_url;
     }
 }

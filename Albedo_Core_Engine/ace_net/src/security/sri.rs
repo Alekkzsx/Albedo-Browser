@@ -145,8 +145,8 @@ pub fn verify_integrity(payload: &[u8], digests: &[SriDigest]) -> NetResult<()> 
             .map(|d| format!("{}-{}", d.algorithm.as_str(), d.raw_base64))
             .collect();
 
-        crate::net_log::log_net_event(
-            crate::net_log::NetEventType::Error,
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::Error,
             "",
             &format!(
                 "SRI mismatch: expected one of {:?}, got {}-{}",

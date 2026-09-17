@@ -7,7 +7,7 @@
 //! - `Sec-Fetch-Dest`: Destino do recurso (`document`, `style`, `script`, `font`, `image`, etc.).
 //! - `Sec-Fetch-User`: Presente (`?1`) caso a requisição decorra de ativação do usuário (clique, envio de formulário).
 
-use crate::request::{RequestDestination, RequestMode};
+use crate::http::request::{RequestDestination, RequestMode};
 use ace_core::security::origin::Origin;
 use http::header::HeaderMap;
 use http::{HeaderName, HeaderValue};

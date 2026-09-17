@@ -7,7 +7,7 @@
 //! - Resolução de URLs relativas no cabeçalho `Location`
 
 use crate::error::{NetError, NetResult};
-use crate::request::Request;
+use crate::http::request::Request;
 use ace_core::security::origin::Origin;
 use bytes::Bytes;
 use http::header::{HeaderMap, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION};

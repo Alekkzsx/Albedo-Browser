@@ -5,7 +5,7 @@
 //! - `preconnect`: Abertura antecipada de socket TCP e negociação TLS no pool de conexões
 //! - `preload`: Disparo antecipado de sub-recursos críticos
 
-use crate::request::RequestDestination;
+use crate::http::request::RequestDestination;
 use ace_core::security::origin::Origin;
 use url::Url;
 

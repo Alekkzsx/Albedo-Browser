@@ -5,11 +5,11 @@
 //! chaves de isolamento e prioridades de escalonamento.
 
 use crate::cache::partition::NetworkIsolationKey;
-use crate::client_hints::inject_default_client_hints;
+use crate::telemetry::client_hints::inject_default_client_hints;
 use crate::error::{NetError, NetResult};
-use crate::fetch_metadata::{inject_fetch_metadata, SecFetchDest, SecFetchMode, SecFetchSite};
-use crate::priority::PriorityLevel;
-use crate::range::ByteRangeSpec;
+use crate::security::fetch_metadata::{inject_fetch_metadata, SecFetchDest, SecFetchMode, SecFetchSite};
+use crate::engine::priority::PriorityLevel;
+use crate::http::range::ByteRangeSpec;
 use ace_core::id::RequestId;
 use ace_core::security::origin::Origin;
 use ace_core::security::referrer::ReferrerPolicy;
@@ -122,7 +122,7 @@ pub struct Request {
     pub range: Option<ByteRangeSpec>,
     pub force_h3: bool,
     pub streaming: bool,
-    pub integrity: Option<Vec<crate::sri::SriDigest>>,
+    pub integrity: Option<Vec<crate::security::sri::SriDigest>>,
 }
 
 impl Request {
@@ -168,7 +168,7 @@ pub struct RequestBuilder {
     range: Option<ByteRangeSpec>,
     force_h3: bool,
     streaming: bool,
-    integrity: Option<Vec<crate::sri::SriDigest>>,
+    integrity: Option<Vec<crate::security::sri::SriDigest>>,
 }
 
 impl RequestBuilder {
@@ -297,7 +297,7 @@ impl RequestBuilder {
 
     /// Define a política de integridade de sub-recurso (W3C SRI).
     pub fn integrity(mut self, attr: &str) -> Self {
-        let digests = crate::sri::parse_integrity(attr);
+        let digests = crate::security::sri::parse_integrity(attr);
         if !digests.is_empty() {
             self.integrity = Some(digests);
         }
@@ -305,7 +305,7 @@ impl RequestBuilder {
     }
 
     /// Define diretamente a lista de digests SRI pré-calculados.
-    pub fn integrity_digests(mut self, digests: Vec<crate::sri::SriDigest>) -> Self {
+    pub fn integrity_digests(mut self, digests: Vec<crate::security::sri::SriDigest>) -> Self {
         if !digests.is_empty() {
             self.integrity = Some(digests);
         }

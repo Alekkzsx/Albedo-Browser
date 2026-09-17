@@ -14,21 +14,21 @@
 //! - Purga automatizada de estado via `Clear-Site-Data` (RFC 8879)
 //! - Suporte a requisições de faixa (`Range`) e `206 Partial Content`
 
-use crate::alt_svc::{parse_alt_svc, AltSvcRegistry};
+use crate::protocol::alt_svc::{parse_alt_svc, AltSvcRegistry};
 use crate::cache::entry::CacheEntry;
 use crate::cache::storage::HttpCache;
-use crate::cancel::CancellationRegistry;
-use crate::clear_site_data::ClearSiteDataAction;
+use crate::engine::cancel::CancellationRegistry;
+use crate::security::clear_site_data::ClearSiteDataAction;
 use crate::cookie::CookieJar;
-use crate::encoding::extract_charset_from_content_type;
+use crate::http::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
-use crate::fetch_metadata::SecFetchSite;
-use crate::hsts::HstsStore;
-use crate::priority::PriorityLevel;
-use crate::redirect::{handle_redirect, RedirectAction};
-use crate::request::{Request, RequestDestination, TryIntoUrl};
-use crate::response::{Response, ResponseBody, ResponseTiming};
-use crate::service_worker_hook::ServiceWorkerHook;
+use crate::security::fetch_metadata::SecFetchSite;
+use crate::security::hsts::HstsStore;
+use crate::engine::priority::PriorityLevel;
+use crate::http::redirect::{handle_redirect, RedirectAction};
+use crate::http::request::{Request, RequestDestination, TryIntoUrl};
+use crate::http::response::{Response, ResponseBody, ResponseTiming};
+use crate::engine::service_worker_hook::ServiceWorkerHook;
 use crate::transport::TransportClient;
 use ace_core::id::RequestId;
 use ace_core::security::origin::Origin;
@@ -62,9 +62,9 @@ pub struct ResourceFetcher {
     hsts_store: Arc<HstsStore>,
     doh_resolver: Arc<TokioAsyncResolver>,
     service_worker_hook: Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>>,
-    metrics: Arc<crate::metrics::FetcherMetrics>,
-    scheduler: Arc<crate::scheduler::ResourceScheduler>,
-    cors_cache: Arc<crate::cors_cache::CorsCache>,
+    metrics: Arc<crate::telemetry::metrics::FetcherMetrics>,
+    scheduler: Arc<crate::engine::scheduler::ResourceScheduler>,
+    cors_cache: Arc<crate::security::cors_cache::CorsCache>,
 }
 
 impl ResourceFetcher {
@@ -97,9 +97,9 @@ impl ResourceFetcher {
         let cookie_jar = Arc::new(CookieJar::new());
         let hsts_store = Arc::new(HstsStore::new());
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
-        let metrics = Arc::new(crate::metrics::FetcherMetrics::new());
-        let scheduler = crate::scheduler::ResourceScheduler::new(crate::scheduler::SchedulerConfig::default());
-        let cors_cache = Arc::new(crate::cors_cache::CorsCache::new());
+        let metrics = Arc::new(crate::telemetry::metrics::FetcherMetrics::new());
+        let scheduler = crate::engine::scheduler::ResourceScheduler::new(crate::engine::scheduler::SchedulerConfig::default());
+        let cors_cache = Arc::new(crate::security::cors_cache::CorsCache::new());
 
         Ok(Self {
             transport,
@@ -185,7 +185,7 @@ impl ResourceFetcher {
     }
 
     /// Retorna uma referência às métricas de rede
-    pub fn metrics(&self) -> &Arc<crate::metrics::FetcherMetrics> {
+    pub fn metrics(&self) -> &Arc<crate::telemetry::metrics::FetcherMetrics> {
         &self.metrics
     }
 
@@ -215,11 +215,11 @@ impl ResourceFetcher {
             Ok(_) => {}
             Err(NetError::Cancelled) => {
                 self.metrics.cancelled_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, "", "Request cancelled");
+                crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Cancel, "", "Request cancelled");
             }
             Err(e) => {
                 self.metrics.failed_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                crate::net_log::log_net_error(crate::net_log::NetEventType::Error, "", e);
+                crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, "", e);
             }
         }
         result
@@ -229,21 +229,21 @@ impl ResourceFetcher {
         let now = SystemTime::now();
 
         // 0. HSTS Auto-Upgrade
-        crate::pipeline::apply_hsts(&mut req, self, now);
+        crate::engine::pipeline::apply_hsts(&mut req, self, now);
 
         // 0.1. Interceptação de Service Worker (W3C Fetch Spec §4.2)
-        if let Some(sw_response) = crate::pipeline::apply_service_worker(&req, self).await? {
+        if let Some(sw_response) = crate::engine::pipeline::apply_service_worker(&req, self).await? {
             return Ok(sw_response);
         }
 
         let nik = req.network_isolation_key.clone();
 
         // 0.2 CORS Preflight
-        if crate::cors::requires_preflight(&req) {
+        if crate::security::cors::requires_preflight(&req) {
             if !self.cors_cache.is_cached_and_valid(&req) {
-                let preflight_req = crate::cors::build_preflight_request(&req)?;
+                let preflight_req = crate::security::cors::build_preflight_request(&req)?;
                 let preflight_resp = self.transport.execute(&preflight_req).await?;
-                crate::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
+                crate::security::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
                 
                 // Process and cache the preflight response
                 if let Some(max_age_val) = preflight_resp.headers.get("access-control-max-age").and_then(|v| v.to_str().ok()) {
@@ -327,14 +327,14 @@ impl ResourceFetcher {
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
                         if let Some(ref digests) = req.integrity {
-                            crate::sri::verify_integrity(entry.body.as_ref(), digests)?;
+                            crate::security::sri::verify_integrity(entry.body.as_ref(), digests)?;
                         }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.bytes_served_from_cache.fetch_add(
                             entry.body.len() as u64,
                             std::sync::atomic::Ordering::Relaxed,
                         );
-                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Fresh Hit");
+                        crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Fresh Hit");
                         
                         // Cache Hit completo! Zero latência de rede.
                         return Ok(Response {
@@ -361,7 +361,7 @@ impl ResourceFetcher {
                         });
                     } else if entry.is_stale_revalidatable(now) {
                         if let Some(ref digests) = req.integrity {
-                            crate::sri::verify_integrity(entry.body.as_ref(), digests)?;
+                            crate::security::sri::verify_integrity(entry.body.as_ref(), digests)?;
                         }
                         self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -369,7 +369,7 @@ impl ResourceFetcher {
                             entry.body.len() as u64,
                             std::sync::atomic::Ordering::Relaxed,
                         );
-                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheHit, req.url.as_str(), "Stale-While-Revalidate Hit");
+                        crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Stale-While-Revalidate Hit");
                         
                         // RFC 5861: Stale-While-Revalidate Hit!
                         // Entrega o conteúdo imediatamente ao renderer (0ms de espera)
@@ -414,7 +414,7 @@ impl ResourceFetcher {
                         // Entrada expirada (stale) - injeta cabeçalhos de revalidação condicional
                         self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Stale - Needs Revalidation");
+                        crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheMiss, req.url.as_str(), "Stale - Needs Revalidation");
 
                         let cond_headers = entry.conditional_headers();
                         for (k, v) in cond_headers {
@@ -426,11 +426,11 @@ impl ResourceFetcher {
                     }
                 } else {
                     self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Vary Mismatch");
+                    crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheMiss, req.url.as_str(), "Vary Mismatch");
                 }
             } else {
                 self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                crate::net_log::log_net_event(crate::net_log::NetEventType::CacheMiss, req.url.as_str(), "Not found in cache");
+                crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheMiss, req.url.as_str(), "Not found in cache");
             }
         }
 
@@ -446,9 +446,9 @@ impl ResourceFetcher {
 
         // 6. Execução de transporte com suporte a redirecionamentos (3xx)
         let max_redirects = match req.redirect_policy {
-            crate::request::RedirectPolicy::Follow(max) => max,
-            crate::request::RedirectPolicy::Manual => 0,
-            crate::request::RedirectPolicy::Error => 0,
+            crate::http::request::RedirectPolicy::Follow(max) => max,
+            crate::http::request::RedirectPolicy::Manual => 0,
+            crate::http::request::RedirectPolicy::Error => 0,
         };
 
         let mut visited_urls = HashSet::new();
@@ -487,13 +487,13 @@ impl ResourceFetcher {
 
                         if attempt < max_attempts && is_transient_status {
                             self.metrics.retried_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            crate::net_log::log_net_event(
-                                crate::net_log::NetEventType::Retry,
+                            crate::telemetry::net_log::log_net_event(
+                                crate::telemetry::net_log::NetEventType::Retry,
                                 current_req.url.as_str(),
                                 &format!("Status {}, disparando retentativa {}/{}", resp.status, attempt, max_attempts),
                             );
 
-                            let delay = if let Some(crate::contention::RetryAfter::Seconds(s)) = resp.retry_after {
+                            let delay = if let Some(crate::engine::contention::RetryAfter::Seconds(s)) = resp.retry_after {
                                 std::cmp::min(s, Duration::from_secs(2))
                             } else {
                                 Duration::from_millis(50 * (1 << (attempt - 1)))
@@ -509,8 +509,8 @@ impl ResourceFetcher {
                         if resp.status.is_server_error() {
                             if let Some(ref cached) = current_cached_entry {
                                 if cached.is_stale_if_error(now) {
-                                    crate::net_log::log_net_event(
-                                        crate::net_log::NetEventType::Warning,
+                                    crate::telemetry::net_log::log_net_event(
+                                        crate::telemetry::net_log::NetEventType::Warning,
                                         current_req.url.as_str(),
                                         "Servidor retornou 5xx; servindo cache via stale-if-error (RFC 5861)",
                                     );
@@ -550,8 +550,8 @@ impl ResourceFetcher {
                         let is_transient_err = matches!(err, NetError::ConnectionFailed(_, _) | NetError::Timeout);
                         if attempt < max_attempts && is_transient_err {
                             self.metrics.retried_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            crate::net_log::log_net_event(
-                                crate::net_log::NetEventType::Retry,
+                            crate::telemetry::net_log::log_net_event(
+                                crate::telemetry::net_log::NetEventType::Retry,
                                 current_req.url.as_str(),
                                 &format!("Erro transitório ({}), disparando retentativa {}/{}", err, attempt, max_attempts),
                             );
@@ -565,8 +565,8 @@ impl ResourceFetcher {
 
                         if let Some(ref cached) = current_cached_entry {
                             if cached.is_stale_if_error(now) {
-                                crate::net_log::log_net_event(
-                                    crate::net_log::NetEventType::Warning,
+                                crate::telemetry::net_log::log_net_event(
+                                    crate::telemetry::net_log::NetEventType::Warning,
                                     current_req.url.as_str(),
                                     &format!("Falha de rede ({}); servindo cache via stale-if-error (RFC 5861)", err),
                                 );
@@ -706,10 +706,10 @@ impl ResourceFetcher {
             }
 
             // 8.5. Validação de CORS e Subresource Integrity (W3C SRI)
-            crate::cors::validate_cors_response(&current_req, &network_response)?;
+            crate::security::cors::validate_cors_response(&current_req, &network_response)?;
 
             if let Some(ref digests) = current_req.integrity {
-                crate::sri::verify_integrity(network_response.body.as_bytes(), digests)?;
+                crate::security::sri::verify_integrity(network_response.body.as_bytes(), digests)?;
             }
 
             // Atualiza métrica de bytes transferidos da rede

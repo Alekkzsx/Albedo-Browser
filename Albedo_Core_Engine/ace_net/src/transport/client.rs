@@ -3,13 +3,13 @@
 //! Orquestra o pool de conexões assíncronas, ALPN para negociação h2/http1.1,
 //! handshake TLS seguro via `rustls` (WebPKI roots) e suporte nativo a `data:` URIs.
 
-use crate::compression::{decompress_payload, ContentEncoding};
-use crate::contention::RetryAfter;
-use crate::encoding::extract_charset_from_content_type;
+use crate::http::compression::{decompress_payload, ContentEncoding};
+use crate::engine::contention::RetryAfter;
+use crate::http::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
-use crate::range::ContentRange;
-use crate::request::Request;
-use crate::response::{Response, ResponseBody, ResponseTiming};
+use crate::http::range::ContentRange;
+use crate::http::request::Request;
+use crate::http::response::{Response, ResponseBody, ResponseTiming};
 use ace_core::net::{data_url::parse_data_url, sniff_mime_type};
 use bytes::Bytes;
 use http::{HeaderValue, StatusCode};
@@ -170,12 +170,12 @@ impl TransportClient {
 
         // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Fallback Gracioso para TCP/TLS
         if req.force_h3 {
-            crate::net_log::log_net_event(crate::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 (Alt-Svc)");
+            crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 (Alt-Svc)");
             match self.execute_h3(req, start_time).await {
                 Ok(resp) => return Ok(resp),
                 Err(err) => {
-                    crate::net_log::log_net_event(
-                        crate::net_log::NetEventType::Warning,
+                    crate::telemetry::net_log::log_net_event(
+                        crate::telemetry::net_log::NetEventType::Warning,
                         req.url.as_str(),
                         &format!("Falha em conexao QUIC HTTP/3 ({}), realizando fallback gracioso para TCP/TLS", err),
                     );
@@ -280,24 +280,24 @@ impl TransportClient {
 
         let hyper_resp = tokio::select! {
             _ = req.cancellation_token.cancelled() => {
-                crate::net_log::log_net_event(crate::net_log::NetEventType::Cancel, req.url.as_str(), "Cancelled before connecting");
+                crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Cancel, req.url.as_str(), "Cancelled before connecting");
                 return Err(NetError::Cancelled);
             }
             res = tokio::time::timeout(timeout_duration, request_future) => {
                 res.map_err(|_| {
-                    crate::net_log::log_net_event(crate::net_log::NetEventType::Error, req.url.as_str(), "Connection timeout");
+                    crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), "Connection timeout");
                     NetError::Timeout
                 })?
                 .map_err(|e| {
                     let err_msg = e.to_string();
                     if err_msg.contains("dns") || err_msg.contains("resolve") {
-                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
                         NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
                     } else if err_msg.contains("tls") || err_msg.contains("certificate") {
-                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
                         NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
                     } else {
-                        crate::net_log::log_net_error(crate::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
                         NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
                     }
                 })?
@@ -325,7 +325,7 @@ impl TransportClient {
             // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
             let final_body = if let Some(encoding) = content_encoding {
                 if let Some(stream_box) = raw_stream.take_stream().await {
-                    let decompressed_stream = crate::compression::decompress_stream(encoding, stream_box);
+                    let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
                     ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
                 } else {
                     raw_stream

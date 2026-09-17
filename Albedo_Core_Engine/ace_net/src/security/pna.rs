@@ -125,8 +125,8 @@ pub fn is_host_private_or_local(host: &str) -> bool {
 pub fn validate_private_network_access(initiator_is_public: bool, target_ip: IpAddr) -> NetResult<()> {
     if initiator_is_public && is_private_or_local(target_ip) {
         let space = classify_ip(target_ip);
-        crate::net_log::log_net_event(
-            crate::net_log::NetEventType::Warning,
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::Warning,
             &target_ip.to_string(),
             "Bloqueado pelo Private Network Access (PNA): origem publica tentou acessar IP local/privado",
         );
