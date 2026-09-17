@@ -2,7 +2,7 @@ use crate::priority::{PrioritizedItem, PriorityLevel};
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
-use std::collections::BinaryHeap;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -26,12 +26,14 @@ impl Default for SchedulerConfig {
 struct PendingRequest {
     host: SmolStr,
     wake_tx: oneshot::Sender<SchedulerPermit>,
+    priority: PriorityLevel,
 }
 
 struct SchedulerState {
     active_global: u32,
     active_per_host: FxHashMap<SmolStr, u32>,
-    queue: BinaryHeap<PrioritizedItem<PendingRequest>>,
+    queue: BTreeSet<PrioritizedItem<()>>,
+    pending: FxHashMap<u64, PendingRequest>,
 }
 
 /// Orquestrador de contenção e prioridade. Limita requests em voo globalmente e por host.
@@ -63,7 +65,8 @@ impl ResourceScheduler {
             state: Mutex::new(SchedulerState {
                 active_global: 0,
                 active_per_host: FxHashMap::default(),
-                queue: BinaryHeap::new(),
+                queue: BTreeSet::new(),
+                pending: FxHashMap::default(),
             }),
             sequence: AtomicU64::new(0),
         })
@@ -99,13 +102,15 @@ impl ResourceScheduler {
             // Limite atingido: entra na fila de prioridade
             let (tx, rx) = oneshot::channel();
             let seq = self.sequence.fetch_add(1, Ordering::Relaxed);
-            state.queue.push(PrioritizedItem {
+            state.queue.insert(PrioritizedItem {
                 priority,
                 sequence_id: seq,
-                item: PendingRequest {
-                    host: host.clone(),
-                    wake_tx: tx,
-                },
+                item: (),
+            });
+            state.pending.insert(seq, PendingRequest {
+                host: host.clone(),
+                wake_tx: tx,
+                priority,
             });
             
             crate::net_log::log_net_event(
@@ -138,14 +143,17 @@ impl ResourceScheduler {
         // 2. Procura o próximo elegível na fila (maior prioridade que respeite os limites per-host)
         let mut skipped = Vec::new();
         
-        while let Some(pending) = state.queue.pop() {
-            let pending_host = &pending.item.host;
-            let host_count = state.active_per_host.get(pending_host).copied().unwrap_or(0);
+        while let Some(prioritized) = state.queue.pop_last() {
+            let seq = prioritized.sequence_id;
+            // Remover do pending temporariamente para examinar
+            if let Some(pending) = state.pending.remove(&seq) {
+                let pending_host = &pending.host;
+                let host_count = state.active_per_host.get(pending_host).copied().unwrap_or(0);
 
-            if host_count < self.config.max_per_host {
-                // Acorda esta request
-                state.active_global += 1;
-                *state.active_per_host.entry(pending_host.clone()).or_insert(0) += 1;
+                if host_count < self.config.max_per_host {
+                    // Acorda esta request
+                    state.active_global += 1;
+                    *state.active_per_host.entry(pending_host.clone()).or_insert(0) += 1;
 
                 let permit = SchedulerPermit {
                     scheduler: arc_self,
@@ -164,12 +172,17 @@ impl ResourceScheduler {
                 // Melhor soltar o lock antes de enviar
                 drop(state);
                 
-                let send_result = pending.item.wake_tx.send(permit);
+                let send_result = pending.wake_tx.send(permit);
                 
                 // Re-adquire o lock para devolver os skips
                 let mut state2 = self.state.lock();
-                for item in skipped {
-                    state2.queue.push(item);
+                for (seq_skipped, pending_skipped) in skipped {
+                    state2.queue.insert(PrioritizedItem {
+                        priority: pending_skipped.priority,
+                        sequence_id: seq_skipped,
+                        item: (),
+                    });
+                    state2.pending.insert(seq_skipped, pending_skipped);
                 }
                 
                 // Se falhou o send, o receiver morreu, então o permit é descartado 
@@ -180,13 +193,46 @@ impl ResourceScheduler {
                 return;
             } else {
                 // Host limit reached, guarda para devolver pra fila
-                skipped.push(pending);
+                skipped.push((seq, pending));
             }
         }
 
         // Devolve os pulados
-        for item in skipped {
-            state.queue.push(item);
+        for (seq_skipped, pending_skipped) in skipped {
+            state.queue.insert(PrioritizedItem {
+                priority: pending_skipped.priority,
+                sequence_id: seq_skipped,
+                item: (),
+            });
+            state.pending.insert(seq_skipped, pending_skipped);
+        }
+    }
+
+    /// Reprioritiza dinamicamente uma request na fila em tempo O(log N).
+    pub fn reprioritize(&self, sequence_id: u64, new_priority: PriorityLevel) -> bool {
+        let mut state = self.state.lock();
+        if let Some(mut pending) = state.pending.remove(&sequence_id) {
+            let old_priority = pending.priority;
+            
+            // Remove from BTreeSet
+            state.queue.remove(&PrioritizedItem {
+                priority: old_priority,
+                sequence_id,
+                item: (),
+            });
+
+            // Update priority and re-insert
+            pending.priority = new_priority;
+            state.queue.insert(PrioritizedItem {
+                priority: new_priority,
+                sequence_id,
+                item: (),
+            });
+            
+            state.pending.insert(sequence_id, pending);
+            true
+        } else {
+            false
         }
     }
 }
