@@ -55,6 +55,7 @@ sha2 = "0.10"
 base64 = "0.22"
 async-compression = { version = "0.4.48", features = ["tokio", "gzip", "brotli", "deflate"] }
 futures-util = "0.3.34"
+psl = "2.1.232"
 
 [dev-dependencies]
 tokio-test = "0.4"
