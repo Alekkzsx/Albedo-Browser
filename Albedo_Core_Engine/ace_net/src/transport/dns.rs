@@ -12,7 +12,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Instant;
 use tower_service::Service;
+use crate::transport::timing::CONNECTION_TIMING;
 
 /// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305).
 #[derive(Clone)]
@@ -34,6 +36,11 @@ impl DohHappyEyeballsResolver {
     /// Cria uma instância a partir de um resolver Hickory já configurado.
     pub fn with_resolver(resolver: Arc<TokioAsyncResolver>) -> Self {
         Self { resolver }
+    }
+
+    /// Retorna uma referência ao resolver interno.
+    pub fn resolver(&self) -> &Arc<TokioAsyncResolver> {
+        &self.resolver
     }
 
     /// Implementa o algoritmo de ordenação e interleaving de Happy Eyeballs v2 (RFC 8305 §4):
@@ -93,8 +100,20 @@ impl Service<Name> for DohHappyEyeballsResolver {
         let host_str = name.as_str().to_string();
 
         Box::pin(async move {
+            let start = Instant::now();
+            if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+                let mut guard = timing_arc.lock().await;
+                if guard.dns_start.is_none() {
+                    guard.dns_start = Some(start);
+                }
+            }
             match resolver.lookup_ip(&host_str).await {
                 Ok(lookup) => {
+                    let duration = start.elapsed();
+                    if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+                        let mut guard = timing_arc.lock().await;
+                        guard.dns_duration = Some(duration);
+                    }
                     let ips: Vec<IpAddr> = lookup.iter().collect();
                     let interleaved = Self::interleave_happy_eyeballs(ips);
                     if interleaved.is_empty() {
