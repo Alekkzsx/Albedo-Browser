@@ -64,6 +64,7 @@ pub struct ResourceFetcher {
     service_worker_hook: Arc<parking_lot::RwLock<Option<Arc<dyn ServiceWorkerHook>>>>,
     metrics: Arc<crate::metrics::FetcherMetrics>,
     scheduler: Arc<crate::scheduler::ResourceScheduler>,
+    cors_cache: Arc<crate::cors_cache::CorsCache>,
 }
 
 impl ResourceFetcher {
@@ -98,6 +99,7 @@ impl ResourceFetcher {
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
         let metrics = Arc::new(crate::metrics::FetcherMetrics::new());
         let scheduler = crate::scheduler::ResourceScheduler::new(crate::scheduler::SchedulerConfig::default());
+        let cors_cache = Arc::new(crate::cors_cache::CorsCache::new());
 
         Ok(Self {
             transport,
@@ -110,6 +112,7 @@ impl ResourceFetcher {
             service_worker_hook,
             metrics,
             scheduler,
+            cors_cache,
         })
     }
 
@@ -237,9 +240,40 @@ impl ResourceFetcher {
 
         // 0.2 CORS Preflight
         if crate::cors::requires_preflight(&req) {
-            let preflight_req = crate::cors::build_preflight_request(&req)?;
-            let preflight_resp = self.transport.execute(&preflight_req).await?;
-            crate::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
+            if !self.cors_cache.is_cached_and_valid(&req) {
+                let preflight_req = crate::cors::build_preflight_request(&req)?;
+                let preflight_resp = self.transport.execute(&preflight_req).await?;
+                crate::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
+                
+                // Process and cache the preflight response
+                if let Some(max_age_val) = preflight_resp.headers.get("access-control-max-age").and_then(|v| v.to_str().ok()) {
+                    if let Ok(max_age_secs) = max_age_val.parse::<u64>() {
+                        if max_age_secs > 0 {
+                            let allow_methods = preflight_resp.headers.get("access-control-allow-methods")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("")
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .collect();
+                                
+                            let allow_headers = preflight_resp.headers.get("access-control-allow-headers")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("")
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .collect();
+                                
+                            let allow_credentials = preflight_resp.headers.get("access-control-allow-credentials")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("") == "true";
+
+                            let req_origin_str = req.headers.get(http::header::ORIGIN).and_then(|v| v.to_str().ok()).unwrap_or("");
+                            
+                            self.cors_cache.insert(req_origin_str, req.url.as_str(), max_age_secs, allow_methods, allow_headers, allow_credentials);
+                        }
+                    }
+                }
+            }
         }
 
         // 1. Registra o token de cancelamento na tabela de requisições ativas
