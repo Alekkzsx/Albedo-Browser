@@ -238,6 +238,28 @@ impl ResourceFetcher {
 
         let nik = req.network_isolation_key.clone();
 
+        // 0.15 Private Network Access (PNA) Nível 1
+        if let Some(host) = req.url.host_str() {
+            if crate::security::pna::is_host_private_or_local(host) {
+                let initiator_is_public = nik.as_ref().map_or(false, |n| {
+                    if let ace_core::security::origin::Origin::Tuple { host: h, .. } = &n.top_frame_origin {
+                        !crate::security::pna::is_host_private_or_local(&h.as_str())
+                    } else {
+                        false
+                    }
+                });
+                
+                if initiator_is_public {
+                    crate::telemetry::net_log::log_net_event(
+                        crate::telemetry::net_log::NetEventType::Warning,
+                        req.url.as_str(),
+                        "Bloqueado pelo PNA Nivel 1: hostname aponta para rede local ou privada",
+                    );
+                    return Err(NetError::SecurityViolation("Private Network Access bloqueado na origem (Nivel 1)".to_string()));
+                }
+            }
+        }
+
         // 0.2 CORS Preflight
         if crate::security::cors::requires_preflight(&req) {
             if !self.cors_cache.is_cached_and_valid(&req) {
