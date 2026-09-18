@@ -6,6 +6,8 @@
 
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::proto::rr::RecordType;
+use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
 use hyper_util::client::legacy::connect::dns::Name;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -77,6 +79,52 @@ impl DohHappyEyeballsResolver {
         }
 
         interleaved
+    }
+
+    /// Resolve A, AAAA e HTTPS (Tipo 65) concorrentemente, retornando IPs intercalados e o ECH Config (se houver).
+    pub async fn resolve_with_ech(&self, host: &str) -> Result<(std::vec::IntoIter<SocketAddr>, Option<Vec<u8>>), std::io::Error> {
+        let start = Instant::now();
+        if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+            let mut guard = timing_arc.lock().await;
+            if guard.dns_start.is_none() {
+                guard.dns_start = Some(start);
+            }
+        }
+
+        let ip_fut = self.resolver.lookup_ip(host);
+        let https_fut = self.resolver.lookup(host, RecordType::HTTPS);
+
+        let (ip_res, https_res) = tokio::join!(ip_fut, https_fut);
+
+        let duration = start.elapsed();
+        if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+            let mut guard = timing_arc.lock().await;
+            guard.dns_duration = Some(duration);
+        }
+
+        let ips = match ip_res {
+            Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
+            Err(e) => return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e))),
+        };
+
+        let interleaved = Self::interleave_happy_eyeballs(ips);
+        if interleaved.is_empty() {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Nenhum IP para '{}'", host)));
+        }
+
+        let mut ech_config = None;
+        if let Ok(https_lookup) = https_res {
+            for record in https_lookup.iter() {
+                if let Some(svcb) = record.as_svcb() {
+                    if let Some((_, SvcParamValue::EchConfig(ech))) = svcb.svc_params().iter().find(|(k, _)| *k == SvcParamKey::EchConfig) {
+                        ech_config = Some(ech.0.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok((interleaved.into_iter(), ech_config))
     }
 }
 
