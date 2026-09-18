@@ -123,6 +123,7 @@ pub struct Request {
     pub force_h3: bool,
     pub streaming: bool,
     pub integrity: Option<Vec<crate::security::sri::SriDigest>>,
+    pub early_hints_dispatcher: Option<crate::http::hints::EarlyHintsDispatcher>,
 }
 
 impl Request {
@@ -169,6 +170,7 @@ pub struct RequestBuilder {
     force_h3: bool,
     streaming: bool,
     integrity: Option<Vec<crate::security::sri::SriDigest>>,
+    early_hints_dispatcher: Option<crate::http::hints::EarlyHintsDispatcher>,
 }
 
 impl RequestBuilder {
@@ -195,6 +197,7 @@ impl RequestBuilder {
             force_h3: false,
             streaming: false,
             integrity: None,
+            early_hints_dispatcher: None,
         }
     }
 
@@ -312,6 +315,12 @@ impl RequestBuilder {
         self
     }
 
+    /// Anexa um dispatcher de Early Hints.
+    pub fn early_hints_dispatcher(mut self, dispatcher: crate::http::hints::EarlyHintsDispatcher) -> Self {
+        self.early_hints_dispatcher = Some(dispatcher);
+        self
+    }
+
     /// Finaliza e constrói a instância de `Request`.
     pub fn build(mut self) -> Request {
         let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
@@ -378,6 +387,7 @@ impl RequestBuilder {
             force_h3: self.force_h3,
             streaming: self.streaming,
             integrity: self.integrity,
+            early_hints_dispatcher: self.early_hints_dispatcher,
         }
     }
 }
