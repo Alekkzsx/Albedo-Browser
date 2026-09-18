@@ -269,7 +269,11 @@ impl ResourceFetcher {
                 
                 // Process and cache the preflight response
                 if let Some(max_age_val) = preflight_resp.headers.get("access-control-max-age").and_then(|v| v.to_str().ok()) {
-                    if let Ok(max_age_secs) = max_age_val.parse::<u64>() {
+                    if let Ok(mut max_age_secs) = max_age_val.parse::<u64>() {
+                        // Teto normativo de 2 horas (7200 segundos) para CORS Preflight Cache
+                        if max_age_secs > 7200 {
+                            max_age_secs = 7200;
+                        }
                         if max_age_secs > 0 {
                             let allow_methods = preflight_resp.headers.get("access-control-allow-methods")
                                 .and_then(|v| v.to_str().ok())
