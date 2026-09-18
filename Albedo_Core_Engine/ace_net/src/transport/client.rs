@@ -3,17 +3,17 @@
 //! Orquestra o pool de conexões assíncronas, ALPN para negociação h2/http1.1,
 //! handshake TLS seguro via `rustls` (WebPKI roots) e suporte nativo a `data:` URIs.
 
-use crate::http::compression::{decompress_payload, ContentEncoding};
+use crate::http::compression::ContentEncoding;
 use crate::engine::contention::RetryAfter;
 use crate::http::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
 use crate::http::range::ContentRange;
 use crate::http::request::Request;
 use crate::http::response::{Response, ResponseBody, ResponseTiming};
-use ace_core::net::{data_url::parse_data_url, sniff_mime_type};
-use bytes::Bytes;
+use ace_core::net::data_url::parse_data_url;
+use bytes::{Buf, Bytes};
 use http::{HeaderValue, StatusCode};
-use http_body_util::{BodyExt, Full};
+use http_body_util::Full;
 use hyper::header::{CONTENT_TYPE, USER_AGENT};
 use hyper::Request as HyperRequest;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -61,6 +61,7 @@ impl futures_core::Stream for HyperIncomingStream {
 }
 
 pub type TimingHttpsClient = Client<crate::transport::timing::TimingConnector<HttpsConnector<crate::transport::timing::TimingConnector<HttpConnector<DohHappyEyeballsResolver>>>>, Full<Bytes>>;
+
 
 /// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
@@ -242,12 +243,8 @@ impl TransportClient {
                             if let hickory_resolver::proto::rr::RData::HTTPS(svcb) = record {
                                 for (key, val) in svcb.svc_params().iter() {
                                     if *key == SvcParamKey::EchConfig {
-                                        // Acessar unknown octets
-                                        match val {
-                                            hickory_resolver::proto::rr::rdata::svcb::SvcParamValue::Unknown(data) => {
-                                                ech_config_bytes = Some(data.0.clone());
-                                            }
-                                            _ => {}
+                                        if let hickory_resolver::proto::rr::rdata::svcb::SvcParamValue::EchConfig(ech) = val {
+                                            ech_config_bytes = Some(ech.0.clone());
                                         }
                                     }
                                 }
@@ -309,60 +306,25 @@ impl TransportClient {
         let headers = hyper_resp.headers().clone();
 
         let content_encoding = ContentEncoding::from_headers(&headers);
-        const MAX_BUFFERED_BODY_BYTES: usize = 64 * 1024 * 1024; // Teto de 64 MB
 
-        let content_length = headers.get(hyper::header::CONTENT_LENGTH)
+        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
 
-        let use_stream = req.streaming || content_length.map_or(true, |len| len > 64 * 1024);
-
-        // 5. Coleta ou streaming reativo de bytes do corpo com suporte a cancelamento
-        let (body_bytes, response_body) = if use_stream {
-            let stream = HyperIncomingStream { body: hyper_resp.into_body() };
-            let raw_stream = ResponseBody::from_stream(stream);
-            
-            // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
-            let final_body = if let Some(encoding) = content_encoding {
-                if let Some(stream_box) = raw_stream.take_stream().await {
-                    let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
-                    ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
-                } else {
-                    raw_stream
-                }
+        // 5. Streaming reativo de bytes do corpo com suporte a cancelamento
+        let stream = HyperIncomingStream { body: hyper_resp.into_body() };
+        let raw_stream = ResponseBody::from_stream(stream);
+        
+        // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
+        let response_body = if let Some(encoding) = content_encoding {
+            if let Some(stream_box) = raw_stream.take_stream().await {
+                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
             } else {
                 raw_stream
-            };
-            
-            (Bytes::new(), final_body)
+            }
         } else {
-            let incoming = hyper_resp.into_body();
-            let limited = http_body_util::Limited::new(incoming, MAX_BUFFERED_BODY_BYTES);
-            let raw_body_bytes = tokio::select! {
-                _ = req.cancellation_token.cancelled() => {
-                    return Err(NetError::Cancelled);
-                }
-                res = limited.collect() => {
-                    res.map_err(|e| {
-                        let err_msg = e.to_string();
-                        if err_msg.contains("length limit") || err_msg.contains("limit exceeded") {
-                            NetError::HttpProtocolError("Payload excedeu o teto de 64MB em memória; utilize o modo streaming".into())
-                        } else {
-                            NetError::HttpProtocolError(err_msg)
-                        }
-                    })?.to_bytes()
-                }
-            };
-
-            // 6. Descompressão transparente de conteúdo (Content-Encoding)
-            let decompressed = if let Some(encoding) = content_encoding {
-                decompress_payload(encoding, &raw_body_bytes)?
-            } else {
-                raw_body_bytes
-            };
-
-            let full_bytes = decompressed.clone();
-            (decompressed, ResponseBody::Full(full_bytes))
+            raw_stream
         };
 
         let retry_after = RetryAfter::from_headers(&headers);
@@ -373,7 +335,7 @@ impl TransportClient {
         };
         let total_duration = start_time.elapsed();
 
-        // 7. Resolução de MIME Type e Charset (Content Sniffing WHATWG)
+        // 7. Resolução de MIME Type e Charset
         let content_type_str = headers
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
@@ -387,9 +349,6 @@ impl TransportClient {
                 .trim()
                 .to_ascii_lowercase()
                 .into()
-        } else if !body_bytes.is_empty() {
-            // Sniffing nos primeiros 512 bytes
-            sniff_mime_type(&body_bytes).into()
         } else {
             "application/octet-stream".into()
         };
@@ -430,13 +389,34 @@ impl TransportClient {
         let ips = self.resolver.resolver().lookup_ip(host).await
             .map_err(|e| NetError::DnsResolutionFailed(host.to_string(), e.to_string()))?;
         
-        let ip = ips.iter().next().ok_or_else(|| NetError::DnsResolutionFailed(host.to_string(), "No IPs found".into()))?;
-        let addr = std::net::SocketAddr::new(ip, port);
-        
-        let connection = self.quinn_endpoint.connect(addr, host)
-            .map_err(|e| NetError::ConnectionFailed(host.to_string(), e.to_string()))?
-            .await
-            .map_err(|e| NetError::ConnectionFailed(host.to_string(), e.to_string()))?;
+        let addrs: Vec<std::net::IpAddr> = ips.iter().collect();
+        let interleaved = DohHappyEyeballsResolver::interleave_happy_eyeballs(addrs);
+        if interleaved.is_empty() {
+            return Err(NetError::DnsResolutionFailed(host.to_string(), "No IPs found".into()));
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let endpoint = self.quinn_endpoint.clone();
+        let host_clone = host.to_string();
+
+        tokio::spawn(async move {
+            for addr in interleaved {
+                let addr_with_port = std::net::SocketAddr::new(addr.ip(), port);
+                if let Ok(connecting) = endpoint.connect(addr_with_port, &host_clone) {
+                    let tx_clone = tx.clone();
+                    tokio::spawn(async move {
+                        if let Ok(conn) = connecting.await {
+                            let _ = tx_clone.send(conn).await;
+                        }
+                    });
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+        });
+
+        let connection = tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv()).await
+            .map_err(|_| NetError::ConnectionFailed(host.to_string(), "QUIC connection timeout".into()))?
+            .ok_or_else(|| NetError::ConnectionFailed(host.to_string(), "All QUIC connection attempts failed".into()))?;
 
         let h3_conn = h3_quinn::Connection::new(connection);
         let (mut driver, mut send_request) = h3::client::new(h3_conn)
@@ -470,22 +450,31 @@ impl TransportClient {
         let h3_resp = stream.recv_response().await
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
             
-        let mut body_mut = bytes::BytesMut::new();
-        while let Some(chunk) = stream.recv_data().await.map_err(|e| NetError::HttpProtocolError(e.to_string()))? {
-            bytes::BufMut::put(&mut body_mut, chunk);
-        }
-        
-        let raw_body_bytes = body_mut.freeze();
         let status = h3_resp.status();
         let headers = h3_resp.headers().clone();
         
         let ttfb = start_time.elapsed();
 
         let content_encoding = ContentEncoding::from_headers(&headers);
-        let body_bytes = if let Some(encoding) = content_encoding {
-            decompress_payload(encoding, &raw_body_bytes)?
+        
+        let h3_stream = futures_util::stream::unfold(stream, |mut s| async move {
+            match s.recv_data().await {
+                Ok(Some(mut chunk)) => Some((Ok(chunk.copy_to_bytes(chunk.remaining())), s)),
+                Ok(None) => None,
+                Err(e) => Some((Err(NetError::HttpProtocolError(e.to_string())), s)),
+            }
+        });
+        
+        let raw_stream = ResponseBody::from_stream(h3_stream);
+        let response_body = if let Some(encoding) = content_encoding {
+            if let Some(stream_box) = raw_stream.take_stream().await {
+                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+            } else {
+                raw_stream
+            }
         } else {
-            raw_body_bytes
+            raw_stream
         };
 
         let retry_after = RetryAfter::from_headers(&headers);
@@ -500,7 +489,7 @@ impl TransportClient {
         let mime_type: SmolStr = if !content_type_str.is_empty() {
             content_type_str.split(';').next().unwrap_or("application/octet-stream").trim().to_ascii_lowercase().into()
         } else {
-            sniff_mime_type(&body_bytes).into()
+            "application/octet-stream".into()
         };
         let charset = extract_charset_from_content_type(content_type_str);
 
@@ -508,7 +497,7 @@ impl TransportClient {
             url: req.url.clone(),
             status,
             headers,
-            body: ResponseBody::Full(body_bytes),
+            body: response_body,
             mime_type,
             charset,
             content_encoding,
