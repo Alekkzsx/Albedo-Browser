@@ -22,6 +22,7 @@ use crate::transport::timing::CONNECTION_TIMING;
 #[derive(Clone)]
 pub struct DohHappyEyeballsResolver {
     resolver: Arc<TokioAsyncResolver>,
+    block_private_ips: bool,
 }
 
 impl DohHappyEyeballsResolver {
@@ -32,12 +33,17 @@ impl DohHappyEyeballsResolver {
                 ResolverConfig::cloudflare_https(),
                 ResolverOpts::default(),
             )),
+            block_private_ips: false,
         }
     }
 
     /// Cria uma instância a partir de um resolver Hickory já configurado.
     pub fn with_resolver(resolver: Arc<TokioAsyncResolver>) -> Self {
-        Self { resolver }
+        Self { resolver, block_private_ips: false }
+    }
+
+    pub fn set_block_private_ips(&mut self, block: bool) {
+        self.block_private_ips = block;
     }
 
     /// Retorna uma referência ao resolver interno.
@@ -102,10 +108,14 @@ impl DohHappyEyeballsResolver {
             guard.dns_duration = Some(duration);
         }
 
-        let ips = match ip_res {
+        let mut ips = match ip_res {
             Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
             Err(e) => return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e))),
         };
+
+        if self.block_private_ips {
+            ips.retain(|ip| !crate::security::pna::is_private_or_local(*ip));
+        }
 
         let interleaved = Self::interleave_happy_eyeballs(ips);
         if interleaved.is_empty() {
@@ -146,6 +156,7 @@ impl Service<Name> for DohHappyEyeballsResolver {
     fn call(&mut self, name: Name) -> Self::Future {
         let resolver = self.resolver.clone();
         let host_str = name.as_str().to_string();
+        let block_private_ips = self.block_private_ips;
 
         Box::pin(async move {
             let start = Instant::now();
@@ -162,7 +173,10 @@ impl Service<Name> for DohHappyEyeballsResolver {
                         let mut guard = timing_arc.lock().await;
                         guard.dns_duration = Some(duration);
                     }
-                    let ips: Vec<IpAddr> = lookup.iter().collect();
+                    let mut ips: Vec<IpAddr> = lookup.iter().collect();
+                    if block_private_ips {
+                        ips.retain(|ip| !crate::security::pna::is_private_or_local(*ip));
+                    }
                     let interleaved = Self::interleave_happy_eyeballs(ips);
                     if interleaved.is_empty() {
                         Err(std::io::Error::new(
