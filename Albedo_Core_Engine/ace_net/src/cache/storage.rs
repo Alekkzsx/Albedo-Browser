@@ -231,6 +231,28 @@ impl HttpCache {
         }
     }
 
+    /// Grava uma fatia esparsa no disco L2 contornando a RAM (preserva memória para streams de mídia)
+    pub fn put_range(&self, nik: Option<&NetworkIsolationKey>, url: Url, start: u64, end: u64, total: Option<u64>, bytes: bytes::Bytes) {
+        if let Some(engine) = &self.disk_engine {
+            let key = Self::make_key(nik, &url);
+            let hash = Self::hash_key(&key);
+            let engine = engine.clone();
+            tokio::spawn(async move {
+                let _ = engine.put_range(hash, start, end, total, bytes).await;
+            });
+        }
+    }
+
+    /// Recupera uma fatia esparsa diretamente do disco L2
+    pub async fn get_range(&self, nik: Option<&NetworkIsolationKey>, url: &Url, start: u64, end: u64) -> Option<bytes::Bytes> {
+        if let Some(engine) = &self.disk_engine {
+            let key = Self::make_key(nik, url);
+            let hash = Self::hash_key(&key);
+            return engine.get_range(hash, start, end).await;
+        }
+        None
+    }
+
     /// Invalida entradas associadas a uma URL após métodos não seguros (POST, PUT, DELETE) - RFC 9111 §4.4.
     pub fn invalidate(&self, url: &Url) {
         let mut inner = self.inner.write();
