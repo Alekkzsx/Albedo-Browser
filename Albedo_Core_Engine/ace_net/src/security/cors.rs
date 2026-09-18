@@ -3,7 +3,7 @@ use crate::http::request::{CredentialsMode, Method, Request, RequestMode};
 use crate::http::response::Response;
 use ace_core::security::origin::Origin;
 use http::header::{
-    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN, CONTENT_TYPE,
+    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN,
 };
 
 /// Verifica se a requisição cruza origens.
@@ -260,14 +260,14 @@ mod tests {
 
         // Com Content-Type application/x-www-form-urlencoded -> simples
         req.headers.insert(
-            CONTENT_TYPE,
+            http::header::CONTENT_TYPE,
             HeaderValue::from_static("application/x-www-form-urlencoded"),
         );
         assert!(!requires_preflight(&req));
 
         // Mudando para application/json -> DEVE disparar preflight
         req.headers.insert(
-            CONTENT_TYPE,
+            http::header::CONTENT_TYPE,
             HeaderValue::from_static("application/json"),
         );
         assert!(requires_preflight(&req));
@@ -286,7 +286,7 @@ mod tests {
         let url = Url::parse("https://api.example.com/data").unwrap();
         let mut req = Request::builder(url, Method::PUT).unwrap().build();
         req.headers.insert(ORIGIN, HeaderValue::from_static("https://app.com"));
-        req.headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        req.headers.insert(http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
         req.headers.insert("x-custom-key", HeaderValue::from_static("val"));
 
         let preflight = build_preflight_request(&req).unwrap();
