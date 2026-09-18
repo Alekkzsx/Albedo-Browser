@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::entry::CacheEntry;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use rustc_hash::FxHashMap;
@@ -5,7 +7,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt};
 use tokio::sync::{Mutex, RwLock};
 
 /// Operação do Write-Ahead Log (WAL)
@@ -124,53 +126,41 @@ impl WalEngine {
     }
 }
 
-/// Índice esparso para controle de intervalos de bytes (HTTP 206 Partial Content).
-#[derive(Debug, Clone, Default)]
+/// Registro esparso de fatias de bytes contíguas armazenadas para um recurso parcial.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SparseRangeIndex {
+    pub ranges: Vec<(u64, u64)>, // (start, end) inclusivos
     pub total_length: Option<u64>,
-    pub ranges: Vec<(u64, u64)>, // (start, end) inclusivo
 }
 
 impl SparseRangeIndex {
-    /// Adiciona um range de bytes recebido.
-    pub fn add_range(&mut self, start: u64, end: u64) {
-        self.ranges.push((start, end));
-        self.ranges.sort_by_key(|r| r.0);
-        self.merge_ranges();
+    pub fn new() -> Self {
+        Self { ranges: Vec::new(), total_length: None }
     }
 
-    /// Mescla ranges sobrepostos.
-    fn merge_ranges(&mut self) {
-        if self.ranges.is_empty() {
-            return;
-        }
-        let mut merged = Vec::new();
-        let mut current = self.ranges[0];
-
-        for &range in &self.ranges[1..] {
-            if range.0 <= current.1 + 1 {
-                current.1 = current.1.max(range.1);
+    /// Adiciona uma nova faixa e funde faixas sobrepostas/adjacentes.
+    pub fn add_range(&mut self, start: u64, end: u64) {
+        self.ranges.push((start, end));
+        self.ranges.sort_unstable_by_key(|k| k.0);
+        
+        let mut merged: Vec<(u64, u64)> = Vec::with_capacity(self.ranges.len());
+        for current in &self.ranges {
+            if let Some(last) = merged.last_mut() {
+                if current.0 <= last.1 + 1 {
+                    last.1 = std::cmp::max(last.1, current.1);
+                } else {
+                    merged.push(*current);
+                }
             } else {
-                merged.push(current);
-                current = range;
+                merged.push(*current);
             }
         }
-        merged.push(current);
         self.ranges = merged;
     }
 
-    /// Verifica se a requisição possui as partes necessárias.
-    pub fn has_range(&self, start: u64, end: u64) -> bool {
-        self.ranges.iter().any(|r| r.0 <= start && r.1 >= end)
-    }
-
-    /// Verifica se o recurso está completamente baixado.
-    pub fn is_complete(&self) -> bool {
-        if let Some(total) = self.total_length {
-            self.ranges.len() == 1 && self.ranges[0].0 == 0 && self.ranges[0].1 >= total.saturating_sub(1)
-        } else {
-            false
-        }
+    /// Verifica se a faixa requisitada está completamente armazenada no cache.
+    pub fn contains_range(&self, req_start: u64, req_end: u64) -> bool {
+        self.ranges.iter().any(|&(s, e)| s <= req_start && req_end <= e)
     }
 }
 
@@ -212,8 +202,15 @@ impl DiskCacheEngine {
             order: VecDeque::new(),
             total_bytes: 0,
         };
+        let mut sparse = FxHashMap::default();
 
-        // Recovery via WAL
+        // 1. Tenta carregar o índice binário primeiro
+        if let Ok((loaded_inner, loaded_sparse)) = Self::load_index(&base_path).await {
+            inner = loaded_inner;
+            sparse = loaded_sparse;
+        }
+
+        // 2. Toca os eventos do WAL
         if let Ok(ops) = wal.recover().await {
             for op in ops {
                 match op {
@@ -231,23 +228,146 @@ impl DiskCacheEngine {
                                 inner.order.remove(pos);
                             }
                         }
+                        sparse.remove(&hash);
                     }
                     WalOperation::Clear => {
                         inner.entries.clear();
                         inner.order.clear();
                         inner.total_bytes = 0;
+                        sparse.clear();
                     }
                 }
             }
         }
 
-        Ok(Self {
+        let engine = Self {
             base_path,
             max_capacity_bytes,
             wal,
             inner: RwLock::new(inner),
-            sparse_indices: RwLock::new(FxHashMap::default()),
-        })
+            sparse_indices: RwLock::new(sparse),
+        };
+        
+        // 3. Ao inicializar, podemos forçar o despejo do índice e zerar o WAL para economizar tempo na próxima inicialização
+        let _ = engine.save_index().await;
+
+        Ok(engine)
+    }
+
+    /// Carrega o índice binário `cache.idx`
+    async fn load_index(base_path: &Path) -> std::io::Result<(DiskCacheInner, FxHashMap<u64, SparseRangeIndex>)> {
+        let mut inner = DiskCacheInner {
+            entries: FxHashMap::default(),
+            order: VecDeque::new(),
+            total_bytes: 0,
+        };
+        let mut sparse = FxHashMap::default();
+
+        let idx_path = base_path.join("cache.idx");
+        let bytes = tokio::fs::read(&idx_path).await?;
+        let mut buf = bytes.as_slice();
+
+        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        let magic = buf.get_u64_le();
+        if magic != 0xACE1_DF20_C001_CACA {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Bad Magic"));
+        }
+
+        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        inner.total_bytes = buf.get_u64_le();
+
+        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        let num_entries = buf.get_u64_le() as usize;
+        for _ in 0..num_entries {
+            if buf.remaining() < 16 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+            let hash = buf.get_u64_le();
+            let size = buf.get_u64_le();
+            inner.entries.insert(hash, size);
+        }
+
+        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        let num_order = buf.get_u64_le() as usize;
+        for _ in 0..num_order {
+            if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+            let hash = buf.get_u64_le();
+            inner.order.push_back(hash);
+        }
+
+        if buf.remaining() >= 8 {
+            let num_sparse = buf.get_u64_le() as usize;
+            for _ in 0..num_sparse {
+                if buf.remaining() < 17 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                let hash = buf.get_u64_le();
+                let has_total = buf.get_u8() == 1;
+                let total_length = if has_total {
+                    if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                    Some(buf.get_u64_le())
+                } else {
+                    None
+                };
+                if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                let num_ranges = buf.get_u64_le() as usize;
+                let mut ranges = Vec::with_capacity(num_ranges);
+                for _ in 0..num_ranges {
+                    if buf.remaining() < 16 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                    let start = buf.get_u64_le();
+                    let end = buf.get_u64_le();
+                    ranges.push((start, end));
+                }
+                sparse.insert(hash, SparseRangeIndex { total_length, ranges });
+            }
+        }
+
+        Ok((inner, sparse))
+    }
+
+    /// Salva o estado atual em um índice binário e zera o WAL.
+    pub async fn save_index(&self) -> std::io::Result<()> {
+        let inner = self.inner.read().await;
+        let sparse = self.sparse_indices.read().await;
+        
+        let mut buf = BytesMut::new();
+        // Magic Number
+        buf.put_u64_le(0xACE1_DF20_C001_CACA);
+        buf.put_u64_le(inner.total_bytes);
+        
+        buf.put_u64_le(inner.entries.len() as u64);
+        for (hash, size) in &inner.entries {
+            buf.put_u64_le(*hash);
+            buf.put_u64_le(*size);
+        }
+        
+        buf.put_u64_le(inner.order.len() as u64);
+        for hash in &inner.order {
+            buf.put_u64_le(*hash);
+        }
+
+        buf.put_u64_le(sparse.len() as u64);
+        for (hash, index) in sparse.iter() {
+            buf.put_u64_le(*hash);
+            if let Some(total) = index.total_length {
+                buf.put_u8(1);
+                buf.put_u64_le(total);
+            } else {
+                buf.put_u8(0);
+            }
+            buf.put_u64_le(index.ranges.len() as u64);
+            for &(start, end) in &index.ranges {
+                buf.put_u64_le(start);
+                buf.put_u64_le(end);
+            }
+        }
+
+        let bytes = buf.freeze();
+        let tmp_path = self.base_path.join("cache.idx.tmp");
+        let target_path = self.base_path.join("cache.idx");
+        tokio::fs::write(&tmp_path, bytes).await?;
+        tokio::fs::rename(tmp_path, target_path).await?;
+        
+        // Zera o WAL agora que temos o dump perfeito
+        self.wal.clear().await?;
+        
+        Ok(())
     }
 
     /// Lê a entrada do cache no disco.
@@ -351,4 +471,105 @@ impl DiskCacheEngine {
             }
         }
     }
+
+    /// Grava uma fatia de bytes parciais (HTTP 206) no arquivo de cache via offset.
+    pub async fn put_range(&self, hash: u64, start: u64, end: u64, total_size: Option<u64>, bytes: Bytes) -> std::io::Result<()> {
+        let size = bytes.len() as u64;
+        let file_path = self.base_path.join(format!("{:016x}.cache", hash));
+
+        // Open with create and write modes
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&file_path)
+            .await?;
+
+        // Seek to the start offset
+        file.seek(std::io::SeekFrom::Start(start)).await?;
+        file.write_all(&bytes).await?;
+        file.sync_all().await?;
+
+        // Update sparse index
+        {
+            let mut sparse_lock = self.sparse_indices.write().await;
+            let entry = sparse_lock.entry(hash).or_insert_with(|| SparseRangeIndex::new());
+            entry.add_range(start, end);
+            if let Some(t) = total_size {
+                entry.total_length = Some(t);
+            }
+        }
+
+        // Add to WAL and inner state
+        let mut evictions = Vec::new();
+        {
+            let mut inner = self.inner.write().await;
+            
+            while inner.total_bytes + size > self.max_capacity_bytes {
+                if let Some(evicted_hash) = inner.order.pop_front() {
+                    if let Some(evicted_size) = inner.entries.remove(&evicted_hash) {
+                        inner.total_bytes = inner.total_bytes.saturating_sub(evicted_size);
+                        evictions.push(evicted_hash);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if !inner.entries.contains_key(&hash) {
+                inner.entries.insert(hash, size);
+                inner.order.push_back(hash);
+                inner.total_bytes += size;
+            } else {
+                if let Some(s) = inner.entries.get_mut(&hash) {
+                    *s += size;
+                    inner.total_bytes += size;
+                }
+            }
+        }
+        
+        for evicted in evictions {
+            let _ = self.wal.append(&WalOperation::Delete { hash: evicted }).await;
+            let p = self.base_path.join(format!("{:016x}.cache", evicted));
+            let _ = tokio::fs::remove_file(p).await;
+            let mut sparse_lock = self.sparse_indices.write().await;
+            sparse_lock.remove(&evicted);
+        }
+
+        let _ = self.wal.append(&WalOperation::Put { hash, size }).await;
+
+        Ok(())
+    }
+
+    /// Lê uma fatia específica de bytes do cache (se disponível)
+    pub async fn get_range(&self, hash: u64, start: u64, end: u64) -> Option<Bytes> {
+        // Verifica se a fatia solicitada está coberta pelos registros esparsos
+        {
+            let sparse_lock = self.sparse_indices.read().await;
+            if let Some(index) = sparse_lock.get(&hash) {
+                if !index.contains_range(start, end) {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+
+        let inner = self.inner.read().await;
+        if !inner.entries.contains_key(&hash) {
+            return None;
+        }
+        
+        let file_path = self.base_path.join(format!("{:016x}.cache", hash));
+        let mut file = tokio::fs::OpenOptions::new().read(true).open(&file_path).await.ok()?;
+        
+        let length = (end - start + 1) as usize;
+        let mut buf = vec![0u8; length];
+        
+        file.seek(std::io::SeekFrom::Start(start)).await.ok()?;
+        file.read_exact(&mut buf).await.ok()?;
+        
+        Some(Bytes::from(buf))
+    }
 }
+
+
