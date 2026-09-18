@@ -516,7 +516,7 @@ impl ResourceFetcher {
             
             // Adquire permissão no ResourceScheduler (throttling e limits por host)
             let host_smol = current_req.url.host_str().unwrap_or("").into();
-            let _permit = self.scheduler.acquire(current_req.priority, host_smol).await;
+            let _permit = self.scheduler.acquire(current_req.id, current_req.priority, host_smol).await;
             
             // Tentativa de execução de rede com retentativa automática (Frente B)
             let is_idempotent = current_req.method == Method::GET || current_req.method == Method::HEAD || current_req.method == Method::OPTIONS;
@@ -836,6 +836,22 @@ impl ResourceFetcher {
             .priority(PriorityLevel::VeryHigh)
             .build();
         self.fetch(req).await
+    }
+
+    /// Reprioritiza requisições com base na visibilidade do Viewport.
+    /// Chamado pelo DOM/Layout engine para imagens que entraram na tela, passando a elas `PriorityLevel::High`.
+    pub fn boost_viewport_visibility(&self, visible_request_ids: &[RequestId]) {
+        for &req_id in visible_request_ids {
+            // Em M4 contornamos a falta de reprioritização HTTP/2 ativa no hyper_util
+            // reprioritizando apenas na nossa fila mestre local do Scheduler.
+            if self.scheduler.reprioritize(req_id, PriorityLevel::High) {
+                crate::telemetry::net_log::log_net_event(
+                    crate::telemetry::net_log::NetEventType::Queue,
+                    "viewport",
+                    &format!("Boosted priority for request {:?} to High based on Viewport visibility", req_id),
+                );
+            }
+        }
     }
 }
 
