@@ -23,6 +23,7 @@ use hyper_util::rt::TokioExecutor;
 use smol_str::SmolStr;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
+use crate::cache::partition::NetworkIsolationKey;
 use crate::transport::dns::DohHappyEyeballsResolver;
 use hyper::body::Body as HyperBody;
 use url::Url;
@@ -66,9 +67,8 @@ pub type TimingHttpsClient = Client<crate::transport::timing::TimingConnector<Ht
 /// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
 pub struct TransportClient {
-    default_client: TimingHttpsClient,
-    ech_clients: Arc<RwLock<FxHashMap<String, TimingHttpsClient>>>,
-    resolver: DohHappyEyeballsResolver,
+    isolated_clients: Arc<RwLock<FxHashMap<Option<NetworkIsolationKey>, TimingHttpsClient>>>,
+    isolated_ech_clients: Arc<RwLock<FxHashMap<(Option<NetworkIsolationKey>, String), TimingHttpsClient>>>,
     root_store: rustls::RootCertStore,
     quinn_endpoint: quinn::Endpoint,
     user_agent: HeaderValue,
@@ -81,13 +81,11 @@ impl TransportClient {
     }
 
     /// Cria uma nova instância configurada com um resolver DoH customizado.
-    pub fn with_resolver(resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
+    pub fn with_resolver(_resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-
-        let default_client = Self::build_hyper_client(&resolver, root_store.clone(), None)?;
 
         let mut tls_config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
             .with_safe_default_protocol_versions()
@@ -106,9 +104,8 @@ impl TransportClient {
         let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
 
         Ok(Self { 
-            default_client, 
-            ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
-            resolver,
+            isolated_clients: Arc::new(RwLock::new(FxHashMap::default())),
+            isolated_ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
             root_store,
             quinn_endpoint, 
             user_agent 
@@ -116,7 +113,7 @@ impl TransportClient {
     }
 
     fn build_hyper_client(
-        resolver: &DohHappyEyeballsResolver,
+        nik: Option<&NetworkIsolationKey>,
         root_store: rustls::RootCertStore,
         ech_config: Option<EchConfig>,
     ) -> NetResult<TimingHttpsClient> {
@@ -135,7 +132,18 @@ impl TransportClient {
         // Milestone 5: Telemetria Preditiva & 0-RTT
         config.enable_early_data = true;
 
-        // Conector HTTP/TCP configurado com DoH e Happy Eyeballs v2 (RFC 8305)
+        // Cada cliente particionado recebe seu próprio resolver DNS para não compartilhar cache/estado
+        // PNA TODO: Em M5 instanciamos com uma flag block_private_ips se NIK for público.
+        let is_public = nik.map_or(false, |n| {
+            if let ace_core::security::origin::Origin::Tuple { host, .. } = &n.top_frame_origin {
+                !crate::security::pna::is_host_private_or_local(&host.as_str())
+            } else {
+                false
+            }
+        });
+        let mut resolver = DohHappyEyeballsResolver::new();
+        resolver.set_block_private_ips(is_public);
+
         let mut http_connector = HttpConnector::new_with_resolver(resolver.clone());
         http_connector.enforce_http(false);
         http_connector.set_happy_eyeballs_timeout(Some(Duration::from_millis(250)));
@@ -158,6 +166,8 @@ impl TransportClient {
 
         Ok(client)
     }
+
+
 
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
     #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method))]
@@ -220,16 +230,29 @@ impl TransportClient {
             .body(Full::new(body_payload))
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
 
-        // NOVO: Busca do ECH
-        let mut target_client = self.default_client.clone();
+        // Fetch ou cria o cliente particionado básico (sem ECH) para este NIK
+        let mut target_client = {
+            let map = self.isolated_clients.read().await;
+            map.get(&req.network_isolation_key).cloned()
+        };
+
+        if target_client.is_none() {
+            let new_client = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), None)?;
+            let mut map = self.isolated_clients.write().await;
+            map.insert(req.network_isolation_key.clone(), new_client.clone());
+            target_client = Some(new_client);
+        }
         
+        let mut target_client = target_client.unwrap();
+
+        // NOVO: Busca do ECH particionada
         if let Some(host) = req.url.host_str() {
             if req.url.scheme() == "https" {
-                let cache_key = host.to_string();
+                let cache_key = (req.network_isolation_key.clone(), host.to_string());
                 
-                // Tenta ler do cache primeiro
+                // Tenta ler do cache de ECH primeiro
                 let cached = {
-                    let map = self.ech_clients.read().await;
+                    let map = self.isolated_ech_clients.read().await;
                     map.get(&cache_key).cloned()
                 };
 
@@ -237,7 +260,8 @@ impl TransportClient {
                     target_client = client;
                 } else {
                     // Consulta HTTPS para descobrir EchConfig
-                    if let Ok(lookup) = self.resolver.resolver().lookup(host, RecordType::HTTPS).await {
+                    let resolver = DohHappyEyeballsResolver::new();
+                    if let Ok(lookup) = resolver.resolver().lookup(host, RecordType::HTTPS).await {
                         let mut ech_config_bytes: Option<Vec<u8>> = None;
                         for record in lookup.iter() {
                             if let hickory_resolver::proto::rr::RData::HTTPS(svcb) = record {
@@ -254,9 +278,9 @@ impl TransportClient {
                         if let Some(bytes) = ech_config_bytes {
                             // Construir novo client configurado para ECH
                             if let Ok(ech_config) = EchConfig::new(bytes.into(), rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES) {
-                                if let Ok(new_client) = Self::build_hyper_client(&self.resolver, self.root_store.clone(), Some(ech_config)) {
+                                if let Ok(new_client) = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), Some(ech_config)) {
                                     target_client = new_client.clone();
-                                    let mut map = self.ech_clients.write().await;
+                                    let mut map = self.isolated_ech_clients.write().await;
                                     map.insert(cache_key, new_client);
                                 }
                             }
@@ -386,7 +410,8 @@ impl TransportClient {
         let host = req.url.host_str().unwrap_or("");
         let port = req.url.port().unwrap_or(443);
         
-        let ips = self.resolver.resolver().lookup_ip(host).await
+        let resolver = DohHappyEyeballsResolver::new();
+        let ips = resolver.resolver().lookup_ip(host).await
             .map_err(|e| NetError::DnsResolutionFailed(host.to_string(), e.to_string()))?;
         
         let addrs: Vec<std::net::IpAddr> = ips.iter().collect();
