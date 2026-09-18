@@ -322,7 +322,54 @@ impl ResourceFetcher {
         // 4. Consulta ao Cache HTTP RFC 9111 (apenas para requisições idempotentes GET/HEAD)
         let mut cached_entry = None;
         if req.method == Method::GET || req.method == Method::HEAD {
-            if let Some(entry) = self.cache.get(nik.as_ref(), &req.url).await {
+            // Verificação de requisição de Range
+            let mut is_range_request = false;
+            let mut requested_start = 0;
+            let mut requested_end = 0;
+
+            if let Some(range_val) = req.headers.get(http::header::RANGE).and_then(|v| v.to_str().ok()) {
+                if let Some(stripped) = range_val.strip_prefix("bytes=") {
+                    let parts: Vec<&str> = stripped.split('-').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(s), Ok(e)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                            is_range_request = true;
+                            requested_start = s;
+                            requested_end = e;
+                        }
+                    }
+                }
+            }
+
+            if is_range_request {
+                if let Some(bytes) = self.cache.get_range(nik.as_ref(), &req.url, requested_start, requested_end).await {
+                    self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    self.metrics.bytes_served_from_cache.fetch_add(
+                        bytes.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                    crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Sparse Range Hit");
+                    
+                    let mut headers = req.headers.clone(); // simplificado
+                    headers.insert(
+                        http::header::CONTENT_RANGE, 
+                        http::HeaderValue::from_str(&format!("bytes {}-{}/*", requested_start, requested_end)).unwrap()
+                    );
+
+                    return Ok(Response {
+                        url: req.url,
+                        status: StatusCode::PARTIAL_CONTENT,
+                        headers,
+                        body: ResponseBody::Full(bytes),
+                        mime_type: "application/octet-stream".into(),
+                        charset: None,
+                        content_encoding: None,
+                        retry_after: None,
+                        content_range: Some(crate::http::range::ContentRange { start: requested_start, end: requested_end, total: None }),
+                        from_cache: true,
+                        timing: ResponseTiming::default(),
+                    });
+                }
+            } else if let Some(entry) = self.cache.get(nik.as_ref(), &req.url).await {
                 // Validação de cabeçalhos secundários Vary (RFC 9111 §4.1)
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
@@ -719,7 +766,22 @@ impl ResourceFetcher {
             );
 
             // 9. Armazena no Cache se a resposta for elegível
-            if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
+            if network_response.status == StatusCode::PARTIAL_CONTENT {
+                if let Some(cr_val) = network_response.headers.get(http::header::CONTENT_RANGE) {
+                    if let Some(cr) = crate::http::range::ContentRange::parse(cr_val) {
+                        if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
+                            self.cache.put_range(
+                                nik.as_ref(),
+                                current_req.url.clone(),
+                                cr.start,
+                                cr.end,
+                                cr.total,
+                                network_response.body.as_bytes().to_vec().into()
+                            );
+                        }
+                    }
+                }
+            } else if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
                 let entry = CacheEntry::new(
                     current_req.url.clone(),
                     network_response.status,
