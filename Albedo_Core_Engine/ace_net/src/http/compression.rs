@@ -109,8 +109,11 @@ pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<B
             Ok(Bytes::from(decompressed))
         }
         ContentEncoding::Zstandard => {
-            // Zstd requer compilação C, desativado temporariamente
-            Err(NetError::HttpProtocolError("Zstandard decompression is currently disabled due to missing native toolchain".into()))
+            let decoder = zstd::stream::read::Decoder::new(&raw[..]).map_err(|e| {
+                NetError::HttpProtocolError(format!("Falha na decodificacao Zstandard: {}", e))
+            })?;
+            let decompressed = safe_read_to_end(decoder, raw.len() * 2)?;
+            Ok(Bytes::from(decompressed))
         }
     }
 }
@@ -137,9 +140,7 @@ pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response
         ContentEncoding::Gzip => Box::new(async_compression::tokio::bufread::GzipDecoder::new(reader)),
         ContentEncoding::Deflate => Box::new(async_compression::tokio::bufread::DeflateDecoder::new(reader)),
         ContentEncoding::Brotli => Box::new(async_compression::tokio::bufread::BrotliDecoder::new(reader)),
-        ContentEncoding::Zstandard => return Box::pin(futures_util::stream::once(async {
-            Err(NetError::HttpProtocolError("Zstandard stream decompression is currently disabled".into()))
-        })),
+        ContentEncoding::Zstandard => Box::new(async_compression::tokio::bufread::ZstdDecoder::new(reader)),
         ContentEncoding::Identity => unreachable!(),
     };
 
