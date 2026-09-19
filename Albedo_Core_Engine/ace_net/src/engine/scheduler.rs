@@ -37,6 +37,7 @@ struct SchedulerState {
     active_high_priority: u32, // Para o Tail Scheduling
     queue: BTreeSet<PrioritizedItem<RequestId>>,
     pending: FxHashMap<RequestId, PendingRequest>,
+    active_streams: FxHashMap<RequestId, tokio::sync::watch::Sender<PriorityLevel>>,
 }
 
 /// Orquestrador de contenção e prioridade. Limita requests em voo globalmente e por host.
@@ -72,6 +73,7 @@ impl ResourceScheduler {
                 active_high_priority: 0,
                 queue: BTreeSet::new(),
                 pending: FxHashMap::default(),
+                active_streams: FxHashMap::default(),
             }),
             sequence: AtomicU64::new(0),
         })
@@ -232,9 +234,11 @@ impl ResourceScheduler {
         }
     }
 
-    /// Reprioritiza dinamicamente uma request na fila em tempo O(log N).
+    /// Reprioritiza dinamicamente uma request na fila ou em voo (tempo O(log N)).
     pub fn reprioritize(&self, request_id: RequestId, new_priority: PriorityLevel) -> bool {
         let mut state = self.state.lock();
+        let mut reprioritized = false;
+
         if let Some(mut pending) = state.pending.remove(&request_id) {
             let old_priority = pending.priority;
             let sequence_id = pending.sequence_id;
@@ -253,11 +257,23 @@ impl ResourceScheduler {
                 sequence_id,
                 item: request_id,
             });
-            
             state.pending.insert(request_id, pending);
-            true
-        } else {
-            false
+            reprioritized = true;
         }
+
+        if let Some(sender) = state.active_streams.get(&request_id) {
+            let _ = sender.send(new_priority);
+            reprioritized = true;
+        }
+
+        reprioritized
+    }
+
+    pub fn register_active_stream(&self, request_id: RequestId, sender: tokio::sync::watch::Sender<PriorityLevel>) {
+        self.state.lock().active_streams.insert(request_id, sender);
+    }
+
+    pub fn unregister_active_stream(&self, request_id: RequestId) {
+        self.state.lock().active_streams.remove(&request_id);
     }
 }
