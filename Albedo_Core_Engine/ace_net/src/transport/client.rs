@@ -131,6 +131,7 @@ impl TransportClient {
             .with_no_client_auth();
         // Milestone 5: Telemetria Preditiva & 0-RTT
         config.enable_early_data = true;
+        config.resumption = rustls::client::Resumption::in_memory(256);
 
         // Cada cliente particionado recebe seu próprio resolver DNS para não compartilhar cache/estado
         // PNA TODO: Em M5 instanciamos com uma flag block_private_ips se NIK for público.
@@ -179,22 +180,6 @@ impl TransportClient {
             return Err(NetError::Cancelled);
         }
 
-        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Fallback Gracioso para TCP/TLS
-        if req.force_h3 {
-            crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 (Alt-Svc)");
-            match self.execute_h3(req, start_time).await {
-                Ok(resp) => return Ok(resp),
-                Err(err) => {
-                    crate::telemetry::net_log::log_net_event(
-                        crate::telemetry::net_log::NetEventType::Warning,
-                        req.url.as_str(),
-                        &format!("Falha em conexao QUIC HTTP/3 ({}), realizando fallback gracioso para TCP/TLS", err),
-                    );
-                    tracing::warn!("Fallback de HTTP/3 para TCP/TLS em {}: {}", req.url, err);
-                }
-            }
-        }
-
         // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
         if req.url.scheme() == "data" {
             return self.execute_data_url(&req.url, start_time);
@@ -204,6 +189,70 @@ impl TransportClient {
         if req.url.scheme() != "http" && req.url.scheme() != "https" {
             return Err(NetError::UnsupportedScheme(req.url.scheme().to_string()));
         }
+
+        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Socket Racing
+        if req.force_h3 {
+            crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 e TCP/TLS em paralelo (Socket Racing)");
+            
+            let req_clone = req.clone();
+            let self_clone = self.clone();
+            let req_tcp = req.clone();
+            let self_tcp = self.clone();
+            
+            let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+            let tx2 = tx.clone();
+            
+            tokio::spawn(async move {
+                let res = self_clone.execute_h3(&req_clone, start_time).await;
+                let _ = tx.send((true, res)).await;
+            });
+            
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let res = self_tcp.execute_tcp(&req_tcp, start_time).await;
+                let _ = tx2.send((false, res)).await;
+            });
+            
+            let mut h3_failed = false;
+            let mut tcp_failed = false;
+            let mut last_err = None;
+            
+            while let Some((is_h3, res)) = rx.recv().await {
+                match res {
+                    Ok(resp) => {
+                        crate::telemetry::net_log::log_net_event(
+                            crate::telemetry::net_log::NetEventType::Warning,
+                            req.url.as_str(),
+                            &format!("Corrida vencida por {}", if is_h3 { "QUIC HTTP/3" } else { "TCP/TLS" }),
+                        );
+                        return Ok(resp);
+                    }
+                    Err(err) => {
+                        if is_h3 {
+                            h3_failed = true;
+                            crate::telemetry::net_log::log_net_event(
+                                crate::telemetry::net_log::NetEventType::Warning,
+                                req.url.as_str(),
+                                &format!("Falha na conexao QUIC HTTP/3 ({}). Aguardando TCP/TLS.", err),
+                            );
+                        } else {
+                            tcp_failed = true;
+                        }
+                        last_err = Some(err);
+                        
+                        if h3_failed && tcp_failed {
+                            return Err(last_err.unwrap());
+                        }
+                    }
+                }
+            }
+            return Err(NetError::ConnectionFailed(req.url.to_string(), "Ambas as conexoes falharam".into()));
+        }
+
+        self.execute_tcp(req, start_time).await
+    }
+
+    async fn execute_tcp(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
 
         // 3. Montagem da requisição Hyper
         let uri: hyper::Uri = req
@@ -226,9 +275,37 @@ impl TransportClient {
         }
 
         let body_payload = req.body.clone().unwrap_or_default();
-        let hyper_req = hyper_builder
+        let mut hyper_req = hyper_builder
             .body(Full::new(body_payload))
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        if let Some(dispatcher) = req.early_hints_dispatcher.clone() {
+            let base_url = req.url.clone();
+            hyper::ext::on_informational(&mut hyper_req, move |res| {
+                if res.status() == http::StatusCode::EARLY_HINTS {
+                    crate::telemetry::net_log::log_net_event(
+                        crate::telemetry::net_log::NetEventType::Warning,
+                        base_url.as_str(),
+                        "Recebido 103 Early Hints - engatilhando Resource Hints",
+                    );
+                    let mut link_values = Vec::new();
+                    for (name, val) in res.headers() {
+                        if name == http::header::LINK {
+                            if let Ok(link_str) = val.to_str() {
+                                link_values.push(link_str.to_string());
+                            }
+                        }
+                    }
+                    let dispatcher = dispatcher.clone();
+                    let url = base_url.clone();
+                    tokio::spawn(async move {
+                        for link in link_values {
+                            dispatcher.dispatch_link_header(&url, &link).await;
+                        }
+                    });
+                }
+            });
+        }
 
         // Fetch ou cria o cliente particionado básico (sem ECH) para este NIK
         let mut target_client = {
