@@ -23,6 +23,63 @@ pub struct ResponseTiming {
     pub ttfb: Duration,
 }
 
+/// Representação de métricas compatível com W3C Resource Timing Level 2
+#[derive(Debug, Clone, Default)]
+pub struct PerformanceResourceTiming {
+    pub start_time: f64,
+    pub redirect_start: f64,
+    pub redirect_end: f64,
+    pub worker_start: f64,
+    pub fetch_start: f64,
+    pub domain_lookup_start: f64,
+    pub domain_lookup_end: f64,
+    pub connect_start: f64,
+    pub secure_connection_start: f64,
+    pub connect_end: f64,
+    pub request_start: f64,
+    pub response_start: f64,
+    pub response_end: f64,
+}
+
+impl ResponseTiming {
+    pub fn to_w3c(&self) -> PerformanceResourceTiming {
+        let mut t = PerformanceResourceTiming::default();
+        t.start_time = 0.0;
+        t.fetch_start = 0.0;
+        
+        let mut current_offset = 0.0;
+        
+        if let Some(dns) = self.dns_duration {
+            t.domain_lookup_start = current_offset;
+            current_offset += dns.as_secs_f64() * 1000.0;
+            t.domain_lookup_end = current_offset;
+        } else {
+            t.domain_lookup_start = 0.0;
+            t.domain_lookup_end = 0.0;
+        }
+        
+        if let Some(tcp) = self.tcp_duration {
+            t.connect_start = current_offset;
+            if let Some(tls) = self.tls_duration {
+                // Approximate TLS start by subtracting TLS duration from total TCP duration
+                // (This assumes TLS happens right at the end of the TCP connection phase)
+                t.secure_connection_start = current_offset + (tcp.as_secs_f64() - tls.as_secs_f64()) * 1000.0;
+            }
+            current_offset += tcp.as_secs_f64() * 1000.0;
+            t.connect_end = current_offset;
+        } else {
+            t.connect_start = current_offset;
+            t.connect_end = current_offset;
+        }
+        
+        t.request_start = current_offset;
+        t.response_start = self.ttfb.as_secs_f64() * 1000.0;
+        t.response_end = self.total_duration.as_secs_f64() * 1000.0;
+        
+        t
+    }
+}
+
 use crate::error::{NetError, NetResult};
 use std::pin::Pin;
 use std::sync::Arc;
