@@ -208,16 +208,36 @@ impl ResourceFetcher {
         self.metrics.inc_total_requests();
         self.metrics.inc_in_flight();
         
-        let result = self.fetch_internal(req).await;
+        let (priority_tx, priority_rx) = tokio::sync::watch::channel(req.priority);
+        self.scheduler.register_active_stream(req.id, priority_tx);
+        
+        let req_id = req.id;
+        let scheduler_clone = self.scheduler.clone();
+
+        let mut result = self.fetch_internal(req).await;
         
         self.metrics.dec_in_flight();
-        match &result {
-            Ok(_) => {}
+        match &mut result {
+            Ok(resp) => {
+                if let Some(stream_box) = resp.body.take_stream().await {
+                    let throttled = crate::engine::throttle::ThrottledStream::new(
+                        stream_box,
+                        priority_rx,
+                        scheduler_clone,
+                        req_id,
+                    );
+                    resp.body = crate::http::response::ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::pin(throttled)))));
+                } else {
+                    self.scheduler.unregister_active_stream(req_id);
+                }
+            }
             Err(NetError::Cancelled) => {
+                self.scheduler.unregister_active_stream(req_id);
                 self.metrics.cancelled_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Cancel, "", "Request cancelled");
             }
             Err(e) => {
+                self.scheduler.unregister_active_stream(req_id);
                 self.metrics.failed_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, "", e);
             }
