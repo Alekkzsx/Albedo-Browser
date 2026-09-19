@@ -55,10 +55,11 @@ quinn = { version = "0.11", default-features = false, features = ["rustls", "run
 # Crypto & Security (W3C SRI)
 sha2 = "0.10"
 base64 = "0.22"
-async-compression = { version = "0.4.48", features = ["tokio", "gzip", "brotli", "deflate"] }
+async-compression = { version = "0.4.48", features = ["tokio", "gzip", "brotli", "deflate", "zstd"] }
 futures-util = "0.3.34"
 psl = "2.1.232"
 rustls-pki-types = "1.15.1"
+zstd = "0.14.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
