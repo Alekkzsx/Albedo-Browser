@@ -131,7 +131,7 @@ impl TransportClient {
             .with_no_client_auth();
         // Milestone 5: Telemetria Preditiva & 0-RTT
         config.enable_early_data = true;
-        config.resumption = rustls::client::Resumption::in_memory(256);
+        config.resumption = rustls::client::Resumption::in_memory_sessions(256);
 
         // Cada cliente particionado recebe seu próprio resolver DNS para não compartilhar cache/estado
         // PNA TODO: Em M5 instanciamos com uma flag block_private_ips se NIK for público.
@@ -215,7 +215,7 @@ impl TransportClient {
             
             let mut h3_failed = false;
             let mut tcp_failed = false;
-            let mut last_err = None;
+            let mut last_err = NetError::ConnectionFailed(req.url.to_string(), "Ambas as conexoes falharam".into());
             
             while let Some((is_h3, res)) = rx.recv().await {
                 match res {
@@ -238,15 +238,15 @@ impl TransportClient {
                         } else {
                             tcp_failed = true;
                         }
-                        last_err = Some(err);
+                        last_err = err;
                         
                         if h3_failed && tcp_failed {
-                            return Err(last_err.unwrap());
+                            return Err(last_err);
                         }
                     }
                 }
             }
-            return Err(NetError::ConnectionFailed(req.url.to_string(), "Ambas as conexoes falharam".into()));
+            return Err(last_err);
         }
 
         self.execute_tcp(req, start_time).await
