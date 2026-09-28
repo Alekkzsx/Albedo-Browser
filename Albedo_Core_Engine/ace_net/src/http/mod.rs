@@ -5,3 +5,4 @@ pub mod encoding;
 pub mod range;
 pub mod redirect;
 pub mod hints;
+pub mod dictionary;
