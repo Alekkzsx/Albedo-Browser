@@ -1,16 +1,18 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/Alekkzsx/Albedo-Browser/main/.github/assets/logo.png"
-       alt="Albedo Browser Logo" width="200" height="200"
+       alt="Albedo Browser Logo" width="180" height="180"
        onerror="this.style.display='none'">
 
-  <h1>Albedo Browser & Engine</h1>
+  <h1>Albedo Browser & Engine (ACE)</h1>
 
   <p><b>Um motor de navegador de nova geração, escrito em Rust, do zero — a alma é nossa, a fundação é compartilhada.</b></p>
 
-  <img src="https://img.shields.io/badge/Rust-1.85%2B_(Edition_2024)-orange.svg" alt="Rust 1.85+">
-  <img src="https://img.shields.io/badge/CI-Enterprise_Grade-success.svg" alt="CI Enterprise Grade">
-  <img src="https://img.shields.io/badge/Status-Fase_2_(Core_Engine)-yellow.svg" alt="Status">
-  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License MIT">
+  <p>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-1.85%2B_(Edition_2024)-orange.svg" alt="Rust 1.85+"></a>
+    <img src="https://img.shields.io/badge/CI-Enterprise_Grade-success.svg" alt="CI Enterprise Grade">
+    <img src="https://img.shields.io/badge/Memory_Safety-100%25_Safe_Rust-blue.svg" alt="Safe Rust">
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License MIT"></a>
+  </p>
 </div>
 
 <br>
@@ -19,155 +21,143 @@
 
 ## 📜 Manifesto de Engenharia
 
-O ecossistema web atual é dominado por monopólios arquiteturais. Engines gigantescas como Chromium (Blink) e Firefox (Gecko) carregam décadas de código legado, decisões arquiteturais antigas (single-process loops adaptados) e milhões de linhas de C++ que dificultam inovações radicais em segurança e performance.
+O ecossistema web atual é dominado por monopólios arquiteturais. Engines gigantescas como Chromium (Blink) e Firefox (Gecko) carregam décadas de código legado em C++, loops de thread única adaptados e milhões de linhas que dificultam inovações radicais em segurança, escalabilidade e eficiência de memória. O resultado são navegadores que consomem gigabytes de RAM apenas para exibir conteúdo básico.
 
-O resultado? Navegadores que consomem gigabytes de RAM apenas para renderizar texto e caixas coloridas.
+O **Albedo Browser** não é um fork, não é um wrapper e não é uma casca webview:
+- **Zero Chromium / Blink / WebKit / Gecko** sob o capô.
+- **Zero V8, SpiderMonkey, JavaScriptCore, QuickJS ou Boa** — o motor JavaScript (`ACE JS`) é forjado por nós.
+- **Zero CEF, Electron, Tauri, Wry ou WebView2**.
 
-O **Albedo Browser** não é um fork, nem um wrapper, nem um embed. Não há Chromium, Blink, WebKit, Gecko, Servo, V8, CEF, Electron ou WebView2 sob o capô. O **Albedo Engine (ACE)** é a nossa própria fundação — a árvore DOM/CSSOM, a cascata de estilos, os algoritmos de layout (Flex/Grid), o pipeline de pintura e o motor JavaScript são escritos por nós.
+O **Albedo Core Engine (ACE)** é construído para responder a uma pergunta de engenharia fundamental:
 
-Nosso objetivo não é ser mais um navegador de nicho, mas construir um motor com capacidade técnica, segurança e performance para **rivalizar diretamente com os monopólios**, devolvendo diversidade tecnológica à web.
-
-Este projeto responde a uma pergunta simples:
-
-> **Como seria um navegador web se ele fosse projetado hoje, do zero, em Rust, orquestrando as melhores crates do ecossistema e focando estritamente em processamento assíncrono e paralelismo massivo?**
-
----
-
-## 🧭 O que o Albedo é — e o que ele nunca será
-
-| ✅ O que o Albedo **É** | ❌ O que o Albedo **NUNCA será** |
-| --- | --- |
-| Um motor de renderização escrito por nós, em Rust | Um fork de Blink, WebKit ou Gecko |
-| Um motor JavaScript próprio (`ACE JS`) | Um embed de V8, SpiderMonkey, JavaScriptCore, QuickJS ou Boa |
-| Uma arquitetura multi-processo nativa | Um wrapper de CEF, Electron ou WebView2 |
-| Um compositor paralelo com foco em GPU | Uma webview de sistema (WKWebView, Wry/Tauri) |
-| Um orquestrador pragmático de crates maduras | Uma engine pronta "bala de prata" (ex: Servo original) |
-
-> **Não sofremos de "Not Invented Here".** Focamos a genialidade do time naquilo que define um navegador — renderização, layout e UI — e não em reescrever criptografia e event loops já perfeitamente resolvidos pela comunidade.
+> **Como seria um navegador web se ele fosse projetado hoje, do zero, em Rust, aproveitando o poder de paralelismo massivo, garantias de memory safety e orquestrando as melhores primitivas assíncronas do ecossistema?**
 
 ---
 
-## ⚖️ A Fronteira Pragmática
+## 🧭 O Que o Albedo É — e O Que Nunca Será
 
-O Albedo estabelece uma fronteira clara e inegociável entre o que **orquestramos** e o que **forjamos**. Esta é a alma do Paradigma Pragmático.
+| ✅ O Que o Albedo **É** | ❌ O Que o Albedo **NUNCA Será** |
+| :--- | :--- |
+| Um motor de renderização moderno escrito em Rust | Um fork de Blink, WebKit, Gecko ou Servo |
+| Um motor JavaScript próprio com VM de Bytecode e GC (`ACE JS`) | Uma incorporação de V8, SpiderMonkey ou engines prontas |
+| Uma árvore DOM imutável em Arena Slotmap geracional (`ace_dom`) | Um wrapper de CEF, Electron, WebView2 ou Tauri |
+| Um subsistema de rede assíncrono de alto desempenho (`ace_net`) | Uma webview de sistema (WKWebView, Wry) |
+| Um compositor orientado a GPU sobre `wgpu` (`ace_render`) | Uma engine baseada em parsers "bala de prata" opinativos |
 
-### 🧱 As Fundações — crates maduras e auditadas (usamos com orgulho)
+---
 
-Infraestrutura "chata, perigosa ou resolvida" é delegada ao melhor do ecossistema Rust. Herdar essa segurança é **obrigatório**.
+## ⚖️ O Paradigma Pragmático (A Regra de Ouro)
 
-| Domínio | Crates |
-| --- | --- |
-| **Async & Concorrência** | `tokio`, `rayon`, `crossbeam`, `mio` |
-| **Rede & Segurança** | `rustls`, `hyper`, `reqwest`, `url` |
-| **Tipografia & Unicode** | `icu4x`, `harfbuzz`, `rustybuzz` |
-| **Gráficos & Mídia** | `wgpu` (Vulkan / Metal / D3D12), decodificadores de imagem da comunidade |
-| **Estruturas de Dados** | HashMaps seguros e estruturas lock-free validadas com `loom` |
+O projeto Albedo estabelece uma fronteira clara e rigorosa entre o que **orquestramos** e o que **forjamos**:
 
-### 🔨 A Alma — 100% construída do zero por nós
+### 🧱 1. As Fundações (Crates consolidadas e auditadas do ecossistema)
+Infraestrutura básica e transporte são delegados a bibliotecas maduras, testadas em batalha e auditadas:
+- **Async & Concorrência:** `tokio`, `rayon`, `crossbeam`, `loom`
+- **Rede & Transporte:** `hyper`, `rustls` (WebPKI), `hickory-resolver` (DNS), `url`
+- **Tipografia & Unicode:** `icu4x`, `harfbuzz`, `rustybuzz`, `ttf-parser`
+- **Gráficos & Janelas:** `wgpu` (Vulkan / Metal / D3D12), `winit`
+- **Compressão & Hashing:** `zstd`, `brotli`, `flate2`, `sha2`
 
-É aqui que vive o diferencial competitivo do ACE. Nada disso é terceirizado.
+### 🔨 2. A Alma (100% forjado do zero pela engenharia do ACE)
+O diferencial competitivo do navegador vive aqui e é inteiramente nosso:
+- **DOM & CSSOM:** Tokenizer HTML5 (WHATWG §12) streaming com SIMD, Tree Builder com 16-step Adoption Agency Algorithm, CSSOM e seletor CSS4 com Ancestor Bloom Filter.
+- **Motor de Estilos:** Cascata, especificidade, valores computados, herança, `@layer` e custom properties.
+- **Geometry Engine (Layout):** Box Model, BFC/IFC, Flexbox e CSS Grid massivamente paralelos.
+- **Pipeline de Pintura:** Display list, rasterização por CPU/GPU e compositing com camadas.
+- **ACE JS:** Motor JavaScript próprio: lexer, parser, gerador de bytecode, VM registradores/pilha, GC geracional e JIT em tiers.
+- **Segurança & Sandboxing:** Particionamento triplo de cache (`NetworkIsolationKey`), isolamento de processos, cookies CHIPS e SOP/CORS/CSP nativos.
+- **Browser Chrome:** Janela nativa, abas, omnibox e DevTools (*dogfooding* sobre a própria engine).
 
-- **DOM & CSSOM** — Tokenizer HTML5 (spec WHATWG) e parser CSS próprios, com árvore imutável e segura.
-- **Motor de Estilos** — Cascata, especificidade, valores computados, media/feature queries, custom properties e `@layer`.
-- **Geometry Engine (Layout)** — Box Model, BFC/IFC, margin collapsing, Flexbox e CSS Grid, massivamente paralelos.
-- **Pipeline de Pintura** — Display list, rasterização e compositing orientados a GPU via `wgpu`.
-- **ACE JS** — Motor JavaScript próprio: lexer, parser, bytecode, VM, GC geracional e JIT em tiers.
-- **Multi-processo & Sandbox** — Isolamento por processo, IPC binário próprio e políticas de segurança nativas.
-- **Browser Chrome** — Janela nativa, abas, omnibox e DevTools construídos sobre o próprio motor (*dogfooding*).
-
-### 🚫 Estritamente Proibido ("Mata-Projetos")
-
-- **Motores de renderização inteiros:** Blink, WebKit, Gecko, Servo.
-- **Motores JavaScript prontos:** V8, SpiderMonkey, JavaScriptCore, QuickJS, Boa.
-- **Encapsuladores / webviews:** CEF, Electron, WebView2, WKWebView, Wry, Tauri.
-- **Engines opinativas de layout/DOM:** qualquer crate que resolva a cascata CSS, o layout web ou a árvore DOM completa por nós. Nós implementamos a lógica W3C.
+> [!NOTE]
+> Essa fronteira é auditada automaticamente no CI via [`deny.toml`](./deny.toml), que proíbe qualquer dependência não autorizada na árvore de pacotes.
 
 ---
 
 ## 🏛️ Arquitetura — O Ecossistema ACE
 
-Todas as crates internas vivem sob o guarda-chuva **ACE (Albedo Core Engine)**, prefixadas com `ace_`, organizadas em uma pirâmide de camadas onde cada camada depende apenas das imediatamente inferiores — baixo acoplamento, alta coesão.
+Todas as crates do motor residem no diretório [`Albedo_Core_Engine/`](./Albedo_Core_Engine) sob uma pirâmide de camadas rigorosa:
 
-| Camada | Crate | Responsabilidade |
-| --- | --- | --- |
-| Foundation | `ace_core` | Tipos fundamentais (`AceError`, IDs), matemática 2D/3D, Event Loop, Thread Pool, logging |
-| Communication | `ace_ipc` | Protocolo binário próprio, serialização, canais |
-| Networking | `ace_net` | DNS, HTTP, pool de conexões, cache, resource fetcher |
-| Security | `ace_core` + `ace_net` | URL parser, SOP, CORS, CSP, cookie jar |
-| Parsing | `ace_dom`, `ace_style` | Tokenizers e parsers HTML5 / CSS3 |
-| Styling | `ace_style` | Cascata, especificidade, valores computados |
-| Layout | `ace_layout` | Box model, BFC/IFC, Flexbox, Grid, positioning |
-| Media | `ace_media` | Decodificação de imagens |
-| Rendering | `ace_render` | Display list, rasterização, tipografia, compositing |
-| JavaScript | `ace_js` | Lexer, parser, bytecode, VM, GC, JIT |
-| Persistence | `ace_storage` | Cookies, LocalStorage, KV store, histórico |
-| Application | `ace_browser` | Binário final: janela, chrome, abas, DevTools |
-
-A comunicação entre camadas acontece por interfaces públicas bem definidas e um tipo de erro unificado (`AceError`), sem dependências cruzadas indevidas.
+| Camada | Crate | Responsabilidade | Status |
+| :--- | :--- | :--- | :---: |
+| **Foundation** | [`ace_core`](./Albedo_Core_Engine/ace_core) | Tipos fundamentais (`AceError`), matemática 2D/3D, Event Loop WHATWG, Arena, Tri-color GC, buffers lock-free | ✅ Concluído |
+| **Parsing** | [`ace_dom`](./Albedo_Core_Engine/ace_dom) | Tokenizer HTML5 SIMD, Tree Builder (AAA), DOM imutável, seletores CSS4, MutationObserver, Live Ranges | ✅ Concluído |
+| **Networking** | [`ace_net`](./Albedo_Core_Engine/ace_net) | ResourceFetcher, Cache RFC 9111 (L1 RAM + L2 WAL), DoH Happy Eyeballs v2, Early Hints 103, Scheduler RFC 9218 | 🚧 Fechamento |
+| **Security** | `ace_core` + `ace_net` | Origin, SOP, CORS, CSP, HSTS, PNA, Cookie Jar com suporte a CHIPS e isolamento triplo | ✅ Concluído |
+| **Styling** | `ace_style` | Cascata CSS3, especificidade, valores computados, herança e matching | ⏳ Planejado |
+| **Layout** | `ace_layout` | Box Model, BFC/IFC, Flexbox, CSS Grid, margin collapsing e posicionamento | ⏳ Planejado |
+| **Rendering** | `ace_render` | Display list, text layout com HarfBuzz/ICU4X, rasterização e compositing GPU via `wgpu` | ⏳ Planejado |
+| **JavaScript** | `ace_js` | Motor JS nativo: Lexer, Parser, Bytecode VM, GC Geracional e JIT | ⏳ Planejado |
+| **Persistence** | `ace_storage` | LocalStorage, IndexedDB / KV Store transacional, histórico e cookies persistentes | ⏳ Planejado |
+| **Communication** | `ace_ipc` | Protocolo binário multi-processo de alta velocidade e canais tipados | ⏳ Planejado |
+| **Application** | `ace_browser` | Binário executável: Janela Winit, UI do navegador, abas, omnibox e DevTools | ⏳ Planejado |
 
 ---
 
-## 🧠 Metodologia de Engenharia Tridimensional (3D)
+## 🗺️ Roadmap de Engenharia (Visão Macro)
 
-Cada decisão, tarefa e validação é mapeada em três eixos ortogonais:
-
-- **Eixo X — Integração Horizontal:** pureza das fronteiras entre crates (ex: `ace_layout` nunca chama `ace_net` diretamente).
-- **Eixo Y — Profundidade Vertical:** conformidade matemática com as especificações (WHATWG, W3C, ECMA).
-- **Eixo Z — Horizonte Temporal:** as 14 fases de entrega, cada uma atravessando X e Y com valor funcional.
-
-O roadmap técnico exaustivo — sub-milestones, performance budgets, riscos e DoD de cada fase — vive em [`PLANO.md`](./PLANO.md).
-
----
-
-## 🗺️ Roadmap (visão macro)
+O desenvolvimento segue as 14 fases mapeadas na **Metodologia de Engenharia Tridimensional (3D)**:
 
 | Fase | Escopo | Status |
-| --- | --- | --- |
-| 1 | Fundação & Governança | ✅ Concluída |
-| 2 | Core Engine, Infraestrutura & Matemática | 🚧 Em andamento |
-| 3 | Motor de Rede & TLS | ⏳ Planejada |
-| 4 | Sandboxing Nativo & Políticas Web | ⏳ Planejada |
-| 5 | Parsing (DOM & CSSOM) | ⏳ Planejada |
-| 6 | Render Tree & Motor de Estilos | ⏳ Planejada |
-| 7 | Geometry Engine (Layout) | ⏳ Planejada |
-| 8 | Pintura, Rasterização & Tipografia | ⏳ Planejada |
-| 9 | Janela Nativa & Browser Chrome | ⏳ Planejada |
-| 10 | Motor JavaScript (`ACE JS`) | ⏳ Planejada |
-| 11 | Armazenamento & Persistência | ⏳ Planejada |
-| 12 | Multi-Processo & Isolamento | ⏳ Planejada |
-| 13 | Web APIs Modernas & SPAs | ⏳ Planejada |
-| 14 | Otimizações, Conformidade & Evolução | ⏳ Planejada |
+| :---: | :--- | :---: |
+| **1** | Fundação, Governança & CI Enterprise | ✅ Concluída |
+| **2** | Core Engine, Infraestrutura & Fundação Matemática (`ace_core`) | ✅ Concluída |
+| **5** | Parsing Web, Tokenizador HTML5 & DOM Tree (`ace_dom`) | ✅ Concluída |
+| **3** | Motor de Rede, TLS & Cache HTTP RFC 9111 (`ace_net`) | 🚧 Em Fechamento |
+| **4** | Sandboxing Nativo & Políticas de Isolamento de Processo | 🟡 Em Andamento |
+| **6** | Render Tree & Motor de Estilos (`ace_style`) | ⏳ Planejada |
+| **7** | Geometry Engine / Layout: Flexbox & Grid (`ace_layout`) | ⏳ Planejada |
+| **8** | Pintura, Rasterização & Tipografia GPU (`ace_render`) | ⏳ Planejada |
+| **9** | Janela Nativa & Browser Chrome (`ace_browser`) | ⏳ Planejada |
+| **10** | Motor JavaScript Próprio (`ace_js`) | ⏳ Planejada |
+| **11** | Armazenamento & Persistência Local (`ace_storage`) | ⏳ Planejada |
+| **12** | Arquitetura Multi-Processo & IPC Binário (`ace_ipc`) | ⏳ Planejada |
+| **13** | Web APIs Modernas & SPAs | ⏳ Planejada |
+| **14** | Hardening de Conformidade WPT & Otimizações | ⏳ Planejada |
+
+O roteiro técnico detalhado com cada milestone, estruturas de dados e performance budgets encontra-se no [**PLANO.md**](./PLANO.md).
 
 ---
 
-## 🎯 Princípios de Engenharia
+## 📚 Base de Documentação
 
-- **Memory Safety First** — Rust mitiga as categorias clássicas de vulnerabilidades da web (buffer overflow, use-after-free).
-- **Modularidade via Crates** — cada componente é isolado em bibliotecas bem delimitadas, garantindo reuso e manutenção desacoplada.
-- **Zero-Cost Abstractions** — a ponte entre DOM e renderizador evita alocações desnecessárias usando lifetimes e borrowing estrito.
-- **Fearless Concurrency** — layout e pintura tiram proveito do modelo de concorrência do Rust para paralelismo massivo.
-- **Conformidade como Teste** — TDD guiado pela suíte *Web Platform Tests* (WPT) desde o dia 1 de parsing.
-- **Governança Contínua** — toda decisão arquitetural relevante vira um ADR versionado em `docs/adr/`.
+Toda a documentação técnica, especificações de subsistemas e relatórios estão centralizados em [`docs/`](./docs):
+
+- 🗺️ [**PLANO.md**](./PLANO.md) — O Plano Mestre de Engenharia do navegador (Fonte da Verdade).
+- 📑 [**Central de Documentação (`docs/README.md`)**](./docs/README.md) — Guia de navegação completo.
+  - 🌐 [Arquitetura de Rede (`docs/architecture/ace_net.md`)](./docs/architecture/ace_net.md)
+  - 🌳 [Arquitetura do DOM & Parsing (`docs/architecture/ace_dom.md`)](./docs/architecture/ace_dom.md)
+  - 🧪 [Infraestrutura de Testes 4-Tier (`docs/architecture/test_infra.md`)](./docs/architecture/test_infra.md)
+  - 🎯 [Escopo Normativo do MVP (`docs/scope/mvp_scope.md`)](./docs/scope/mvp_scope.md)
+  - 🎨 [Propriedades CSS Suportadas (`docs/scope/css_properties.md`)](./docs/scope/css_properties.md)
+  - 📊 [Relatórios de Testes e Auditorias (`docs/reports/`)](./docs/reports/)
+  - 🏛️ [Architecture Decision Records (`docs/adr/`)](./docs/adr/)
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Como Executar e Contribuir
 
-> O projeto está na **Fase 2 (Core Engine)**. Instruções completas de build, teste e debug chegam com o amadurecimento do workspace — veja `CONTRIBUTING.md`.
+### Pré-requisitos
+- **Rust 1.85+ (Edition 2024)** via [rustup](https://rustup.rs/)
+
+### Build e Testes
 
 ```bash
 # Clone o repositório
 git clone https://github.com/Alekkzsx/Albedo-Browser.git
 cd Albedo-Browser
 
-# Instale as ferramentas de desenvolvimento
-cargo xtask setup
-
-# Build do workspace
+# Compilar todo o workspace
 cargo build --workspace
 
-# Testes (gate obrigatório de CI)
+# Executar a suíte de testes de todos os componentes
 cargo test --workspace
 
-# Lint sem exceções
-cargo clippy -- -D warnings
+# Validação rigorosa de linter (zero warnings tolerados)
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+---
+
+## 📄 Licença
+
+Este projeto é distribuído sob a licença **MIT**. Veja o arquivo [LICENSE](./LICENSE) para mais detalhes.
