@@ -252,20 +252,52 @@ impl ResourceFetcher {
     async fn fetch_internal(&self, mut req: Request) -> NetResult<Response> {
         let now = SystemTime::now();
 
-        // 0. HSTS Auto-Upgrade
-        crate::engine::pipeline::apply_hsts(&mut req, self, now);
-
-        // 0.1. Interceptação de Service Worker (W3C Fetch Spec §4.2)
-        if let Some(sw_response) = crate::engine::pipeline::apply_service_worker(&req, self).await? {
+        if let Some(sw_response) = self.apply_hsts_and_service_worker(&mut req, now).await? {
             return Ok(sw_response);
         }
 
         let nik = req.network_isolation_key.clone();
 
+        self.apply_security_policies(&req, nik.as_ref()).await?;
+
+        // 1. Registra o token de cancelamento na tabela de requisições ativas
+        self.cancellation_registry
+            .register(req.id, req.cancellation_token.clone());
+        let _guard = RequestRegistrationGuard(&self.cancellation_registry, req.id);
+
+        if req.cancellation_token.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+
+        // 2. Injeção de Cookies relevantes
+        self.inject_cookies(&mut req, nik.as_ref(), now);
+
+        // 3. Invalidação de cache em métodos mutantes
+        self.invalidate_cache_if_mutating(&req);
+
+        // 4. Consulta ao Cache HTTP RFC 9111
+        let (cached_entry, cached_resp) = self.check_http_cache(&mut req, nik.as_ref(), now).await?;
+        if let Some(resp) = cached_resp {
+            return Ok(resp);
+        }
+
+        // 5. Resolução da política de Referrer
+        self.apply_referrer_policy(&mut req);
+
+        // 6. Execução de transporte com suporte a redirecionamentos (3xx)
+        self.execute_network_transport(req, nik.as_ref(), cached_entry, now).await
+    }
+
+    async fn apply_hsts_and_service_worker(&self, req: &mut Request, now: SystemTime) -> NetResult<Option<Response>> {
+        crate::engine::pipeline::apply_hsts(req, self, now);
+        crate::engine::pipeline::apply_service_worker(req, self).await
+    }
+
+    async fn apply_security_policies(&self, req: &Request, nik: Option<&crate::cache::NetworkIsolationKey>) -> NetResult<()> {
         // 0.15 Private Network Access (PNA) Nível 1
         if let Some(host) = req.url.host_str() {
             if crate::security::pna::is_host_private_or_local(host) {
-                let initiator_is_public = nik.as_ref().map_or(false, |n| {
+                let initiator_is_public = nik.map_or(false, |n| {
                     if let ace_core::security::origin::Origin::Tuple { host: h, .. } = &n.top_frame_origin {
                         !crate::security::pna::is_host_private_or_local(&h.as_str())
                     } else {
@@ -285,16 +317,14 @@ impl ResourceFetcher {
         }
 
         // 0.2 CORS Preflight
-        if crate::security::cors::requires_preflight(&req) {
-            if !self.cors_cache.is_cached_and_valid(&req) {
-                let preflight_req = crate::security::cors::build_preflight_request(&req)?;
+        if crate::security::cors::requires_preflight(req) {
+            if !self.cors_cache.is_cached_and_valid(req) {
+                let preflight_req = crate::security::cors::build_preflight_request(req)?;
                 let preflight_resp = self.transport.execute(&preflight_req).await?;
                 crate::security::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
                 
-                // Process and cache the preflight response
                 if let Some(max_age_val) = preflight_resp.headers.get("access-control-max-age").and_then(|v| v.to_str().ok()) {
                     if let Ok(mut max_age_secs) = max_age_val.parse::<u64>() {
-                        // Teto normativo de 2 horas (7200 segundos) para CORS Preflight Cache
                         if max_age_secs > 7200 {
                             max_age_secs = 7200;
                         }
@@ -325,18 +355,11 @@ impl ResourceFetcher {
                 }
             }
         }
+        Ok(())
+    }
 
-        // 1. Registra o token de cancelamento na tabela de requisições ativas
-        self.cancellation_registry
-            .register(req.id, req.cancellation_token.clone());
-        let _guard = RequestRegistrationGuard(&self.cancellation_registry, req.id);
-
-        if req.cancellation_token.is_cancelled() {
-            return Err(NetError::Cancelled);
-        }
-
-        // 2. Injeção de Cookies relevantes (RFC 6265bis + CHIPS Partitioned)
-        let top_level_site = nik.as_ref().and_then(|k| match &k.top_frame_origin {
+    fn inject_cookies(&self, req: &mut Request, nik: Option<&crate::cache::NetworkIsolationKey>, now: SystemTime) {
+        let top_level_site = nik.and_then(|k| match &k.top_frame_origin {
             Origin::Tuple { host, .. } => Some(host.as_str().to_string()),
             Origin::Opaque(_) => None,
         });
@@ -363,16 +386,17 @@ impl ResourceFetcher {
                 req.headers.insert(http::header::COOKIE, cookie_hdr);
             }
         }
+    }
 
-        // 3. Invalidação de cache em métodos mutantes (RFC 9111 §4.4)
+    fn invalidate_cache_if_mutating(&self, req: &Request) {
         if req.method == Method::POST || req.method == Method::PUT || req.method == Method::DELETE {
             self.cache.invalidate(&req.url);
         }
+    }
 
-        // 4. Consulta ao Cache HTTP RFC 9111 (apenas para requisições idempotentes GET/HEAD)
+    async fn check_http_cache(&self, req: &mut Request, nik: Option<&crate::cache::NetworkIsolationKey>, now: SystemTime) -> NetResult<(Option<CacheEntry>, Option<Response>)> {
         let mut cached_entry = None;
         if req.method == Method::GET || req.method == Method::HEAD {
-            // Verificação de requisição de Range
             let mut is_range_request = false;
             let mut requested_start = 0;
             let mut requested_end = 0;
@@ -391,7 +415,7 @@ impl ResourceFetcher {
             }
 
             if is_range_request {
-                if let Some(bytes) = self.cache.get_range(nik.as_ref(), &req.url, requested_start, requested_end).await {
+                if let Some(bytes) = self.cache.get_range(nik, &req.url, requested_start, requested_end).await {
                     self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     self.metrics.bytes_served_from_cache.fetch_add(
                         bytes.len() as u64,
@@ -399,14 +423,14 @@ impl ResourceFetcher {
                     );
                     crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Sparse Range Hit");
                     
-                    let mut headers = req.headers.clone(); // simplificado
+                    let mut headers = req.headers.clone();
                     headers.insert(
                         http::header::CONTENT_RANGE, 
                         http::HeaderValue::from_str(&format!("bytes {}-{}/*", requested_start, requested_end)).unwrap()
                     );
 
-                    return Ok(Response {
-                        url: req.url,
+                    return Ok((None, Some(Response {
+                        url: req.url.clone(),
                         status: StatusCode::PARTIAL_CONTENT,
                         headers,
                         body: ResponseBody::Full(bytes),
@@ -417,10 +441,9 @@ impl ResourceFetcher {
                         content_range: Some(crate::http::range::ContentRange { start: requested_start, end: requested_end, total: None }),
                         from_cache: true,
                         timing: ResponseTiming::default(),
-                    });
+                    })));
                 }
-            } else if let Some(entry) = self.cache.get(nik.as_ref(), &req.url).await {
-                // Validação de cabeçalhos secundários Vary (RFC 9111 §4.1)
+            } else if let Some(entry) = self.cache.get(nik, &req.url).await {
                 if entry.matches_request_headers(&req.headers) {
                     if entry.is_fresh(now) {
                         if let Some(ref digests) = req.integrity {
@@ -433,29 +456,19 @@ impl ResourceFetcher {
                         );
                         crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Fresh Hit");
                         
-                        // Cache Hit completo! Zero latência de rede.
-                        return Ok(Response {
-                            url: req.url,
+                        return Ok((None, Some(Response {
+                            url: req.url.clone(),
                             status: entry.status,
                             headers: entry.headers.clone(),
                             body: ResponseBody::Full(entry.body.clone()),
-                            mime_type: entry
-                                .headers
-                                .get(CONTENT_TYPE)
-                                .and_then(|v| v.to_str().ok())
-                                .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                .unwrap_or_else(|| "application/octet-stream".into()),
-                            charset: entry
-                                .headers
-                                .get(CONTENT_TYPE)
-                                .and_then(|v| v.to_str().ok())
-                                .and_then(extract_charset_from_content_type),
+                            mime_type: entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("").trim().into()).unwrap_or_else(|| "application/octet-stream".into()),
+                            charset: entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).and_then(extract_charset_from_content_type),
                             content_encoding: None,
                             retry_after: None,
                             content_range: None,
                             from_cache: true,
                             timing: ResponseTiming::default(),
-                        });
+                        })));
                     } else if entry.is_stale_revalidatable(now) {
                         if let Some(ref digests) = req.integrity {
                             crate::security::sri::verify_integrity(entry.body.as_ref(), digests)?;
@@ -468,9 +481,6 @@ impl ResourceFetcher {
                         );
                         crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheHit, req.url.as_str(), "Stale-While-Revalidate Hit");
                         
-                        // RFC 5861: Stale-While-Revalidate Hit!
-                        // Entrega o conteúdo imediatamente ao renderer (0ms de espera)
-                        // e dispara revalidação assíncrona desacoplada em background
                         let bg_fetcher = self.clone();
                         let mut bg_req = req.clone();
                         let cond_headers = entry.conditional_headers();
@@ -479,36 +489,26 @@ impl ResourceFetcher {
                                 bg_req.headers.insert(name, v);
                             }
                         }
-                        let bg_nik = nik.clone();
+                        let bg_nik = nik.cloned();
                         let bg_entry = entry.clone();
                         tokio::spawn(async move {
                             let _ = bg_fetcher.revalidate_background(bg_req, bg_nik, bg_entry).await;
                         });
 
-                        return Ok(Response {
-                            url: req.url,
+                        return Ok((None, Some(Response {
+                            url: req.url.clone(),
                             status: entry.status,
                             headers: entry.headers.clone(),
                             body: ResponseBody::Full(entry.body.clone()),
-                            mime_type: entry
-                                .headers
-                                .get(CONTENT_TYPE)
-                                .and_then(|v| v.to_str().ok())
-                                .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                .unwrap_or_else(|| "application/octet-stream".into()),
-                            charset: entry
-                                .headers
-                                .get(CONTENT_TYPE)
-                                .and_then(|v| v.to_str().ok())
-                                .and_then(extract_charset_from_content_type),
+                            mime_type: entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("").trim().into()).unwrap_or_else(|| "application/octet-stream".into()),
+                            charset: entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).and_then(extract_charset_from_content_type),
                             content_encoding: None,
                             retry_after: None,
                             content_range: None,
                             from_cache: true,
                             timing: ResponseTiming::default(),
-                        });
+                        })));
                     } else {
-                        // Entrada expirada (stale) - injeta cabeçalhos de revalidação condicional
                         self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         self.metrics.cache_revalidations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheMiss, req.url.as_str(), "Stale - Needs Revalidation");
@@ -530,8 +530,10 @@ impl ResourceFetcher {
                 crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::CacheMiss, req.url.as_str(), "Not found in cache");
             }
         }
+        Ok((cached_entry, None))
+    }
 
-        // 5. Resolução da política de Referrer
+    fn apply_referrer_policy(&self, req: &mut Request) {
         if let Some(ref referrer_url) = req.referrer {
             let current_origin = Origin::parse(referrer_url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
             if let Some(computed_ref) = compute_referrer(&current_origin, referrer_url.as_str(), req.url.as_str(), req.referrer_policy) {
@@ -540,35 +542,41 @@ impl ResourceFetcher {
                 }
             }
         }
+    }
 
-        // 6. Execução de transporte com suporte a redirecionamentos (3xx)
-        let max_redirects = match req.redirect_policy {
+    async fn execute_network_transport(
+        &self,
+        mut current_req: Request,
+        nik: Option<&crate::cache::NetworkIsolationKey>,
+        mut current_cached_entry: Option<CacheEntry>,
+        now: SystemTime,
+    ) -> NetResult<Response> {
+        let max_redirects = match current_req.redirect_policy {
             crate::http::request::RedirectPolicy::Follow(max) => max,
             crate::http::request::RedirectPolicy::Manual => 0,
             crate::http::request::RedirectPolicy::Error => 0,
         };
 
         let mut visited_urls = HashSet::new();
-        visited_urls.insert(req.url.to_string());
+        visited_urls.insert(current_req.url.to_string());
 
-        let mut current_req = req;
-        let mut current_cached_entry = cached_entry;
+        let top_level_site = nik.and_then(|k| match &k.top_frame_origin {
+            Origin::Tuple { host, .. } => Some(host.as_str().to_string()),
+            Origin::Opaque(_) => None,
+        });
 
         loop {
             let request_time = SystemTime::now();
             
-            // 0.5 Upgrade dinâmico para HTTP/3 baseado em cache Alt-Svc
             if let Some(alt_svc) = self.alt_svc_registry.get(current_req.url.host_str().unwrap_or(""), current_req.url.port().unwrap_or(443)) {
                 if alt_svc.protocol_id.starts_with("h3") {
                     current_req.force_h3 = true;
                 }
             }
             
-            // Adquire permissão no ResourceScheduler (throttling e limits por host)
             let host_smol = current_req.url.host_str().unwrap_or("").into();
             let _permit = self.scheduler.acquire(current_req.id, current_req.priority, host_smol).await;
             
-            // Tentativa de execução de rede com retentativa automática (Frente B)
             let is_idempotent = current_req.method == Method::GET || current_req.method == Method::HEAD || current_req.method == Method::OPTIONS;
             let max_attempts = if is_idempotent { 3 } else { 1 };
             let mut attempt = 0;
@@ -616,17 +624,8 @@ impl ResourceFetcher {
                                         status: cached.status,
                                         headers: cached.headers.clone(),
                                         body: ResponseBody::Full(cached.body.clone()),
-                                        mime_type: cached
-                                            .headers
-                                            .get(CONTENT_TYPE)
-                                            .and_then(|v| v.to_str().ok())
-                                            .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                            .unwrap_or_else(|| "application/octet-stream".into()),
-                                        charset: cached
-                                            .headers
-                                            .get(CONTENT_TYPE)
-                                            .and_then(|v| v.to_str().ok())
-                                            .and_then(extract_charset_from_content_type),
+                                        mime_type: cached.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("").trim().into()).unwrap_or_else(|| "application/octet-stream".into()),
+                                        charset: cached.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).and_then(extract_charset_from_content_type),
                                         content_encoding: None,
                                         retry_after: None,
                                         content_range: None,
@@ -672,17 +671,8 @@ impl ResourceFetcher {
                                     status: cached.status,
                                     headers: cached.headers.clone(),
                                     body: ResponseBody::Full(cached.body.clone()),
-                                    mime_type: cached
-                                        .headers
-                                        .get(CONTENT_TYPE)
-                                        .and_then(|v| v.to_str().ok())
-                                        .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                                        .unwrap_or_else(|| "application/octet-stream".into()),
-                                    charset: cached
-                                        .headers
-                                        .get(CONTENT_TYPE)
-                                        .and_then(|v| v.to_str().ok())
-                                        .and_then(extract_charset_from_content_type),
+                                    mime_type: cached.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("").trim().into()).unwrap_or_else(|| "application/octet-stream".into()),
+                                    charset: cached.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).and_then(extract_charset_from_content_type),
                                     content_encoding: None,
                                     retry_after: None,
                                     content_range: None,
@@ -702,7 +692,6 @@ impl ResourceFetcher {
             };
             let response_time = SystemTime::now();
 
-            // Processa cabeçalhos Set-Cookie da resposta
             self.cookie_jar.process_response_headers(
                 &current_req.url,
                 &network_response.headers,
@@ -710,7 +699,6 @@ impl ResourceFetcher {
                 response_time,
             );
 
-            // Atualiza HSTS se em conexão HTTPS
             if current_req.url.scheme() == "https" {
                 if let Some(hsts_val) = network_response.headers.get(STRICT_TRANSPORT_SECURITY) {
                     if let Some(host) = current_req.url.host_str() {
@@ -719,7 +707,6 @@ impl ResourceFetcher {
                 }
             }
 
-            // Processa cabeçalho W3C Clear-Site-Data se em contexto seguro
             if current_req.url.scheme() == "https" {
                 if let Some(csd_val) = network_response.headers.get("clear-site-data") {
                     let action = ClearSiteDataAction::parse(csd_val);
@@ -734,19 +721,17 @@ impl ResourceFetcher {
                 }
             }
 
-            // Análise e armazenamento de Alt-Svc (RFC 7838) se presente
             if let Some(alt_svc_raw) = network_response.headers.get("alt-svc").and_then(|v| v.to_str().ok()) {
                 let records = parse_alt_svc(alt_svc_raw, response_time);
                 if let Some(host) = current_req.url.host_str() {
-                    self.alt_svc_registry.insert(nik.as_ref(), host, records);
+                    self.alt_svc_registry.insert(nik, host, records);
                 }
             }
 
-            // 7. Tratamento de Revalidação Condicional 304 Not Modified
             if network_response.status == StatusCode::NOT_MODIFIED {
                 if let Some(mut stale_entry) = current_cached_entry {
                     let updated = self.cache.update_304(
-                        nik.as_ref(),
+                        nik,
                         &current_req.url,
                         &network_response.headers,
                         response_time,
@@ -761,17 +746,8 @@ impl ResourceFetcher {
                         status: StatusCode::OK,
                         headers: final_entry.headers.clone(),
                         body: ResponseBody::Full(final_entry.body.clone()),
-                        mime_type: final_entry
-                            .headers
-                            .get(CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .map(|s| s.split(';').next().unwrap_or("").trim().into())
-                            .unwrap_or_else(|| "application/octet-stream".into()),
-                        charset: final_entry
-                            .headers
-                            .get(CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .and_then(extract_charset_from_content_type),
+                        mime_type: final_entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("").trim().into()).unwrap_or_else(|| "application/octet-stream".into()),
+                        charset: final_entry.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).and_then(extract_charset_from_content_type),
                         content_encoding: None,
                         retry_after: None,
                         content_range: None,
@@ -781,7 +757,6 @@ impl ResourceFetcher {
                 }
             }
 
-            // 8. Tratamento de Redirecionamentos (3xx)
             if max_redirects > 0 {
                 let redirect_action = handle_redirect(
                     &current_req,
@@ -792,36 +767,32 @@ impl ResourceFetcher {
                 )?;
 
                 if let RedirectAction::Follow(follow) = redirect_action {
-                    // Prepara próxima iteração do salto de redirecionamento
                     current_req.url = follow.new_url;
                     current_req.method = follow.new_method;
                     current_req.body = follow.new_body;
                     current_req.headers = follow.new_headers;
-                    current_cached_entry = self.cache.get(nik.as_ref(), &current_req.url).await;
+                    current_cached_entry = self.cache.get(nik, &current_req.url).await;
                     continue;
                 }
             }
 
-            // 8.5. Validação de CORS e Subresource Integrity (W3C SRI)
             crate::security::cors::validate_cors_response(&current_req, &network_response)?;
 
             if let Some(ref digests) = current_req.integrity {
                 crate::security::sri::verify_integrity(network_response.body.as_bytes(), digests)?;
             }
 
-            // Atualiza métrica de bytes transferidos da rede
             self.metrics.bytes_transferred.fetch_add(
                 network_response.body.as_bytes().len() as u64,
                 std::sync::atomic::Ordering::Relaxed,
             );
 
-            // 9. Armazena no Cache se a resposta for elegível
             if network_response.status == StatusCode::PARTIAL_CONTENT {
                 if let Some(cr_val) = network_response.headers.get(http::header::CONTENT_RANGE) {
                     if let Some(cr) = crate::http::range::ContentRange::parse(cr_val) {
                         if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
                             self.cache.put_range(
-                                nik.as_ref(),
+                                nik,
                                 current_req.url.clone(),
                                 cr.start,
                                 cr.end,
@@ -840,13 +811,12 @@ impl ResourceFetcher {
                     request_time,
                     response_time,
                 ).with_request_headers(current_req.headers.clone());
-                self.cache.put(nik.as_ref(), current_req.url.clone(), entry);
+                self.cache.put(nik, current_req.url.clone(), entry);
             }
 
             return Ok(network_response);
         }
     }
-
     /// Executa revalidação de cache assíncrona em background para RFC 5861 (stale-while-revalidate).
     async fn revalidate_background(
         &self,
