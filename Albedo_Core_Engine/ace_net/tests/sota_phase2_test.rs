@@ -260,7 +260,7 @@ async fn test_service_worker_fetch_hook_integration() {
     let resp = fetcher.fetch(req).await.unwrap();
 
     assert_eq!(resp.status, StatusCode::OK);
-    assert_eq!(resp.text().unwrap(), "SW Intercepted");
+    assert_eq!(resp.clone().text_async().await.unwrap(), "SW Intercepted");
 }
 
 // 10. WebSocket Upgrade RFC 6455

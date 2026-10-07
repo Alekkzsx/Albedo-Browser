@@ -83,5 +83,5 @@ async fn test_fetcher_transparent_gzip_decompression_live() {
 
     assert_eq!(resp.status, StatusCode::OK);
     assert_eq!(resp.content_encoding, Some(ContentEncoding::Gzip));
-    assert_eq!(resp.text().unwrap(), "<!doctype html><h1>Transparent Gzip Decompression Succeeded</h1>");
+    assert_eq!(resp.clone().text_async().await.unwrap(), "<!doctype html><h1>Transparent Gzip Decompression Succeeded</h1>");
 }

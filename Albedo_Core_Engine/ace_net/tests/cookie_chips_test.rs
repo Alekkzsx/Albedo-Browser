@@ -111,5 +111,5 @@ async fn test_fetcher_cookie_lifecycle_live() {
     // 2. Segunda requisição deve enviar automaticamente o cookie armazenado
     let req2 = Request::get(&url).unwrap().build();
     let resp2 = fetcher.fetch(req2).await.unwrap();
-    assert_eq!(resp2.text().unwrap(), "session_auth=secret_token_999");
+    assert_eq!(resp2.clone().text_async().await.unwrap(), "session_auth=secret_token_999");
 }
