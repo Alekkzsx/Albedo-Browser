@@ -71,7 +71,7 @@ async fn test_fetch_metadata_live_server_reception() {
         .build();
 
     let resp = fetcher.fetch(req).await.unwrap();
-    let body = resp.text().unwrap();
+    let body = resp.clone().text_async().await.unwrap();
 
     // Como não há initiator explícito, site é 'none', mode é 'navigate', dest é 'document' e user é '?1'
     assert_eq!(body, "none:navigate:document:?1");
