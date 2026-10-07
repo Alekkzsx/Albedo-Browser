@@ -17,6 +17,35 @@ pub struct EarlyHint {
     pub crossorigin: bool,
 }
 
+impl EarlyHint {
+    /// Converte a EarlyHint para a variante correspondente de `ResourceHint`.
+    pub fn to_resource_hint(&self) -> Option<crate::telemetry::hints::ResourceHint> {
+        match self.rel.as_str() {
+            "dns-prefetch" => {
+                self.url.host_str().map(|h| crate::telemetry::hints::ResourceHint::dns_prefetch(h))
+            }
+            "preconnect" => {
+                ace_core::security::origin::Origin::parse(self.url.as_str()).ok().map(|origin| {
+                    crate::telemetry::hints::ResourceHint::preconnect(origin, self.crossorigin)
+                })
+            }
+            "preload" => {
+                let dest = match self.as_type.as_deref() {
+                    Some("style") => crate::http::request::RequestDestination::Style,
+                    Some("script") => crate::http::request::RequestDestination::Script,
+                    Some("font") => crate::http::request::RequestDestination::Font,
+                    Some("image") => crate::http::request::RequestDestination::Image,
+                    Some("video") | Some("audio") => crate::http::request::RequestDestination::Media,
+                    _ => crate::http::request::RequestDestination::Other,
+                };
+                Some(crate::telemetry::hints::ResourceHint::preload(self.url.clone(), dest))
+            }
+            _ => None,
+        }
+    }
+}
+
+
 /// Canal para injetar hints de rede assincronamente no pipeline do DOM.
 #[derive(Debug, Clone)]
 pub struct EarlyHintsDispatcher {
