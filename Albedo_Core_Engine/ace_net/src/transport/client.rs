@@ -417,7 +417,7 @@ impl TransportClient {
         let raw_stream = ResponseBody::from_stream(stream);
         
         // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
-        let response_body = if let Some(encoding) = content_encoding {
+        let mut response_body = if let Some(encoding) = content_encoding {
             if let Some(stream_box) = raw_stream.take_stream().await {
                 let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
                 ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
@@ -427,6 +427,14 @@ impl TransportClient {
         } else {
             raw_stream
         };
+
+        if let Some(len) = _content_length {
+            if len < 1_048_576 {
+                if let Ok(bytes) = response_body.clone().collect_bytes().await {
+                    response_body = ResponseBody::Full(bytes);
+                }
+            }
+        }
 
         let retry_after = RetryAfter::from_headers(&headers);
         let content_range = if status == StatusCode::PARTIAL_CONTENT {
@@ -568,7 +576,11 @@ impl TransportClient {
         });
         
         let raw_stream = ResponseBody::from_stream(h3_stream);
-        let response_body = if let Some(encoding) = content_encoding {
+        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let mut response_body = if let Some(encoding) = content_encoding {
             if let Some(stream_box) = raw_stream.take_stream().await {
                 let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
                 ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
@@ -578,6 +590,14 @@ impl TransportClient {
         } else {
             raw_stream
         };
+
+        if let Some(len) = _content_length {
+            if len < 1_048_576 {
+                if let Ok(bytes) = response_body.clone().collect_bytes().await {
+                    response_body = ResponseBody::Full(bytes);
+                }
+            }
+        }
 
         let retry_after = RetryAfter::from_headers(&headers);
         let content_range = if status == StatusCode::PARTIAL_CONTENT {

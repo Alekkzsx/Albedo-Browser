@@ -163,3 +163,49 @@ fn from_hex_digit(c: u8) -> Option<u8> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_data_url_basic() {
+        let record = parse_data_url("data:,Hello%20World").unwrap();
+        assert_eq!(record.mime_type.essence(), "text/plain");
+        assert_eq!(record.body, b"Hello World");
+        assert_eq!(record.is_base64, false);
+    }
+
+    #[test]
+    fn test_parse_data_url_base64() {
+        let record = parse_data_url("data:text/plain;base64,SGVsbG8gV29ybGQ=").unwrap();
+        assert_eq!(record.mime_type.essence(), "text/plain");
+        assert_eq!(record.body, b"Hello World");
+        assert_eq!(record.is_base64, true);
+    }
+
+    #[test]
+    fn test_parse_data_url_invalid_base64() {
+        let result = parse_data_url("data:text/plain;base64,invalid^char");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_data_url_missing_comma() {
+        let result = parse_data_url("data:text/plain");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decode_base64_whatwg_whitespace() {
+        let decoded = decode_base64_whatwg("S G V\ts\nbG\r8gV\x0C29ybGQ=").unwrap();
+        assert_eq!(decoded, b"Hello World");
+    }
+
+    #[test]
+    fn test_percent_decode() {
+        assert_eq!(percent_decode("%20%21%22%23"), " !\"#");
+        assert_eq!(percent_decode("Hello%20World"), "Hello World");
+        assert_eq!(percent_decode("%ZZ"), "%ZZ");
+    }
+}

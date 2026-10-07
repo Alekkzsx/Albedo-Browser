@@ -791,27 +791,31 @@ impl ResourceFetcher {
                 if let Some(cr_val) = network_response.headers.get(http::header::CONTENT_RANGE) {
                     if let Some(cr) = crate::http::range::ContentRange::parse(cr_val) {
                         if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
-                            self.cache.put_range(
-                                nik,
-                                current_req.url.clone(),
-                                cr.start,
-                                cr.end,
-                                cr.total,
-                                network_response.body.as_bytes().to_vec().into()
-                            );
+                            if let ResponseBody::Full(ref bytes) = network_response.body {
+                                self.cache.put_range(
+                                    nik,
+                                    current_req.url.clone(),
+                                    cr.start,
+                                    cr.end,
+                                    cr.total,
+                                    bytes.clone()
+                                );
+                            }
                         }
                     }
                 }
             } else if CacheEntry::is_cacheable(&current_req.method, network_response.status, &network_response.headers) {
-                let entry = CacheEntry::new(
-                    current_req.url.clone(),
-                    network_response.status,
-                    network_response.headers.clone(),
-                    network_response.body.as_bytes().to_vec().into(),
-                    request_time,
-                    response_time,
-                ).with_request_headers(current_req.headers.clone());
-                self.cache.put(nik, current_req.url.clone(), entry);
+                if let ResponseBody::Full(ref bytes) = network_response.body {
+                    let entry = CacheEntry::new(
+                        current_req.url.clone(),
+                        network_response.status,
+                        network_response.headers.clone(),
+                        bytes.clone(),
+                        request_time,
+                        response_time,
+                    ).with_request_headers(current_req.headers.clone());
+                    self.cache.put(nik, current_req.url.clone(), entry);
+                }
             }
 
             return Ok(network_response);
@@ -829,15 +833,17 @@ impl ResourceFetcher {
             if network_response.status == StatusCode::NOT_MODIFIED {
                 self.cache.update_304(nik.as_ref(), &req.url, &network_response.headers, resp_time);
             } else if CacheEntry::is_cacheable(&req.method, network_response.status, &network_response.headers) {
-                let entry = CacheEntry::new(
-                    req.url.clone(),
-                    network_response.status,
-                    network_response.headers.clone(),
-                    network_response.body.as_bytes().to_vec().into(),
-                    resp_time,
-                    resp_time,
-                ).with_request_headers(req.headers);
-                self.cache.put(nik.as_ref(), req.url, entry);
+                if let ResponseBody::Full(ref bytes) = network_response.body {
+                    let entry = CacheEntry::new(
+                        req.url.clone(),
+                        network_response.status,
+                        network_response.headers.clone(),
+                        bytes.clone(),
+                        resp_time,
+                        resp_time,
+                    ).with_request_headers(req.headers);
+                    self.cache.put(nik.as_ref(), req.url, entry);
+                }
             }
         }
         Ok(())
