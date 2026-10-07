@@ -16,6 +16,7 @@
 
 use crate::protocol::alt_svc::{parse_alt_svc, AltSvcRegistry};
 use crate::cache::entry::CacheEntry;
+use crate::cache::partition::NetworkIsolationKey;
 use crate::cache::storage::HttpCache;
 use crate::engine::cancel::CancellationRegistry;
 use crate::security::clear_site_data::ClearSiteDataAction;
@@ -38,7 +39,6 @@ use http::{Method, StatusCode};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use url::Url;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 
@@ -65,6 +65,7 @@ pub struct ResourceFetcher {
     metrics: Arc<crate::telemetry::metrics::FetcherMetrics>,
     scheduler: Arc<crate::engine::scheduler::ResourceScheduler>,
     cors_cache: Arc<crate::security::cors_cache::CorsCache>,
+    disk_path: Option<std::path::PathBuf>,
 }
 
 impl ResourceFetcher {
@@ -87,15 +88,24 @@ impl ResourceFetcher {
         let transport = TransportClient::with_resolver(
             crate::transport::DohHappyEyeballsResolver::with_resolver(doh_resolver.clone())
         )?;
+        let disk_buf: Option<std::path::PathBuf> = disk_path.map(|p| p.into());
         let mut http_cache = HttpCache::new(cache_capacity_bytes);
-        if let Some(p) = disk_path {
-            http_cache = http_cache.with_disk_path(p.into());
+        if let Some(ref p) = disk_buf {
+            http_cache = http_cache.with_disk_path(p.clone());
         }
         let cache = Arc::new(http_cache);
         let cancellation_registry = Arc::new(CancellationRegistry::new());
         let alt_svc_registry = Arc::new(AltSvcRegistry::new());
         let cookie_jar = Arc::new(CookieJar::new());
         let hsts_store = Arc::new(HstsStore::new());
+
+        // Restauração de sessão persistente em disco (Cookies, HSTS e rotas Alt-Svc)
+        if let Some(ref p) = disk_buf {
+            let _ = cookie_jar.load_from_file(p.join("cookies.txt"));
+            let _ = hsts_store.load_from_file(p.join("hsts.json"));
+            let _ = alt_svc_registry.load_from_file(p.join("altsvc.json"));
+        }
+
         let service_worker_hook = Arc::new(parking_lot::RwLock::new(None));
         let metrics = Arc::new(crate::telemetry::metrics::FetcherMetrics::new());
         let scheduler = crate::engine::scheduler::ResourceScheduler::new(crate::engine::scheduler::SchedulerConfig::default());
@@ -113,6 +123,7 @@ impl ResourceFetcher {
             metrics,
             scheduler,
             cors_cache,
+            disk_path: disk_buf,
         })
     }
 
@@ -162,27 +173,96 @@ impl ResourceFetcher {
         self.cancellation_registry.cancel(id)
     }
 
-    /// Executa pré-resolução DNS para um host em background (Resource Hint).
+    /// Retorna o diretório em disco associado à sessão (se configurado).
+    pub fn disk_path(&self) -> Option<&std::path::PathBuf> {
+        self.disk_path.as_ref()
+    }
+
+    /// Salva de forma atômica no disco todo o estado de sessão (Cookies, HSTS e rotas Alt-Svc).
+    pub fn save_session_to_disk(&self) -> NetResult<()> {
+        if let Some(ref p) = self.disk_path {
+            let _ = std::fs::create_dir_all(p);
+            let _ = self.cookie_jar.save_to_file(p.join("cookies.txt"));
+            let _ = self.hsts_store.save_to_file(p.join("hsts.json"));
+            let _ = self.alt_svc_registry.save_to_file(p.join("altsvc.json"));
+        }
+        Ok(())
+    }
+
+    /// Executa pré-resolução DNS para um host em background (Resource Hint via DoH).
     pub async fn dns_prefetch(&self, host: &str) -> NetResult<()> {
-        let _ = self.doh_resolver.lookup_ip(host)
+        let clean = host.trim();
+        if clean.is_empty() {
+            return Ok(());
+        }
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::DnsStart,
+            clean,
+            "DNS prefetch iniciado via DoH",
+        );
+        let _ = self.doh_resolver.lookup_ip(clean)
             .await
-            .map_err(|e| NetError::DnsResolutionFailed(host.into(), e.to_string()))?;
+            .map_err(|e| NetError::DnsResolutionFailed(clean.into(), e.to_string()))?;
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::DnsEnd,
+            clean,
+            "DNS prefetch concluído",
+        );
         Ok(())
     }
 
     /// Estabelece conexão TCP e TLS antecipada para uma origem (Resource Hint).
     pub async fn preconnect(&self, origin: &Origin) -> NetResult<()> {
-        let url_str = origin.ascii_serialization();
-        if let Ok(url) = Url::parse(&url_str) {
-            if url.scheme() == "http" || url.scheme() == "https" {
-                let req = Request::builder(url, Method::HEAD)?
-                    .priority(PriorityLevel::Lowest)
-                    .build();
-                let _ = self.transport.execute(&req).await;
+        self.execute_preconnect(origin, None).await
+    }
+
+    /// Executa um preconnect especulativo particionado, respeitando NIK e PNA.
+    pub async fn execute_preconnect(&self, origin: &Origin, nik: Option<&NetworkIsolationKey>) -> NetResult<()> {
+        if let Origin::Tuple { host, .. } = origin {
+            if let Some(nik_ref) = nik {
+                if let Origin::Tuple { host: h, .. } = &nik_ref.top_frame_origin {
+                    if !crate::security::pna::is_host_private_or_local(&h.as_str())
+                        && crate::security::pna::is_host_private_or_local(&host.as_str())
+                    {
+                        crate::telemetry::net_log::log_net_event(
+                            crate::telemetry::net_log::NetEventType::Warning,
+                            &host.as_str(),
+                            "Preconnect bloqueado por política PNA",
+                        );
+                        return Err(NetError::SecurityViolation("PNA: Preconnect para rede privada bloqueado".into()));
+                    }
+                }
             }
         }
-        Ok(())
+        self.transport.preconnect(origin, nik).await
     }
+
+    /// Despacha uma dica de recurso especulativa (Resource Hint) de forma unificada.
+    pub async fn handle_resource_hint(&self, hint: crate::telemetry::hints::ResourceHint, nik: Option<&NetworkIsolationKey>) -> NetResult<()> {
+        match hint {
+            crate::telemetry::hints::ResourceHint::DnsPrefetch(host) => {
+                self.dns_prefetch(&host).await
+            }
+            crate::telemetry::hints::ResourceHint::Preconnect { origin, .. } => {
+                self.execute_preconnect(&origin, nik).await
+            }
+            crate::telemetry::hints::ResourceHint::Preload { url, destination } => {
+                let mut builder = Request::get(url)?
+                    .destination(destination)
+                    .priority(destination.default_priority());
+                if let Some(nik_ref) = nik {
+                    builder = builder.network_isolation_key(nik_ref.clone());
+                }
+                let req = builder.build();
+                let fetcher = self.clone();
+                tokio::spawn(async move {
+                    let _ = fetcher.fetch(req).await;
+                });
+                Ok(())
+            }
+        }
+    }
+
 
     /// Retorna uma referência às métricas de rede
     pub fn metrics(&self) -> &Arc<crate::telemetry::metrics::FetcherMetrics> {
