@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use url::Url;
 
 /// Política de segurança HSTS registrada para um domínio.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HstsPolicy {
     pub expires_at: SystemTime,
     pub include_subdomains: bool,
@@ -155,9 +155,59 @@ impl HstsStore {
             None
         }
     }
+
+    /// Salva as políticas HSTS dinâmicas e válidas no arquivo especificado em disco de forma atômica.
+    pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let now = SystemTime::now();
+        let map = self.entries.read();
+
+        // Filtra apenas políticas frescas
+        let fresh_entries: std::collections::HashMap<&String, &HstsPolicy> = map
+            .iter()
+            .filter(|(_, policy)| policy.is_fresh(now))
+            .collect();
+
+        let json_data = serde_json::to_string_pretty(&fresh_entries)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, json_data)?;
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::rename(tmp_path, path)?;
+        Ok(())
+    }
+
+    /// Carrega políticas HSTS de um arquivo em disco, descartando as já expiradas.
+    pub fn load_from_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Ok(0);
+        }
+        let content = std::fs::read_to_string(path)?;
+        let parsed: std::collections::HashMap<String, HstsPolicy> = serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        let now = SystemTime::now();
+        let mut map = self.entries.write();
+        let mut loaded = 0;
+        for (host, policy) in parsed {
+            if policy.is_fresh(now) {
+                map.insert(host, policy);
+                loaded += 1;
+            }
+        }
+        Ok(loaded)
+    }
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
 
@@ -190,4 +240,26 @@ mod tests {
         let future = now + Duration::from_secs(3601);
         assert!(!store.should_upgrade("example.com", future));
     }
+
+    #[test]
+    fn test_hsts_persistence() {
+        let store = HstsStore::new();
+        let now = SystemTime::now();
+
+        let val = HeaderValue::from_static("max-age=7200; includeSubDomains");
+        store.update_from_header("secure.corp.local", &val, now);
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("hsts.json");
+
+        store.save_to_file(&file_path).unwrap();
+        assert!(file_path.exists());
+
+        let new_store = HstsStore::new();
+        let loaded = new_store.load_from_file(&file_path).unwrap();
+        assert_eq!(loaded, 1);
+        assert!(new_store.should_upgrade("secure.corp.local", now));
+        assert!(new_store.should_upgrade("sub.secure.corp.local", now));
+    }
 }
+
