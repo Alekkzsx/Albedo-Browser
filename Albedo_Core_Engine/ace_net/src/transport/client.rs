@@ -168,7 +168,60 @@ impl TransportClient {
         Ok(client)
     }
 
+    /// Executa um preconnect especulativo (W3C Resource Hints).
+    /// Estabelece a conexão TCP e realiza o handshake TLS 1.3/ALPN,
+    /// mantendo o socket no pool de conexões ociosas (idle pool) para requisições subsequentes.
+    pub async fn preconnect(&self, origin: &ace_core::security::origin::Origin, nik: Option<&NetworkIsolationKey>) -> NetResult<()> {
+        let (scheme, host, port) = match origin {
+            ace_core::security::origin::Origin::Tuple { scheme, host, port } => (scheme.as_str(), host.as_str(), *port),
+            ace_core::security::origin::Origin::Opaque { .. } => return Ok(()),
+        };
 
+        if scheme != "http" && scheme != "https" {
+            return Err(NetError::UnsupportedScheme(scheme.to_string()));
+        }
+
+        let url_str = if (scheme == "http" && port == 80) || (scheme == "https" && port == 443) {
+            format!("{}://{}/", scheme, host)
+        } else {
+            format!("{}://{}:{}/", scheme, host, port)
+        };
+
+        let uri: hyper::Uri = url_str.parse().map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
+
+        // 1. Obtém ou constrói o cliente hiper-particionado para o NIK
+        let target_client = {
+            let mut tc = {
+                let map = self.isolated_clients.read().await;
+                map.get(&nik.cloned()).cloned()
+            };
+            if tc.is_none() {
+                let new_client = Self::build_hyper_client(nik, self.root_store.clone(), None)?;
+                let mut map = self.isolated_clients.write().await;
+                map.insert(nik.cloned(), new_client.clone());
+                tc = Some(new_client);
+            }
+            tc.unwrap()
+        };
+
+        // 2. Dispara uma requisição leve HEAD que estabelece conexão e aquece o pool de idle sockets
+        let mut hyper_builder = HyperRequest::builder()
+            .method(http::Method::HEAD)
+            .uri(uri);
+
+        if let Some(headers_mut) = hyper_builder.headers_mut() {
+            headers_mut.insert(USER_AGENT, self.user_agent.clone());
+        }
+
+        let hyper_req = hyper_builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        // Timeout curto de 5s para preconnect sem afetar a fila do usuário
+        let _ = tokio::time::timeout(Duration::from_secs(5), target_client.request(hyper_req)).await;
+
+        Ok(())
+    }
 
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
     #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method))]
