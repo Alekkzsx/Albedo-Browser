@@ -91,8 +91,6 @@ async fn test_unified_session_persistence_via_resource_fetcher() {
             http_only: true,
             same_site: ace_net::cookie::SameSite::Lax,
             partition_key: None,
-            created_at: now,
-            last_accessed: now,
         };
         fetcher.cookie_jar().store_cookie(cookie);
 
@@ -166,10 +164,17 @@ async fn test_resource_hint_execution_and_early_hints_conversion() {
     assert!(matches!(hint_preconnect, ResourceHint::Preconnect { .. }));
     assert_eq!(hint_preconnect.target_host().as_deref(), Some("fonts.gstatic.com"));
 
-    // 2. Testa despacho de hint através do fetcher
-    let res = fetcher.handle_resource_hint(hint_dns, None).await;
-    // O DoH tentará resolver cdn.photos.com e terá sucesso (ou falhará graciosamente se sem internet)
-    let _ = res;
+    // 2. Testa despacho de hint através do fetcher com host vazio e com Preload local
+    let empty_dns = ResourceHint::dns_prefetch("");
+    let res = fetcher.handle_resource_hint(empty_dns, None).await;
+    assert!(res.is_ok());
+
+    let preload_hint = ResourceHint::preload(
+        Url::parse("data:text/css;base64,Ym9keXtiYWNrZ3JvdW5kOnJlZH0=").unwrap(),
+        ace_net::http::request::RequestDestination::Style,
+    );
+    let preload_res = fetcher.handle_resource_hint(preload_hint, None).await;
+    assert!(preload_res.is_ok());
 
     // 3. Testa preconnect com esquema inválido
     let ftp_origin = Origin::parse("ftp://ftp.example.com").unwrap();

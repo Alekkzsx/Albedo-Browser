@@ -59,10 +59,26 @@ impl HttpCache {
         // Exemplo: Limite de disco é 10x a capacidade da memória
         let max_disk_capacity = (self.max_capacity_bytes as u64).saturating_mul(10);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            if let Ok(engine) = tokio::task::block_in_place(|| {
-                handle.block_on(DiskCacheEngine::new(path, max_disk_capacity))
-            }) {
-                self.disk_engine = Some(Arc::new(engine));
+            match handle.runtime_flavor() {
+                tokio::runtime::RuntimeFlavor::MultiThread => {
+                    if let Ok(engine) = tokio::task::block_in_place(|| {
+                        handle.block_on(DiskCacheEngine::new(path, max_disk_capacity))
+                    }) {
+                        self.disk_engine = Some(Arc::new(engine));
+                    }
+                }
+                _ => {
+                    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+                    std::thread::spawn(move || {
+                        if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                            let res = rt.block_on(DiskCacheEngine::new(path, max_disk_capacity));
+                            let _ = tx.send(res);
+                        }
+                    });
+                    if let Ok(Ok(engine)) = rx.recv() {
+                        self.disk_engine = Some(Arc::new(engine));
+                    }
+                }
             }
         }
         self
