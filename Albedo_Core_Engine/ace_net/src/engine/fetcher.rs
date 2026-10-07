@@ -219,14 +219,18 @@ impl ResourceFetcher {
         self.metrics.dec_in_flight();
         match &mut result {
             Ok(resp) => {
-                if let Some(stream_box) = resp.body.take_stream().await {
-                    let throttled = crate::engine::throttle::ThrottledStream::new(
-                        stream_box,
-                        priority_rx,
-                        scheduler_clone,
-                        req_id,
-                    );
-                    resp.body = crate::http::response::ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::pin(throttled)))));
+                if matches!(resp.body, crate::http::response::ResponseBody::Stream(_)) {
+                    if let Some(stream_box) = resp.body.take_stream().await {
+                        let throttled = crate::engine::throttle::ThrottledStream::new(
+                            stream_box,
+                            priority_rx,
+                            scheduler_clone,
+                            req_id,
+                        );
+                        resp.body = crate::http::response::ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::pin(throttled)))));
+                    } else {
+                        self.scheduler.unregister_active_stream(req_id);
+                    }
                 } else {
                     self.scheduler.unregister_active_stream(req_id);
                 }
