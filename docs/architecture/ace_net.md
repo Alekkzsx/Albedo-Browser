@@ -1,9 +1,9 @@
 # 🗺️ PLANO MESTRE DEFINITIVO: SUBSISTEMA `ace_net` (Albedo Browser)
 
-> **Versão:** 1.0.0 — *Definitive Engineering Master Plan*  
+> **Versão:** 1.1.0 — *Definitive Engineering Master Plan (Auditado)*  
 > **Classificação:** Arquitetura Central de Rede, Conectividade, Cache & Segurança de Transporte (Core Network Subsystem)  
-> **Subsistema:** `Albedo_Core_Engine/ace_net`  
-> **Status:** Autorizado para Implementação & Execução Técnica  
+> **Subsistema:** `Albedo_Core_Engine/ace_net` (Fase 3 do [PLANO.md](../../PLANO.md))  
+> **Status Atual:** 🚧 **Em Fechamento** (Implementado: HTTP/1.1, HTTP/2, HTTP/3/QUIC, Cache RFC 9111 L1/L2 WAL, DoH Happy Eyeballs v2, Early Hints 103, Cookies CHIPS, Threshold de 1MB para buffer de resposta e streaming reativo. Testes de estresse de 93s e suítes unitárias 100% aprovados; pendente merge na `main` e fechamento formal da fase)  
 > **Padrões Normativos:** RFC 9110 (HTTP Semantics), RFC 9111 (HTTP Caching), RFC 9112 (HTTP/1.1), RFC 9113 (HTTP/2), RFC 9000 & RFC 9114 (QUIC & HTTP/3), RFC 8446 (TLS 1.3), RFC 8305 (Happy Eyeballs v2), RFC 6265bis (Cookies & CHIPS), RFC 6797 (HSTS), RFC 8879 (Clear-Site-Data), RFC 9218 (Extensible Prioritization Scheme), RFC 9460 (SVCB and HTTPS RRs for ECH), W3C Fetch Living Standard, W3C Fetch Metadata Request Headers, W3C Client Hints (RFC 8942).
 
 ---

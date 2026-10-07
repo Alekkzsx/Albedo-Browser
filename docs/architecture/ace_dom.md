@@ -1,9 +1,9 @@
 # 🗺️ PLANO MESTRE DEFINITIVO: SUBSISTEMA `ace_dom` (Albedo Browser)
 
-> **Versão:** 1.0.0 — *Definitive Engineering Master Plan*  
+> **Versão:** 1.1.0 — *Definitive Engineering Master Plan (Auditado)*  
 > **Classificação:** Arquitetura Central do Motor de Renderização (Core Subsystem Plan)  
-> **Subsistema:** `Albedo_Core_Engine/ace_dom`  
-> **Status:** Autorizado para Implementação & Execução Técnica  
+> **Subsistema:** `Albedo_Core_Engine/ace_dom` (Fase 5 do [PLANO.md](../../PLANO.md))  
+> **Status Atual:** 🟡 **Parcialmente Concluído** (Tokenizer FSM, Tree Builder e Arena implementados; refatoração Clean Code do `process_token` ativa; pendente vendorização da suíte oficial `html5lib-tests` e migração do CSSOM para `ace_style` na Fase 6)  
 > **Padrões Normativos:** WHATWG HTML Living Standard (§12 Parsing, §4.10 Forms, §4.12 Scripting/Template), WHATWG DOM Standard (§4 Trees & Mutation, §5 Traversal & Range), W3C Selectors Level 4, W3C CSSOM View & Cascading, W3C WebIDL Standard, W3C HTML Sanitizer API.
 
 ---
