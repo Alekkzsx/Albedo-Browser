@@ -8,10 +8,10 @@
   <p><b>Um motor de navegador de nova geração, escrito em Rust, do zero — a alma é nossa, a fundação é compartilhada.</b></p>
 
   <p>
-    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-1.85%2B_(Edition_2024)-orange.svg" alt="Rust 1.85+"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-1.80%2B_(Edition_2021)-orange.svg" alt="Rust 1.80+"></a>
     <img src="https://img.shields.io/badge/CI-Enterprise_Grade-success.svg" alt="CI Enterprise Grade">
-    <img src="https://img.shields.io/badge/Memory_Safety-100%25_Safe_Rust-blue.svg" alt="Safe Rust">
-    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License MIT"></a>
+    <img src="https://img.shields.io/badge/Memory_Safety-Miri_Audited-blue.svg" alt="Safe Rust">
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Proprietary_(All_Rights_Reserved)-red.svg" alt="License Proprietary"></a>
   </p>
 </div>
 
@@ -79,10 +79,10 @@ Todas as crates do motor residem no diretório [`Albedo_Core_Engine/`](./Albedo_
 
 | Camada | Crate | Responsabilidade | Status |
 | :--- | :--- | :--- | :---: |
-| **Foundation** | [`ace_core`](./Albedo_Core_Engine/ace_core) | Tipos fundamentais (`AceError`), matemática 2D/3D, Event Loop WHATWG, Arena, Tri-color GC, buffers lock-free | ✅ Concluído |
-| **Parsing** | [`ace_dom`](./Albedo_Core_Engine/ace_dom) | Tokenizer HTML5 SIMD, Tree Builder (AAA), DOM imutável, seletores CSS4, MutationObserver, Live Ranges | ✅ Concluído |
+| **Foundation** | [`ace_core`](./Albedo_Core_Engine/ace_core) | Tipos fundamentais (`AceError`), matemática 2D/3D, Event Loop WHATWG, Arena, Tri-color GC, buffers lock-free | 🟡 Em Andamento |
+| **Parsing** | [`ace_dom`](./Albedo_Core_Engine/ace_dom) | Tokenizer HTML5 SIMD, Tree Builder (AAA), DOM imutável, seletores CSS4, MutationObserver, Live Ranges | 🟡 Em Andamento |
 | **Networking** | [`ace_net`](./Albedo_Core_Engine/ace_net) | ResourceFetcher, Cache RFC 9111 (L1 RAM + L2 WAL), DoH Happy Eyeballs v2, Early Hints 103, Scheduler RFC 9218 | 🚧 Fechamento |
-| **Security** | `ace_core` + `ace_net` | Origin, SOP, CORS, CSP, HSTS, PNA, Cookie Jar com suporte a CHIPS e isolamento triplo | ✅ Concluído |
+| **Security** | `ace_core` + `ace_net` | Origin, SOP, CORS, CSP, HSTS, PNA, Cookie Jar com suporte a CHIPS e isolamento triplo | 🟡 Em Andamento |
 | **Styling** | `ace_style` | Cascata CSS3, especificidade, valores computados, herança e matching | ⏳ Planejado |
 | **Layout** | `ace_layout` | Box Model, BFC/IFC, Flexbox, CSS Grid, margin collapsing e posicionamento | ⏳ Planejado |
 | **Rendering** | `ace_render` | Display list, text layout com HarfBuzz/ICU4X, rasterização e compositing GPU via `wgpu` | ⏳ Planejado |
@@ -99,11 +99,11 @@ O desenvolvimento segue as 14 fases mapeadas na **Metodologia de Engenharia Trid
 
 | Fase | Escopo | Status |
 | :---: | :--- | :---: |
-| **1** | Fundação, Governança & CI Enterprise | ✅ Concluída |
-| **2** | Core Engine, Infraestrutura & Fundação Matemática (`ace_core`) | ✅ Concluída |
-| **5** | Parsing Web, Tokenizador HTML5 & DOM Tree (`ace_dom`) | ✅ Concluída |
+| **1** | Fundação, Governança & CI Enterprise | 🟡 Em Andamento |
+| **2** | Core Engine, Infraestrutura & Fundação Matemática (`ace_core`) | 🟡 Em Andamento |
 | **3** | Motor de Rede, TLS & Cache HTTP RFC 9111 (`ace_net`) | 🚧 Em Fechamento |
-| **4** | Sandboxing Nativo & Políticas de Isolamento de Processo | 🟡 Em Andamento |
+| **4** | Políticas Web e Segurança em Rede | 🟡 Em Andamento |
+| **5** | Parsing Web, Tokenizador HTML5 & DOM Tree (`ace_dom`) | 🟡 Em Andamento |
 | **6** | Render Tree & Motor de Estilos (`ace_style`) | ⏳ Planejada |
 | **7** | Geometry Engine / Layout: Flexbox & Grid (`ace_layout`) | ⏳ Planejada |
 | **8** | Pintura, Rasterização & Tipografia GPU (`ace_render`) | ⏳ Planejada |
@@ -137,7 +137,7 @@ Toda a documentação técnica, especificações de subsistemas e relatórios es
 ## 🚀 Como Executar e Contribuir
 
 ### Pré-requisitos
-- **Rust 1.85+ (Edition 2024)** via [rustup](https://rustup.rs/)
+- **Rust 1.80+ (Edition 2021)** via [rustup](https://rustup.rs/)
 
 ### Build e Testes
 
@@ -160,4 +160,4 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 ## 📄 Licença
 
-Este projeto é distribuído sob a licença **MIT**. Veja o arquivo [LICENSE](./LICENSE) para mais detalhes.
+Este projeto é **Proprietário (Todos os Direitos Reservados)**. É estritamente proibida a cópia, modificação, distribuição ou comercialização de qualquer parte deste código sem autorização expressa. O uso não autorizado constitui plágio e violação de direitos autorais, passível de ação judicial. Veja o arquivo [LICENSE](./LICENSE) para os termos legais.
