@@ -86,3 +86,4 @@ Implementação estrita do ciclo de vida da página conforme o WHATWG HTML Livin
 | **Primitivas do `ace_core`** | ✅ Concluído | 101 testes unitários passando, 0 falhas, 0 warnings. |
 | **Desduplicação de Data URLs** | ✅ Concluído | Unificado com a especificação WHATWG Fetch em `data_url.rs`. |
 | **Comunicação IPC (`ace_ipc`)** | 🟡 Pendente | O crate `ace_ipc` é atualmente um stub. Exige implementação dos canais in-process e das mensagens `Navigate`, `RenderFrame` e `InputEvent` para cumprimento integral do DoD da Fase 2. |
+

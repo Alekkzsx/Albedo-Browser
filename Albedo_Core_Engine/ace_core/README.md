@@ -51,3 +51,4 @@ cargo test -p ace_core
 # Validar linter corporativo com zero warnings
 cargo clippy -p ace_core --all-targets --all-features -- -D warnings
 ```
+
