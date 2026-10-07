@@ -7,6 +7,15 @@
 
 ---
 
+## 📜 Histórico de Revisões e Decisões
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **2.0.0** | 2026-10-07 | Auditoria Forense v7.0 | • Adoção irrestrita do Paradigma Pragmático (Fundações vs Alma).<br>• Confirmação do motor JS interpretador sem JIT (ADR-0019).<br>• Inclusão formal de HTTP/2 e HTTP/3 no MVP (implementados em `ace_net`).<br>• Isolamento de processos por site (ADR-0015). | • Reescrita completa eliminando afirmações de "Zero-Dependency" e "DNS próprio em sockets".<br>• Inclusão de APIs essenciais de SPA (Workers, History API). |
+| **1.0.0** | 2026-08-16 | Definição Inicial | • Definição preliminar do MVP "Abismo Restrito". | • Documentação das primeiras restrições da versão 1.0. |
+
+---
+
 ## 1. Princípio Norteador: O Paradigma Pragmático
 
 O Albedo Browser estabelece uma fronteira clara e inegociável entre o que **orquestramos** e o que **forjamos**:

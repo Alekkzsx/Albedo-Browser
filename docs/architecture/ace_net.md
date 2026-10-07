@@ -8,6 +8,15 @@
 
 ---
 
+## 📜 Histórico de Revisões e Decisões
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-07 | Fechamento da Fase 3 & Otimização de Memória | • Limite de 1MB para bufferização de respostas pequenas para Cache RFC 9111.<br>• Respostas >1MB forçadas para streaming assíncrono para blindagem contra OOM.<br>• Fatoração do pipeline procedural em `fetcher.rs`. | • Aprovação de 71+ testes unitários e de integração.<br>• Aprovação do teste de estresse de memória de 93 segundos (`stress_memory_test.rs`).<br>• Status alterado para 🚧 (fechamento de PR). |
+| **1.0.0** | 2026-08-16 | Plano Diretor de Rede | • Adoção de `hyper`, `quinn` e `tokio` como Fundações.<br>• Cache L1 RAM e L2 WAL transacional em disco.<br>• Happy Eyeballs v2 e DoH nativo com `hickory-resolver`. | • Especificação formal da arquitetura de conectividade do ACE. |
+
+---
+
 ## 📚 Sumário Executivo do Plano
 
 - [1. Visão Executiva & Princípios Fundacionais (A Alma da Rede)](#1-visão-executiva--princípios-fundacionais-a-alma-da-rede)

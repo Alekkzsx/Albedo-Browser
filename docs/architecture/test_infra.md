@@ -7,6 +7,15 @@
 
 ---
 
+## 📜 Histórico de Revisões e Decisões
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **2.0.0** | 2026-10-07 | Alinhamento com PLANO v7.0 | • Adoção da Estratégia de Conformidade WPT em 4 Estágios (Estágios A, B, C e D).<br>• Incorporação formal da Regra de Evidência (Regra de Ouro 5). | • Expansão do documento para cobrir o motor completo além do `ace_core`.<br>• Registro das métricas ativas do workspace (101 testes em `ace_core`, 22+ em `ace_dom`, 71+ em `ace_net`). |
+| **1.0.0** | 2026-08-16 | Definição Inicial | • Arquitetura de testes opacos 4-Tier para o `ace_core`. | • Especificação dos 219 casos de teste conceituais da fundação. |
+
+---
+
 ## 1. Filosofia de Testes
 
 1. **Testes Opaque-Box Orientados a Especificações:** Todo teste é modelado a partir das especificações normativas (WHATWG, W3C, RFCs da IETF e ECMA-262), exercitando interfaces e tipos públicos dos crates sem depender de detalhes internos frágeis de implementação.

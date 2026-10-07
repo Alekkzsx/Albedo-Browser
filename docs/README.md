@@ -13,6 +13,7 @@ Bem-vindo à base de conhecimento e documentação de arquitetura do **Albedo Br
 docs/
 ├── README.md                 # Este índice central e painel de status
 ├── architecture/             # Especificações profundas por subsistema (Master Plans)
+│   ├── ace_core.md           # Arquitetura Fundacional, Arenas EBR, Concorrência & Matemática
 │   ├── ace_net.md            # Arquitetura de Rede, Cache RFC 9111, DoH, HTTP/3 & Segurança
 │   ├── ace_dom.md            # Parser HTML5, Árvore DOM imutável, CSSOM & Algoritmos WHATWG
 │   └── test_infra.md         # Infraestrutura, filosofia e estratégia de testes em 4 estágios
@@ -29,11 +30,20 @@ docs/
 
 ---
 
+## 📜 Histórico de Revisões e Governança da Documentação
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas de Governança | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **2.0.0** | 2026-10-07 | Auditoria e Reestruturação v7.0 | • Criação de `docs/architecture/ace_core.md` e `Albedo_Core_Engine/ace_core/README.md`.<br>• Catálogo unificado dos 21 ADRs em `docs/adr/README.md`.<br>• Alinhamento estrito com a Regra de Evidência e Paradigma Pragmático. | • Todos os 9 documentos sincronizados sem contradições.<br>• Painel de estado real auditado em conformidade com o código.<br>• Rastreabilidade temporal em tabelas padronizadas em todos os docs. |
+| **1.0.0** | 2026-08-16 | Estruturação Inicial da Base de Conhecimento | • Separação de pastas em `architecture/`, `scope/`, `reports/`, `adr/`. | • Criação dos primeiros master plans de `ace_dom` e `ace_net`. |
+
+---
+
 ## 📊 Painel de Estado Real dos Subsistemas (Auditado)
 
 | Subsistema / Crate | Documento Vinculado | Fase no PLANO | Status Real | Evidência & Próximos Passos |
 | :--- | :--- | :---: | :---: | :--- |
-| **`ace_core`** (Fundação) | [`fase2_ace_core.md`](./reports/fase2_ace_core.md) | Fase 2 | 🟡 Parcial | 101 testes unitários aprovados. Fase 2 permanece 🟡 até a implementação do IPC in-process em `ace_ipc` (DV-01). |
+| **`ace_core`** (Fundação) | [`ace_core.md`](./architecture/ace_core.md) / [`Relatório`](./reports/fase2_ace_core.md) | Fase 2 | 🟡 Parcial | 101 testes unitários aprovados. Fase 2 permanece 🟡 até a implementação do IPC in-process em `ace_ipc` (DV-01). |
 | **`ace_net`** (Rede & Cache) | [`ace_net.md`](./architecture/ace_net.md) | Fase 3 | 🚧 Fechamento | HTTP/1.1, H2, H3/QUIC, Cache RFC 9111 L1/L2 e DoH implementados. Suíte de 71+ testes e estresse de 93s passando. Em fechamento de PR para a `main`. |
 | **`ace_dom`** (Parser & DOM) | [`ace_dom.md`](./architecture/ace_dom.md) | Fase 5 | 🟡 Parcial | Tokenizer FSM, Tree Builder (AAA) e Arena operacionais. Refatoração Clean Code do `process_token` ativa. Pendente vendorizar suíte oficial `html5lib-tests` (DV-11). |
 | **`ace_style`** (Estilo & Cascata) | [`css_properties.md`](./scope/css_properties.md) | Fase 6 | ⏳ Planejado | Código inicial de CSSOM reside temporariamente em `ace_dom/src/cssom`. A Fase 6 migrará o CSSOM para `ace_style` e implementará CSS Syntax L3 (ADR-0012). |
@@ -44,6 +54,14 @@ docs/
 ---
 
 ## 🏛️ 1. Arquitetura dos Subsistemas (`docs/architecture/`)
+
+- [**`ace_core.md`**](./architecture/ace_core.md):
+  - Fundação do motor com 18 subsistemas de infraestrutura, matemática e concorrência.
+  - Arenas geracionais com *Epoch-Based Reclamation* (EBR) e eliminação de ABA.
+  - Otimização de nicho (`Option<NodeId>` em 8 bytes) e `TripleBuffer` atômico lock-free.
+  - Event Loop WHATWG com filas segregadas por `TaskSource` e microtask checkpoints.
+  - Tipos geométricos `euclid`, aritmética `LayoutUnit` base 60 e cores CSS Color 4 (Oklab/Oklch).
+  - Modelo formal de origens seguras (RFC 6454), Same-Origin Policy e defesas contra Spectre.
 
 - [**`ace_net.md`**](./architecture/ace_net.md):
   - Orquestrador de requisições `ResourceFetcher` com limite de 1MB para bufferização de cache e streaming assíncrono para payloads maiores.

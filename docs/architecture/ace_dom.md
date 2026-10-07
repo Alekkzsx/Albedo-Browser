@@ -8,6 +8,15 @@
 
 ---
 
+## 📜 Histórico de Revisões e Decisões
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-07 | Auditoria e Refatoração Clean Code | • Adoção do padrão State para fatoração do `process_token`.<br>• Registro formal da dívida DV-05: CSSOM temporário em `ace_dom`, a ser migrado para `ace_style` na Fase 6 (ADR-0012). | • Desmembramento de 744 linhas de match arm em submétodos isolados `process_*_mode`.<br>• Atualização de status para 🟡 aguardando WPT oficial. |
+| **1.0.0** | 2026-08-16 | Plano Diretor do DOM | • Arquitetura 100% Alma do Tokenizer e Tree Builder.<br>• Modelo de memória `Arena<NodeData>` com `NodeId` geracional.<br>• Ancestor Bloom Filter de 64 buckets para seletores. | • Criação da especificação definitiva do subsistema `ace_dom`. |
+
+---
+
 ## 📚 Sumário Executivo do Plano
 
 - [1. Visão Executiva & Princípios Fundacionais (A Alma do DOM)](#1-visão-executiva--princípios-fundacionais-a-alma-do-dom)

@@ -7,6 +7,15 @@
 
 ---
 
+## 📜 Histórico de Revisões e Auditorias
+
+| Versão | Data | Contexto / Marco | Decisões & Escolhas Técnicas | Progresso & Mudanças |
+| :---: | :---: | :--- | :--- | :--- |
+| **2.0.0** | 2026-10-07 | Re-auditoria Forense v7.0 | • Reconhecimento explícito da dívida DV-01 (`ace_ipc` pendente).<br>• Transição formal de status de ✅ para 🟡 Parcial conforme a Regra de Evidência.<br>• Desduplicação de Data URLs em `data_url.rs`. | • Cobertura ampliada para 101 testes passando (era 82).<br>• Registro honesto do DoD incompleto da Fase 2. |
+| **1.0.0** | 2026-08-17 | Relatório de Entrega Inicial | • Entrega dos 18 módulos fundacionais do `ace_core`. | • 82 testes unitários e 3 doctests validados com 100% de sucesso. |
+
+---
+
 ## 1. Resumo Executivo da Auditoria
 
 A camada fundacional do **Albedo Core Engine (`ace_core`)** concluiu todos os refinamentos industriais de baixo nível de memória, concorrência e tipos fundamentais do navegador, operando como base sólida para os parsers e o subsistema de rede.
