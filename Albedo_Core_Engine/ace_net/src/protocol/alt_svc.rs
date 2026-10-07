@@ -192,7 +192,111 @@ impl AltSvcRegistry {
         let now = SystemTime::now();
         self.get_alternatives(None, origin_host, now).into_iter().next()
     }
+
+    /// Salva em disco de forma atômica todos os registros Alt-Svc que possuem a diretiva `persist=1` e são válidos.
+    pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let now = SystemTime::now();
+        let map = self.entries.read();
+
+        let mut persistent_entries = Vec::new();
+        for ((nik, origin_host), records) in map.iter() {
+            let persistable: Vec<PersistentRecord> = records
+                .iter()
+                .filter(|r| r.persist && r.is_valid(now))
+                .map(|r| PersistentRecord {
+                    protocol_id: r.protocol_id.to_string(),
+                    host: r.host.as_ref().map(|h| h.to_string()),
+                    port: r.port,
+                    expires_at: r.expires_at,
+                })
+                .collect();
+
+            if !persistable.is_empty() {
+                persistent_entries.push(PersistentAltSvcEntry {
+                    nik: nik.clone(),
+                    origin_host: origin_host.clone(),
+                    records: persistable,
+                });
+            }
+        }
+
+        let file_struct = PersistentAltSvcFile { entries: persistent_entries };
+        let json_data = serde_json::to_string_pretty(&file_struct)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, json_data)?;
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::rename(tmp_path, path)?;
+        Ok(())
+    }
+
+    /// Carrega registros Alt-Svc de um arquivo em disco, restaurando serviços persistentes ainda válidos.
+    pub fn load_from_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Ok(0);
+        }
+        let content = std::fs::read_to_string(path)?;
+        let parsed: PersistentAltSvcFile = serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        let now = SystemTime::now();
+        let mut map = self.entries.write();
+        let mut count = 0;
+
+        for entry in parsed.entries {
+            let key = (entry.nik, entry.origin_host);
+            let records: Vec<AltSvcRecord> = entry
+                .records
+                .into_iter()
+                .filter(|r| r.expires_at > now)
+                .map(|r| {
+                    count += 1;
+                    AltSvcRecord {
+                        protocol_id: SmolStr::from(r.protocol_id),
+                        host: r.host.map(SmolStr::from),
+                        port: r.port,
+                        expires_at: r.expires_at,
+                        persist: true,
+                    }
+                })
+                .collect();
+
+            if !records.is_empty() {
+                map.entry(key).or_default().extend(records);
+            }
+        }
+        Ok(count)
+    }
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistentAltSvcFile {
+    entries: Vec<PersistentAltSvcEntry>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistentAltSvcEntry {
+    nik: Option<String>,
+    origin_host: String,
+    records: Vec<PersistentRecord>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistentRecord {
+    protocol_id: String,
+    host: Option<String>,
+    port: u16,
+    expires_at: SystemTime,
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -256,4 +360,30 @@ mod tests {
         registry.cleanup_expired(now + Duration::from_secs(20));
         assert_eq!(registry.len(), 0);
     }
+
+    #[test]
+    fn test_alt_svc_persistence() {
+        let registry = AltSvcRegistry::new();
+        let now = SystemTime::now();
+
+        // Insere um registro persistente (persist=1) e outro volátil (sem persist)
+        let records = parse_alt_svc("h3=\":443\"; ma=86400; persist=1, h2=\":8443\"; ma=3600", now);
+        registry.insert(None, "fast.cdn.net", records);
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("altsvc.json");
+
+        registry.save_to_file(&file_path).unwrap();
+        assert!(file_path.exists());
+
+        let new_registry = AltSvcRegistry::new();
+        let loaded = new_registry.load_from_file(&file_path).unwrap();
+        assert_eq!(loaded, 1); // Apenas o registro com persist=1 deve ser salvo
+
+        let alts = new_registry.get_alternatives(None, "fast.cdn.net", now);
+        assert_eq!(alts.len(), 1);
+        assert_eq!(alts[0].protocol_id.as_str(), "h3");
+        assert_eq!(alts[0].port, 443);
+    }
 }
+
