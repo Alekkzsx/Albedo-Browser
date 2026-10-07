@@ -1,6 +1,5 @@
 use serde::Serialize;
 use tokio::sync::mpsc;
-use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
