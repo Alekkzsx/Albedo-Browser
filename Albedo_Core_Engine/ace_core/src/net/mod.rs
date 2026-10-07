@@ -8,8 +8,8 @@ pub mod percent;
 pub mod structured_headers;
 pub mod utils;
 
-pub use data_url::{parse_data_url, DataUrlRecord};
+pub use data_url::{parse_data_url, DataUrlRecord, parse_data_uri, percent_decode};
 pub use mime::{sniff_mime_type, MimeType};
 pub use percent::{percent_encode, percent_encode_byte, PercentEncodeSet};
 pub use structured_headers::{BareItem, Parameter, ParameterizedItem, SfCursor, SfError};
-pub use utils::{is_safe_url_scheme, parse_data_uri, percent_decode};
+pub use utils::{is_safe_url_scheme};

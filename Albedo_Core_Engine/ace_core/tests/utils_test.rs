@@ -103,12 +103,12 @@ fn test_cursor_utils() {
 #[test]
 fn test_net_utils() {
     let data_uri = "data:text/plain;base64,SGVsbG8gV29ybGQ=";
-    let (mime, bytes) = net_utils::parse_data_uri(data_uri).unwrap();
+    let (mime, bytes) = ace_core::net::parse_data_uri(data_uri).unwrap();
     assert_eq!(mime.essence(), "text/plain");
     assert_eq!(String::from_utf8(bytes).unwrap(), "Hello World");
 
     assert_eq!(
-        net_utils::percent_decode("Hello%20Albedo%21"),
+        ace_core::net::percent_decode("Hello%20Albedo%21"),
         "Hello Albedo!"
     );
     assert!(net_utils::is_safe_url_scheme("https"));

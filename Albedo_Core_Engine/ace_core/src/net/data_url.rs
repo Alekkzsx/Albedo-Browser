@@ -120,8 +120,14 @@ fn decode_base64_char(c: u8) -> Option<u8> {
     }
 }
 
+/// Analisa uma `data:` URI mantendo compatibilidade com a assinatura antiga,
+/// mas utilizando a engine WHATWG internamente.
+pub fn parse_data_uri(data_uri: &str) -> Option<(MimeType, Vec<u8>)> {
+    parse_data_url(data_uri).ok().map(|record| (record.mime_type, record.body))
+}
+
 /// Decodifica sequências percent-encoded (`%XX`).
-fn decode_percent_encoded(input: &str) -> Vec<u8> {
+pub fn decode_percent_encoded(input: &str) -> Vec<u8> {
     let bytes = input.as_bytes();
     let mut output = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -141,6 +147,11 @@ fn decode_percent_encoded(input: &str) -> Vec<u8> {
     }
 
     output
+}
+
+/// Decodifica uma sequência codificada por percentual para String.
+pub fn percent_decode(input: &str) -> String {
+    String::from_utf8_lossy(&decode_percent_encoded(input)).into_owned()
 }
 
 #[inline]
