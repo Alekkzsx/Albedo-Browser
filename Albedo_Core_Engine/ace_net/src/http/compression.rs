@@ -130,7 +130,7 @@ pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response
     }
 
     // Adapta BoxByteStream para um Stream de Result<Bytes, std::io::Error>
-    let io_stream = input.map(|res| res.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+    let io_stream = input.map(|res| res.map_err(|e| std::io::Error::other(e.to_string())));
     
     // Converte o Stream para AsyncRead
     let reader = StreamReader::new(io_stream);

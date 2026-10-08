@@ -110,13 +110,12 @@ impl ProxyBypassList {
         let host_lower = host.to_ascii_lowercase();
         for rule in &self.rules {
             let r = rule.to_ascii_lowercase();
-            if r.starts_with('*') {
-                let suffix = &r[1..];
+            if let Some(suffix) = r.strip_prefix('*') {
                 if host_lower.ends_with(suffix) {
                     return true;
                 }
-            } else if r.starts_with('.') {
-                if host_lower.ends_with(&r) || host_lower == &r[1..] {
+            } else if let Some(suffix) = r.strip_prefix('.') {
+                if host_lower.ends_with(&r) || host_lower == suffix {
                     return true;
                 }
             } else if host_lower == r {

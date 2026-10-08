@@ -283,7 +283,7 @@ async fn execute_parallel_download_worker(
         .headers
         .get(ACCEPT_RANGES)
         .and_then(|v| v.to_str().ok())
-        .map_or(false, |v| v.eq_ignore_ascii_case("bytes"));
+        .is_some_and(|v| v.eq_ignore_ascii_case("bytes"));
 
     let etag: Option<SmolStr> = head_resp
         .headers

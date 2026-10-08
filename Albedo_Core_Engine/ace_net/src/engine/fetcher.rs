@@ -560,7 +560,7 @@ impl ResourceFetcher {
         // 0.15 Private Network Access (PNA) Nível 1
         if let Some(host) = req.url.host_str() {
             if crate::security::pna::is_host_private_or_local(host) {
-                let initiator_is_public = nik.map_or(false, |n| {
+                let initiator_is_public = nik.is_some_and(|n| {
                     if let ace_core::security::origin::Origin::Tuple { host: h, .. } = &n.top_frame_origin {
                         !crate::security::pna::is_host_private_or_local(&h.as_str())
                     } else {
@@ -580,9 +580,10 @@ impl ResourceFetcher {
         }
 
         // 0.2 CORS Preflight
-        if crate::security::cors::requires_preflight(req) {
-            if !self.cors_cache.is_cached_and_valid(req) {
-                let preflight_req = crate::security::cors::build_preflight_request(req)?;
+        if crate::security::cors::requires_preflight(req)
+            && !self.cors_cache.is_cached_and_valid(req)
+        {
+            let preflight_req = crate::security::cors::build_preflight_request(req)?;
                 let preflight_resp = self.transport.execute(&preflight_req).await?;
                 crate::security::cors::validate_cors_response(&preflight_req, &preflight_resp)?;
                 
@@ -617,7 +618,6 @@ impl ResourceFetcher {
                     }
                 }
             }
-        }
         Ok(())
     }
 

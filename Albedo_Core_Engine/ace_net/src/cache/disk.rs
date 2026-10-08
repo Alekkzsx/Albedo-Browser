@@ -133,6 +133,12 @@ pub struct SparseRangeIndex {
     pub total_length: Option<u64>,
 }
 
+impl Default for SparseRangeIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SparseRangeIndex {
     pub fn new() -> Self {
         Self { ranges: Vec::new(), total_length: None }
@@ -477,9 +483,10 @@ impl DiskCacheEngine {
         let size = bytes.len() as u64;
         let file_path = self.base_path.join(format!("{:016x}.cache", hash));
 
-        // Open with create and write modes
+        // Open with create and write modes (preserving existing chunks for sparse ranges)
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
+            .truncate(false)
             .write(true)
             .open(&file_path)
             .await?;
@@ -492,7 +499,7 @@ impl DiskCacheEngine {
         // Update sparse index
         {
             let mut sparse_lock = self.sparse_indices.write().await;
-            let entry = sparse_lock.entry(hash).or_insert_with(|| SparseRangeIndex::new());
+            let entry = sparse_lock.entry(hash).or_default();
             entry.add_range(start, end);
             if let Some(t) = total_size {
                 entry.total_length = Some(t);

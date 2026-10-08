@@ -135,7 +135,7 @@ impl TransportClient {
 
         // Cada cliente particionado recebe seu próprio resolver DNS para não compartilhar cache/estado
         // PNA TODO: Em M5 instanciamos com uma flag block_private_ips se NIK for público.
-        let is_public = nik.map_or(false, |n| {
+        let is_public = nik.is_some_and(|n| {
             if let ace_core::security::origin::Origin::Tuple { host, .. } = &n.top_frame_origin {
                 !crate::security::pna::is_host_private_or_local(&host.as_str())
             } else {
