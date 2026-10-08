@@ -36,6 +36,10 @@ pub use cache::{CacheEntry, CacheStats, HttpCache, NetworkIsolationKey};
 pub use cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, SameSite, MAX_COOKIES_PER_DOMAIN};
 pub use engine::cancel::CancellationRegistry;
 pub use engine::contention::RetryAfter;
+pub use engine::download::{
+    start_download, DownloadOptions, DownloadProgress, DownloadSession, DownloadState,
+    DOWNLOAD_TEMP_EXTENSION,
+};
 pub use engine::fetcher::ResourceFetcher;
 pub use engine::priority::{PrioritizedItem, PriorityLevel};
 pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
@@ -57,14 +61,28 @@ pub use protocol::webtransport::{validate_webtransport_url, WebTransportSession}
 pub use security::clear_site_data::ClearSiteDataAction;
 pub use security::fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
 pub use security::hsts::{HstsPolicy, HstsStore};
+pub use security::isolation::{
+    extract_corp_policy, validate_corp, CoepPolicy, CoopPolicy, CorpPolicy, IsolationContext,
+};
+pub use security::mixed_content::{
+    check_and_apply_mixed_content, evaluate_mixed_content, MixedContentCategory,
+    MixedContentDecision,
+};
 pub use security::ohttp::{EncapsulatedRequest, OhttpConfig, OhttpEncapsulator, OhttpKeyConfig};
+pub use http::sniffing::{
+    extract_mime_essence, is_nosniff_header_present, is_unknown_mime_type, sniff_mime_type,
+    validate_nosniff_content_type, MIME_SNIFF_BUFFER_LIMIT,
+};
 pub use telemetry::client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
 pub use telemetry::har::HarExporter;
 pub use telemetry::hints::ResourceHint;
 pub use telemetry::metrics::FetcherMetrics;
 pub use telemetry::net_log::{log_net_error, log_net_event, NetEventType, NetLogCollector, NetLogEntry};
 pub use tokio_util::sync::CancellationToken;
-pub use transport::{DohHappyEyeballsResolver, TransportClient};
+pub use transport::{
+    connect_http_connect_tunnel, connect_socks5_tunnel, establish_connection,
+    DohHappyEyeballsResolver, ProxyAuth, ProxyBypassList, ProxyConfig, TransportClient,
+};
 pub use url::Url;
 
 /// Cria uma instância padrão do `ResourceFetcher` para uso imediato pelo motor.
