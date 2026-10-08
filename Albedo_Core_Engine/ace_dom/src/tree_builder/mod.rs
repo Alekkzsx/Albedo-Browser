@@ -475,24 +475,10 @@ impl HTMLTreeBuilder {
                 Token::StartTag(start_tag) => {
                     let tag = start_tag.name.as_str();
                     if matches!(tag, "meta" | "link" | "base" | "basefont" | "bgsound") {
-                        let el_id = self.doc.create_element(start_tag.name, Namespace::Html);
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            for attr in start_tag.attributes.as_slice() {
-                                el.set_attribute(attr.name.clone(), attr.value.clone());
-                            }
-                        }
-                        let parent_id = self.open_elements.current_node().unwrap_or(self.doc.root());
-                        let _ = self.doc.append_child(parent_id, el_id);
+                        self.insert_void_element(start_tag);
                         TokenizerAction::Continue
                     } else if matches!(tag, "title" | "style" | "script" | "noscript") {
-                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            for attr in start_tag.attributes.as_slice() {
-                                el.set_attribute(attr.name.clone(), attr.value.clone());
-                            }
-                        }
-
-                        if tag == "title" {
+                        let action = if tag == "title" {
                             TokenizerAction::SwitchState(TokenizerState::RCDATA)
                         } else if tag == "style" {
                             TokenizerAction::SwitchState(TokenizerState::RAWTEXT)
@@ -500,7 +486,9 @@ impl HTMLTreeBuilder {
                             TokenizerAction::SwitchState(TokenizerState::ScriptData)
                         } else {
                             TokenizerAction::Continue
-                        }
+                        };
+                        self.insert_html_element(start_tag);
+                        action
                     } else if tag == "template" {
                         self.handle_template_start(start_tag)
                     } else if tag == "head" {
@@ -545,12 +533,7 @@ impl HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("body") => {
-                    let body_id = self.insert_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(body_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
+                    let body_id = self.insert_html_element(start_tag);
                     self.doc.body = Some(body_id);
                     self.mode = InsertionMode::InBody;
                     TokenizerAction::Continue
