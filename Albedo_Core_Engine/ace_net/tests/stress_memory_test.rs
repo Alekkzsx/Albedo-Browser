@@ -1,26 +1,42 @@
 use ace_net::transport::client::TransportClient;
 use ace_net::http::request::Request;
-use std::time::SystemTime;
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::StatusCode;
+use std::convert::Infallible;
+use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn test_streaming_memory_stress() {
-    // Esse teste é um placeholder lógico que valida que a API de streaming 
-    // reativa não coleta bytes no heap automaticamente.
-    // Em um ambiente WPT real, instanciaríamos um servidor local para streamar 100MB.
-    
-    let client = TransportClient::new().unwrap();
-    // Um arquivo grande imaginário ou uma fonte infinita suportada pelo servidor mock
-    let req = Request::get("https://raw.githubusercontent.com/rust-lang/rust/master/README.md").unwrap().build();
+    // Servidor mock local loopback simulando resposta em stream
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
 
-    let start = SystemTime::now();
+    tokio::spawn(async move {
+        if let Ok((stream, _)) = listener.accept().await {
+            let io = hyper_util::rt::TokioIo::new(stream);
+            let _ = http1::Builder::new()
+                .serve_connection(
+                    io,
+                    service_fn(|_req| async {
+                        let payload = Bytes::from(vec![b'A'; 64 * 1024]);
+                        let mut resp = hyper::Response::new(Full::new(payload));
+                        *resp.status_mut() = StatusCode::OK;
+                        Ok::<_, Infallible>(resp)
+                    }),
+                )
+                .await;
+        }
+    });
+
+    let client = TransportClient::new().unwrap();
+    let req = Request::get(format!("http://127.0.0.1:{}", addr.port())).unwrap().build();
+
     let resp_res = client.execute(&req).await;
-    
-    if let Ok(mut resp) = resp_res {
-        assert!(resp.status.is_success());
-        let stream_opt = resp.body.take_stream().await;
-        // O corpo foi retornado como stream assíncrono (ou memória se muito pequeno)
-        // No caso de um arquivo de 100MB, 'take_stream' retornaria o BoxByteStream!
-        // O pico de RAM seria < 10MB devido ao chunking do hyper e backpressure.
-        assert!(stream_opt.is_some() || !resp.body.is_empty());
-    }
+    assert!(resp_res.is_ok(), "Requisição deve ser atendida com sucesso pelo mock local");
+    let resp = resp_res.unwrap();
+    assert!(resp.status.is_success());
+    assert!(!resp.body.is_empty());
 }

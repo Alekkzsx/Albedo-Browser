@@ -73,6 +73,8 @@ pub struct ResourceFetcher {
     proxy_bypass_list: Arc<parking_lot::RwLock<crate::transport::proxy::ProxyBypassList>>,
     nqe: Arc<crate::telemetry::nqe::NetworkQualityEstimator>,
     auth_manager: Arc<crate::http::auth::HttpAuthManager>,
+    network_change_notifier: Arc<crate::transport::network_change::NetworkChangeNotifier>,
+    captive_portal_detector: Arc<crate::security::captive_portal::CaptivePortalDetector>,
 }
 
 impl ResourceFetcher {
@@ -124,6 +126,8 @@ impl ResourceFetcher {
         let proxy_bypass_list = Arc::new(parking_lot::RwLock::new(crate::transport::proxy::ProxyBypassList::new()));
         let nqe = Arc::new(crate::telemetry::nqe::NetworkQualityEstimator::new());
         let auth_manager = Arc::new(crate::http::auth::HttpAuthManager::new());
+        let network_change_notifier = Arc::new(crate::transport::network_change::NetworkChangeNotifier::new());
+        let captive_portal_detector = Arc::new(crate::security::captive_portal::CaptivePortalDetector::new());
 
         Ok(Self {
             transport,
@@ -145,6 +149,8 @@ impl ResourceFetcher {
             proxy_bypass_list,
             nqe,
             auth_manager,
+            network_change_notifier,
+            captive_portal_detector,
         })
     }
 
@@ -176,6 +182,34 @@ impl ResourceFetcher {
     /// Retorna uma referência ao gerenciador de autenticação HTTP.
     pub fn auth_manager(&self) -> &Arc<crate::http::auth::HttpAuthManager> {
         &self.auth_manager
+    }
+
+    /// Retorna uma referência ao notificador de mudanças de rede.
+    pub fn network_change_notifier(&self) -> &Arc<crate::transport::network_change::NetworkChangeNotifier> {
+        &self.network_change_notifier
+    }
+
+    /// Retorna uma referência ao detector de portal cativo.
+    pub fn captive_portal_detector(&self) -> &Arc<crate::security::captive_portal::CaptivePortalDetector> {
+        &self.captive_portal_detector
+    }
+
+    /// Trata a ocorrência de mudança de rede física/lógica no sistema operacional:
+    /// - Executa flush assíncrono de conexões inativas (black-holes) no pool de transporte
+    /// - Dispara notificação para todos os observadores inscritos
+    pub async fn handle_network_change(&self, event: crate::transport::network_change::NetworkChangeEvent) {
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::Warning,
+            "",
+            &format!("Mudança de conectividade detectada ({:?}). Realizando flush de sockets ociosos...", event.connection_type),
+        );
+        self.transport.flush_idle_sockets().await;
+        self.network_change_notifier.notify_network_change(event);
+    }
+
+    /// Dispara uma verificação ativa de portal cativo através da sonda canônica.
+    pub async fn check_captive_portal(&self) -> NetResult<crate::security::captive_portal::CaptivePortalStatus> {
+        self.captive_portal_detector.check_portal(&self.transport).await
     }
 
     /// Retorna uma referência compartilhada ao cache HTTP subjacente.

@@ -223,6 +223,13 @@ impl TransportClient {
         Ok(())
     }
 
+    /// Descarta todos os clientes particionados e seus pools de conexões ociosas (black-holes),
+    /// forçando a criação de novas conexões limpas sob a nova interface de rede.
+    pub async fn flush_idle_sockets(&self) {
+        self.isolated_clients.write().await.clear();
+        self.isolated_ech_clients.write().await.clear();
+    }
+
     /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
     #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method))]
     pub async fn execute(&self, req: &Request) -> NetResult<Response> {

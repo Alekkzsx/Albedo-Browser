@@ -286,6 +286,12 @@ impl RequestBuilder {
         self
     }
 
+    /// Define a política de seguimento de redirecionamentos (3xx).
+    pub fn redirect_policy(mut self, policy: RedirectPolicy) -> Self {
+        self.redirect_policy = policy;
+        self
+    }
+
     /// Força o uso de HTTP/3 (QUIC) se disponível (bypass de Alt-Svc cache).
     pub fn force_h3(mut self) -> Self {
         self.force_h3 = true;
@@ -410,6 +416,12 @@ impl TryIntoUrl for &str {
 }
 
 impl TryIntoUrl for &String {
+    fn try_into_url(self) -> NetResult<Url> {
+        self.as_str().try_into_url()
+    }
+}
+
+impl TryIntoUrl for String {
     fn try_into_url(self) -> NetResult<Url> {
         self.as_str().try_into_url()
     }

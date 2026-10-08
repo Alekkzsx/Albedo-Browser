@@ -37,12 +37,12 @@ pub use cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, Sa
 pub use engine::cancel::CancellationRegistry;
 pub use engine::contention::RetryAfter;
 pub use engine::download::{
-    start_download, DownloadOptions, DownloadProgress, DownloadSession, DownloadState,
-    DOWNLOAD_TEMP_EXTENSION,
+    start_download, start_parallel_download, DownloadChunk, DownloadOptions, DownloadProgress,
+    DownloadSession, DownloadState, DOWNLOAD_TEMP_EXTENSION,
 };
 pub use engine::fetcher::ResourceFetcher;
 pub use engine::priority::{PrioritizedItem, PriorityLevel};
-pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
+pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit, TabId};
 pub use engine::service_worker_hook::ServiceWorkerHook;
 pub use error::{NetError, NetResult};
 pub use http::auth::{HttpAuthCache, HttpAuthChallenge, HttpAuthCredentials, HttpAuthManager};
@@ -59,6 +59,9 @@ pub use http::response::{BoxByteStream, Response, ResponseBody, ResponseTiming, 
 pub use protocol::alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
 pub use protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
 pub use protocol::webtransport::{validate_webtransport_url, WebTransportSession};
+pub use security::captive_portal::{
+    CaptivePortalDetector, CaptivePortalStatus, DEFAULT_CAPTIVE_PORTAL_PROBE_URL,
+};
 pub use security::clear_site_data::ClearSiteDataAction;
 pub use security::fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
 pub use security::hsts::{HstsPolicy, HstsStore};
@@ -83,7 +86,9 @@ pub use telemetry::nqe::{EffectiveConnectionType, NetworkObservation, NetworkQua
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{
     connect_http_connect_tunnel, connect_socks5_tunnel, establish_connection,
-    DohHappyEyeballsResolver, ProxyAuth, ProxyBypassList, ProxyConfig, TransportClient,
+    DnsCacheEntry, DohHappyEyeballsResolver, NetworkChangeEvent, NetworkChangeNotifier,
+    NetworkConnectionType, PartitionedDnsCache, ProxyAuth, ProxyBypassList, ProxyConfig,
+    TransportClient,
 };
 pub use url::Url;
 

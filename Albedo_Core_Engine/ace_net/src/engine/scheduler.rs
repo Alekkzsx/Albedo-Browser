@@ -8,6 +8,10 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use ace_core::id::RequestId;
 
+/// Identificador único de aba do navegador para controle dinâmico de recursos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TabId(pub u64);
+
 /// Configuração de limites do ResourceScheduler.
 #[derive(Debug, Clone)]
 pub struct SchedulerConfig {
@@ -38,6 +42,8 @@ struct SchedulerState {
     queue: BTreeSet<PrioritizedItem<RequestId>>,
     pending: FxHashMap<RequestId, PendingRequest>,
     active_streams: FxHashMap<RequestId, tokio::sync::watch::Sender<PriorityLevel>>,
+    tab_requests: FxHashMap<TabId, Vec<RequestId>>,
+    original_priorities: FxHashMap<RequestId, PriorityLevel>,
 }
 
 /// Orquestrador de contenção e prioridade. Limita requests em voo globalmente e por host.
@@ -74,6 +80,8 @@ impl ResourceScheduler {
                 queue: BTreeSet::new(),
                 pending: FxHashMap::default(),
                 active_streams: FxHashMap::default(),
+                tab_requests: FxHashMap::default(),
+                original_priorities: FxHashMap::default(),
             }),
             sequence: AtomicU64::new(0),
         })
@@ -275,5 +283,52 @@ impl ResourceScheduler {
 
     pub fn unregister_active_stream(&self, request_id: RequestId) {
         self.state.lock().active_streams.remove(&request_id);
+    }
+
+    /// Associa uma requisição ativa a uma aba do navegador.
+    pub fn associate_tab(&self, request_id: RequestId, tab_id: TabId, original_priority: PriorityLevel) {
+        let mut state = self.state.lock();
+        state.tab_requests.entry(tab_id).or_default().push(request_id);
+        state.original_priorities.insert(request_id, original_priority);
+    }
+
+    /// Desassocia uma requisição concluída da sua respectiva aba.
+    pub fn disassociate_tab(&self, request_id: RequestId, tab_id: TabId) {
+        let mut state = self.state.lock();
+        if let Some(reqs) = state.tab_requests.get_mut(&tab_id) {
+            reqs.retain(|r| *r != request_id);
+            if reqs.is_empty() {
+                state.tab_requests.remove(&tab_id);
+            }
+        }
+        state.original_priorities.remove(&request_id);
+    }
+
+    /// Altera a visibilidade de uma aba:
+    /// Se `is_visible == false`, rebaixa imediatamente todas as requisições em voo para `PriorityLevel::Lowest` (Background Tab Throttling).
+    /// Se `is_visible == true`, restaura a prioridade original de cada requisição.
+    pub fn set_tab_visibility(&self, tab_id: TabId, is_visible: bool) {
+        let reqs_with_target = {
+            let state = self.state.lock();
+            let reqs = match state.tab_requests.get(&tab_id) {
+                Some(r) => r.clone(),
+                None => return,
+            };
+
+            let mut targets = Vec::with_capacity(reqs.len());
+            for req_id in reqs {
+                let target_priority = if is_visible {
+                    state.original_priorities.get(&req_id).copied().unwrap_or(PriorityLevel::Medium)
+                } else {
+                    PriorityLevel::Lowest
+                };
+                targets.push((req_id, target_priority));
+            }
+            targets
+        };
+
+        for (req_id, target_priority) in reqs_with_target {
+            self.reprioritize(req_id, target_priority);
+        }
     }
 }

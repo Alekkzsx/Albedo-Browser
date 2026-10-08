@@ -8,3 +8,4 @@ pub mod clear_site_data;
 pub mod ohttp;
 pub mod isolation;
 pub mod mixed_content;
+pub mod captive_portal;

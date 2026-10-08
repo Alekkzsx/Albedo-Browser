@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt, SeekFrom};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -164,6 +164,260 @@ pub fn start_download(
     });
 
     (session, worker_handle)
+}
+
+/// Representação de uma fatia de download para aceleração paralela multi-stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadChunk {
+    pub chunk_index: usize,
+    pub start_byte: u64,
+    pub end_byte: u64,
+}
+
+impl DownloadChunk {
+    /// Divide o tamanho total do arquivo em `num_chunks` fatias contíguas.
+    pub fn plan_chunks(total_bytes: u64, num_chunks: usize) -> Vec<DownloadChunk> {
+        let num_chunks = num_chunks.max(1);
+        if total_bytes == 0 {
+            return vec![DownloadChunk {
+                chunk_index: 0,
+                start_byte: 0,
+                end_byte: 0,
+            }];
+        }
+        let chunk_size = total_bytes / (num_chunks as u64);
+        let mut chunks = Vec::with_capacity(num_chunks);
+        let mut start = 0;
+
+        for i in 0..num_chunks {
+            let end = if i == num_chunks - 1 {
+                total_bytes - 1
+            } else {
+                start + chunk_size - 1
+            };
+            chunks.push(DownloadChunk {
+                chunk_index: i,
+                start_byte: start,
+                end_byte: end,
+            });
+            start = end + 1;
+        }
+
+        chunks
+    }
+}
+
+/// Inicia o processo de download acelerado por fatias concorrentes (Parallel Range Slicing).
+///
+/// Divide a transferência do arquivo em `num_chunks` conexões paralelas, gravando os dados
+/// concorrentemente com seek no arquivo temporário `.albedodownload`.
+pub fn start_parallel_download(
+    fetcher: Arc<ResourceFetcher>,
+    options: DownloadOptions,
+    num_chunks: usize,
+) -> (DownloadSession, tokio::task::JoinHandle<NetResult<()>>) {
+    if num_chunks <= 1 {
+        return start_download(fetcher, options);
+    }
+
+    let id = RequestId::new();
+    let cancel_token = CancellationToken::new();
+    let is_paused = Arc::new(AtomicBool::new(false));
+
+    let (progress_tx, progress_rx) = watch::channel(DownloadProgress {
+        state: DownloadState::Idle,
+        ..Default::default()
+    });
+
+    let session = DownloadSession {
+        id,
+        url: options.url.clone(),
+        destination_path: options.destination_path.clone(),
+        progress_receiver: progress_rx,
+        cancel_token: cancel_token.clone(),
+        is_paused: is_paused.clone(),
+    };
+
+    let worker_handle = tokio::spawn(async move {
+        execute_parallel_download_worker(fetcher, options, num_chunks, cancel_token, is_paused, progress_tx).await
+    });
+
+    (session, worker_handle)
+}
+
+/// Trabalhador em background responsável pelo fatiamento concorrente em N streams e escrita com seek.
+async fn execute_parallel_download_worker(
+    fetcher: Arc<ResourceFetcher>,
+    options: DownloadOptions,
+    num_chunks: usize,
+    cancel_token: CancellationToken,
+    is_paused: Arc<AtomicBool>,
+    progress_tx: watch::Sender<DownloadProgress>,
+) -> NetResult<()> {
+    let temp_path = options.temp_path();
+
+    if let Some(parent) = options.destination_path.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+
+    // 1. Sondagem HEAD para obter tamanho e verificar suporte a Range
+    let head_req = Request::builder(options.url.clone(), http::Method::HEAD)?
+        .destination(RequestDestination::Other)
+        .cancellation_token(cancel_token.clone())
+        .build();
+
+    let head_resp = match fetcher.fetch(head_req).await {
+        Ok(r) => r,
+        Err(_) => {
+            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx).await;
+        }
+    };
+
+    let total_bytes = head_resp
+        .headers
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+
+    let accepts_ranges = head_resp
+        .headers
+        .get(ACCEPT_RANGES)
+        .and_then(|v| v.to_str().ok())
+        .map_or(false, |v| v.eq_ignore_ascii_case("bytes"));
+
+    let etag: Option<SmolStr> = head_resp
+        .headers
+        .get(ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(SmolStr::new);
+
+    let total_size = match total_bytes {
+        Some(size) if accepts_ranges && size > 1024 * 1024 => size,
+        _ => {
+            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx).await;
+        }
+    };
+
+    // 2. Pré-aloca o arquivo temporário
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&temp_path)
+        .await?;
+    file.set_len(total_size).await?;
+    drop(file);
+
+    let chunks = DownloadChunk::plan_chunks(total_size, num_chunks);
+    let downloaded_per_chunk: Arc<parking_lot::Mutex<Vec<u64>>> = Arc::new(parking_lot::Mutex::new(vec![0; chunks.len()]));
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for chunk in chunks {
+        let fetcher_c = fetcher.clone();
+        let options_c = options.clone();
+        let temp_path_c = temp_path.clone();
+        let cancel_c = cancel_token.clone();
+        let downloaded_map = downloaded_per_chunk.clone();
+        let progress_sender = progress_tx.clone();
+        let etag_c = etag.clone();
+
+        join_set.spawn(async move {
+            let mut req_builder = Request::get(options_c.url.clone())?
+                .destination(RequestDestination::Other)
+                .streaming(true)
+                .cancellation_token(cancel_c.clone());
+
+            let range_val = http::HeaderValue::from_str(&format!("bytes={}-{}", chunk.start_byte, chunk.end_byte))
+                .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            req_builder = req_builder.header(RANGE, range_val);
+
+            if let Some(ref e) = etag_c {
+                if let Ok(hdr) = http::HeaderValue::from_str(e.as_str()) {
+                    req_builder = req_builder.header(IF_RANGE, hdr);
+                }
+            }
+
+            let resp = fetcher_c.fetch(req_builder.build()).await?;
+            if resp.status != StatusCode::PARTIAL_CONTENT && resp.status != StatusCode::OK {
+                return Err(NetError::HttpProtocolError(format!(
+                    "Status inesperado na fatia {}: {}",
+                    chunk.chunk_index, resp.status
+                )));
+            }
+
+            let mut chunk_file = OpenOptions::new()
+                .write(true)
+                .open(&temp_path_c)
+                .await?;
+
+            chunk_file.seek(SeekFrom::Start(chunk.start_byte)).await?;
+
+            let mut stream = resp.body.take_stream().await.ok_or_else(|| {
+                NetError::HttpProtocolError("Corpo da resposta sem stream na fatia".into())
+            })?;
+
+            while let Some(res) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+                if cancel_c.is_cancelled() {
+                    return Err(NetError::Cancelled);
+                }
+                let bytes = res?;
+                chunk_file.write_all(&bytes).await?;
+
+                let mut guard = downloaded_map.lock();
+                guard[chunk.chunk_index] += bytes.len() as u64;
+                let total_done: u64 = guard.iter().sum();
+                drop(guard);
+
+                let _ = progress_sender.send(DownloadProgress {
+                    bytes_downloaded: total_done,
+                    total_bytes: Some(total_size),
+                    bytes_per_second: 0.0,
+                    progress_percentage: calculate_percentage(total_done, Some(total_size)),
+                    is_resumable: true,
+                    etag: etag_c.clone(),
+                    state: DownloadState::Downloading,
+                });
+            }
+
+            chunk_file.flush().await?;
+            Ok::<(), NetError>(())
+        });
+    }
+
+    while let Some(res) = join_set.join_next().await {
+        match res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let _ = progress_tx.send(DownloadProgress {
+                    bytes_downloaded: 0,
+                    total_bytes: Some(total_size),
+                    bytes_per_second: 0.0,
+                    progress_percentage: None,
+                    is_resumable: true,
+                    etag,
+                    state: DownloadState::Failed,
+                });
+                return Err(e);
+            }
+            Err(e) => {
+                return Err(NetError::HttpProtocolError(e.to_string()));
+            }
+        }
+    }
+
+    tokio::fs::rename(&temp_path, &options.destination_path).await?;
+
+    let _ = progress_tx.send(DownloadProgress {
+        bytes_downloaded: total_size,
+        total_bytes: Some(total_size),
+        bytes_per_second: 0.0,
+        progress_percentage: Some(100.0),
+        is_resumable: true,
+        etag,
+        state: DownloadState::Completed,
+    });
+
+    Ok(())
 }
 
 /// Trabalhador em background responsável pela negociação HTTP, escrita em disco e telemetria.
