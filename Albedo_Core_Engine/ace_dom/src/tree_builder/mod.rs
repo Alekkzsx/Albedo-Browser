@@ -83,14 +83,27 @@ impl HTMLTreeBuilder {
         el_id
     }
 
-    /// Insere um elemento HTML copiando seus atributos e empilhando-o.
-    fn insert_html_element(&mut self, tag: &crate::tokenizer::StartTagToken) -> NodeId {
-        let el_id = self.insert_element(tag.name.as_str(), Namespace::Html);
+    /// Insere um elemento HTML com seus atributos populados e empilha-o em `open_elements`.
+    fn insert_html_element(&mut self, tag: crate::tokenizer::StartTagToken) -> NodeId {
+        let el_id = self.insert_element(tag.name, Namespace::Html);
         if let Some(node) = self.doc.get_node_mut(el_id) {
             if let Some(el) = node.as_element_mut() {
-                el.attributes = tag.attributes.clone();
+                el.init_attributes(tag.attributes);
             }
         }
+        el_id
+    }
+
+    /// Cria e anexa um elemento void (ou elemento de head que não empilha).
+    fn insert_void_element(&mut self, tag: crate::tokenizer::StartTagToken) -> NodeId {
+        let el_id = self.doc.create_element(tag.name, Namespace::Html);
+        if let Some(node) = self.doc.get_node_mut(el_id) {
+            if let Some(el) = node.as_element_mut() {
+                el.init_attributes(tag.attributes);
+            }
+        }
+        let parent_id = self.open_elements.current_node().unwrap_or(self.doc.root());
+        let _ = self.doc.append_child(parent_id, el_id);
         el_id
     }
 
@@ -125,7 +138,8 @@ impl HTMLTreeBuilder {
             if let Some(last_child_id) = parent_node.last_child {
                 if let Some(last_child) = self.doc.get_node_mut(last_child_id) {
                     if let crate::node::NodeKind::Text(ref mut t) = last_child.kind {
-                        let mut merged = t.data.to_string();
+                        let mut merged = String::with_capacity(t.data.len() + text.len());
+                        merged.push_str(&t.data);
                         merged.push_str(text);
                         t.data = SmolStr::new(merged);
                         return;
@@ -169,7 +183,11 @@ impl HTMLTreeBuilder {
     /// Reseta o modo de inserção caminhando pela pilha de elementos abertos (WHATWG §12.2.4.1).
     fn reset_insertion_mode(&mut self) {
         let stack = self.open_elements.as_slice();
-        for &node_id in stack.iter().rev() {
+        let mut last = false;
+        for (i, &node_id) in stack.iter().enumerate().rev() {
+            if i == 0 {
+                last = true;
+            }
             if let Some(node) = self.doc.get_node(node_id) {
                 if let Some(tag) = node.tag_name() {
                     match tag.as_str() {
@@ -178,8 +196,10 @@ impl HTMLTreeBuilder {
                             return;
                         }
                         "td" | "th" => {
-                            self.mode = InsertionMode::InCell;
-                            return;
+                            if !last {
+                                self.mode = InsertionMode::InCell;
+                                return;
+                            }
                         }
                         "tr" => {
                             self.mode = InsertionMode::InRow;
@@ -206,8 +226,10 @@ impl HTMLTreeBuilder {
                             return;
                         }
                         "head" => {
-                            self.mode = InsertionMode::InHead;
-                            return;
+                            if !last {
+                                self.mode = InsertionMode::InHead;
+                                return;
+                            }
                         }
                         "body" => {
                             self.mode = InsertionMode::InBody;
@@ -266,11 +288,8 @@ impl HTMLTreeBuilder {
             self.doc.create_document_fragment()
         };
 
-        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
+        let el_id = self.insert_html_element(start_tag);
         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-            for attr in start_tag.attributes.as_slice() {
-                el.set_attribute(attr.name.clone(), attr.value.clone());
-            }
             el.set_template_content(Some(content_id));
         }
         self.template_insertion_modes.push(InsertionMode::InTemplate);

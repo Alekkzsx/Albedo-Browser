@@ -515,3 +515,114 @@ impl<T, const N: usize> From<[T; N]> for InlineVec<T, N> {
         inline
     }
 }
+
+enum IntoIterStorage<T, const N: usize> {
+    Inline {
+        data: [MaybeUninit<T>; N],
+        current: usize,
+        len: usize,
+    },
+    Heap(std::vec::IntoIter<T>),
+}
+
+/// Iterador por valor para `InlineVec`.
+pub struct IntoIter<T, const N: usize> {
+    storage: IntoIterStorage<T, N>,
+}
+
+impl<T, const N: usize> Iterator for IntoIter<T, N> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.storage {
+            IntoIterStorage::Inline { data, current, len } => {
+                if *current < *len {
+                    let item = unsafe {
+                        std::mem::replace(&mut data[*current], MaybeUninit::uninit()).assume_init()
+                    };
+                    *current += 1;
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+            IntoIterStorage::Heap(iter) => iter.next(),
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<T, const N: usize> ExactSizeIterator for IntoIter<T, N> {
+    #[inline]
+    fn len(&self) -> usize {
+        match &self.storage {
+            IntoIterStorage::Inline { current, len, .. } => len - current,
+            IntoIterStorage::Heap(iter) => iter.len(),
+        }
+    }
+}
+
+impl<T, const N: usize> Drop for IntoIter<T, N> {
+    fn drop(&mut self) {
+        if let IntoIterStorage::Inline { data, current, len } = &mut self.storage {
+            for slot in &mut data[*current..*len] {
+                unsafe {
+                    slot.assume_init_drop();
+                }
+            }
+        }
+    }
+}
+
+impl<T, const N: usize> IntoIterator for InlineVec<T, N> {
+    type Item = T;
+    type IntoIter = IntoIter<T, N>;
+
+    #[inline]
+    fn into_iter(mut self) -> Self::IntoIter {
+        match std::mem::replace(
+            &mut self.storage,
+            InlineVecStorage::Inline {
+                len: 0,
+                data: [const { MaybeUninit::uninit() }; N],
+            },
+        ) {
+            InlineVecStorage::Inline { len, data } => IntoIter {
+                storage: IntoIterStorage::Inline {
+                    data,
+                    current: 0,
+                    len,
+                },
+            },
+            InlineVecStorage::Heap(vec) => IntoIter {
+                storage: IntoIterStorage::Heap(vec.into_iter()),
+            },
+        }
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a InlineVec<T, N> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_slice().iter()
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a mut InlineVec<T, N> {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_mut_slice().iter_mut()
+    }
+}

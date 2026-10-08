@@ -58,6 +58,12 @@ pub fn trim_html_whitespace(text: &str) -> &str {
 
 /// Colapsa sequências contíguas de espaços em branco HTML em um único espaço `' '`, conforme as regras de renderização inline CSS.
 pub fn collapse_html_whitespace(text: &str) -> String {
+    if !text
+        .bytes()
+        .any(|b| matches!(b, b' ' | b'\t' | b'\n' | 0x0C | b'\r'))
+    {
+        return text.to_string();
+    }
     let mut result = String::with_capacity(text.len());
     let mut in_whitespace = false;
 

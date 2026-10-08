@@ -149,7 +149,7 @@ pub fn run_adoption_agency_algorithm(
         let new_element = clone_element(doc, formatting_element_id);
 
         // Passo 3.15: Move todos os filhos de furthest_block para new_element
-        let mut children_to_move = Vec::new();
+        let mut children_to_move = ace_core::collections::InlineVec::<NodeId, 8>::new();
         for (child_id, _) in doc.children(furthest_block) {
             children_to_move.push(child_id);
         }
@@ -178,7 +178,7 @@ fn clone_element(doc: &mut Document, source_id: NodeId) -> NodeId {
             let new_id = doc.create_element(tag, ns);
             if let Some(new_node) = doc.get_node_mut(new_id) {
                 if let Some(new_el) = new_node.as_element_mut() {
-                    new_el.attributes = attrs;
+                    new_el.init_attributes(attrs);
                 }
             }
             return new_id;

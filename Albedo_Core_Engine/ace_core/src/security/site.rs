@@ -68,32 +68,46 @@ impl SchemefulSite {
 
 /// Extrai a porção registrável do domínio (eTLD+1), considerando sufixos públicos comuns.
 fn extract_registrable_domain(host: &str) -> SmolStr {
-    let host = host.trim().to_ascii_lowercase();
-    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
-        return SmolStr::new(host);
+    let trimmed = host.trim();
+    if trimmed.is_empty() || trimmed == "localhost" || trimmed.ends_with(".localhost") {
+        return SmolStr::new(trimmed);
     }
 
-    let parts: Vec<&str> = host.split('.').collect();
-    if parts.len() <= 2 {
-        return SmolStr::new(host);
-    }
+    let host_cow: std::borrow::Cow<str> = if trimmed.bytes().any(|b| b.is_ascii_uppercase()) {
+        trimmed.to_ascii_lowercase().into()
+    } else {
+        trimmed.into()
+    };
+    let h = host_cow.as_ref();
+
+    let mut dot_iter = h.rmatch_indices('.');
+    let Some((d1, _)) = dot_iter.next() else {
+        return SmolStr::new(h);
+    };
+    let Some((d2, _)) = dot_iter.next() else {
+        return SmolStr::new(h);
+    };
+    let d3 = dot_iter.next().map(|(idx, _)| idx);
+
+    let tld = &h[d1 + 1..];
+    let sld = &h[d2 + 1..d1];
 
     // Sufixos públicos comuns de segundo nível (eTLD composto)
     let is_multipart_tld = matches!(
-        (parts[parts.len() - 2], parts[parts.len() - 1]),
+        (sld, tld),
         (
             "co" | "com" | "org" | "net" | "edu" | "gov" | "mil",
             "uk" | "br" | "au" | "nz" | "za" | "jp"
         ) | ("ac" | "gov" | "edu", _)
     );
 
-    if is_multipart_tld && parts.len() >= 3 {
-        let domain_parts = &parts[parts.len() - 3..];
-        domain_parts.join(".").into()
+    let start = if is_multipart_tld {
+        d3.map_or(0, |idx| idx + 1)
     } else {
-        let domain_parts = &parts[parts.len() - 2..];
-        domain_parts.join(".").into()
-    }
+        d2 + 1
+    };
+
+    SmolStr::new(&h[start..])
 }
 
 impl fmt::Display for SchemefulSite {

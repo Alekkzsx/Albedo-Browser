@@ -36,4 +36,9 @@ fn test_localhost_is_secure() {
 
     let loopback = Origin::parse("http://127.0.0.1:8080/").unwrap();
     assert!(loopback.is_secure());
+    assert_eq!(loopback.ascii_serialization(), "http://127.0.0.1:8080");
+
+    if let ace_core::security::Origin::Tuple { host, .. } = &local {
+        assert_eq!(host.as_domain_str(), Some("localhost"));
+    }
 }

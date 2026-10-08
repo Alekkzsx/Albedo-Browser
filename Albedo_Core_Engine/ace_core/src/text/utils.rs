@@ -4,6 +4,9 @@
 
 /// Escapa caracteres especiais para inserção segura em nós de texto ou atributos HTML (`&`, `<`, `>`, `"`, `'`).
 pub fn escape_html(raw: &str) -> String {
+    if !raw.bytes().any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\'')) {
+        return raw.to_string();
+    }
     let mut out = String::with_capacity(raw.len() + 16);
     for c in raw.chars() {
         match c {
@@ -20,6 +23,7 @@ pub fn escape_html(raw: &str) -> String {
 
 /// Escapa identificadores CSS (classes, IDs) conforme a especificação CSSOM.
 pub fn escape_css_identifier(ident: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(ident.len() + 8);
     for (i, c) in ident.chars().enumerate() {
         if c == '\0' {
@@ -27,7 +31,7 @@ pub fn escape_css_identifier(ident: &str) -> String {
         } else if (i == 0 && c.is_ascii_digit())
             || (i == 1 && c.is_ascii_digit() && ident.starts_with('-'))
         {
-            out.push_str(&format!("\\{:x} ", c as u32));
+            let _ = write!(out, "\\{:x} ", c as u32);
         } else if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c > '\u{007F}' {
             out.push(c);
         } else {

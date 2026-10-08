@@ -1,4 +1,4 @@
-﻿use ace_core::text::SegmentedString;
+use ace_core::text::SegmentedString;
 
 #[test]
 fn test_segmented_string_basic_advance() {
@@ -117,4 +117,20 @@ fn test_segmented_string_peek_at() {
     assert_eq!(s.peek_at(1), Some('b'));
     assert_eq!(s.peek_at(5), Some('f'));
     assert_eq!(s.peek_at(6), None);
+}
+
+#[test]
+fn test_segmented_string_unconsumed_str_and_starts_with() {
+    let mut s = SegmentedString::new();
+    s.append_chunk("hello ");
+    s.append_chunk("world");
+    s.push_front_str("say: ");
+
+    assert_eq!(s.unconsumed_str(), "say: hello world");
+    assert!(s.starts_with("say: hello"));
+    assert!(!s.starts_with("say: bye"));
+    assert!(s.consume_prefix("say: "));
+    assert_eq!(s.unconsumed_str(), "hello world");
+    assert!(s.consume_prefix("hello "));
+    assert_eq!(s.unconsumed_str(), "world");
 }

@@ -53,3 +53,36 @@ fn test_preload_scanner_discovers_critical_resources() {
     assert_eq!(requests[5].url.as_str(), "/media/video.mp4");
     assert_eq!(requests[5].kind, PreloadKind::Media);
 }
+
+#[test]
+fn test_preload_scanner_handles_quotes_with_greater_than() {
+    let html = r#"
+    <img src="/img/valid.png" alt="A > B with arrow" title='x > y'>
+    <script src="/js/valid.js" data-expr="1 > 0"></script>
+    "#;
+
+    let scanner = PreloadScanner::new();
+    let requests = scanner.scan(html);
+
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].url.as_str(), "/img/valid.png");
+    assert_eq!(requests[0].kind, PreloadKind::Image);
+    assert_eq!(requests[1].url.as_str(), "/js/valid.js");
+    assert_eq!(requests[1].kind, PreloadKind::Script);
+}
+
+#[test]
+fn test_preload_scanner_unclosed_comment_safety() {
+    let html = r#"
+    <link rel="stylesheet" href="/style1.css">
+    <!-- Comentário incompleto sem fechamento <script src="/fake.js"></script>
+    "#;
+
+    let scanner = PreloadScanner::new();
+    let requests = scanner.scan(html);
+
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].url.as_str(), "/style1.css");
+    assert_eq!(requests[0].kind, PreloadKind::Stylesheet);
+}
+
