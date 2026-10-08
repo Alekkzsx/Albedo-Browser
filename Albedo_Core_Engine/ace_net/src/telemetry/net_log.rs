@@ -69,3 +69,74 @@ pub fn log_net_error(event_type: NetEventType, url: &str, error: &dyn std::error
         error = %error
     );
 }
+
+use serde::Serialize;
+use parking_lot::RwLock;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+/// Registro estruturado individual de evento de NetLog.
+#[derive(Debug, Clone, Serialize)]
+pub struct NetLogEntry {
+    pub time: String,
+    pub event_type: String,
+    pub source_id: u64,
+    pub url: String,
+    pub details: String,
+}
+
+/// Coletor de eventos de rede estruturados no formato Chromium NetLog.
+#[derive(Debug, Clone, Default)]
+pub struct NetLogCollector {
+    entries: Arc<RwLock<Vec<NetLogEntry>>>,
+}
+
+impl NetLogCollector {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registra um novo evento estruturado no coletor.
+    pub fn record(&self, source_id: u64, event_type: NetEventType, url: &str, details: &str) {
+        let now = SystemTime::now();
+        let time_str = httpdate::fmt_http_date(now);
+        let entry = NetLogEntry {
+            time: time_str,
+            event_type: event_type.to_string(),
+            source_id,
+            url: url.to_string(),
+            details: details.to_string(),
+        };
+        self.entries.write().push(entry);
+    }
+
+    /// Retorna a quantidade de eventos capturados.
+    pub fn len(&self) -> usize {
+        self.entries.read().len()
+    }
+
+    /// Verifica se o coletor está vazio.
+    pub fn is_empty(&self) -> bool {
+        self.entries.read().is_empty()
+    }
+
+    /// Limpa todos os eventos do coletor.
+    pub fn clear(&self) {
+        self.entries.write().clear();
+    }
+
+    /// Exporta os eventos acumulados no formato JSON padrão Chromium NetLog.
+    pub fn export_chrome_netlog_json(&self) -> String {
+        let entries = self.entries.read().clone();
+        let payload = serde_json::json!({
+            "constants": {
+                "client": "Albedo Browser",
+                "version": "0.1.0",
+                "netLogVersion": 1
+            },
+            "events": entries
+        });
+        serde_json::to_string_pretty(&payload).unwrap_or_default()
+    }
+}
+
