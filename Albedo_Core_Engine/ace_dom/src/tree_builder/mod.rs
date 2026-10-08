@@ -416,14 +416,7 @@ impl HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("html") => {
-                    let html_id = self.doc.create_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(html_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
-                    let _ = self.doc.append_child(self.doc.root(), html_id);
-                    self.open_elements.push(html_id);
+                    let html_id = self.insert_html_element(start_tag);
                     self.doc.document_element = Some(html_id);
                     self.mode = InsertionMode::BeforeHead;
                     TokenizerAction::Continue
@@ -451,12 +444,7 @@ impl HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("head") => {
-                    let head_id = self.insert_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(head_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
+                    let head_id = self.insert_html_element(start_tag);
                     self.head_element = Some(head_id);
                     self.doc.head = Some(head_id);
                     self.mode = InsertionMode::InHead;
