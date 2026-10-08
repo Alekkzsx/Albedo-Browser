@@ -1,5 +1,4 @@
 use serde::Serialize;
-use tokio::sync::mpsc;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -77,7 +76,7 @@ impl HarEntry {
             status: resp.status.as_u16(),
             status_text: resp.status.canonical_reason().unwrap_or("").to_string(),
             http_version,
-            body_size: resp.len() as i64,
+            body_size: resp.body.as_bytes().len() as i64,
         };
 
         let timings = HarTimings {

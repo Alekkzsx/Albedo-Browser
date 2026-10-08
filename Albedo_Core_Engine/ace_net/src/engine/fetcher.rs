@@ -66,6 +66,8 @@ pub struct ResourceFetcher {
     scheduler: Arc<crate::engine::scheduler::ResourceScheduler>,
     cors_cache: Arc<crate::security::cors_cache::CorsCache>,
     disk_path: Option<std::path::PathBuf>,
+    har_exporter: Arc<parking_lot::RwLock<Option<Arc<crate::telemetry::har::HarExporter>>>>,
+    net_log_collector: Arc<crate::telemetry::net_log::NetLogCollector>,
 }
 
 impl ResourceFetcher {
@@ -110,6 +112,8 @@ impl ResourceFetcher {
         let metrics = Arc::new(crate::telemetry::metrics::FetcherMetrics::new());
         let scheduler = crate::engine::scheduler::ResourceScheduler::new(crate::engine::scheduler::SchedulerConfig::default());
         let cors_cache = Arc::new(crate::security::cors_cache::CorsCache::new());
+        let har_exporter = Arc::new(parking_lot::RwLock::new(None));
+        let net_log_collector = Arc::new(crate::telemetry::net_log::NetLogCollector::new());
 
         Ok(Self {
             transport,
@@ -124,6 +128,8 @@ impl ResourceFetcher {
             scheduler,
             cors_cache,
             disk_path: disk_buf,
+            har_exporter,
+            net_log_collector,
         })
     }
 
@@ -269,6 +275,35 @@ impl ResourceFetcher {
         &self.metrics
     }
 
+    /// Ativa a gravação de tráfego de rede no formato HAR 1.2 persistindo em arquivo.
+    pub fn enable_har_recording(&self, path: impl Into<std::path::PathBuf>) -> Arc<crate::telemetry::har::HarExporter> {
+        let exporter = Arc::new(crate::telemetry::har::HarExporter::new(path.into()));
+        *self.har_exporter.write() = Some(exporter.clone());
+        exporter
+    }
+
+    /// Ativa a gravação de tráfego de rede no formato HAR 1.2 puramente em memória (ideal para DevTools).
+    pub fn enable_in_memory_har_recording(&self) -> Arc<crate::telemetry::har::HarExporter> {
+        let exporter = Arc::new(crate::telemetry::har::HarExporter::in_memory());
+        *self.har_exporter.write() = Some(exporter.clone());
+        exporter
+    }
+
+    /// Desativa a gravação de tráfego HAR.
+    pub fn disable_har_recording(&self) {
+        *self.har_exporter.write() = None;
+    }
+
+    /// Retorna o exportador de HAR ativo, se houver.
+    pub fn har_exporter(&self) -> Option<Arc<crate::telemetry::har::HarExporter>> {
+        self.har_exporter.read().clone()
+    }
+
+    /// Retorna o coletor Chromium NetLog da engine.
+    pub fn net_log_collector(&self) -> &Arc<crate::telemetry::net_log::NetLogCollector> {
+        &self.net_log_collector
+    }
+
     /// Busca um sub-recurso especulativo identificado pelo `PreloadScanner`.
     pub async fn fetch_preload_hint(
         &self,
@@ -288,17 +323,45 @@ impl ResourceFetcher {
         self.metrics.inc_total_requests();
         self.metrics.inc_in_flight();
         
+        let req_id_raw = req.id.raw();
+        let req_url_str = req.url.to_string();
+        self.net_log_collector.record(
+            req_id_raw,
+            crate::telemetry::net_log::NetEventType::RequestStart,
+            &req_url_str,
+            &format!("Iniciando requisição {} {}", req.method, req.url),
+        );
+
         let (priority_tx, priority_rx) = tokio::sync::watch::channel(req.priority);
         self.scheduler.register_active_stream(req.id, priority_tx);
         
         let req_id = req.id;
         let scheduler_clone = self.scheduler.clone();
 
+        let har_exporter_opt = self.har_exporter.read().clone();
+        let req_clone_for_har = if har_exporter_opt.is_some() {
+            Some(req.clone())
+        } else {
+            None
+        };
+
         let mut result = self.fetch_internal(req).await;
         
         self.metrics.dec_in_flight();
         match &mut result {
             Ok(resp) => {
+                self.net_log_collector.record(
+                    req_id_raw,
+                    crate::telemetry::net_log::NetEventType::ResponseStart,
+                    &req_url_str,
+                    &format!("Resposta recebida com status {}", resp.status),
+                );
+
+                if let (Some(exporter), Some(req_orig)) = (har_exporter_opt, req_clone_for_har) {
+                    let har_entry = crate::telemetry::har::HarEntry::from_response(&req_orig, resp);
+                    exporter.record_entry(har_entry);
+                }
+
                 if matches!(resp.body, crate::http::response::ResponseBody::Stream(_)) {
                     if let Some(stream_box) = resp.body.take_stream().await {
                         let throttled = crate::engine::throttle::ThrottledStream::new(
@@ -318,11 +381,23 @@ impl ResourceFetcher {
             Err(NetError::Cancelled) => {
                 self.scheduler.unregister_active_stream(req_id);
                 self.metrics.cancelled_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.net_log_collector.record(
+                    req_id_raw,
+                    crate::telemetry::net_log::NetEventType::Cancel,
+                    &req_url_str,
+                    "Requisição cancelada",
+                );
                 crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Cancel, "", "Request cancelled");
             }
             Err(e) => {
                 self.scheduler.unregister_active_stream(req_id);
                 self.metrics.failed_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.net_log_collector.record(
+                    req_id_raw,
+                    crate::telemetry::net_log::NetEventType::Error,
+                    &req_url_str,
+                    &format!("Erro na requisição: {}", e),
+                );
                 crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, "", e);
             }
         }

@@ -4,6 +4,8 @@ use tracing::{event, Level};
 /// Tipos de eventos estruturados do ciclo de vida de rede (Chromium NetLog style)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetEventType {
+    RequestStart,
+    ResponseStart,
     DnsStart,
     DnsEnd,
     TcpConnectStart,
@@ -26,6 +28,8 @@ pub enum NetEventType {
 impl fmt::Display for NetEventType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            Self::RequestStart => "REQUEST_START",
+            Self::ResponseStart => "RESPONSE_START",
             Self::DnsStart => "DNS_START",
             Self::DnsEnd => "DNS_END",
             Self::TcpConnectStart => "TCP_CONNECT_START",
