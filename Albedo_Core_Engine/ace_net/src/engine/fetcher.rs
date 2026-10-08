@@ -69,6 +69,8 @@ pub struct ResourceFetcher {
     har_exporter: Arc<parking_lot::RwLock<Option<Arc<crate::telemetry::har::HarExporter>>>>,
     net_log_collector: Arc<crate::telemetry::net_log::NetLogCollector>,
     dictionary_manager: Arc<crate::http::dictionary::DictionaryManager>,
+    proxy_config: Arc<parking_lot::RwLock<crate::transport::proxy::ProxyConfig>>,
+    proxy_bypass_list: Arc<parking_lot::RwLock<crate::transport::proxy::ProxyBypassList>>,
 }
 
 impl ResourceFetcher {
@@ -116,6 +118,8 @@ impl ResourceFetcher {
         let har_exporter = Arc::new(parking_lot::RwLock::new(None));
         let net_log_collector = Arc::new(crate::telemetry::net_log::NetLogCollector::new());
         let dictionary_manager = Arc::new(crate::http::dictionary::DictionaryManager::new());
+        let proxy_config = Arc::new(parking_lot::RwLock::new(crate::transport::proxy::ProxyConfig::Direct));
+        let proxy_bypass_list = Arc::new(parking_lot::RwLock::new(crate::transport::proxy::ProxyBypassList::new()));
 
         Ok(Self {
             transport,
@@ -133,7 +137,29 @@ impl ResourceFetcher {
             har_exporter,
             net_log_collector,
             dictionary_manager,
+            proxy_config,
+            proxy_bypass_list,
         })
+    }
+
+    /// Define a configuração global de proxy para a engine.
+    pub fn set_proxy(&self, config: crate::transport::proxy::ProxyConfig) {
+        *self.proxy_config.write() = config;
+    }
+
+    /// Retorna a configuração de proxy atual.
+    pub fn proxy(&self) -> crate::transport::proxy::ProxyConfig {
+        self.proxy_config.read().clone()
+    }
+
+    /// Define a lista de regras de bypass do proxy.
+    pub fn set_proxy_bypass_list(&self, list: crate::transport::proxy::ProxyBypassList) {
+        *self.proxy_bypass_list.write() = list;
+    }
+
+    /// Retorna a lista de regras de bypass do proxy.
+    pub fn proxy_bypass_list(&self) -> crate::transport::proxy::ProxyBypassList {
+        self.proxy_bypass_list.read().clone()
     }
 
     /// Retorna uma referência compartilhada ao cache HTTP subjacente.
@@ -415,11 +441,21 @@ impl ResourceFetcher {
     async fn fetch_internal(&self, mut req: Request) -> NetResult<Response> {
         let now = SystemTime::now();
 
+        let nik = req.network_isolation_key.clone();
+
+        // W3C Mixed Content Level 2: auto-upgrade passivo e bloqueio de ativo em contexto seguro
+        if let Some(ref k) = nik {
+            crate::security::mixed_content::check_and_apply_mixed_content(
+                Some(&k.top_frame_origin),
+                &mut req.url,
+                req.destination,
+                false,
+            )?;
+        }
+
         if let Some(sw_response) = self.apply_hsts_and_service_worker(&mut req, now).await? {
             return Ok(sw_response);
         }
-
-        let nik = req.network_isolation_key.clone();
 
         self.apply_security_policies(&req, nik.as_ref()).await?;
 
@@ -961,6 +997,32 @@ impl ResourceFetcher {
             }
 
             crate::security::cors::validate_cors_response(&current_req, &network_response)?;
+
+            // W3C CORP (Cross-Origin Resource Policy)
+            let corp_policy = crate::security::isolation::extract_corp_policy(&network_response.headers);
+            crate::security::isolation::validate_corp(
+                current_req.initiator.as_ref(),
+                &current_req.url,
+                corp_policy,
+            )?;
+
+            // WHATWG nosniff & MIME Sniffing
+            let nosniff = crate::http::sniffing::is_nosniff_header_present(&network_response.headers);
+            if nosniff {
+                if !crate::http::sniffing::validate_nosniff_content_type(current_req.destination, &network_response.mime_type) {
+                    return Err(NetError::SecurityViolation(format!(
+                        "MIME type '{}' incompatível com destino '{:?}' sob X-Content-Type-Options: nosniff",
+                        network_response.mime_type, current_req.destination
+                    )));
+                }
+            } else if crate::http::sniffing::is_unknown_mime_type(Some(&network_response.mime_type)) {
+                let sniffed = crate::http::sniffing::sniff_mime_type(
+                    Some(&network_response.mime_type),
+                    network_response.body.as_bytes(),
+                    false,
+                );
+                network_response.mime_type = sniffed;
+            }
 
             if let Some(ref digests) = current_req.integrity {
                 crate::security::sri::verify_integrity(network_response.body.as_bytes(), digests)?;
