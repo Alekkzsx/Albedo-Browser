@@ -6,3 +6,5 @@ pub mod sri;
 pub mod fetch_metadata;
 pub mod clear_site_data;
 pub mod ohttp;
+pub mod isolation;
+pub mod mixed_content;

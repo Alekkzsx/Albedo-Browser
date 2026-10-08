@@ -24,7 +24,7 @@ fn test_request_builder_auto_injects_priority_and_accept_encoding() {
     let priority_val = req.headers.get("priority").expect("Deve conter cabeçalho priority");
     assert_eq!(priority_val.to_str().unwrap(), "u=1");
 
-    // Injeção automática de Accept-Encoding com codecs modernos
+    // Injeção automática de Accept-Encoding com codecs modernos (incluindo zstd)
     let accept_enc = req.headers.get(ACCEPT_ENCODING).expect("Deve conter Accept-Encoding");
-    assert_eq!(accept_enc.to_str().unwrap(), "gzip, deflate, br");
+    assert_eq!(accept_enc.to_str().unwrap(), "gzip, deflate, br, zstd");
 }

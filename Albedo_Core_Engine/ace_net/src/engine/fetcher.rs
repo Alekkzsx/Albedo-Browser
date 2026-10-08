@@ -71,6 +71,8 @@ pub struct ResourceFetcher {
     dictionary_manager: Arc<crate::http::dictionary::DictionaryManager>,
     proxy_config: Arc<parking_lot::RwLock<crate::transport::proxy::ProxyConfig>>,
     proxy_bypass_list: Arc<parking_lot::RwLock<crate::transport::proxy::ProxyBypassList>>,
+    nqe: Arc<crate::telemetry::nqe::NetworkQualityEstimator>,
+    auth_manager: Arc<crate::http::auth::HttpAuthManager>,
 }
 
 impl ResourceFetcher {
@@ -120,6 +122,8 @@ impl ResourceFetcher {
         let dictionary_manager = Arc::new(crate::http::dictionary::DictionaryManager::new());
         let proxy_config = Arc::new(parking_lot::RwLock::new(crate::transport::proxy::ProxyConfig::Direct));
         let proxy_bypass_list = Arc::new(parking_lot::RwLock::new(crate::transport::proxy::ProxyBypassList::new()));
+        let nqe = Arc::new(crate::telemetry::nqe::NetworkQualityEstimator::new());
+        let auth_manager = Arc::new(crate::http::auth::HttpAuthManager::new());
 
         Ok(Self {
             transport,
@@ -139,6 +143,8 @@ impl ResourceFetcher {
             dictionary_manager,
             proxy_config,
             proxy_bypass_list,
+            nqe,
+            auth_manager,
         })
     }
 
@@ -160,6 +166,16 @@ impl ResourceFetcher {
     /// Retorna a lista de regras de bypass do proxy.
     pub fn proxy_bypass_list(&self) -> crate::transport::proxy::ProxyBypassList {
         self.proxy_bypass_list.read().clone()
+    }
+
+    /// Retorna uma referência ao estimador de qualidade de rede (NQE).
+    pub fn nqe(&self) -> &Arc<crate::telemetry::nqe::NetworkQualityEstimator> {
+        &self.nqe
+    }
+
+    /// Retorna uma referência ao gerenciador de autenticação HTTP.
+    pub fn auth_manager(&self) -> &Arc<crate::http::auth::HttpAuthManager> {
+        &self.auth_manager
     }
 
     /// Retorna uma referência compartilhada ao cache HTTP subjacente.
@@ -394,6 +410,17 @@ impl ResourceFetcher {
                 if let (Some(exporter), Some(req_orig)) = (har_exporter_opt, req_clone_for_har) {
                     let har_entry = crate::telemetry::har::HarEntry::from_response(&req_orig, resp);
                     exporter.record_entry(har_entry);
+                }
+
+                // W3C Network Information API: alimenta observações de desempenho no NQE
+                if !resp.from_cache {
+                    let rtt = resp.timing.ttfb;
+                    let bytes = resp.body.as_bytes().len();
+                    let transfer_duration = resp.timing.total_duration;
+                    self.nqe.record_observation(rtt, bytes, transfer_duration);
+                    if let Some(tcp_tls) = resp.timing.tcp_duration {
+                        self.nqe.record_transport_rtt(tcp_tls);
+                    }
                 }
 
                 if matches!(resp.body, crate::http::response::ResponseBody::Stream(_)) {
@@ -797,6 +824,9 @@ impl ResourceFetcher {
             let host_smol = current_req.url.host_str().unwrap_or("").into();
             let _permit = self.scheduler.acquire(current_req.id, current_req.priority, host_smol).await;
             
+            // Injeta Network Client Hints (ECT, RTT, Downlink) com quantização do NQE
+            self.nqe.inject_network_client_hints(&mut current_req.headers);
+
             let is_idempotent = current_req.method == Method::GET || current_req.method == Method::HEAD || current_req.method == Method::OPTIONS;
             let max_attempts = if is_idempotent { 3 } else { 1 };
             let mut attempt = 0;
@@ -910,6 +940,31 @@ impl ResourceFetcher {
                     }
                 }
             };
+
+            // RFC 7235 / RFC 7617: HTTP Authentication auto-retry
+            if network_response.status == StatusCode::UNAUTHORIZED {
+                if let Some(challenge) = crate::http::auth::HttpAuthManager::extract_challenge(&network_response.headers) {
+                    let origin_str = if let Ok(orig) = Origin::parse(current_req.url.as_str()) {
+                        orig.ascii_serialization()
+                    } else {
+                        current_req.url.origin().ascii_serialization()
+                    };
+                    if let Some(auth_hdr) = self.auth_manager.resolve_authorization_header(&origin_str, &challenge) {
+                        if !current_req.headers.contains_key(http::header::AUTHORIZATION) {
+                            if let Ok(hdr_val) = HeaderValue::from_str(&auth_hdr) {
+                                current_req.headers.insert(http::header::AUTHORIZATION, hdr_val);
+                                crate::telemetry::net_log::log_net_event(
+                                    crate::telemetry::net_log::NetEventType::Retry,
+                                    current_req.url.as_str(),
+                                    "Status 401 recebido; credenciais resolvidas do cache, retentando requisição com Authorization",
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+
             let response_time = SystemTime::now();
 
             self.cookie_jar.process_response_headers(

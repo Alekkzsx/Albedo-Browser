@@ -187,3 +187,4 @@ mod tests {
         assert_eq!(val, "Basic YWxpY2U6cEBzc3dvcmQxMjM=");
     }
 }
+

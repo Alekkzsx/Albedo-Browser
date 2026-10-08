@@ -246,6 +246,17 @@ impl CacheEntry {
         self.current_age(now) < self.freshness_lifetime()
     }
 
+    /// Determina se a resposta contém a diretiva RFC 8246 `immutable` em `Cache-Control`.
+    /// Subrecursos imutáveis nunca mudam durante o seu período de vida útil e não devem
+    /// ser revalidados mesmo quando o usuário recarrega a página.
+    pub fn is_immutable(&self) -> bool {
+        if let Some(cc) = self.headers.get(CACHE_CONTROL).and_then(|v| v.to_str().ok()) {
+            cc.split(',').any(|d| d.trim().eq_ignore_ascii_case("immutable"))
+        } else {
+            false
+        }
+    }
+
     /// Gera os cabeçalhos de revalidação condicional (`If-None-Match` e `If-Modified-Since`).
     pub fn conditional_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
@@ -536,6 +547,25 @@ mod tests {
         let t400 = now + Duration::from_secs(400);
         assert!(!entry.is_fresh(t400));
         assert!(!entry.is_stale_revalidatable(t400));
+    }
+
+    #[test]
+    fn test_immutable_cache_control() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable"));
+
+        let now = SystemTime::now();
+        let entry = CacheEntry::new(
+            Url::parse("https://example.com/static/bundle.hash123.js").unwrap(),
+            StatusCode::OK,
+            headers,
+            Bytes::from_static(b"console.log('immutable');"),
+            now,
+            now,
+        );
+
+        assert!(entry.is_immutable());
+        assert!(entry.is_fresh(now));
     }
 }
 

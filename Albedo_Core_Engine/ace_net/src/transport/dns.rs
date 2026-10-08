@@ -18,28 +18,40 @@ use std::time::Instant;
 use tower_service::Service;
 use crate::transport::timing::CONNECTION_TIMING;
 
-/// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305).
+/// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305)
+/// e failover transparente para o resolver do sistema operacional.
 #[derive(Clone)]
 pub struct DohHappyEyeballsResolver {
     resolver: Arc<TokioAsyncResolver>,
+    system_resolver: Option<Arc<TokioAsyncResolver>>,
     block_private_ips: bool,
 }
 
 impl DohHappyEyeballsResolver {
-    /// Cria uma nova instância de `DohHappyEyeballsResolver` apontando para o DoH Cloudflare 1.1.1.1.
+    /// Cria uma nova instância de `DohHappyEyeballsResolver` apontando para o DoH Cloudflare 1.1.1.1
+    /// e fallback habilitado para o resolver local do sistema operacional.
     pub fn new() -> Self {
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
         Self {
             resolver: Arc::new(TokioAsyncResolver::tokio(
                 ResolverConfig::cloudflare_https(),
                 ResolverOpts::default(),
             )),
+            system_resolver,
             block_private_ips: false,
         }
     }
 
     /// Cria uma instância a partir de um resolver Hickory já configurado.
     pub fn with_resolver(resolver: Arc<TokioAsyncResolver>) -> Self {
-        Self { resolver, block_private_ips: false }
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
+        Self { resolver, system_resolver, block_private_ips: false }
+    }
+
+    /// Configura explicitamente o resolver de fallback do sistema.
+    pub fn with_system_fallback(mut self, fallback: Option<Arc<TokioAsyncResolver>>) -> Self {
+        self.system_resolver = fallback;
+        self
     }
 
     pub fn set_block_private_ips(&mut self, block: bool) {
@@ -110,7 +122,21 @@ impl DohHappyEyeballsResolver {
 
         let mut ips = match ip_res {
             Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
-            Err(e) => return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e))),
+            Err(e) => {
+                if let Some(sys) = &self.system_resolver {
+                    match sys.lookup_ip(host).await {
+                        Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
+                        Err(sys_err) => {
+                            return Err(std::io::Error::other(format!(
+                                "Falha DoH ('{}') e fallback de sistema ('{}') para '{}'",
+                                e, sys_err, host
+                            )));
+                        }
+                    }
+                } else {
+                    return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e)));
+                }
+            }
         };
 
         if self.block_private_ips {
@@ -155,6 +181,7 @@ impl Service<Name> for DohHappyEyeballsResolver {
 
     fn call(&mut self, name: Name) -> Self::Future {
         let resolver = self.resolver.clone();
+        let system_resolver = self.system_resolver.clone();
         let host_str = name.as_str().to_string();
         let block_private_ips = self.block_private_ips;
 
@@ -166,14 +193,33 @@ impl Service<Name> for DohHappyEyeballsResolver {
                     guard.dns_start = Some(start);
                 }
             }
-            match resolver.lookup_ip(&host_str).await {
-                Ok(lookup) => {
+            let lookup_res = match resolver.lookup_ip(&host_str).await {
+                Ok(lookup) => Ok(lookup.iter().collect::<Vec<IpAddr>>()),
+                Err(doh_err) => {
+                    if let Some(sys) = system_resolver {
+                        match sys.lookup_ip(&host_str).await {
+                            Ok(lookup) => Ok(lookup.iter().collect::<Vec<IpAddr>>()),
+                            Err(sys_err) => Err(std::io::Error::other(format!(
+                                "Falha DoH ('{}') e sistema ('{}') para '{}'",
+                                doh_err, sys_err, host_str
+                            ))),
+                        }
+                    } else {
+                        Err(std::io::Error::other(format!(
+                            "Falha na resolução DoH para '{}': {}",
+                            host_str, doh_err
+                        )))
+                    }
+                }
+            };
+
+            match lookup_res {
+                Ok(mut ips) => {
                     let duration = start.elapsed();
                     if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
                         let mut guard = timing_arc.lock().await;
                         guard.dns_duration = Some(duration);
                     }
-                    let mut ips: Vec<IpAddr> = lookup.iter().collect();
                     if block_private_ips {
                         ips.retain(|ip| !crate::security::pna::is_private_or_local(*ip));
                     }
@@ -181,15 +227,13 @@ impl Service<Name> for DohHappyEyeballsResolver {
                     if interleaved.is_empty() {
                         Err(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
-                            format!("Nenhum endereço IP retornado via DoH para '{}'", host_str),
+                            format!("Nenhum endereço IP retornado via DoH/Sistema para '{}'", host_str),
                         ))
                     } else {
                         Ok(interleaved.into_iter())
                     }
                 }
-                Err(e) => Err(std::io::Error::other(
-                    format!("Falha na resolução DoH para '{}': {}", host_str, e),
-                )),
+                Err(e) => Err(e),
             }
         })
     }

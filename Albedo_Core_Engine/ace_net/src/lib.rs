@@ -45,6 +45,7 @@ pub use engine::priority::{PrioritizedItem, PriorityLevel};
 pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit};
 pub use engine::service_worker_hook::ServiceWorkerHook;
 pub use error::{NetError, NetResult};
+pub use http::auth::{HttpAuthCache, HttpAuthChallenge, HttpAuthCredentials, HttpAuthManager};
 pub use http::compression::{decompress_payload, ContentEncoding};
 pub use http::dictionary::{DictionaryManager, StoredDictionary, UseAsDictionaryDirective};
 pub use http::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
@@ -78,6 +79,7 @@ pub use telemetry::har::HarExporter;
 pub use telemetry::hints::ResourceHint;
 pub use telemetry::metrics::FetcherMetrics;
 pub use telemetry::net_log::{log_net_error, log_net_event, NetEventType, NetLogCollector, NetLogEntry};
+pub use telemetry::nqe::{EffectiveConnectionType, NetworkObservation, NetworkQualityEstimator};
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{
     connect_http_connect_tunnel, connect_socks5_tunnel, establish_connection,

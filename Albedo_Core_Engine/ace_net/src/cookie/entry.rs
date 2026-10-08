@@ -244,9 +244,9 @@ impl Cookie {
 
         // Validação de segurança de domínio (RFC 6265bis §5.4):
         // Rejeita a diretiva Domain se for um sufixo público ou não bater com o host de requisição
-        if let Some(d) = custom_domain {
-            if is_valid_cookie_domain(&d, &default_domain) {
-                domain = d;
+        if let Some(ref d) = custom_domain {
+            if is_valid_cookie_domain(d, &default_domain) {
+                domain = d.clone();
             } else {
                 return None;
             }
@@ -254,6 +254,11 @@ impl Cookie {
 
         // RFC 6265bis §4.1.3: Validação de Prefixos de Cookies (__Secure- e __Host-)
         let is_https = request_url.scheme() == "https";
+
+        // RFC 6265bis §5.4: Cookies com SameSite=None DEVEM conter o atributo Secure e trafegar em HTTPS
+        if same_site == SameSite::None && (!secure || !is_https) {
+            return None;
+        }
 
         if name.starts_with("__Secure-") {
             // 1. Deve possuir atributo Secure
