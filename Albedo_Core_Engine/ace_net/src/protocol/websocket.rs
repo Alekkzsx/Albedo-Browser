@@ -27,6 +27,42 @@ pub enum WebSocketMessage {
     Close(Option<u16>, String),
 }
 
+impl From<tungstenite::Message> for WebSocketMessage {
+    fn from(msg: tungstenite::Message) -> Self {
+        match msg {
+            tungstenite::Message::Text(s) => WebSocketMessage::Text(s),
+            tungstenite::Message::Binary(b) => WebSocketMessage::Binary(Bytes::from(b)),
+            tungstenite::Message::Ping(p) => WebSocketMessage::Ping(Bytes::from(p)),
+            tungstenite::Message::Pong(p) => WebSocketMessage::Pong(Bytes::from(p)),
+            tungstenite::Message::Close(frame) => {
+                let (code, reason) = frame.map_or((None, String::new()), |f| {
+                    (Some(u16::from(f.code)), f.reason.to_string())
+                });
+                WebSocketMessage::Close(code, reason)
+            }
+            tungstenite::Message::Frame(_) => WebSocketMessage::Binary(Bytes::new()),
+        }
+    }
+}
+
+impl From<WebSocketMessage> for tungstenite::Message {
+    fn from(msg: WebSocketMessage) -> Self {
+        match msg {
+            WebSocketMessage::Text(s) => tungstenite::Message::Text(s),
+            WebSocketMessage::Binary(b) => tungstenite::Message::Binary(b.to_vec()),
+            WebSocketMessage::Ping(p) => tungstenite::Message::Ping(p.to_vec()),
+            WebSocketMessage::Pong(p) => tungstenite::Message::Pong(p.to_vec()),
+            WebSocketMessage::Close(code, reason) => {
+                let frame = code.map(|c| tungstenite::protocol::frame::CloseFrame {
+                    code: tungstenite::protocol::frame::coding::CloseCode::from(c),
+                    reason: reason.into(),
+                });
+                tungstenite::Message::Close(frame)
+            }
+        }
+    }
+}
+
 /// Sessão WebSocket ativa conectada à camada JS / DOM.
 pub struct WebSocketSession {
     pub url: Url,
@@ -35,7 +71,7 @@ pub struct WebSocketSession {
 }
 
 impl WebSocketSession {
-    /// Cria uma nova sessão com canais bidirecionais de mensageria.
+    /// Cria uma nova sessão com canais bidirecionais de mensageria (útil para testes e mocks).
     pub fn new(
         url: Url,
         tx_sender: mpsc::Sender<WebSocketMessage>,
@@ -46,6 +82,86 @@ impl WebSocketSession {
             tx_sender,
             rx_receiver: Arc::new(tokio::sync::Mutex::new(rx_receiver)),
         }
+    }
+
+    /// Conecta fisicamente a um servidor WebSocket remoto nos esquemas `ws://` ou `wss://` (RFC 6455).
+    pub async fn connect(url: Url) -> NetResult<Self> {
+        use futures_util::{SinkExt, StreamExt};
+
+        if url.scheme() != "ws" && url.scheme() != "wss" {
+            return Err(NetError::UnsupportedScheme(url.scheme().to_string()));
+        }
+
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::TcpConnectStart,
+            url.as_str(),
+            "WebSocket handshake iniciado",
+        );
+
+        let (ws_stream, response) = tokio_tungstenite::connect_async(url.as_str())
+            .await
+            .map_err(|e| NetError::ConnectionFailed(url.host_str().unwrap_or("").into(), format!("WebSocket falhou: {}", e)))?;
+
+        crate::telemetry::net_log::log_net_event(
+            crate::telemetry::net_log::NetEventType::TcpConnectEnd,
+            url.as_str(),
+            &format!("WebSocket conectado (HTTP {})", response.status()),
+        );
+
+        let (mut ws_sink, mut ws_stream) = ws_stream.split();
+
+        let (tx_to_server, mut rx_outgoing) = mpsc::channel::<WebSocketMessage>(64);
+        let (tx_to_client, rx_incoming) = mpsc::channel::<WebSocketMessage>(64);
+
+        let host_name = url.host_str().unwrap_or("").to_string();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    outgoing = rx_outgoing.recv() => {
+                        match outgoing {
+                            Some(msg) => {
+                                let tung_msg: tungstenite::Message = msg.into();
+                                if let Err(e) = ws_sink.send(tung_msg).await {
+                                    crate::telemetry::net_log::log_net_event(
+                                        crate::telemetry::net_log::NetEventType::Error,
+                                        &host_name,
+                                        &format!("Erro enviando frame WebSocket: {}", e),
+                                    );
+                                    break;
+                                }
+                            }
+                            None => {
+                                let _ = ws_sink.send(tungstenite::Message::Close(None)).await;
+                                break;
+                            }
+                        }
+                    }
+                    incoming = ws_stream.next() => {
+                        match incoming {
+                            Some(Ok(msg)) => {
+                                let app_msg: WebSocketMessage = msg.into();
+                                let is_close = matches!(app_msg, WebSocketMessage::Close(_, _));
+                                if tx_to_client.send(app_msg).await.is_err() || is_close {
+                                    break;
+                                }
+                            }
+                            Some(Err(e)) => {
+                                crate::telemetry::net_log::log_net_event(
+                                    crate::telemetry::net_log::NetEventType::Error,
+                                    &host_name,
+                                    &format!("Erro recebendo frame WebSocket: {}", e),
+                                );
+                                break;
+                            }
+                            None => break,
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(Self::new(url, tx_to_server, rx_incoming))
     }
 
     /// Envia uma mensagem pelo socket.
