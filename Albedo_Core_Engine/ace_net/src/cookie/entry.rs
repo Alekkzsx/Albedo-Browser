@@ -252,6 +252,25 @@ impl Cookie {
             }
         }
 
+        // RFC 6265bis §4.1.3: Validação de Prefixos de Cookies (__Secure- e __Host-)
+        let is_https = request_url.scheme() == "https";
+
+        if name.starts_with("__Secure-") {
+            // 1. Deve possuir atributo Secure
+            // 2. Deve ter sido emitido por canal seguro (HTTPS)
+            if !secure || !is_https {
+                return None;
+            }
+        } else if name.starts_with("__Host-") {
+            // 1. Deve possuir atributo Secure
+            // 2. Deve ter sido emitido por canal seguro (HTTPS)
+            // 3. NÃO DEVE conter atributo Domain (host-only)
+            // 4. O atributo Path DEVE ser exatamente "/"
+            if !secure || !is_https || custom_domain.is_some() || path != "/" {
+                return None;
+            }
+        }
+
         // CHIPS: Cookies com SameSite=None ou Partitioned devem ter o atributo Secure
         let partition_key = if is_partitioned && secure {
             top_level_site.map(|s| s.to_string())
@@ -401,6 +420,26 @@ mod tests {
         let header = format!("token={}", huge_val);
         let parsed = Cookie::parse(&header, &url, None, now);
         assert!(parsed.is_none(), "Cookie maior que 4096 bytes deve ser rejeitado");
+    }
+
+    #[test]
+    fn test_cookie_prefixes_enforcement() {
+        let https_url = Url::parse("https://bank.com/account").unwrap();
+        let http_url = Url::parse("http://bank.com/account").unwrap();
+        let now = SystemTime::now();
+
+        // 1. __Secure- exige HTTPS e Secure
+        assert!(Cookie::parse("__Secure-token=123", &https_url, None, now).is_none()); // falta Secure
+        assert!(Cookie::parse("__Secure-token=123; Secure", &http_url, None, now).is_none()); // HTTP
+        assert!(Cookie::parse("__Secure-token=123; Secure", &https_url, None, now).is_some()); // OK
+
+        // 2. __Host- exige HTTPS, Secure, Path=/ e sem Domain
+        assert!(Cookie::parse("__Host-id=abc", &https_url, None, now).is_none()); // falta Secure e Path=/
+        assert!(Cookie::parse("__Host-id=abc; Secure", &https_url, None, now).is_some()); // Default path é / -> OK
+        assert!(Cookie::parse("__Host-id=abc; Secure; Path=/", &https_url, None, now).is_some()); // OK
+        assert!(Cookie::parse("__Host-id=abc; Secure; Path=/app", &https_url, None, now).is_none()); // Path != /
+        assert!(Cookie::parse("__Host-id=abc; Secure; Domain=bank.com", &https_url, None, now).is_none()); // Tem Domain
+        assert!(Cookie::parse("__Host-id=abc; Secure", &http_url, None, now).is_none()); // HTTP
     }
 }
 
