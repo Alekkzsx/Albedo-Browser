@@ -6,3 +6,4 @@ pub mod range;
 pub mod redirect;
 pub mod hints;
 pub mod dictionary;
+pub mod sniffing;
