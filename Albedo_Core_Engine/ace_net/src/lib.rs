@@ -42,6 +42,7 @@ pub use engine::scheduler::{ResourceScheduler, SchedulerConfig, SchedulerPermit}
 pub use engine::service_worker_hook::ServiceWorkerHook;
 pub use error::{NetError, NetResult};
 pub use http::compression::{decompress_payload, ContentEncoding};
+pub use http::dictionary::{DictionaryManager, StoredDictionary, UseAsDictionaryDirective};
 pub use http::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
 pub use http::range::{ByteRangeSpec, ContentRange};
 pub use http::redirect::{handle_redirect, RedirectAction};
@@ -52,9 +53,11 @@ pub use http::request::{
 pub use http::response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
 pub use protocol::alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
 pub use protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
+pub use protocol::webtransport::{validate_webtransport_url, WebTransportSession};
 pub use security::clear_site_data::ClearSiteDataAction;
 pub use security::fetch_metadata::{SecFetchDest, SecFetchMode, SecFetchSite};
 pub use security::hsts::{HstsPolicy, HstsStore};
+pub use security::ohttp::{EncapsulatedRequest, OhttpConfig, OhttpEncapsulator, OhttpKeyConfig};
 pub use telemetry::client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
 pub use telemetry::har::HarExporter;
 pub use telemetry::hints::ResourceHint;

@@ -157,3 +157,4 @@ async fn test_har_disk_export_file() {
     assert!(file_content.contains("\"version\": \"1.2\""));
     assert!(file_content.contains("data:text/plain,Hello"));
 }
+

@@ -68,6 +68,7 @@ pub struct ResourceFetcher {
     disk_path: Option<std::path::PathBuf>,
     har_exporter: Arc<parking_lot::RwLock<Option<Arc<crate::telemetry::har::HarExporter>>>>,
     net_log_collector: Arc<crate::telemetry::net_log::NetLogCollector>,
+    dictionary_manager: Arc<crate::http::dictionary::DictionaryManager>,
 }
 
 impl ResourceFetcher {
@@ -114,6 +115,7 @@ impl ResourceFetcher {
         let cors_cache = Arc::new(crate::security::cors_cache::CorsCache::new());
         let har_exporter = Arc::new(parking_lot::RwLock::new(None));
         let net_log_collector = Arc::new(crate::telemetry::net_log::NetLogCollector::new());
+        let dictionary_manager = Arc::new(crate::http::dictionary::DictionaryManager::new());
 
         Ok(Self {
             transport,
@@ -130,6 +132,7 @@ impl ResourceFetcher {
             disk_path: disk_buf,
             har_exporter,
             net_log_collector,
+            dictionary_manager,
         })
     }
 
@@ -304,6 +307,11 @@ impl ResourceFetcher {
         &self.net_log_collector
     }
 
+    /// Retorna uma referência ao gerenciador de dicionários de compressão (RFC 9290).
+    pub fn dictionary_manager(&self) -> &Arc<crate::http::dictionary::DictionaryManager> {
+        &self.dictionary_manager
+    }
+
     /// Busca um sub-recurso especulativo identificado pelo `PreloadScanner`.
     pub async fn fetch_preload_hint(
         &self,
@@ -438,6 +446,9 @@ impl ResourceFetcher {
 
         // 5. Resolução da política de Referrer
         self.apply_referrer_policy(&mut req);
+
+        // 5.5 Injeção de Compression Dictionary Transport (RFC 9290)
+        self.apply_compression_dictionary_hints(&mut req, nik.as_ref(), now);
 
         // 6. Execução de transporte com suporte a redirecionamentos (3xx)
         self.execute_network_transport(req, nik.as_ref(), cached_entry, now).await
@@ -699,6 +710,24 @@ impl ResourceFetcher {
         }
     }
 
+    fn apply_compression_dictionary_hints(&self, req: &mut Request, nik: Option<&crate::cache::NetworkIsolationKey>, now: SystemTime) {
+        if let Some(dict) = self.dictionary_manager.find_dictionary_for_url(&req.url, nik, now) {
+            if let Ok(hdr_val) = HeaderValue::from_str(&dict.available_dictionary_header_value()) {
+                req.headers.insert("available-dictionary", hdr_val);
+            }
+            let mut ae = req.headers.get(http::header::ACCEPT_ENCODING)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("gzip, deflate, br, zstd")
+                .to_string();
+            if !ae.contains("dcb") {
+                ae.push_str(", dcb, dcz");
+                if let Ok(new_ae) = HeaderValue::from_str(&ae) {
+                    req.headers.insert(http::header::ACCEPT_ENCODING, new_ae);
+                }
+            }
+        }
+    }
+
     async fn execute_network_transport(
         &self,
         mut current_req: Request,
@@ -736,7 +765,7 @@ impl ResourceFetcher {
             let max_attempts = if is_idempotent { 3 } else { 1 };
             let mut attempt = 0;
 
-            let network_response = loop {
+            let mut network_response = loop {
                 attempt += 1;
                 let network_result = self.transport.execute(&current_req).await;
                 match network_result {
@@ -941,6 +970,41 @@ impl ResourceFetcher {
                 network_response.body.as_bytes().len() as u64,
                 std::sync::atomic::Ordering::Relaxed,
             );
+
+            // Registro de novo dicionário via Use-As-Dictionary (RFC 9290)
+            if network_response.status == StatusCode::OK {
+                if let Some(uad_val) = network_response.headers.get("use-as-dictionary").and_then(|v| v.to_str().ok()) {
+                    if let Some(directive) = crate::http::dictionary::UseAsDictionaryDirective::parse(uad_val) {
+                        if let Ok(origin) = Origin::parse(current_req.url.as_str()) {
+                            let body_bytes = match &network_response.body {
+                                ResponseBody::Full(b) => b.clone(),
+                                _ => bytes::Bytes::new(),
+                            };
+                            self.dictionary_manager.register_dictionary(
+                                nik,
+                                origin,
+                                body_bytes,
+                                directive,
+                                response_time,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Descompressão assistida por dicionário para dcb (Brotli) ou dcz (Zstandard)
+            if let Some(enc_val) = network_response.headers.get(http::header::CONTENT_ENCODING).and_then(|v| v.to_str().ok()) {
+                let enc_lower = enc_val.trim().to_ascii_lowercase();
+                if enc_lower == "dcb" || enc_lower == "dcz" {
+                    if let Some(dict) = self.dictionary_manager.find_dictionary_for_url(&current_req.url, nik, response_time) {
+                        if let ResponseBody::Full(ref comp_bytes) = network_response.body {
+                            if let Ok(decomp) = crate::http::dictionary::decompress_with_dictionary(&enc_lower, comp_bytes.as_ref(), dict.content.as_ref()) {
+                                network_response.body = ResponseBody::Full(decomp);
+                            }
+                        }
+                    }
+                }
+            }
 
             if network_response.status == StatusCode::PARTIAL_CONTENT {
                 if let Some(cr_val) = network_response.headers.get(http::header::CONTENT_RANGE) {
