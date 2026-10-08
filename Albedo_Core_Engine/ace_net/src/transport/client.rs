@@ -1,0 +1,760 @@
+//! # Cliente de Transporte HTTP/1.1, HTTP/2 e TLS 1.3 (`TransportClient`)
+//!
+//! Orquestra o pool de conexões assíncronas, ALPN para negociação h2/http1.1,
+//! handshake TLS seguro via `rustls` (WebPKI roots) e suporte nativo a `data:` URIs.
+
+use crate::http::compression::ContentEncoding;
+use crate::engine::contention::RetryAfter;
+use crate::http::encoding::extract_charset_from_content_type;
+use crate::error::{NetError, NetResult};
+use crate::http::range::ContentRange;
+use crate::http::request::Request;
+use crate::http::response::{Response, ResponseBody, ResponseTiming};
+use ace_core::net::data_url::parse_data_url;
+use bytes::{Buf, Bytes};
+use http::{HeaderValue, StatusCode};
+use http_body_util::Full;
+use hyper::header::{CONTENT_TYPE, USER_AGENT};
+use hyper::Request as HyperRequest;
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
+use smol_str::SmolStr;
+use std::pin::Pin;
+use std::time::{Duration, Instant};
+use crate::cache::partition::NetworkIsolationKey;
+use crate::transport::dns::DohHappyEyeballsResolver;
+use hyper::body::Body as HyperBody;
+use url::Url;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use rustc_hash::FxHashMap;
+use hickory_resolver::proto::rr::rdata::svcb::SvcParamKey;
+use hickory_resolver::proto::rr::RecordType;
+use rustls::client::{EchConfig, EchMode};
+
+/// Stream assíncrono que encapsula o corpo bruto do Hyper para consumo com backpressure.
+struct HyperIncomingStream {
+    body: hyper::body::Incoming,
+}
+
+impl futures_core::Stream for HyperIncomingStream {
+    type Item = NetResult<Bytes>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        loop {
+            match Pin::new(&mut self.body).poll_frame(cx) {
+                std::task::Poll::Ready(Some(Ok(frame))) => {
+                    if let Ok(data) = frame.into_data() {
+                        return std::task::Poll::Ready(Some(Ok(data)));
+                    }
+                    // Ignora trailers ou continua poll
+                }
+                std::task::Poll::Ready(Some(Err(e))) => {
+                    return std::task::Poll::Ready(Some(Err(NetError::HttpProtocolError(e.to_string()))));
+                }
+                std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
+                std::task::Poll::Pending => return std::task::Poll::Pending,
+            }
+        }
+    }
+}
+
+pub type TimingHttpsClient = Client<crate::transport::timing::TimingConnector<HttpsConnector<crate::transport::timing::TimingConnector<HttpConnector<DohHappyEyeballsResolver>>>>, Full<Bytes>>;
+
+
+/// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
+#[derive(Clone)]
+pub struct TransportClient {
+    isolated_clients: Arc<RwLock<FxHashMap<Option<NetworkIsolationKey>, TimingHttpsClient>>>,
+    isolated_ech_clients: Arc<RwLock<FxHashMap<(Option<NetworkIsolationKey>, String), TimingHttpsClient>>>,
+    root_store: rustls::RootCertStore,
+    quinn_endpoint: quinn::Endpoint,
+    user_agent: HeaderValue,
+}
+
+impl TransportClient {
+    /// Cria uma nova instância de `TransportClient` com certificados WebPKI, DoH Cloudflare e Happy Eyeballs v2.
+    pub fn new() -> NetResult<Self> {
+        Self::with_resolver(DohHappyEyeballsResolver::new())
+    }
+
+    /// Cria uma nova instância configurada com um resolver DoH customizado.
+    pub fn with_resolver(_resolver: DohHappyEyeballsResolver) -> NetResult<Self> {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        let mut tls_config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(root_store.clone())
+            .with_no_client_auth();
+        tls_config.alpn_protocols = vec![b"h3".to_vec()];
+
+        let quic_client_config = quinn::crypto::rustls::QuicClientConfig::try_from(tls_config)
+            .map_err(|e| NetError::HttpProtocolError(format!("QUIC config error: {}", e)))?;
+        let client_config = quinn::ClientConfig::new(Arc::new(quic_client_config));
+        
+        let mut quinn_endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap()).unwrap();
+        quinn_endpoint.set_default_client_config(client_config);
+
+        let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
+
+        Ok(Self { 
+            isolated_clients: Arc::new(RwLock::new(FxHashMap::default())),
+            isolated_ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
+            root_store,
+            quinn_endpoint, 
+            user_agent 
+        })
+    }
+
+    fn build_hyper_client(
+        nik: Option<&NetworkIsolationKey>,
+        root_store: rustls::RootCertStore,
+        ech_config: Option<EchConfig>,
+    ) -> NetResult<TimingHttpsClient> {
+        let provider = std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let builder_versions = rustls::ClientConfig::builder_with_provider(provider.clone());
+
+        let builder_verifier = if let Some(ech) = ech_config {
+            builder_versions.with_ech(EchMode::Enable(ech)).map_err(|e| NetError::HttpProtocolError(format!("ECH config error: {}", e)))?
+        } else {
+            builder_versions.with_safe_default_protocol_versions().map_err(|e| NetError::HttpProtocolError(format!("TLS config error: {}", e)))?
+        };
+
+        let mut config = builder_verifier
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        // Milestone 5: Telemetria Preditiva & 0-RTT
+        config.enable_early_data = true;
+        config.resumption = rustls::client::Resumption::in_memory_sessions(256);
+
+        // Cada cliente particionado recebe seu próprio resolver DNS para não compartilhar cache/estado
+        // PNA TODO: Em M5 instanciamos com uma flag block_private_ips se NIK for público.
+        let is_public = nik.is_some_and(|n| {
+            if let ace_core::security::origin::Origin::Tuple { host, .. } = &n.top_frame_origin {
+                !crate::security::pna::is_host_private_or_local(&host.as_str())
+            } else {
+                false
+            }
+        });
+        let mut resolver = DohHappyEyeballsResolver::new();
+        resolver.set_block_private_ips(is_public);
+
+        let mut http_connector = HttpConnector::new_with_resolver(resolver.clone());
+        http_connector.enforce_http(false);
+        http_connector.set_happy_eyeballs_timeout(Some(Duration::from_millis(250)));
+
+        let tcp_timing_connector = crate::transport::timing::TimingConnector::new(http_connector, false);
+
+        let https = HttpsConnectorBuilder::new()
+            .with_tls_config(config)
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .wrap_connector(tcp_timing_connector);
+
+        let tls_timing_connector = crate::transport::timing::TimingConnector::new(https, true);
+
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(6)
+            .build(tls_timing_connector);
+
+        Ok(client)
+    }
+
+    /// Executa um preconnect especulativo (W3C Resource Hints).
+    /// Estabelece a conexão TCP e realiza o handshake TLS 1.3/ALPN,
+    /// mantendo o socket no pool de conexões ociosas (idle pool) para requisições subsequentes.
+    pub async fn preconnect(&self, origin: &ace_core::security::origin::Origin, nik: Option<&NetworkIsolationKey>) -> NetResult<()> {
+        let (scheme, host, port) = match origin {
+            ace_core::security::origin::Origin::Tuple { scheme, host, port } => (scheme.as_str(), host.as_str(), *port),
+            ace_core::security::origin::Origin::Opaque { .. } => return Ok(()),
+        };
+
+        if scheme != "http" && scheme != "https" {
+            return Err(NetError::UnsupportedScheme(scheme.to_string()));
+        }
+
+        let url_str = if (scheme == "http" && port == 80) || (scheme == "https" && port == 443) {
+            format!("{}://{}/", scheme, host)
+        } else {
+            format!("{}://{}:{}/", scheme, host, port)
+        };
+
+        let uri: hyper::Uri = url_str.parse().map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
+
+        // 1. Obtém ou constrói o cliente hiper-particionado para o NIK
+        let target_client = {
+            let mut tc = {
+                let map = self.isolated_clients.read().await;
+                map.get(&nik.cloned()).cloned()
+            };
+            if tc.is_none() {
+                let new_client = Self::build_hyper_client(nik, self.root_store.clone(), None)?;
+                let mut map = self.isolated_clients.write().await;
+                map.insert(nik.cloned(), new_client.clone());
+                tc = Some(new_client);
+            }
+            tc.unwrap()
+        };
+
+        // 2. Dispara uma requisição leve HEAD que estabelece conexão e aquece o pool de idle sockets
+        let mut hyper_builder = HyperRequest::builder()
+            .method(http::Method::HEAD)
+            .uri(uri);
+
+        if let Some(headers_mut) = hyper_builder.headers_mut() {
+            headers_mut.insert(USER_AGENT, self.user_agent.clone());
+        }
+
+        let hyper_req = hyper_builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        // Timeout curto de 5s para preconnect sem afetar a fila do usuário
+        let _ = tokio::time::timeout(Duration::from_secs(5), target_client.request(hyper_req)).await;
+
+        Ok(())
+    }
+
+    /// Descarta todos os clientes particionados e seus pools de conexões ociosas (black-holes),
+    /// forçando a criação de novas conexões limpas sob a nova interface de rede.
+    pub async fn flush_idle_sockets(&self) {
+        self.isolated_clients.write().await.clear();
+        self.isolated_ech_clients.write().await.clear();
+    }
+
+    /// Executa o transporte físico de uma requisição HTTP ou resolução de URI local.
+    #[tracing::instrument(skip(self, req), fields(url = %req.url, method = %req.method))]
+    pub async fn execute(&self, req: &Request) -> NetResult<Response> {
+        let start_time = Instant::now();
+
+        // 0. Verificação imediata de cancelamento
+        if req.cancellation_token.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+
+        // 1. Suporte nativo e instantâneo a data: URIs (WHATWG Fetch §4.5)
+        if req.url.scheme() == "data" {
+            return self.execute_data_url(&req.url, start_time);
+        }
+
+        // 2. Validação de esquemas de rede suportados
+        if req.url.scheme() != "http" && req.url.scheme() != "https" {
+            return Err(NetError::UnsupportedScheme(req.url.scheme().to_string()));
+        }
+
+        // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Socket Racing
+        if req.force_h3 {
+            crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 e TCP/TLS em paralelo (Socket Racing)");
+            
+            let req_clone = req.clone();
+            let self_clone = self.clone();
+            let req_tcp = req.clone();
+            let self_tcp = self.clone();
+            
+            let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+            let tx2 = tx.clone();
+            
+            tokio::spawn(async move {
+                let res = self_clone.execute_h3(&req_clone, start_time).await;
+                let _ = tx.send((true, res)).await;
+            });
+            
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let res = self_tcp.execute_tcp(&req_tcp, start_time).await;
+                let _ = tx2.send((false, res)).await;
+            });
+            
+            let mut h3_failed = false;
+            let mut tcp_failed = false;
+            let mut last_err = NetError::ConnectionFailed(req.url.to_string(), "Ambas as conexoes falharam".into());
+            
+            while let Some((is_h3, res)) = rx.recv().await {
+                match res {
+                    Ok(resp) => {
+                        crate::telemetry::net_log::log_net_event(
+                            crate::telemetry::net_log::NetEventType::Warning,
+                            req.url.as_str(),
+                            &format!("Corrida vencida por {}", if is_h3 { "QUIC HTTP/3" } else { "TCP/TLS" }),
+                        );
+                        return Ok(resp);
+                    }
+                    Err(err) => {
+                        if is_h3 {
+                            h3_failed = true;
+                            crate::telemetry::net_log::log_net_event(
+                                crate::telemetry::net_log::NetEventType::Warning,
+                                req.url.as_str(),
+                                &format!("Falha na conexao QUIC HTTP/3 ({}). Aguardando TCP/TLS.", err),
+                            );
+                        } else {
+                            tcp_failed = true;
+                        }
+                        last_err = err;
+                        
+                        if h3_failed && tcp_failed {
+                            return Err(last_err);
+                        }
+                    }
+                }
+            }
+            return Err(last_err);
+        }
+
+        self.execute_tcp(req, start_time).await
+    }
+
+    async fn execute_tcp(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
+
+        // 3. Montagem da requisição Hyper
+        let uri: hyper::Uri = req
+            .url
+            .as_str()
+            .parse()
+            .map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
+
+        let mut hyper_builder = HyperRequest::builder()
+            .method(req.method.clone())
+            .uri(uri);
+
+        // Copia cabeçalhos do Request
+        if let Some(headers_mut) = hyper_builder.headers_mut() {
+            *headers_mut = req.headers.clone();
+            // Injeta User-Agent padrão se não especificado
+            if !headers_mut.contains_key(USER_AGENT) {
+                headers_mut.insert(USER_AGENT, self.user_agent.clone());
+            }
+        }
+
+        let body_payload = req.body.clone().unwrap_or_default();
+        let mut hyper_req = hyper_builder
+            .body(Full::new(body_payload))
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        if let Some(dispatcher) = req.early_hints_dispatcher.clone() {
+            let base_url = req.url.clone();
+            hyper::ext::on_informational(&mut hyper_req, move |res| {
+                if res.status() == http::StatusCode::EARLY_HINTS {
+                    crate::telemetry::net_log::log_net_event(
+                        crate::telemetry::net_log::NetEventType::Warning,
+                        base_url.as_str(),
+                        "Recebido 103 Early Hints - engatilhando Resource Hints",
+                    );
+                    let mut link_values = Vec::new();
+                    for (name, val) in res.headers() {
+                        if name == http::header::LINK {
+                            if let Ok(link_str) = val.to_str() {
+                                link_values.push(link_str.to_string());
+                            }
+                        }
+                    }
+                    let dispatcher = dispatcher.clone();
+                    let url = base_url.clone();
+                    tokio::spawn(async move {
+                        for link in link_values {
+                            dispatcher.dispatch_link_header(&url, &link).await;
+                        }
+                    });
+                }
+            });
+        }
+
+        // Fetch ou cria o cliente particionado básico (sem ECH) para este NIK
+        let mut target_client = {
+            let map = self.isolated_clients.read().await;
+            map.get(&req.network_isolation_key).cloned()
+        };
+
+        if target_client.is_none() {
+            let new_client = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), None)?;
+            let mut map = self.isolated_clients.write().await;
+            map.insert(req.network_isolation_key.clone(), new_client.clone());
+            target_client = Some(new_client);
+        }
+        
+        let mut target_client = target_client.unwrap();
+
+        // NOVO: Busca do ECH particionada
+        if let Some(host) = req.url.host_str() {
+            if req.url.scheme() == "https" {
+                let cache_key = (req.network_isolation_key.clone(), host.to_string());
+                
+                // Tenta ler do cache de ECH primeiro
+                let cached = {
+                    let map = self.isolated_ech_clients.read().await;
+                    map.get(&cache_key).cloned()
+                };
+
+                if let Some(client) = cached {
+                    target_client = client;
+                } else {
+                    // Consulta HTTPS para descobrir EchConfig
+                    let resolver = DohHappyEyeballsResolver::new();
+                    if let Ok(lookup) = resolver.resolver().lookup(host, RecordType::HTTPS).await {
+                        let mut ech_config_bytes: Option<Vec<u8>> = None;
+                        for record in lookup.iter() {
+                            if let hickory_resolver::proto::rr::RData::HTTPS(svcb) = record {
+                                for (key, val) in svcb.svc_params().iter() {
+                                    if *key == SvcParamKey::EchConfig {
+                                        if let hickory_resolver::proto::rr::rdata::svcb::SvcParamValue::EchConfig(ech) = val {
+                                            ech_config_bytes = Some(ech.0.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if let Some(bytes) = ech_config_bytes {
+                            // Construir novo client configurado para ECH
+                            if let Ok(ech_config) = EchConfig::new(bytes.into(), rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES) {
+                                if let Ok(new_client) = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), Some(ech_config)) {
+                                    target_client = new_client.clone();
+                                    let mut map = self.isolated_ech_clients.write().await;
+                                    map.insert(cache_key, new_client);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Disparo com controle de timeout, cancelamento atômico e escopo de métricas
+        let timeout_duration = req.timeout.unwrap_or(Duration::from_secs(30));
+        
+        let timing_state = std::sync::Arc::new(tokio::sync::Mutex::new(crate::transport::timing::ConnectionTiming::default()));
+        let request_future = crate::transport::timing::CONNECTION_TIMING.scope(
+            timing_state.clone(),
+            target_client.request(hyper_req)
+        );
+
+        let hyper_resp = tokio::select! {
+            _ = req.cancellation_token.cancelled() => {
+                crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Cancel, req.url.as_str(), "Cancelled before connecting");
+                return Err(NetError::Cancelled);
+            }
+            res = tokio::time::timeout(timeout_duration, request_future) => {
+                res.map_err(|_| {
+                    crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), "Connection timeout");
+                    NetError::Timeout
+                })?
+                .map_err(|e| {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("dns") || err_msg.contains("resolve") {
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::DnsResolutionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    } else if err_msg.contains("tls") || err_msg.contains("certificate") {
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::TlsHandshakeFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    } else {
+                        crate::telemetry::net_log::log_net_error(crate::telemetry::net_log::NetEventType::Error, req.url.as_str(), &e);
+                        NetError::ConnectionFailed(req.url.host_str().unwrap_or("").into(), err_msg)
+                    }
+                })?
+            }
+        };
+
+        let ttfb = start_time.elapsed();
+        let status = hyper_resp.status();
+        let headers = hyper_resp.headers().clone();
+
+        let content_encoding = ContentEncoding::from_headers(&headers);
+
+        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        // 5. Streaming reativo de bytes do corpo com suporte a cancelamento
+        let stream = HyperIncomingStream { body: hyper_resp.into_body() };
+        let raw_stream = ResponseBody::from_stream(stream);
+        
+        // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
+        let mut response_body = if let Some(encoding) = content_encoding {
+            if let Some(stream_box) = raw_stream.take_stream().await {
+                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+            } else {
+                raw_stream
+            }
+        } else {
+            raw_stream
+        };
+
+        if let Some(len) = _content_length {
+            if len < 1_048_576 {
+                if let Ok(bytes) = response_body.clone().collect_bytes().await {
+                    response_body = ResponseBody::Full(bytes);
+                }
+            }
+        }
+
+        let retry_after = RetryAfter::from_headers(&headers);
+        let content_range = if status == StatusCode::PARTIAL_CONTENT {
+            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+        } else {
+            None
+        };
+        let total_duration = start_time.elapsed();
+
+        // 7. Resolução de MIME Type e Charset
+        let content_type_str = headers
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        let mime_type: SmolStr = if !content_type_str.is_empty() {
+            content_type_str
+                .split(';')
+                .next()
+                .unwrap_or("application/octet-stream")
+                .trim()
+                .to_ascii_lowercase()
+                .into()
+        } else {
+            "application/octet-stream".into()
+        };
+
+        let charset = extract_charset_from_content_type(content_type_str);
+
+        let (dns_duration, tcp_duration, tls_duration) = {
+            let guard = timing_state.lock().await;
+            (guard.dns_duration, guard.tcp_duration, guard.tls_duration)
+        };
+
+        Ok(Response {
+            url: req.url.clone(),
+            status,
+            headers,
+            body: response_body,
+            mime_type,
+            charset,
+            content_encoding,
+            retry_after,
+            content_range,
+            from_cache: false,
+            timing: ResponseTiming {
+                total_duration,
+                dns_duration,
+                tcp_duration,
+                tls_duration,
+                ttfb,
+            },
+        })
+    }
+
+    /// Processamento paralelo dedicado a HTTP/3 QUIC (Fase 6)
+    async fn execute_h3(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
+        let host = req.url.host_str().unwrap_or("");
+        let port = req.url.port().unwrap_or(443);
+        
+        let resolver = DohHappyEyeballsResolver::new();
+        let ips = resolver.resolver().lookup_ip(host).await
+            .map_err(|e| NetError::DnsResolutionFailed(host.to_string(), e.to_string()))?;
+        
+        let addrs: Vec<std::net::IpAddr> = ips.iter().collect();
+        let interleaved = DohHappyEyeballsResolver::interleave_happy_eyeballs(addrs);
+        if interleaved.is_empty() {
+            return Err(NetError::DnsResolutionFailed(host.to_string(), "No IPs found".into()));
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let endpoint = self.quinn_endpoint.clone();
+        let host_clone = host.to_string();
+
+        tokio::spawn(async move {
+            for addr in interleaved {
+                let addr_with_port = std::net::SocketAddr::new(addr.ip(), port);
+                if let Ok(connecting) = endpoint.connect(addr_with_port, &host_clone) {
+                    let tx_clone = tx.clone();
+                    tokio::spawn(async move {
+                        if let Ok(conn) = connecting.await {
+                            let _ = tx_clone.send(conn).await;
+                        }
+                    });
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+        });
+
+        let connection = tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv()).await
+            .map_err(|_| NetError::ConnectionFailed(host.to_string(), "QUIC connection timeout".into()))?
+            .ok_or_else(|| NetError::ConnectionFailed(host.to_string(), "All QUIC connection attempts failed".into()))?;
+
+        let h3_conn = h3_quinn::Connection::new(connection);
+        let (mut driver, mut send_request) = h3::client::new(h3_conn)
+            .await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        tokio::spawn(async move {
+            let res = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
+            tracing::warn!("H3 connection closed: {:?}", res);
+        });
+
+        let uri = req.url.as_str().parse::<http::Uri>().unwrap();
+        let mut builder = http::Request::builder()
+            .method(req.method.clone())
+            .uri(uri);
+            
+        for (k, v) in &req.headers {
+            builder = builder.header(k, v);
+        }
+        
+        let http_req = builder.body(()).unwrap();
+        
+        let mut stream = send_request.send_request(http_req).await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            
+        if let Some(body) = &req.body {
+            stream.send_data(body.clone()).await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+        }
+        stream.finish().await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        let h3_resp = stream.recv_response().await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            
+        let status = h3_resp.status();
+        let headers = h3_resp.headers().clone();
+        
+        let ttfb = start_time.elapsed();
+
+        let content_encoding = ContentEncoding::from_headers(&headers);
+        
+        let h3_stream = futures_util::stream::unfold(stream, |mut s| async move {
+            match s.recv_data().await {
+                Ok(Some(mut chunk)) => Some((Ok(chunk.copy_to_bytes(chunk.remaining())), s)),
+                Ok(None) => None,
+                Err(e) => Some((Err(NetError::HttpProtocolError(e.to_string())), s)),
+            }
+        });
+        
+        let raw_stream = ResponseBody::from_stream(h3_stream);
+        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let mut response_body = if let Some(encoding) = content_encoding {
+            if let Some(stream_box) = raw_stream.take_stream().await {
+                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+            } else {
+                raw_stream
+            }
+        } else {
+            raw_stream
+        };
+
+        if let Some(len) = _content_length {
+            if len < 1_048_576 {
+                if let Ok(bytes) = response_body.clone().collect_bytes().await {
+                    response_body = ResponseBody::Full(bytes);
+                }
+            }
+        }
+
+        let retry_after = RetryAfter::from_headers(&headers);
+        let content_range = if status == StatusCode::PARTIAL_CONTENT {
+            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+        } else {
+            None
+        };
+        let total_duration = start_time.elapsed();
+
+        let content_type_str = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+        let mime_type: SmolStr = if !content_type_str.is_empty() {
+            content_type_str.split(';').next().unwrap_or("application/octet-stream").trim().to_ascii_lowercase().into()
+        } else {
+            "application/octet-stream".into()
+        };
+        let charset = extract_charset_from_content_type(content_type_str);
+
+        Ok(Response {
+            url: req.url.clone(),
+            status,
+            headers,
+            body: response_body,
+            mime_type,
+            charset,
+            content_encoding,
+            retry_after,
+            content_range,
+            from_cache: false,
+            timing: ResponseTiming {
+                total_duration,
+                dns_duration: None,
+                tcp_duration: None,
+                tls_duration: None,
+                ttfb,
+            },
+        })
+    }
+
+    /// Processamento de data: URLs em memória.
+    fn execute_data_url(&self, url: &Url, start_time: Instant) -> NetResult<Response> {
+        let record = parse_data_url(url.as_str())
+            .map_err(|e| NetError::InvalidUrl(format!("Falha ao decodificar data URL: {}", e)))?;
+
+        let body_bytes = Bytes::from(record.body);
+        let mime_essence = record.mime_type.essence();
+        let charset = record.mime_type.get_param("charset").map(SmolStr::from);
+
+        let mut headers = http::HeaderMap::new();
+        if let Ok(val) = http::HeaderValue::from_str(&mime_essence) {
+            headers.insert(CONTENT_TYPE, val);
+        }
+
+        let elapsed = start_time.elapsed();
+
+        Ok(Response {
+            url: url.clone(),
+            status: http::StatusCode::OK,
+            headers,
+            body: ResponseBody::Full(body_bytes),
+            mime_type: mime_essence.into(),
+            charset,
+            content_encoding: None,
+            retry_after: None,
+            content_range: None,
+            from_cache: false,
+            timing: ResponseTiming {
+                total_duration: elapsed,
+                dns_duration: None,
+                tcp_duration: None,
+                tls_duration: None,
+                ttfb: elapsed,
+            },
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_data_url_execution() {
+        let client = TransportClient::new().unwrap();
+        let req = Request::get("data:text/html;charset=utf-8,<h1>Albedo</h1>").unwrap().build();
+
+        let resp = client.execute(&req).await.unwrap();
+        assert_eq!(resp.status, http::StatusCode::OK);
+        assert_eq!(resp.mime_type.as_str(), "text/html");
+        assert_eq!(resp.text().unwrap(), "<h1>Albedo</h1>");
+    }
+
+    #[tokio::test]
+    async fn test_unsupported_scheme() {
+        let client = TransportClient::new().unwrap();
+        let req = Request::get("ftp://files.example.com/file.txt").unwrap().build();
+
+        let result = client.execute(&req).await;
+        assert!(matches!(result, Err(NetError::UnsupportedScheme(_))));
+    }
+}
