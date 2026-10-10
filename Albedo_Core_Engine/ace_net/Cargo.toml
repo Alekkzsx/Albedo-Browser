@@ -47,7 +47,7 @@ webpki-roots = "0.26"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime", "dns-over-https-rustls"] }
 
 # M4: WebSockets reativos
-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["rustls-tls-webpki-roots", "connect"] }
 h3 = "0.0.8"
 h3-quinn = "0.0.10"
