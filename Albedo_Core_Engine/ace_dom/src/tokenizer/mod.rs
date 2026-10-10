@@ -71,6 +71,12 @@ pub fn tokenize_to_compact_tokens(html: &str) -> Vec<CompactHTMLToken> {
     sink.take_tokens()
 }
 
+#[inline]
+fn char_to_smolstr(c: char) -> SmolStr {
+    let mut buf = [0u8; 4];
+    SmolStr::new(c.encode_utf8(&mut buf))
+}
+
 /// Helper para espiar os próximos `n` caracteres do `SegmentedString` sem avançar.
 fn peek_str(input: &SegmentedString, n: usize) -> String {
     let mut s = String::with_capacity(n);
@@ -97,6 +103,7 @@ pub struct HTMLTokenizer {
     current_attr_value: String,
     current_comment: String,
     current_doctype: DoctypeToken,
+    current_doctype_name: String,
     last_start_tag_name: Option<Atom>,
 }
 
@@ -120,6 +127,7 @@ impl HTMLTokenizer {
             current_attr_value: String::with_capacity(64),
             current_comment: String::with_capacity(64),
             current_doctype: DoctypeToken::default(),
+            current_doctype_name: String::with_capacity(16),
             last_start_tag_name: None,
         }
     }
@@ -231,6 +239,29 @@ impl HTMLTokenizer {
         self.current_attr_value.clear();
     }
 
+    /// Emite o comentário atual para o `TokenSink` e limpa o buffer acumulador.
+    #[inline]
+    fn emit_current_comment(&mut self, sink: &mut dyn TokenSink, input: &mut SegmentedString) {
+        let text = SmolStr::new(std::mem::take(&mut self.current_comment));
+        self.emit_token(Token::Comment(text), sink, input);
+    }
+
+    /// Sincroniza o nome do DOCTYPE antes da emissão.
+    #[inline]
+    fn flush_doctype_name(&mut self) {
+        if !self.current_doctype_name.is_empty() {
+            self.current_doctype.name = Some(SmolStr::new(std::mem::take(&mut self.current_doctype_name)));
+        }
+    }
+
+    /// Emite o DOCTYPE atual para o `TokenSink` e redefine a estrutura interna com zero vazamentos.
+    #[inline]
+    fn emit_current_doctype(&mut self, sink: &mut dyn TokenSink, input: &mut SegmentedString) {
+        self.flush_doctype_name();
+        let doctype = std::mem::take(&mut self.current_doctype);
+        self.emit_token(Token::Doctype(doctype), sink, input);
+    }
+
     /// Finaliza o atributo atual e adiciona à lista de atributos da tag em construção.
     fn flush_attribute(&mut self) {
         if !self.current_attr_name.is_empty() {
@@ -313,7 +344,7 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
                         }
                         other => {
-                            self.emit_token(Token::Character(SmolStr::new(other.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(other)), sink, input);
                         }
                     },
 
@@ -614,6 +645,7 @@ impl HTMLTokenizer {
                                 input.advance();
                             }
                             self.current_doctype = DoctypeToken::default();
+                            self.current_doctype_name.clear();
                             self.state = TokenizerState::Doctype;
                         } else if prefix.starts_with("[CDATA[") {
                             for _ in 0..7 {
@@ -640,7 +672,7 @@ impl HTMLTokenizer {
                         }
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Comment(SmolStr::new(&self.current_comment)), sink, input);
+                            self.emit_current_comment(sink, input);
                         }
                         c => {
                             self.current_comment.push(c);
@@ -655,7 +687,7 @@ impl HTMLTokenizer {
                         }
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Comment(SmolStr::new(&self.current_comment)), sink, input);
+                            self.emit_current_comment(sink, input);
                         }
                         c => {
                             self.current_comment.push('-');
@@ -693,7 +725,7 @@ impl HTMLTokenizer {
                     TokenizerState::CommentEnd => match ch {
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Comment(SmolStr::new(&self.current_comment)), sink, input);
+                            self.emit_current_comment(sink, input);
                         }
                         '-' => {
                             self.current_comment.push('-');
@@ -709,7 +741,7 @@ impl HTMLTokenizer {
                     TokenizerState::BogusComment => match ch {
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Comment(SmolStr::new(&self.current_comment)), sink, input);
+                            self.emit_current_comment(sink, input);
                         }
                         '\0' => {
                             self.current_comment.push('\u{FFFD}');
@@ -727,7 +759,7 @@ impl HTMLTokenizer {
                         '>' => {
                             self.current_doctype.force_quirks = true;
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Doctype(self.current_doctype.clone()), sink, input);
+                            self.emit_current_doctype(sink, input);
                         }
                         c => {
                             input.push_front_char(c);
@@ -743,14 +775,16 @@ impl HTMLTokenizer {
                         '>' => {
                             self.current_doctype.force_quirks = true;
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Doctype(self.current_doctype.clone()), sink, input);
+                            self.emit_current_doctype(sink, input);
                         }
                         '\0' => {
-                            self.current_doctype.name = Some(SmolStr::new("\u{FFFD}"));
+                            self.current_doctype_name.clear();
+                            self.current_doctype_name.push('\u{FFFD}');
                             self.state = TokenizerState::DoctypeName;
                         }
                         c => {
-                            self.current_doctype.name = Some(SmolStr::new(c.to_string()));
+                            self.current_doctype_name.clear();
+                            self.current_doctype_name.push(c);
                             self.state = TokenizerState::DoctypeName;
                         }
                     },
@@ -758,25 +792,18 @@ impl HTMLTokenizer {
                     // 23. Doctype Name State (§12.2.5.55)
                     TokenizerState::DoctypeName => match ch {
                         '\t' | '\n' | '\x0C' | ' ' => {
+                            self.flush_doctype_name();
                             self.state = TokenizerState::AfterDoctypeName;
                         }
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Doctype(self.current_doctype.clone()), sink, input);
+                            self.emit_current_doctype(sink, input);
                         }
                         '\0' => {
-                            if let Some(ref mut name) = self.current_doctype.name {
-                                let mut s = name.to_string();
-                                s.push('\u{FFFD}');
-                                *name = SmolStr::new(s);
-                            }
+                            self.current_doctype_name.push('\u{FFFD}');
                         }
                         c => {
-                            if let Some(ref mut name) = self.current_doctype.name {
-                                let mut s = name.to_string();
-                                s.push(c);
-                                *name = SmolStr::new(s);
-                            }
+                            self.current_doctype_name.push(c);
                         }
                     },
 
@@ -787,9 +814,10 @@ impl HTMLTokenizer {
                         }
                         '>' => {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Doctype(self.current_doctype.clone()), sink, input);
+                            self.emit_current_doctype(sink, input);
                         }
                         _ => {
+                            self.flush_doctype_name();
                             self.state = TokenizerState::BogusDoctype;
                         }
                     },
@@ -798,7 +826,7 @@ impl HTMLTokenizer {
                     TokenizerState::BogusDoctype => {
                         if ch == '>' {
                             self.state = TokenizerState::Data;
-                            self.emit_token(Token::Doctype(self.current_doctype.clone()), sink, input);
+                            self.emit_current_doctype(sink, input);
                         }
                     }
 
@@ -808,7 +836,7 @@ impl HTMLTokenizer {
                             self.state = TokenizerState::CDataSectionBracket;
                         }
                         c => {
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                         }
                     },
 
@@ -818,7 +846,7 @@ impl HTMLTokenizer {
                         }
                         c => {
                             self.emit_token(Token::Character(SmolStr::new("]")), sink, input);
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                             self.state = TokenizerState::CDataSection;
                         }
                     },
@@ -832,7 +860,7 @@ impl HTMLTokenizer {
                         }
                         c => {
                             self.emit_token(Token::Character(SmolStr::new("]]")), sink, input);
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                             self.state = TokenizerState::CDataSection;
                         }
                     },
@@ -850,7 +878,7 @@ impl HTMLTokenizer {
                                         let remainder = &after_slash[expected_str.len()..];
                                         if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
                                             // Consome '/' e o nome da tag
-                                            input.advance(); // consome '/'
+                                             input.advance(); // consome '/'
                                             for _ in 0..expected_str.len() {
                                                 input.advance();
                                             }
@@ -875,7 +903,7 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
                         }
                         c => {
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                         }
                     },
 
@@ -926,7 +954,7 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
                         }
                         c => {
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                         }
                     },
 
@@ -958,7 +986,7 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
                         }
                         c => {
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                         }
                     },
 
@@ -968,7 +996,7 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
                         }
                         c => {
-                            self.emit_token(Token::Character(SmolStr::new(c.to_string())), sink, input);
+                            self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
                         }
                     },
 

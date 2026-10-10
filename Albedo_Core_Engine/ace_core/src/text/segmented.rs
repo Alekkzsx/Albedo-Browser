@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 /// - Normaliza `\r\n` (CRLF) e `\r` (CR) isolados para `\n` (LF).
 /// - Substitui `\0` (NULL) pelo caractere substituto Unicode `\u{FFFD}`.
 pub fn preprocess_html_input(input: &str) -> SmolStr {
-    if !input.contains('\r') && !input.contains('\0') {
+    if !input.bytes().any(|b| b == b'\r' || b == 0) {
         return SmolStr::new(input);
     }
 
@@ -136,6 +136,7 @@ impl SegmentedString {
 
     /// Devolve uma sequência de texto para a frente do buffer.
     pub fn push_front_str(&mut self, s: &str) {
+        self.pushed_back.reserve(s.len());
         for c in s.chars().rev() {
             self.push_front_char(c);
         }
@@ -221,14 +222,65 @@ impl SegmentedString {
     /// Consome caracteres contíguos enquanto o predicado retornar `true`.
     pub fn consume_while(&mut self, predicate: impl Fn(char) -> bool) -> String {
         let mut out = String::new();
-        while let Some(c) = self.peek() {
+
+        // 1. Drena prioritariamente caracteres devolvidos (pushed_back)
+        while let Some(&c) = self.pushed_back.last() {
             if predicate(c) {
-                self.advance();
+                self.pushed_back.pop();
+                self.byte_offset += c.len_utf8();
+                if c == '\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
+                }
                 out.push(c);
             } else {
+                return out;
+            }
+        }
+
+        // 2. Consome fatias contíguas diretamente dos chunks em memória
+        loop {
+            self.clean_empty_chunks();
+            let Some(chunk) = self.chunks.front() else {
+                break;
+            };
+
+            let slice = &chunk[self.current_chunk_offset..];
+            let mut consumed_bytes = 0;
+            let mut stopped = false;
+
+            for c in slice.chars() {
+                if predicate(c) {
+                    let c_len = c.len_utf8();
+                    consumed_bytes += c_len;
+                    self.byte_offset += c_len;
+                    if c == '\n' {
+                        self.line += 1;
+                        self.column = 1;
+                    } else {
+                        self.column += 1;
+                    }
+                } else {
+                    stopped = true;
+                    break;
+                }
+            }
+
+            if consumed_bytes > 0 {
+                if out.is_empty() && stopped {
+                    out.reserve(consumed_bytes);
+                }
+                out.push_str(&slice[..consumed_bytes]);
+                self.current_chunk_offset += consumed_bytes;
+            }
+
+            if stopped || self.chunks.is_empty() {
                 break;
             }
         }
+
         out
     }
 
@@ -243,17 +295,44 @@ impl SegmentedString {
             }
         }
 
-        for (i, target_c) in prefix.chars().enumerate() {
-            if self.peek_at(i) != Some(target_c) {
-                return false;
+        let mut prefix_chars = prefix.chars();
+        for &c in self.pushed_back.iter().rev() {
+            match prefix_chars.next() {
+                Some(pc) if pc == c => {}
+                Some(_) => return false,
+                None => return true,
             }
         }
-        true
+
+        for (i, chunk) in self.chunks.iter().enumerate() {
+            let start = if i == 0 { self.current_chunk_offset } else { 0 };
+            if start < chunk.len() {
+                let slice = &chunk[start..];
+                for c in slice.chars() {
+                    match prefix_chars.next() {
+                        Some(pc) if pc == c => {}
+                        Some(_) => return false,
+                        None => return true,
+                    }
+                }
+            }
+        }
+
+        prefix_chars.next().is_none()
     }
 
     /// Consome o prefixo caso o stream comece com ele. Retorna `true` se consumido.
     pub fn consume_prefix(&mut self, prefix: &str) -> bool {
         if self.starts_with(prefix) {
+            if self.pushed_back.is_empty() {
+                if let Some(chunk) = self.chunks.front() {
+                    let slice = &chunk[self.current_chunk_offset..];
+                    if slice.len() >= prefix.len() && slice.starts_with(prefix) {
+                        self.advance_bytes(prefix.len());
+                        return true;
+                    }
+                }
+            }
             self.advance_n(prefix.chars().count());
             true
         } else {
@@ -405,7 +484,17 @@ impl SegmentedString {
 
     /// Retorna uma representação em `String` de todos os caracteres ainda não consumidos no buffer.
     pub fn unconsumed_str(&self) -> String {
-        let mut s = String::new();
+        let pushed_bytes: usize = self.pushed_back.iter().map(|c| c.len_utf8()).sum();
+        let chunks_bytes: usize = self
+            .chunks
+            .iter()
+            .enumerate()
+            .map(|(i, chunk)| {
+                let start = if i == 0 { self.current_chunk_offset } else { 0 };
+                chunk.len().saturating_sub(start)
+            })
+            .sum();
+        let mut s = String::with_capacity(pushed_bytes + chunks_bytes);
         for &c in self.pushed_back.iter().rev() {
             s.push(c);
         }
@@ -431,7 +520,8 @@ impl SegmentedString {
             self.current_chunk_offset = 0;
         }
         if !self.pushed_back.is_empty() {
-            let mut s = String::with_capacity(self.pushed_back.len());
+            let cap: usize = self.pushed_back.iter().map(|c| c.len_utf8()).sum();
+            let mut s = String::with_capacity(cap);
             while let Some(c) = self.pushed_back.pop() {
                 s.push(c);
             }

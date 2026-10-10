@@ -83,14 +83,27 @@ impl HTMLTreeBuilder {
         el_id
     }
 
-    /// Insere um elemento HTML copiando seus atributos e empilhando-o.
-    fn insert_html_element(&mut self, tag: &crate::tokenizer::StartTagToken) -> NodeId {
-        let el_id = self.insert_element(tag.name.as_str(), Namespace::Html);
+    /// Insere um elemento HTML com seus atributos populados e empilha-o em `open_elements`.
+    fn insert_html_element(&mut self, tag: crate::tokenizer::StartTagToken) -> NodeId {
+        let el_id = self.insert_element(tag.name, Namespace::Html);
         if let Some(node) = self.doc.get_node_mut(el_id) {
             if let Some(el) = node.as_element_mut() {
-                el.attributes = tag.attributes.clone();
+                el.init_attributes(tag.attributes);
             }
         }
+        el_id
+    }
+
+    /// Cria e anexa um elemento void (ou elemento de head que não empilha).
+    fn insert_void_element(&mut self, tag: crate::tokenizer::StartTagToken) -> NodeId {
+        let el_id = self.doc.create_element(tag.name, Namespace::Html);
+        if let Some(node) = self.doc.get_node_mut(el_id) {
+            if let Some(el) = node.as_element_mut() {
+                el.init_attributes(tag.attributes);
+            }
+        }
+        let parent_id = self.open_elements.current_node().unwrap_or(self.doc.root());
+        let _ = self.doc.append_child(parent_id, el_id);
         el_id
     }
 
@@ -125,7 +138,8 @@ impl HTMLTreeBuilder {
             if let Some(last_child_id) = parent_node.last_child {
                 if let Some(last_child) = self.doc.get_node_mut(last_child_id) {
                     if let crate::node::NodeKind::Text(ref mut t) = last_child.kind {
-                        let mut merged = t.data.to_string();
+                        let mut merged = String::with_capacity(t.data.len() + text.len());
+                        merged.push_str(&t.data);
                         merged.push_str(text);
                         t.data = SmolStr::new(merged);
                         return;
@@ -169,7 +183,11 @@ impl HTMLTreeBuilder {
     /// Reseta o modo de inserção caminhando pela pilha de elementos abertos (WHATWG §12.2.4.1).
     fn reset_insertion_mode(&mut self) {
         let stack = self.open_elements.as_slice();
-        for &node_id in stack.iter().rev() {
+        let mut last = false;
+        for (i, &node_id) in stack.iter().enumerate().rev() {
+            if i == 0 {
+                last = true;
+            }
             if let Some(node) = self.doc.get_node(node_id) {
                 if let Some(tag) = node.tag_name() {
                     match tag.as_str() {
@@ -178,8 +196,10 @@ impl HTMLTreeBuilder {
                             return;
                         }
                         "td" | "th" => {
-                            self.mode = InsertionMode::InCell;
-                            return;
+                            if !last {
+                                self.mode = InsertionMode::InCell;
+                                return;
+                            }
                         }
                         "tr" => {
                             self.mode = InsertionMode::InRow;
@@ -206,8 +226,10 @@ impl HTMLTreeBuilder {
                             return;
                         }
                         "head" => {
-                            self.mode = InsertionMode::InHead;
-                            return;
+                            if !last {
+                                self.mode = InsertionMode::InHead;
+                                return;
+                            }
                         }
                         "body" => {
                             self.mode = InsertionMode::InBody;
@@ -266,11 +288,8 @@ impl HTMLTreeBuilder {
             self.doc.create_document_fragment()
         };
 
-        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
+        let el_id = self.insert_html_element(start_tag);
         if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-            for attr in start_tag.attributes.as_slice() {
-                el.set_attribute(attr.name.clone(), attr.value.clone());
-            }
             el.set_template_content(Some(content_id));
         }
         self.template_insertion_modes.push(InsertionMode::InTemplate);
@@ -322,10 +341,38 @@ impl HTMLTreeBuilder {
 }
 
 impl TokenSink for HTMLTreeBuilder {
+    
     fn process_token(&mut self, token: Token) -> TokenizerAction {
         match self.mode {
-            // 1. Initial Insertion Mode (§12.2.6.4.1)
-            InsertionMode::Initial => match token {
+            InsertionMode::Initial => self.process_initial_mode(token),
+            InsertionMode::BeforeHtml => self.process_before_html_mode(token),
+            InsertionMode::BeforeHead => self.process_before_head_mode(token),
+            InsertionMode::InHead => self.process_in_head_mode(token),
+            InsertionMode::AfterHead => self.process_after_head_mode(token),
+            InsertionMode::InBody => self.process_in_body_mode(token),
+            InsertionMode::InTable => self.process_in_table_mode(token),
+            InsertionMode::InTableBody => self.process_in_table_body_mode(token),
+            InsertionMode::InRow => self.process_in_row_mode(token),
+            InsertionMode::InCell => self.process_in_cell_mode(token),
+            InsertionMode::InTemplate => self.process_in_template_mode(token),
+            InsertionMode::AfterBody => self.process_after_body_mode(token),
+            InsertionMode::AfterAfterBody => self.process_after_after_body_mode(token),
+            InsertionMode::Text => self.process_text_mode(token),
+            InsertionMode::InSelect | InsertionMode::InSelectInTable => self.process_in_select_mode(token),
+            InsertionMode::InTableText => self.process_in_table_text_mode(token),
+            InsertionMode::InCaption => self.process_in_caption_mode(token),
+            InsertionMode::InColumnGroup => self.process_in_column_group_mode(token),
+            _ => {
+                self.mode = InsertionMode::InBody;
+                self.process_token(token)
+            }
+        }
+    }
+}
+
+impl HTMLTreeBuilder {
+    fn process_initial_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     TokenizerAction::Continue
                 }
@@ -355,10 +402,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::BeforeHtml;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 2. Before HTML Insertion Mode (§12.2.6.4.2)
-            InsertionMode::BeforeHtml => match token {
+    fn process_before_html_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     TokenizerAction::Continue
                 }
@@ -368,14 +416,7 @@ impl TokenSink for HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("html") => {
-                    let html_id = self.doc.create_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(html_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
-                    let _ = self.doc.append_child(self.doc.root(), html_id);
-                    self.open_elements.push(html_id);
+                    let html_id = self.insert_html_element(start_tag);
                     self.doc.document_element = Some(html_id);
                     self.mode = InsertionMode::BeforeHead;
                     TokenizerAction::Continue
@@ -388,10 +429,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::BeforeHead;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 3. Before Head Insertion Mode (§12.2.6.4.3)
-            InsertionMode::BeforeHead => match token {
+    fn process_before_head_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     TokenizerAction::Continue
                 }
@@ -402,12 +444,7 @@ impl TokenSink for HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("head") => {
-                    let head_id = self.insert_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(head_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
+                    let head_id = self.insert_html_element(start_tag);
                     self.head_element = Some(head_id);
                     self.doc.head = Some(head_id);
                     self.mode = InsertionMode::InHead;
@@ -420,10 +457,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InHead;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 4. In Head Insertion Mode (§12.2.6.4.4)
-            InsertionMode::InHead => match token {
+    fn process_in_head_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -437,24 +475,10 @@ impl TokenSink for HTMLTreeBuilder {
                 Token::StartTag(start_tag) => {
                     let tag = start_tag.name.as_str();
                     if matches!(tag, "meta" | "link" | "base" | "basefont" | "bgsound") {
-                        let el_id = self.doc.create_element(start_tag.name, Namespace::Html);
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            for attr in start_tag.attributes.as_slice() {
-                                el.set_attribute(attr.name.clone(), attr.value.clone());
-                            }
-                        }
-                        let parent_id = self.open_elements.current_node().unwrap_or(self.doc.root());
-                        let _ = self.doc.append_child(parent_id, el_id);
+                        self.insert_void_element(start_tag);
                         TokenizerAction::Continue
                     } else if matches!(tag, "title" | "style" | "script" | "noscript") {
-                        let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
-                        if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
-                            for attr in start_tag.attributes.as_slice() {
-                                el.set_attribute(attr.name.clone(), attr.value.clone());
-                            }
-                        }
-
-                        if tag == "title" {
+                        let action = if tag == "title" {
                             TokenizerAction::SwitchState(TokenizerState::RCDATA)
                         } else if tag == "style" {
                             TokenizerAction::SwitchState(TokenizerState::RAWTEXT)
@@ -462,7 +486,9 @@ impl TokenSink for HTMLTreeBuilder {
                             TokenizerAction::SwitchState(TokenizerState::ScriptData)
                         } else {
                             TokenizerAction::Continue
-                        }
+                        };
+                        self.insert_html_element(start_tag);
+                        action
                     } else if tag == "template" {
                         self.handle_template_start(start_tag)
                     } else if tag == "head" {
@@ -491,10 +517,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::AfterHead;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 5. After Head Insertion Mode (§12.2.6.4.6)
-            InsertionMode::AfterHead => match token {
+    fn process_after_head_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -506,12 +533,7 @@ impl TokenSink for HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(start_tag) if start_tag.name.eq_ignore_ascii_case("body") => {
-                    let body_id = self.insert_element(start_tag.name, Namespace::Html);
-                    if let Some(el) = self.doc.get_node_mut(body_id).and_then(|n| n.as_element_mut()) {
-                        for attr in start_tag.attributes.as_slice() {
-                            el.set_attribute(attr.name.clone(), attr.value.clone());
-                        }
-                    }
+                    let body_id = self.insert_html_element(start_tag);
                     self.doc.body = Some(body_id);
                     self.mode = InsertionMode::InBody;
                     TokenizerAction::Continue
@@ -522,10 +544,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 6. In Body Insertion Mode (§12.2.6.4.7)
-            InsertionMode::InBody => match token {
+    fn process_in_body_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -649,10 +672,11 @@ impl TokenSink for HTMLTreeBuilder {
                 }
                 Token::Eof => TokenizerAction::Continue,
                 _ => TokenizerAction::Continue,
-            },
+            }
+    }
 
-            // 7. In Table Insertion Mode (§12.2.6.4.9)
-            InsertionMode::InTable => match token {
+    fn process_in_table_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::StartTag(ref start_tag) if matches!(start_tag.name.as_str(), "tbody" | "thead" | "tfoot") => {
                     let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
                     if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
@@ -707,10 +731,11 @@ impl TokenSink for HTMLTreeBuilder {
                         _ => TokenizerAction::Continue,
                     }
                 }
-            },
+            }
+    }
 
-            // 8. In Table Body Insertion Mode (§12.2.6.4.11)
-            InsertionMode::InTableBody => match token {
+    fn process_in_table_body_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::StartTag(ref start_tag) if start_tag.name.eq_ignore_ascii_case("tr") => {
                     let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
                     if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
@@ -741,10 +766,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 9. In Row Insertion Mode (§12.2.6.4.12)
-            InsertionMode::InRow => match token {
+    fn process_in_row_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::StartTag(ref start_tag) if matches!(start_tag.name.as_str(), "td" | "th") => {
                     let el_id = self.insert_element(start_tag.name.clone(), Namespace::Html);
                     if let Some(el) = self.doc.get_node_mut(el_id).and_then(|n| n.as_element_mut()) {
@@ -769,10 +795,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 10. In Cell Insertion Mode (§12.2.6.4.13)
-            InsertionMode::InCell => match token {
+    fn process_in_cell_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::EndTag(ref end_tag) if matches!(end_tag.name.as_str(), "td" | "th") => {
                     self.open_elements.pop_until_tag(&self.doc, end_tag.name.as_str());
                     self.mode = InsertionMode::InRow;
@@ -795,10 +822,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = prev_mode;
                     act
                 }
-            },
+            }
+    }
 
-            // 11. In Template Insertion Mode (§12.2.6.4.20)
-            InsertionMode::InTemplate => match token {
+    fn process_in_template_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::EndTag(ref end_tag) if end_tag.name.eq_ignore_ascii_case("template") => {
                     self.open_elements.pop_until_tag(&self.doc, "template");
                     self.template_insertion_modes.pop();
@@ -855,10 +883,11 @@ impl TokenSink for HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 _ => TokenizerAction::Continue,
-            },
+            }
+    }
 
-            // 12. After Body Insertion Mode (§12.2.6.4.18)
-            InsertionMode::AfterBody => match token {
+    fn process_after_body_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -872,10 +901,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 13. After After Body (§12.2.6.4.21)
-            InsertionMode::AfterAfterBody => match token {
+    fn process_after_after_body_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Comment(ref s) => {
                     let c_id = self.doc.create_comment(s.as_str());
                     let _ = self.doc.append_child(self.doc.root(), c_id);
@@ -889,10 +919,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = InsertionMode::InBody;
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 14. Text Insertion Mode (§12.2.6.4.4)
-            InsertionMode::Text => match token {
+    fn process_text_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -908,10 +939,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.process_token(token)
                 }
                 _ => TokenizerAction::Continue,
-            },
+            }
+    }
 
-            // 15. In Select & In Select In Table (§12.2.6.4.15 & §12.2.6.4.16)
-            InsertionMode::InSelect | InsertionMode::InSelectInTable => match token {
+    fn process_in_select_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -991,10 +1023,11 @@ impl TokenSink for HTMLTreeBuilder {
                 }
                 Token::Eof => TokenizerAction::Continue,
                 _ => TokenizerAction::Continue,
-            },
+            }
+    }
 
-            // 16. In Table Text (§12.2.6.4.8)
-            InsertionMode::InTableText => match token {
+    fn process_in_table_text_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -1007,10 +1040,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = self.original_mode.take().unwrap_or(InsertionMode::InTable);
                     self.process_token(other)
                 }
-            },
+            }
+    }
 
-            // 17. In Caption (§12.2.6.4.9)
-            InsertionMode::InCaption => match token {
+    fn process_in_caption_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("caption") => {
                     if self.open_elements.has_element_in_table_scope(&self.doc, "caption") {
                         self.open_elements.pop_until_tag(&self.doc, "caption");
@@ -1026,10 +1060,11 @@ impl TokenSink for HTMLTreeBuilder {
                     self.mode = prev_mode;
                     act
                 }
-            },
+            }
+    }
 
-            // 18. In Column Group (§12.2.6.4.10)
-            InsertionMode::InColumnGroup => match token {
+    fn process_in_column_group_mode(&mut self, token: Token) -> TokenizerAction {
+        match token {
                 Token::Character(ref s) if s.chars().all(|c| c.is_ascii_whitespace()) => {
                     self.insert_text(s.as_str());
                     TokenizerAction::Continue
@@ -1058,12 +1093,6 @@ impl TokenSink for HTMLTreeBuilder {
                     }
                     TokenizerAction::Continue
                 }
-            },
-
-            _ => {
-                self.mode = InsertionMode::InBody;
-                self.process_token(token)
             }
-        }
     }
 }

@@ -1,0 +1,310 @@
+//! # Gerenciador de Armazenamento de Cookies (`CookieJar`)
+//!
+//! Gerenciador centralizado e thread-safe de cookies com suporte a atualização,
+//! expiração, higienização e particionamento CHIPS.
+
+use super::entry::Cookie;
+use crate::http::request::CredentialsMode;
+use http::header::SET_COOKIE;
+use http::{HeaderMap, HeaderValue};
+use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
+use std::time::SystemTime;
+use url::Url;
+
+/// Cota máxima normativa de cookies por domínio (RFC 6265bis recomenda no mínimo 180 cookies por domínio).
+pub const MAX_COOKIES_PER_DOMAIN: usize = 180;
+
+/// Verifica se `host` é um subdomínio válido de `parent` sem alocação dinâmica.
+#[inline]
+fn is_subdomain_of(host: &str, parent: &str) -> bool {
+    if host.len() > parent.len() && host.ends_with(parent) {
+        host.as_bytes()[host.len() - parent.len() - 1] == b'.'
+    } else {
+        false
+    }
+}
+
+/// Armazenamento em memória de cookies do navegador, indexado por domínio com política de cotas LRU.
+#[derive(Debug, Default)]
+pub struct CookieJar {
+    cookies: RwLock<FxHashMap<String, Vec<Cookie>>>,
+}
+
+impl CookieJar {
+    /// Cria uma nova instância de `CookieJar`.
+    pub fn new() -> Self {
+        Self {
+            cookies: RwLock::new(FxHashMap::default()),
+        }
+    }
+
+    /// Armazena ou atualiza um cookie no pote. Se já existir (mesmo nome, path e partition_key), substitui.
+    /// Respeita a cota máxima de 180 cookies por domínio descartando o mais antigo (LRU).
+    pub fn store_cookie(&self, new_cookie: Cookie) {
+        let domain_key = new_cookie.domain.clone();
+        let mut map = self.cookies.write();
+        let domain_list = map.entry(domain_key).or_default();
+
+        let mut found = false;
+        for existing in domain_list.iter_mut() {
+            if existing.name == new_cookie.name
+                && existing.path == new_cookie.path
+                && existing.partition_key == new_cookie.partition_key
+            {
+                *existing = new_cookie.clone();
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            if domain_list.len() >= MAX_COOKIES_PER_DOMAIN {
+                domain_list.remove(0); // Evicção LRU do cookie mais antigo do domínio
+            }
+            domain_list.push(new_cookie);
+        }
+    }
+
+    /// Extrai e processa todos os cabeçalhos `Set-Cookie` retornados em uma resposta HTTP.
+    pub fn process_response_headers(
+        &self,
+        url: &Url,
+        headers: &HeaderMap,
+        top_level_site: Option<&str>,
+        now: SystemTime,
+    ) {
+        for val in headers.get_all(SET_COOKIE) {
+            if let Ok(s) = val.to_str() {
+                if let Some(cookie) = Cookie::parse(s, url, top_level_site, now) {
+                    self.store_cookie(cookie);
+                }
+            }
+        }
+    }
+
+    /// Monta o cabeçalho `Cookie: name1=val1; name2=val2` para ser enviado na requisição.
+    pub fn build_cookie_header(
+        &self,
+        url: &Url,
+        top_level_site: Option<&str>,
+        credentials_mode: CredentialsMode,
+        is_same_site: bool,
+        is_navigation_get: bool,
+        now: SystemTime,
+    ) -> Option<HeaderValue> {
+        let req_host = url.host_str()?.to_ascii_lowercase();
+        let map = self.cookies.read();
+        let mut matching_cookies = Vec::new();
+
+        // Otimização O(domain_depth): consulta apenas o host e seus domínios ancestrais O(1)
+        let mut candidates = vec![req_host.as_str()];
+        for (dot_idx, _) in req_host.match_indices('.') {
+            candidates.push(&req_host[dot_idx + 1..]);
+        }
+
+        for cand in candidates {
+            if let Some(list) = map.get(cand) {
+                for cookie in list.iter() {
+                    if cookie.is_valid_for_request(
+                        url,
+                        top_level_site,
+                        credentials_mode,
+                        is_same_site,
+                        is_navigation_get,
+                        now,
+                    ) {
+                        matching_cookies.push(format!("{}={}", cookie.name, cookie.value));
+                    }
+                }
+            }
+        }
+
+        if matching_cookies.is_empty() {
+            None
+        } else {
+            let combined = matching_cookies.join("; ");
+            HeaderValue::from_str(&combined).ok()
+        }
+    }
+
+    /// Remove todos os cookies vinculados ao domínio especificado (ou seus subdomínios).
+    pub fn clear_for_domain(&self, domain: &str) {
+        let clean = domain.trim_start_matches('.').to_ascii_lowercase();
+        let mut map = self.cookies.write();
+        map.retain(|d, _| d != &clean && !is_subdomain_of(d, &clean));
+    }
+
+    /// Remove todos os cookies do jar.
+    pub fn clear_all(&self) {
+        self.cookies.write().clear();
+    }
+
+    /// Retorna a contagem atual de cookies ativos.
+    pub fn len(&self) -> usize {
+        self.cookies.read().values().map(|v| v.len()).sum()
+    }
+
+    /// Verifica se o jar está vazio.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Exporta todos os cookies persistentes (com expiração futura) como uma string formatada em linhas.
+    pub fn export_persistent(&self, now: SystemTime) -> String {
+        let mut out = String::new();
+        let map = self.cookies.read();
+        for list in map.values() {
+            for cookie in list {
+                if let Some(exp) = cookie.expires_at {
+                    if exp > now {
+                        if let Some(line) = cookie.to_persistent_line() {
+                            out.push_str(&line);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Importa cookies persistentes a partir de uma cadeia de texto, retornando quantos foram adicionados.
+    pub fn import_persistent(&self, data: &str, now: SystemTime) -> usize {
+        let mut count = 0;
+        for line in data.lines() {
+            if let Some(cookie) = Cookie::from_persistent_line(line) {
+                if cookie.is_fresh(now) {
+                    self.store_cookie(cookie);
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    /// Salva todos os cookies persistentes no arquivo especificado em disco de forma atômica.
+    pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let now = SystemTime::now();
+        let serialized = self.export_persistent(now);
+        
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, serialized)?;
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::rename(tmp_path, path)?;
+        Ok(())
+    }
+
+    /// Carrega cookies persistentes de um arquivo no disco, descartando os já expirados.
+    pub fn load_from_file(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Ok(0);
+        }
+        let content = std::fs::read_to_string(path)?;
+        let now = SystemTime::now();
+        Ok(self.import_persistent(&content, now))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cookie_jar_basic_flow() {
+        let jar = CookieJar::new();
+        let url = Url::parse("https://example.com/app/index.html").unwrap();
+        let now = SystemTime::now();
+
+        let mut headers = HeaderMap::new();
+        headers.append(
+            SET_COOKIE,
+            HeaderValue::from_static("session_id=abc12345; Secure; HttpOnly; SameSite=Strict"),
+        );
+        headers.append(
+            SET_COOKIE,
+            HeaderValue::from_static("theme=dark; Path=/app; Max-Age=3600"),
+        );
+
+        jar.process_response_headers(&url, &headers, None, now);
+        assert_eq!(jar.len(), 2);
+
+        let cookie_hdr = jar
+            .build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now)
+            .unwrap();
+
+        let s = cookie_hdr.to_str().unwrap();
+        assert!(s.contains("session_id=abc12345"));
+        assert!(s.contains("theme=dark"));
+    }
+
+    #[test]
+    fn test_cookie_chips_partitioning() {
+        let jar = CookieJar::new();
+        let target_url = Url::parse("https://widget.example/embed.js").unwrap();
+        let now = SystemTime::now();
+
+        // Cookie emitido quando embutido em site-a.com
+        let cookie_a = Cookie::parse(
+            "user_pref=blue; Secure; Partitioned; SameSite=None",
+            &target_url,
+            Some("site-a.com"),
+            now,
+        )
+        .unwrap();
+        assert_eq!(cookie_a.partition_key.as_deref(), Some("site-a.com"));
+        jar.store_cookie(cookie_a);
+
+        // Quando requisitado por site-a.com, deve enviar
+        let hdr_a = jar.build_cookie_header(
+            &target_url,
+            Some("site-a.com"),
+            CredentialsMode::Include,
+            false,
+            false,
+            now,
+        );
+        assert!(hdr_a.is_some());
+
+        // Quando requisitado por site-b.com, NÃO deve enviar (CHIPS isolation)
+        let hdr_b = jar.build_cookie_header(
+            &target_url,
+            Some("site-b.com"),
+            CredentialsMode::Include,
+            false,
+            false,
+            now,
+        );
+        assert!(hdr_b.is_none());
+    }
+
+    #[test]
+    fn test_cookie_jar_domain_quota_eviction() {
+        let jar = CookieJar::new();
+        let url = Url::parse("https://quota.example.com").unwrap();
+        let now = SystemTime::now();
+
+        // Insere 181 cookies no mesmo domínio (cota = 180)
+        for i in 0..=MAX_COOKIES_PER_DOMAIN {
+            let cookie = Cookie::parse(&format!("c_{}={}; Path=/", i, i), &url, None, now).unwrap();
+            jar.store_cookie(cookie);
+        }
+
+        // Deve respeitar a cota máxima de 180
+        assert_eq!(jar.len(), MAX_COOKIES_PER_DOMAIN);
+
+        // O primeiro cookie (c_0) deve ter sido despejado (LRU)
+        let hdr = jar.build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now).unwrap();
+        let s = hdr.to_str().unwrap();
+        assert!(!s.contains("c_0="));
+        assert!(s.contains("c_1="));
+        assert!(s.contains(&format!("c_{}=", MAX_COOKIES_PER_DOMAIN)));
+    }
+}
+

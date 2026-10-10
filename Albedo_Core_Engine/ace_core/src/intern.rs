@@ -27,6 +27,12 @@ impl Atom {
         }
     }
 
+    /// Retorna uma instância estática de string vazia em $O(1)$ sem alocações.
+    #[inline(always)]
+    pub const fn empty() -> Self {
+        Self::Static("", 113)
+    }
+
     /// Retorna a representação textual do Atom como `&str`.
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -39,19 +45,28 @@ impl Atom {
     /// Retorna `true` se o átomo for uma string vazia.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.as_str().is_empty()
+        match self {
+            Self::Static(s, _) => s.is_empty(),
+            Self::Dynamic(d) => d.is_empty(),
+        }
     }
 
     /// Retorna o tamanho em bytes do átomo.
     #[inline]
     pub fn len(&self) -> usize {
-        self.as_str().len()
+        match self {
+            Self::Static(s, _) => s.len(),
+            Self::Dynamic(d) => d.len(),
+        }
     }
 
     /// Retorna a fatia de bytes do átomo.
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
-        self.as_str().as_bytes()
+        match self {
+            Self::Static(s, _) => s.as_bytes(),
+            Self::Dynamic(d) => d.as_bytes(),
+        }
     }
 
     /// Compara se o átomo é igual a uma string ignorando maiúsculas/minúsculas ASCII.
@@ -150,6 +165,27 @@ impl AsRef<str> for Atom {
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl AsRef<[u8]> for Atom {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl std::borrow::Borrow<str> for Atom {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Default for Atom {
+    #[inline]
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
@@ -332,6 +368,7 @@ define_atoms! {
     110, TRANSFORM, "transform";
     111, BOX_SIZING, "box-sizing";
     112, CURSOR, "cursor";
+    113, EMPTY, "";
 }
 
 /// Lookup em $O(1)$ para converter strings conhecidas em átomos estáticos sem alocações.
@@ -451,6 +488,7 @@ pub fn lookup_static(s: &str) -> Option<Atom> {
         "transform" => Some(Atom::Static("transform", 110)),
         "box-sizing" => Some(Atom::Static("box-sizing", 111)),
         "cursor" => Some(Atom::Static("cursor", 112)),
+        "" => Some(Atom::Static("", 113)),
         _ => None,
     }
 }

@@ -120,8 +120,14 @@ fn decode_base64_char(c: u8) -> Option<u8> {
     }
 }
 
+/// Analisa uma `data:` URI mantendo compatibilidade com a assinatura antiga,
+/// mas utilizando a engine WHATWG internamente.
+pub fn parse_data_uri(data_uri: &str) -> Option<(MimeType, Vec<u8>)> {
+    parse_data_url(data_uri).ok().map(|record| (record.mime_type, record.body))
+}
+
 /// Decodifica sequências percent-encoded (`%XX`).
-fn decode_percent_encoded(input: &str) -> Vec<u8> {
+pub fn decode_percent_encoded(input: &str) -> Vec<u8> {
     let bytes = input.as_bytes();
     let mut output = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -143,6 +149,11 @@ fn decode_percent_encoded(input: &str) -> Vec<u8> {
     output
 }
 
+/// Decodifica uma sequência codificada por percentual para String.
+pub fn percent_decode(input: &str) -> String {
+    String::from_utf8_lossy(&decode_percent_encoded(input)).into_owned()
+}
+
 #[inline]
 fn from_hex_digit(c: u8) -> Option<u8> {
     match c {
@@ -150,5 +161,51 @@ fn from_hex_digit(c: u8) -> Option<u8> {
         b'a'..=b'f' => Some(c - b'a' + 10),
         b'A'..=b'F' => Some(c - b'A' + 10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_data_url_basic() {
+        let record = parse_data_url("data:,Hello%20World").unwrap();
+        assert_eq!(record.mime_type.essence(), "text/plain");
+        assert_eq!(record.body, b"Hello World");
+        assert_eq!(record.is_base64, false);
+    }
+
+    #[test]
+    fn test_parse_data_url_base64() {
+        let record = parse_data_url("data:text/plain;base64,SGVsbG8gV29ybGQ=").unwrap();
+        assert_eq!(record.mime_type.essence(), "text/plain");
+        assert_eq!(record.body, b"Hello World");
+        assert_eq!(record.is_base64, true);
+    }
+
+    #[test]
+    fn test_parse_data_url_invalid_base64() {
+        let result = parse_data_url("data:text/plain;base64,invalid^char");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_data_url_missing_comma() {
+        let result = parse_data_url("data:text/plain");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decode_base64_whatwg_whitespace() {
+        let decoded = decode_base64_whatwg("S G V\ts\nbG\r8gV\x0C29ybGQ=").unwrap();
+        assert_eq!(decoded, b"Hello World");
+    }
+
+    #[test]
+    fn test_percent_decode() {
+        assert_eq!(percent_decode("%20%21%22%23"), " !\"#");
+        assert_eq!(percent_decode("Hello%20World"), "Hello World");
+        assert_eq!(percent_decode("%ZZ"), "%ZZ");
     }
 }

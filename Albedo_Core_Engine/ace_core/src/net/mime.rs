@@ -21,22 +21,42 @@ pub struct MimeType {
 impl MimeType {
     /// Cria um novo `MimeType` a partir de tipo e subtipo.
     pub fn new(type_: impl Into<SmolStr>, subtype: impl Into<SmolStr>) -> Self {
+        let t: SmolStr = type_.into();
+        let s: SmolStr = subtype.into();
+        let type_clean = if t.bytes().any(|b| b.is_ascii_uppercase()) {
+            t.to_ascii_lowercase().into()
+        } else {
+            t
+        };
+        let subtype_clean = if s.bytes().any(|b| b.is_ascii_uppercase()) {
+            s.to_ascii_lowercase().into()
+        } else {
+            s
+        };
         Self {
-            type_: type_.into().to_ascii_lowercase().into(),
-            subtype: subtype.into().to_ascii_lowercase().into(),
+            type_: type_clean,
+            subtype: subtype_clean,
             parameters: FxHashMap::default(),
         }
     }
 
     /// Retorna a essência do MIME Type no formato `type/subtype` (ex: "text/html").
     pub fn essence(&self) -> String {
-        format!("{}/{}", self.type_, self.subtype)
+        let mut out = String::with_capacity(self.type_.len() + 1 + self.subtype.len());
+        out.push_str(&self.type_);
+        out.push('/');
+        out.push_str(&self.subtype);
+        out
     }
 
     /// Retorna o valor de um parâmetro opcional (ex: "charset").
     pub fn get_parameter(&self, name: &str) -> Option<&str> {
-        let key: SmolStr = name.to_ascii_lowercase().into();
-        self.parameters.get(&key).map(|v| v.as_str())
+        if name.bytes().any(|b| b.is_ascii_uppercase()) {
+            let key = name.to_ascii_lowercase();
+            self.parameters.get(key.as_str()).map(|v| v.as_str())
+        } else {
+            self.parameters.get(name).map(|v| v.as_str())
+        }
     }
 
     /// Alias conveniente para `get_parameter`.

@@ -33,7 +33,8 @@ impl ActiveFormattingElements {
     pub fn push_element(&mut self, doc: &Document, id: NodeId) {
         if let Some(target_node) = doc.get_node(id) {
             if let Some(target_el) = target_node.as_element() {
-                let mut match_positions = Vec::new();
+                let mut match_count = 0;
+                let mut earliest_idx = None;
 
                 // Varre do topo até o último marcador
                 for (idx, entry) in self.entries.iter().enumerate().rev() {
@@ -46,7 +47,8 @@ impl ActiveFormattingElements {
                                         && existing_el.namespace == target_el.namespace
                                         && existing_el.attributes.as_slice() == target_el.attributes.as_slice()
                                     {
-                                        match_positions.push(idx);
+                                        match_count += 1;
+                                        earliest_idx = Some(idx);
                                     }
                                 }
                             }
@@ -55,9 +57,9 @@ impl ActiveFormattingElements {
                 }
 
                 // Se houver 3 ou mais instâncias idênticas, remove a mais antiga (menor índice)
-                if match_positions.len() >= 3 {
-                    if let Some(&earliest_idx) = match_positions.last() {
-                        self.entries.remove(earliest_idx);
+                if match_count >= 3 {
+                    if let Some(idx) = earliest_idx {
+                        self.entries.remove(idx);
                     }
                 }
             }

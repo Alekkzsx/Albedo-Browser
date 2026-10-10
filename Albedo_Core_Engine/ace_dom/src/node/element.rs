@@ -137,6 +137,28 @@ impl ElementData {
         DOMTokenList::new(self)
     }
 
+    /// Inicializa os atributos do elemento em lote a partir do Tokenizer,
+    /// populando os caches de ID, Classes e Inline Style com zero buscas redundantes.
+    pub fn init_attributes(&mut self, attributes: InlineVec<Attribute, 4>) {
+        for attr in attributes.as_slice() {
+            if attr.name.eq_ignore_ascii_case("id") {
+                if !attr.value.is_empty() {
+                    self.id_attr = Some(Atom::new(&attr.value));
+                }
+            } else if attr.name.eq_ignore_ascii_case("class") {
+                self.classes.clear();
+                for class_token in attr.value.split_whitespace() {
+                    self.classes.push(Atom::new(class_token));
+                }
+            } else if attr.name.eq_ignore_ascii_case("style") {
+                let decl = crate::cssom::CSSStyleDeclaration::parse(&attr.value);
+                self.ensure_rare_data().inline_style_decl = Some(Box::new(decl));
+                self.ensure_rare_data().inline_style = Some(attr.value.clone());
+            }
+        }
+        self.attributes = attributes;
+    }
+
     /// Adiciona ou substitui um atributo, atualizando automaticamente os caches de ID e Classes.
     pub fn set_attribute(&mut self, name: impl Into<Atom>, value: impl Into<SmolStr>) {
         let name_atom: Atom = name.into();

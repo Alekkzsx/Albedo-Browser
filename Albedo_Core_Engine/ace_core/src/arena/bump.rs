@@ -68,6 +68,21 @@ impl BumpArena {
         self.bump.alloc(value)
     }
 
+    /// Constrói um valor in-place diretamente na arena a partir de uma closure,
+    /// evitando cópias intermediárias na stack de tipos volumosos.
+    #[inline]
+    pub fn alloc_with<T, F: FnOnce() -> T>(&self, f: F) -> &mut T {
+        self.allocations.fetch_add(1, Ordering::Relaxed);
+        self.bump.alloc_with(f)
+    }
+
+    /// Retorna a quantidade total de bytes alocados pela arena subjacente sem alocar estatísticas.
+    #[inline]
+    #[must_use]
+    pub fn allocated_bytes(&self) -> usize {
+        self.bump.allocated_bytes()
+    }
+
     /// Aloca uma cópia de uma `str`. Conveniência para atributos e texto.
     #[inline]
     pub fn alloc_str(&self, s: &str) -> &mut str {

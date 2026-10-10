@@ -1,0 +1,268 @@
+//! # DNS-over-HTTPS (DoH) & Happy Eyeballs v2 (RFC 8305)
+//!
+//! Implementa o adaptador `hyper_util::client::legacy::connect::dns::Resolve`
+//! sobre o resolver assíncrono `hickory_resolver` com interleaving de endereços
+//! IPv6 e IPv4 conforme o algoritmo Happy Eyeballs v2.
+
+use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::proto::rr::RecordType;
+use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
+use hyper_util::client::legacy::connect::dns::Name;
+use std::future::Future;
+use std::net::{IpAddr, SocketAddr};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::Instant;
+use tower_service::Service;
+use crate::transport::timing::CONNECTION_TIMING;
+
+/// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305)
+/// e failover transparente para o resolver do sistema operacional.
+#[derive(Clone)]
+pub struct DohHappyEyeballsResolver {
+    resolver: Arc<TokioAsyncResolver>,
+    system_resolver: Option<Arc<TokioAsyncResolver>>,
+    block_private_ips: bool,
+}
+
+impl DohHappyEyeballsResolver {
+    /// Cria uma nova instância de `DohHappyEyeballsResolver` apontando para o DoH Cloudflare 1.1.1.1
+    /// e fallback habilitado para o resolver local do sistema operacional.
+    pub fn new() -> Self {
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
+        Self {
+            resolver: Arc::new(TokioAsyncResolver::tokio(
+                ResolverConfig::cloudflare_https(),
+                ResolverOpts::default(),
+            )),
+            system_resolver,
+            block_private_ips: false,
+        }
+    }
+
+    /// Cria uma instância a partir de um resolver Hickory já configurado.
+    pub fn with_resolver(resolver: Arc<TokioAsyncResolver>) -> Self {
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
+        Self { resolver, system_resolver, block_private_ips: false }
+    }
+
+    /// Configura explicitamente o resolver de fallback do sistema.
+    pub fn with_system_fallback(mut self, fallback: Option<Arc<TokioAsyncResolver>>) -> Self {
+        self.system_resolver = fallback;
+        self
+    }
+
+    pub fn set_block_private_ips(&mut self, block: bool) {
+        self.block_private_ips = block;
+    }
+
+    /// Retorna uma referência ao resolver interno.
+    pub fn resolver(&self) -> &Arc<TokioAsyncResolver> {
+        &self.resolver
+    }
+
+    /// Implementa o algoritmo de ordenação e interleaving de Happy Eyeballs v2 (RFC 8305 §4):
+    /// Intercala endereços IPv6 e IPv4 (ex: [IPv6_1, IPv4_1, IPv6_2, IPv4_2])
+    /// com preferência inicial estrita para IPv6.
+    pub fn interleave_happy_eyeballs(addrs: Vec<IpAddr>) -> Vec<SocketAddr> {
+        let mut v6 = Vec::new();
+        let mut v4 = Vec::new();
+
+        for ip in addrs {
+            match ip {
+                IpAddr::V6(a) => v6.push(SocketAddr::new(IpAddr::V6(a), 0)),
+                IpAddr::V4(a) => v4.push(SocketAddr::new(IpAddr::V4(a), 0)),
+            }
+        }
+
+        let mut interleaved = Vec::with_capacity(v6.len() + v4.len());
+        let mut i6 = v6.into_iter();
+        let mut i4 = v4.into_iter();
+
+        loop {
+            let next_v6 = i6.next();
+            let next_v4 = i4.next();
+
+            if next_v6.is_none() && next_v4.is_none() {
+                break;
+            }
+            if let Some(a6) = next_v6 {
+                interleaved.push(a6);
+            }
+            if let Some(a4) = next_v4 {
+                interleaved.push(a4);
+            }
+        }
+
+        interleaved
+    }
+
+    /// Resolve A, AAAA e HTTPS (Tipo 65) concorrentemente, retornando IPs intercalados e o ECH Config (se houver).
+    pub async fn resolve_with_ech(&self, host: &str) -> Result<(std::vec::IntoIter<SocketAddr>, Option<Vec<u8>>), std::io::Error> {
+        let start = Instant::now();
+        if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+            let mut guard = timing_arc.lock().await;
+            if guard.dns_start.is_none() {
+                guard.dns_start = Some(start);
+            }
+        }
+
+        let ip_fut = self.resolver.lookup_ip(host);
+        let https_fut = self.resolver.lookup(host, RecordType::HTTPS);
+
+        let (ip_res, https_res) = tokio::join!(ip_fut, https_fut);
+
+        let duration = start.elapsed();
+        if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+            let mut guard = timing_arc.lock().await;
+            guard.dns_duration = Some(duration);
+        }
+
+        let mut ips = match ip_res {
+            Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
+            Err(e) => {
+                if let Some(sys) = &self.system_resolver {
+                    match sys.lookup_ip(host).await {
+                        Ok(lookup) => lookup.iter().collect::<Vec<IpAddr>>(),
+                        Err(sys_err) => {
+                            return Err(std::io::Error::other(format!(
+                                "Falha DoH ('{}') e fallback de sistema ('{}') para '{}'",
+                                e, sys_err, host
+                            )));
+                        }
+                    }
+                } else {
+                    return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e)));
+                }
+            }
+        };
+
+        if self.block_private_ips {
+            ips.retain(|ip| !crate::security::pna::is_private_or_local(*ip));
+        }
+
+        let interleaved = Self::interleave_happy_eyeballs(ips);
+        if interleaved.is_empty() {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Nenhum IP para '{}'", host)));
+        }
+
+        let mut ech_config = None;
+        if let Ok(https_lookup) = https_res {
+            for record in https_lookup.iter() {
+                if let Some(svcb) = record.as_svcb() {
+                    if let Some((_, SvcParamValue::EchConfig(ech))) = svcb.svc_params().iter().find(|(k, _)| *k == SvcParamKey::EchConfig) {
+                        ech_config = Some(ech.0.clone());
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok((interleaved.into_iter(), ech_config))
+    }
+}
+
+impl Default for DohHappyEyeballsResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Service<Name> for DohHappyEyeballsResolver {
+    type Response = std::vec::IntoIter<SocketAddr>;
+    type Error = std::io::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: Name) -> Self::Future {
+        let resolver = self.resolver.clone();
+        let system_resolver = self.system_resolver.clone();
+        let host_str = name.as_str().to_string();
+        let block_private_ips = self.block_private_ips;
+
+        Box::pin(async move {
+            let start = Instant::now();
+            if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+                let mut guard = timing_arc.lock().await;
+                if guard.dns_start.is_none() {
+                    guard.dns_start = Some(start);
+                }
+            }
+            let lookup_res = match resolver.lookup_ip(&host_str).await {
+                Ok(lookup) => Ok(lookup.iter().collect::<Vec<IpAddr>>()),
+                Err(doh_err) => {
+                    if let Some(sys) = system_resolver {
+                        match sys.lookup_ip(&host_str).await {
+                            Ok(lookup) => Ok(lookup.iter().collect::<Vec<IpAddr>>()),
+                            Err(sys_err) => Err(std::io::Error::other(format!(
+                                "Falha DoH ('{}') e sistema ('{}') para '{}'",
+                                doh_err, sys_err, host_str
+                            ))),
+                        }
+                    } else {
+                        Err(std::io::Error::other(format!(
+                            "Falha na resolução DoH para '{}': {}",
+                            host_str, doh_err
+                        )))
+                    }
+                }
+            };
+
+            match lookup_res {
+                Ok(mut ips) => {
+                    let duration = start.elapsed();
+                    if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
+                        let mut guard = timing_arc.lock().await;
+                        guard.dns_duration = Some(duration);
+                    }
+                    if block_private_ips {
+                        ips.retain(|ip| !crate::security::pna::is_private_or_local(*ip));
+                    }
+                    let interleaved = Self::interleave_happy_eyeballs(ips);
+                    if interleaved.is_empty() {
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Nenhum endereço IP retornado via DoH/Sistema para '{}'", host_str),
+                        ))
+                    } else {
+                        Ok(interleaved.into_iter())
+                    }
+                }
+                Err(e) => Err(e),
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn test_happy_eyeballs_interleaving() {
+        let addrs = vec![
+            IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+            IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
+            IpAddr::V4(Ipv4Addr::new(1, 0, 0, 1)),
+            IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1001)),
+        ];
+
+        let interleaved = DohHappyEyeballsResolver::interleave_happy_eyeballs(addrs);
+        assert_eq!(interleaved.len(), 4);
+
+        // Primeiro elemento DEVE ser IPv6 conforme RFC 8305
+        assert!(interleaved[0].is_ipv6());
+        // Segundo elemento DEVE ser IPv4
+        assert!(interleaved[1].is_ipv4());
+        // Terceiro elemento DEVE ser IPv6
+        assert!(interleaved[2].is_ipv6());
+        // Quarto elemento DEVE ser IPv4
+        assert!(interleaved[3].is_ipv4());
+    }
+}

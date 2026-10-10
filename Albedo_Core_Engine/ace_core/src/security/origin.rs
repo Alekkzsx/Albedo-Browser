@@ -53,8 +53,17 @@ impl Host {
     pub fn as_str(&self) -> SmolStr {
         match self {
             Self::Domain(s) => s.clone(),
-            Self::Ip(ip) => SmolStr::new(ip.to_string()),
+            Self::Ip(ip) => smol_str::format_smolstr!("{}", ip),
             Self::Opaque => SmolStr::default(),
+        }
+    }
+
+    /// Retorna uma referência `&str` direta caso seja um domínio, sem clonar o `SmolStr`.
+    #[inline]
+    pub fn as_domain_str(&self) -> Option<&str> {
+        match self {
+            Self::Domain(s) => Some(s.as_str()),
+            _ => None,
         }
     }
 
@@ -111,6 +120,7 @@ impl Origin {
     /// Verifica se duas origens são estritamente iguais segundo a Same-Origin Policy (SOP).
     ///
     /// Duas origens opacas **nunca** são iguais entre si, garantindo sandbox completo.
+    #[inline]
     pub fn same_origin(&self, other: &Self) -> bool {
         match (self, other) {
             (
@@ -124,7 +134,7 @@ impl Origin {
                     host: h2,
                     port: p2,
                 },
-            ) => s1 == s2 && h1 == h2 && p1 == p2,
+            ) => p1 == p2 && s1 == s2 && h1 == h2,
             _ => false,
         }
     }
@@ -144,12 +154,28 @@ impl Origin {
         use std::fmt::Write;
         match self {
             Self::Tuple { scheme, host, port } => {
-                let mut out = String::with_capacity(32);
                 let default_port = scheme.default_port();
-                if *port == 0 || default_port == Some(*port) {
-                    let _ = write!(out, "{}://{}", scheme.as_str(), host);
-                } else {
-                    let _ = write!(out, "{}://{}:{}", scheme.as_str(), host, port);
+                let is_default_or_zero = *port == 0 || default_port == Some(*port);
+                let host_len = match host {
+                    Host::Domain(s) => s.len(),
+                    Host::Ip(_) => 16,
+                    Host::Opaque => 0,
+                };
+                let mut out = String::with_capacity(
+                    scheme.as_str().len() + 3 + host_len + if is_default_or_zero { 0 } else { 6 },
+                );
+                out.push_str(scheme.as_str());
+                out.push_str("://");
+                match host {
+                    Host::Domain(s) => out.push_str(s.as_str()),
+                    Host::Ip(ip) => {
+                        let _ = write!(out, "{}", ip);
+                    }
+                    Host::Opaque => {}
+                }
+                if !is_default_or_zero {
+                    out.push(':');
+                    let _ = write!(out, "{}", port);
                 }
                 out
             }
@@ -208,15 +234,16 @@ impl fmt::Display for Origin {
 }
 
 impl fmt::Display for Scheme {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        f.write_str(self.as_str())
     }
 }
 
 impl fmt::Display for Host {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Domain(s) => write!(f, "{}", s.as_str()),
+            Self::Domain(s) => f.write_str(s.as_str()),
             Self::Ip(ip) => write!(f, "{}", ip),
             Self::Opaque => Ok(()),
         }
