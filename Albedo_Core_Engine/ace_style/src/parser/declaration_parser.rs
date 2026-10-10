@@ -36,6 +36,10 @@ pub fn parse_declarations(input: &str) -> Vec<ParsedDeclaration> {
 
     for ch in input.chars() {
         match ch {
+            '\n' | '\r' => {
+                in_quote = None;
+                curr_chunk.push(ch);
+            }
             '"' | '\'' => {
                 if in_quote == Some(ch) {
                     in_quote = None;
