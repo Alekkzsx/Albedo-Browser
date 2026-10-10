@@ -18,8 +18,9 @@ pub struct ParsedDeclaration {
 
 impl ParsedDeclaration {
     pub fn new(property: impl AsRef<str>, value: impl AsRef<str>, important: bool) -> Self {
+        let lower = property.as_ref().trim().to_ascii_lowercase();
         Self {
-            property: Atom::new(property.as_ref().trim().to_ascii_lowercase()),
+            property: Atom::new(&lower),
             value: SmolStr::new(value.as_ref().trim()),
             important,
         }
@@ -103,7 +104,7 @@ fn parse_single_declaration(decl_str: &str, output: &mut Vec<ParsedDeclaration>)
     // Se for custom property (--*), preserva exatamente como está (case-sensitive)
     if prop.starts_with("--") {
         output.push(ParsedDeclaration {
-            property: Atom::new(prop),
+            property: Atom::new(&prop),
             value: SmolStr::new(val),
             important,
         });
