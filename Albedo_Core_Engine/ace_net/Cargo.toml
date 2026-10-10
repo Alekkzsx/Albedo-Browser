@@ -25,7 +25,7 @@ tower-service = "0.3"
 
 # Compression & Content-Encoding (RFC 9110, RFC 7932)
 flate2 = "1.0"
-brotli = "7.0"
+brotli = "8.0"
 
 # Data Structures & Fast Hashing
 rustc-hash = "2.1"
