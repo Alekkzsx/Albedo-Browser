@@ -132,7 +132,7 @@ impl StyleEngine {
 
         // Computa o estilo do nó raiz na thread principal
         let mut sorter = CascadeSorter::new();
-        let mut filter = AncestorFilter::new();
+        let filter = AncestorFilter::new();
         let root_style = self.compute_single_element_style(doc, root_id, None, Some(&filter), &mut sorter);
 
         if root_style.is_display_none() {
