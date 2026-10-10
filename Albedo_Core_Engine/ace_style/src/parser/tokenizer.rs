@@ -36,6 +36,7 @@ impl<'a> Tokenizer<'a> {
 
     /// Retorna os próximos dois caracteres sem avançar.
     #[inline]
+    #[allow(dead_code)]
     fn peek2(&self) -> (Option<char>, Option<char>) {
         let mut chars = self.remaining().chars();
         (chars.next(), chars.next())
