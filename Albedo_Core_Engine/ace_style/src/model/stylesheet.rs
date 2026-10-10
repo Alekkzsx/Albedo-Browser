@@ -6,7 +6,6 @@ use crate::cascade::origin::StyleSheetOrigin;
 use crate::model::layer::{LayerBlockRule, LayerStatementRule};
 use crate::model::media::MediaRule;
 use crate::parser::declaration_parser::{parse_declarations, ParsedDeclaration};
-use crate::parser::tokenizer::Tokenizer;
 use ace_core::intern::Atom;
 use ace_dom::query::selector::ComplexSelector;
 use smol_str::SmolStr;
@@ -65,7 +64,7 @@ impl StyleSheet {
     pub fn new(origin: StyleSheetOrigin) -> Self {
         Self {
             origin,
-            rules: Vec::new>,
+            rules: Vec::new(),
             source_url: None,
         }
     }
