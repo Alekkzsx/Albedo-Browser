@@ -960,7 +960,7 @@ impl HTMLTreeBuilder {
                             self.open_elements.pop();
                         }
                     }
-                    self.insert_html_element(&tag);
+                    self.insert_html_element(tag);
                     TokenizerAction::Continue
                 }
                 Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("optgroup") => {
@@ -974,7 +974,7 @@ impl HTMLTreeBuilder {
                             self.open_elements.pop();
                         }
                     }
-                    self.insert_html_element(&tag);
+                    self.insert_html_element(tag);
                     TokenizerAction::Continue
                 }
                 Token::EndTag(ref tag) if tag.name.eq_ignore_ascii_case("optgroup") => {
@@ -1070,7 +1070,7 @@ impl HTMLTreeBuilder {
                     TokenizerAction::Continue
                 }
                 Token::StartTag(tag) if tag.name.eq_ignore_ascii_case("col") => {
-                    self.insert_html_element(&tag);
+                    self.insert_html_element(tag);
                     self.open_elements.pop();
                     TokenizerAction::Continue
                 }
