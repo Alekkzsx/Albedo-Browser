@@ -2,5 +2,26 @@
 name = "ace_style"
 version = "0.1.0"
 edition = "2021"
+authors = ["Albedo Browser Engineering Team"]
 
 [dependencies]
+# Fundação Interna do Motor
+ace_core = { path = "../ace_core" }
+ace_dom = { path = "../ace_dom" }
+
+# Texto e Estruturas de Dados
+smol_str = "0.3"
+rustc-hash = "2.1"
+bitflags = "2.6"
+euclid = "0.22"
+
+# SIMD & Tokenização
+memchr = "2.7"
+
+# Concorrência & Paralelismo
+rayon = "1.10"
+parking_lot = "0.12"
+
+# Observabilidade & Erros
+tracing = "0.1"
+thiserror = "2.0"
