@@ -82,8 +82,8 @@ impl RuleBucketMap {
         }
 
         // 4. Baldes por Atributos ([attr])
-        for (attr_name, _) in el.attributes() {
-            let lower_attr = Atom::new(&attr_name.as_str().to_ascii_lowercase());
+        for attr in el.attributes.as_slice() {
+            let lower_attr = Atom::new(&attr.name.as_str().to_ascii_lowercase());
             if let Some(rules) = self.attribute_buckets.get(&lower_attr) {
                 for r in rules {
                     if seen.insert(*r) {
