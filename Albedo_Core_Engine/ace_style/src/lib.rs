@@ -9,8 +9,8 @@
 //! - [`user_agent`]: Folha de estilo padrão do navegador (WHATWG HTML §15).
 //! - [`rule_tree`]: Indexação em baldes (`RuleBucketMap`) e casamento com `AncestorFilter`.
 //! - [`cascade`]: Motor de cascata das 8 origens normativas, `@layer` e especificidade.
-//! - [`computed`]: Estilo computado (`ComputedStyle`), herança e DAG de variáveis `var()`.
-//! - [`engine`]: Orquestrador `StyleEngine`, `StyleSharingCache` e `RenderTree`.
+//! - [`computed`]: Estilo computado (`ComputedStyle`), style structs e DAG de variáveis `var()`.
+//! - [`engine`]: Orquestrador `StyleEngine`, `StyleSharingCache`, MPC, Invalidation e `RenderTree`.
 
 #![forbid(unsafe_code)]
 
@@ -25,12 +25,20 @@ pub mod values;
 
 // Re-exports estratégicos de uso frequente
 pub use cascade::{CascadeOrigin, CascadeSorter, StyleSheetOrigin};
-pub use computed::{inherit_from_parent, is_inherited_property, ComputedStyle, VariableResolver};
-pub use engine::{RenderTree, RenderTreeNode, StyleEngine, StyleSharingCache};
+pub use computed::{
+    inherit_from_parent, is_inherited_property, ComputedStyle, StyleBox, StyleColor, StyleFlex,
+    StyleFont, StyleGrid, StyleSurrounding, StyleText, VariableResolver, INITIAL_BOX,
+    INITIAL_COLOR, INITIAL_FLEX, INITIAL_FONT, INITIAL_GRID, INITIAL_SURROUNDING, INITIAL_TEXT,
+};
+pub use engine::{
+    DOMMutation, InvalidationResult, InvalidationSet, MatchedPropertiesCache, MpcKey,
+    RenderNodeKind, RenderTree, RenderTreeNode, RuleInvalidationSets, StyleDirtyFlags, StyleEngine,
+    StyleSharingCache,
+};
 pub use model::{
     CSSRule, LayerBlockRule, LayerRegistry, MediaContext, MediaQuery, MediaRule, StyleRule,
     StyleSheet,
 };
 pub use parser::{parse_declarations, ParsedDeclaration, Token, Tokenizer};
 pub use user_agent::default_user_agent_stylesheet;
-pub use values::{Color, CssColor, Display, Length, Position};
+pub use values::{Color, CssColor, Direction, Display, Length, Position, WritingMode};

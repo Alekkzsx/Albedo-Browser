@@ -213,7 +213,7 @@ pub enum PseudoClass {
 }
 
 /// Pseudo-elementos estruturais suportados (::before, ::after).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PseudoElement {
     Before,
     After,
