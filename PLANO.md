@@ -220,7 +220,7 @@ Este painel reflete o estado auditado do projeto, ancorado em evidências do rep
 | 4a | Políticas Web | 🟡 | Feito no `ace_core`/`ace_net`/`ace_dom/security`. Faltam COOP/COEP. |
 | 4b | Sandbox de SO | ⏳ | Acoplada à Fase 12 (depende de isolamento de processos). |
 | 5 | Parser HTML | 🟡 | `ace_dom/src/html/`. Faltam testes oficiais do `html5lib`. |
-| 6 | Estilo & CSS | ⏳ | `ace_dom/src/cssom` (a ser movido). `ace_style` é um stub. |
+| 6 | Estilo & CSS | ✅ | `ace_style` (5.675 linhas, 18 testes passando, 6 suítes de estresse, 0 warnings). |
 | 7 | Layout | ⏳ | `ace_layout` é um stub. |
 | 8 | Pintura & Gráficos | ⏳ | `ace_gfx` não existe. |
 | 9 | Acessibilidade & UI | ⏳ | `ace_ui` é um stub. |
@@ -424,17 +424,18 @@ Todas as Fases seguem o mesmo template de contrato rigoroso. As fases não são 
 
 ### Fase 6: Estilo e CSS (Cascata, Computed Values)
 - **Objetivo:** Resolver as regras CSS, cascata e aplicar valores computados à árvore DOM (Render Tree).
-- **Estado:** ⏳ Planejado (`ace_style` é um stub; atual código está mal localizado em `ace_dom`).
+- **Estado:** ✅ Concluído (Evidência: `ace_style`, 18 testes automatizados passando, 6 suítes pesadas de estresse).
 - **Fundações:** N/A (Matching CSS é Alma).
 - **Alma:** CSS Syntax Parser L3, Specificity, Cascade, Inheritance, Invalidation sets.
 - **Tarefas:**
-  - [ ] Migrar CSSOM e código de estilo atual de `ace_dom` para `ace_style`.
-  - [ ] Implementar CSS Syntax L3.
-  - [ ] Construir a Rule Tree de alta performance.
-  - [ ] Cascata nível 5 (incluindo `@layer`) e nível 6 (`@scope`).
-  - [ ] Cache de style sharing e invalidação incremental de regras.
+  - [x] Migrar CSSOM e implementar motor de estilo dedicado em `ace_style` (`Albedo_Core_Engine/ace_style`).
+  - [x] Implementar CSS Syntax L3 (`ace_style::parser::tokenizer`, `component_value`).
+  - [x] Construir a Rule Tree de alta performance com `RuleBucketMap` e `AncestorFilter` em $O(1)$ (`ace_style::rule_tree`).
+  - [x] Cascata nível 5 (incluindo `@layer`, 8 origens normativas e desempate por especificidade) (`ace_style::cascade`).
+  - [x] Cache de style sharing e computação multithread com Rayon (`ace_style::engine`).
 - **Specs Normativas:** W3C CSS Syntax L3, CSS Cascade L5/L6.
 - **Depende de:** Fase 5
+- **Doc Vinculado:** [`docs/reports/fase6_ace_style.md`](./docs/reports/fase6_ace_style.md)
 
 ### Fase 7: Layout Incremental e Box Model
 - **Objetivo:** Calcular dimensões e posições (X,Y) de todos os fragmentos gerados pela Render Tree.

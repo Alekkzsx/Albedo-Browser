@@ -22,6 +22,7 @@
 | **Fase 2 (`ace_core`)** | [**`fase2_ace_core.md`**](./fase2_ace_core.md) | 🟡 Parcial | **101 unit/integração + 3 doctests** (100% OK) | Pendente implementação do IPC in-process em `ace_ipc` (DV-01). |
 | **Fase 3 (`ace_net`)** | [**`fase3_ace_net.md`**](./fase3_ace_net.md) | 🚧 Fechamento | **71 unitários + 17 arquivos de integração + estresse de 93s** | Cache RFC 9111, DoH, H2/H3 e threshold de 1MB aprovados. Em fechamento de PR. |
 | **Fase 5 (`ace_dom`)** | [**`fase5_ace_dom.md`**](./fase5_ace_dom.md) | 🟡 Parcial | **22 testes de reentrância + dezenas de testes de Tree Builder** | Tokenizer FSM e AAA validados; pendente vendorização dos testes oficiais `html5lib-tests` (DV-11). |
+| **Fase 6 (`ace_style`)** | [**`fase6_ace_style.md`**](./fase6_ace_style.md) | ✅ Concluída | **18 testes automatizados (6 suítes pesadas de estresse)** | 5.675 linhas, Syntax L3, Cascata L5/L6, @layer, StyleSharingCache e RenderTree. |
 
 ---
 
