@@ -12,7 +12,7 @@
 Para evitar a complexidade infinita das centenas de especificações CSS, o motor `ace_style` foca na renderização correta da **estrutura geométrica e tipográfica** dos sites modernos.
 
 > [!NOTE]
-> **Situação Arquitetural Transitória (DV-05):** O CSSOM e o cálculo inicial de cascata residem provisoriamente em `ace_dom/src/cssom`. Conforme aprovado no **ADR-0012**, eles serão migrados e unificados com o parser de Syntax L3 dentro do crate dedicado `ace_style` durante a execução da **Fase 6**.
+> **Status Arquitetural (DV-05 Resolvido):** O CSSOM e o cálculo de cascata foram integralmente migrados e unificados dentro do crate dedicado `ace_style` na **Fase 6** (conforme aprovado no [**ADR-0012**](../adr/0012-migracao-cssom-ace-style.md)), eliminando a dívida técnica DV-05 com 100% Safe Rust (`#![forbid(unsafe_code)]`).
 
 Propriedades CSS não listadas neste catálogo serão parseadas e descartadas silenciosamente sem interromper o fluxo da árvore de renderização.
 

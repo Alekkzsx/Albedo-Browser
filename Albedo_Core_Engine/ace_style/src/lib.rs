@@ -12,6 +12,8 @@
 //! - [`computed`]: Estilo computado (`ComputedStyle`), herança e DAG de variáveis `var()`.
 //! - [`engine`]: Orquestrador `StyleEngine`, `StyleSharingCache` e `RenderTree`.
 
+#![forbid(unsafe_code)]
+
 pub mod cascade;
 pub mod computed;
 pub mod engine;
