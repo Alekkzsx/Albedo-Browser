@@ -10,6 +10,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas de Segurança | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-11 | Fechamento da Fase 6 (`ace_style`) | • Validação de 0 unsafe em `ace_style` com `#![forbid(unsafe_code)]`.<br>• Modelagem de mitigação contra vetores DoS de CSS (Billion Laughs / ciclos). | • Atualização do registro central e modelo STRIDE. |
 | **1.0.0** | 2026-10-07 | Auditoria e Formalização v7.0 | • Criação do Registro Central de Unsafe (`unsafe-registry.md`) catalogando 64 ocorrências reais.<br>• Definição do Modelo Formal de Ameaças Multi-Processo (`threat-model.md`).<br>• Obrigação de Miri no CI para módulos com código inseguro. | • Centralização de segurança na pasta dedicada `docs/security/`. |
 
 ---

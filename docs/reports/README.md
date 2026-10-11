@@ -10,6 +10,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas de Auditoria | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **2.1.0** | 2026-10-11 | Auditoria da Fase 6 (`ace_style`) | • Comprovação de 18 testes automatizados e 6 baterias de estresse pesado.<br>• Resolução comprovada da dívida DV-05 com migração do CSSOM.<br>• Auditoria de zero blocos `unsafe` com `#![forbid(unsafe_code)]`. | • Publicação do relatório formal `fase6_ace_style.md` com evidências e métricas completas de conformidade. |
 | **2.0.0** | 2026-10-07 | Auditoria Forense v7.0 | • Aplicação irrestrita da Regra de Evidência (Regra de Ouro 5).<br>• Transição de status narrativos para auditorias comprovadas por testes executados no CI.<br>• Criação dos relatórios formais das Fases 3 e 5. | • Relatórios individuais criados para `ace_core` (Fase 2), `ace_net` (Fase 3) e `ace_dom` (Fase 5). |
 | **1.0.0** | 2026-08-17 | Primeiro Relatório | • Auditoria inicial do `ace_core`. | • Publicação do relatório da Fase 2 com 82 testes. |
 

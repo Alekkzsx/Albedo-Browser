@@ -11,6 +11,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Técnicas | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-11 | Fechamento da Fase 6 (`ace_style`) | • Modelagem de ameaças contra o motor de estilos (vetores de DoS via CSS).<br>• Mitigação de ataques *Billion Laughs CSS* e ciclos em `var()`. | • Inclusão formal de limites de recursão do parser CSS e DAG de resolução de variáveis na matriz STRIDE. |
 | **1.0.0** | 2026-10-07 | Formalização Arquitetural v7.0 | • Adoção de isolamento por site (*Site Isolation*) em substituição ao modelo antigo por aba (ADR-0015).<br>• Definição da fronteira do Network Service isolado.<br>• Modo *Jitless* como mitigação permanente contra corrupção de memória (ADR-0019). | • Criação deste documento de modelagem formal de ameaças. |
 
 ---
@@ -67,6 +68,6 @@ O **Network Service** isola completamente pools de conexões e cache por uma cha
 | **Tampering (Adulteração)** | Injeção de código XSS ou adulteração de recursos externos. | W3C HTML Sanitizer API nativa, Content Security Policy Level 3 e Subresource Integrity (SRI) com SHA-256/384. |
 | **Repudiation (Repúdio)** | Injeção de transações ou desvio de protocolo. | TLS 1.3 obrigatório via `rustls` (aws-lc-rs) com verificação de certificados WebPKI e HSTS preloaded. |
 | **Information Disclosure** | Ataques de canal lateral (Spectre) medindo nano-segundos de execução. | Quantização determinística de tempo (`now_highres`), truncando a resolução de temporizadores para faixas seguras. |
-| **Denial of Service (DoS)** | Bomba de nós no DOM ou loops infinitos de microtarefas para congelar a máquina. | Limite estrito de profundidade de nós no parser, cotas de alocação de memória por processo e mitigação de starvation no Event Loop. |
+| **Denial of Service (DoS)** | Bomba de nós no DOM, loops infinitos de microtarefas, ou ataques de expansão exponencial de variáveis CSS (*Billion Laughs CSS* / ciclos em `var()`) para travar a máquina. | Limite estrito de profundidade de nós no parser, cotas de alocação de memória por processo, mitigação de starvation no Event Loop e resolução acíclica em DAG com detecção linear de ciclos no `ace_style` (`VariableResolver`). |
 | **Elevation of Privilege** | Exploração de corrupção de memória no motor JS para escapar para o SO. | **Modo Jitless permanente** (eliminando páginas de memória RWX) somado ao Sandbox de SO que bloqueia qualquer syscall não autorizada. |
 

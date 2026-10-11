@@ -2,7 +2,7 @@
 
 > **Documento de Auditoria e Conformidade de Segurança**  
 > **Status:** Ativo & Auditado  
-> **Última Atualização:** 2026-10-07 (Auditoria Forense v7.0)  
+> **Última Atualização:** 2026-10-11 (Auditoria de Fechamento da Fase 6)  
 > **Inventário:** 64 ocorrências verificadas no workspace (resolvendo a dívida DV-13 do [PLANO.md](../../PLANO.md))
 
 ---
@@ -11,6 +11,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Técnicas | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-11 | Auditoria da Fase 6 (`ace_style`) | • Auditoria formal de integridade do motor de estilo.<br>• Confirmação de conformidade estrita com `#![forbid(unsafe_code)]`. | • Verificação de 0 blocos `unsafe` em todas as 5.675 linhas do `ace_style`.<br>• Registro do crate como 100% Safe Rust. |
 | **1.0.0** | 2026-10-07 | Auditoria Forense v7.0 | • Eliminação do mito de "0 unsafe" no repositório.<br>• Mapeamento exaustivo das 64 ocorrências.<br>• Obrigação formal de comentário `// SAFETY:` em cada bloco. | • Criação deste registro central com rastreabilidade de invariantes e validação Miri. |
 
 ---
@@ -53,6 +54,11 @@ Das 64 ocorrências mapeadas no workspace, a totalidade concentra-se em três pr
 ### 2.3 Otimizações de Varredura SIMD (`ace_dom/src/tokenizer/simd.rs`)
 - **Motivo de Uso:** Instruções de registradores vetoriais de 128 bits para localizar delimitadores de tags (`<`, `>`, `&`, espaço em branco) a 16 bytes por ciclo de CPU.
 - **Invariante Protegida:** O slicing de buffers brutos valida o tamanho restante antes de carregar dados nos registradores intrínsecos, prevenindo *out-of-bounds reads*.
+
+### 2.4 Motor de Estilos e Cascata (`ace_style`)
+- **Status:** **0 ocorrências de `unsafe`** (100% Safe Rust em todas as 5.675 linhas).
+- **Garantia de Compilador:** Anotação `#![forbid(unsafe_code)]` ativada e imposta na raiz de `src/lib.rs`.
+- **Mitigação de Segurança:** Resolução de `var()` em DAG com proteção contra ciclos recursivos e explosão de heap, estruturas `Arc<ComputedStyle>` imutáveis sem vazamento de ponteiros.
 
 ---
 
