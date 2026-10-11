@@ -43,6 +43,29 @@ impl Length {
         self.to_layout_unit_with_ref(font_size_px, root_font_size_px, viewport_size, None)
     }
 
+    /// Converte um comprimento em valor `f32` em pixels com referência de porcentagem opcional.
+    #[inline]
+    pub fn to_f32_px(
+        &self,
+        font_size_px: f32,
+        root_font_size_px: f32,
+        viewport_size: (f32, f32),
+        ref_size: Option<f32>,
+    ) -> Option<f32> {
+        match self {
+            Self::Px(val) => Some(*val),
+            Self::Em(val) => Some(*val * font_size_px),
+            Self::Rem(val) => Some(*val * root_font_size_px),
+            Self::Vh(val) => Some(*val * viewport_size.1 / 100.0),
+            Self::Vw(val) => Some(*val * viewport_size.0 / 100.0),
+            Self::Pt(val) => Some(*val * (4.0 / 3.0)),
+            Self::Ch(val) => Some(*val * font_size_px * 0.5),
+            Self::Percent(pct) => ref_size.map(|r| *pct * r / 100.0),
+            Self::Zero => Some(0.0),
+            Self::Auto => None,
+        }
+    }
+
     /// Converte um comprimento em `LayoutUnit` com referência de porcentagem opcional.
     pub fn to_layout_unit_with_ref(
         &self,
@@ -51,18 +74,8 @@ impl Length {
         viewport_size: (f32, f32),
         ref_size: Option<f32>,
     ) -> Option<LayoutUnit> {
-        match self {
-            Self::Px(val) => Some(LayoutUnit::from_f32_px(*val)),
-            Self::Em(val) => Some(LayoutUnit::from_f32_px(*val * font_size_px)),
-            Self::Rem(val) => Some(LayoutUnit::from_f32_px(*val * root_font_size_px)),
-            Self::Vh(val) => Some(LayoutUnit::from_f32_px(*val * viewport_size.1 / 100.0)),
-            Self::Vw(val) => Some(LayoutUnit::from_f32_px(*val * viewport_size.0 / 100.0)),
-            Self::Pt(val) => Some(LayoutUnit::from_f32_px(*val * (4.0 / 3.0))),
-            Self::Ch(val) => Some(LayoutUnit::from_f32_px(*val * font_size_px * 0.5)),
-            Self::Percent(pct) => ref_size.map(|r| LayoutUnit::from_f32_px(*pct * r / 100.0)),
-            Self::Zero => Some(LayoutUnit::ZERO),
-            Self::Auto => None,
-        }
+        self.to_f32_px(font_size_px, root_font_size_px, viewport_size, ref_size)
+            .map(LayoutUnit::from_f32_px)
     }
 
     /// Analisa uma string CSS contendo comprimento ou porcentagem.
@@ -158,9 +171,9 @@ impl CalcExpr {
         ref_size: Option<f32>,
     ) -> Option<f32> {
         match self {
-            Self::Value(len) => len
-                .to_layout_unit_with_ref(font_size_px, root_font_size_px, viewport_size, ref_size)
-                .map(|u| u.to_f32_px()),
+            Self::Value(len) => {
+                len.to_f32_px(font_size_px, root_font_size_px, viewport_size, ref_size)
+            }
             Self::Number(n) => Some(*n),
             Self::Add(lhs, rhs) => {
                 let l = lhs.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;

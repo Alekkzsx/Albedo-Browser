@@ -257,7 +257,11 @@ fn apply_property(
             let u = to_unit(val);
             let surr = Arc::make_mut(&mut style.surrounding);
             if wm.is_vertical() {
-                surr.margin.top = u;
+                if dir.is_rtl() {
+                    surr.margin.bottom = u;
+                } else {
+                    surr.margin.top = u;
+                }
             } else if dir.is_rtl() {
                 surr.margin.right = u;
             } else {
@@ -268,7 +272,11 @@ fn apply_property(
             let u = to_unit(val);
             let surr = Arc::make_mut(&mut style.surrounding);
             if wm.is_vertical() {
-                surr.margin.bottom = u;
+                if dir.is_rtl() {
+                    surr.margin.top = u;
+                } else {
+                    surr.margin.bottom = u;
+                }
             } else if dir.is_rtl() {
                 surr.margin.left = u;
             } else {
@@ -325,7 +333,11 @@ fn apply_property(
             if let Some(u) = to_unit(val) {
                 let surr = Arc::make_mut(&mut style.surrounding);
                 if wm.is_vertical() {
-                    surr.padding.top = u;
+                    if dir.is_rtl() {
+                        surr.padding.bottom = u;
+                    } else {
+                        surr.padding.top = u;
+                    }
                 } else if dir.is_rtl() {
                     surr.padding.right = u;
                 } else {
@@ -337,7 +349,11 @@ fn apply_property(
             if let Some(u) = to_unit(val) {
                 let surr = Arc::make_mut(&mut style.surrounding);
                 if wm.is_vertical() {
-                    surr.padding.bottom = u;
+                    if dir.is_rtl() {
+                        surr.padding.top = u;
+                    } else {
+                        surr.padding.bottom = u;
+                    }
                 } else if dir.is_rtl() {
                     surr.padding.left = u;
                 } else {
@@ -375,7 +391,11 @@ fn apply_property(
             let u = to_unit(val);
             let b = Arc::make_mut(&mut style.box_style);
             if wm.is_vertical() {
-                b.top = u;
+                if dir.is_rtl() {
+                    b.bottom = u;
+                } else {
+                    b.top = u;
+                }
             } else if dir.is_rtl() {
                 b.right = u;
             } else {
@@ -386,7 +406,11 @@ fn apply_property(
             let u = to_unit(val);
             let b = Arc::make_mut(&mut style.box_style);
             if wm.is_vertical() {
-                b.bottom = u;
+                if dir.is_rtl() {
+                    b.top = u;
+                } else {
+                    b.bottom = u;
+                }
             } else if dir.is_rtl() {
                 b.left = u;
             } else {

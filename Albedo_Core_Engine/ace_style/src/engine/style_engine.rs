@@ -419,7 +419,7 @@ impl StyleEngine {
         let computed_style = if let Some(el) = node.as_element() {
             // 1. Verifica o cache de compartilhamento de estilo entre irmãos idênticos
             let sharing_key = StyleSharingKey {
-                parent_ptr: parent_style.map(|p| Arc::as_ptr(p) as usize).unwrap_or(0),
+                parent_ptr: node.parent.map(|p| p.raw() as usize).unwrap_or(0),
                 tag_name: el.tag_name.clone(),
                 id_attr: el.id_attr.clone(),
                 classes: el.classes.as_slice().to_vec(),
@@ -667,7 +667,7 @@ fn compute_subtree_pure(
 
     let computed_style = if let Some(el) = node.as_element() {
         let sharing_key = StyleSharingKey {
-            parent_ptr: parent_style.map(|p| Arc::as_ptr(p) as usize).unwrap_or(0),
+            parent_ptr: node.parent.map(|p| p.raw() as usize).unwrap_or(0),
             tag_name: el.tag_name.clone(),
             id_attr: el.id_attr.clone(),
             classes: el.classes.as_slice().to_vec(),
