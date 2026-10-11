@@ -210,7 +210,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         // inline-start: 10, inline-end: 20, block-start: 30, block-end: 40
         // padding: inline-start: 5, inline-end: 15, block-start: 25, block-end: 35
         let sample_surr_node = doc
-            .get_element_by_id(&format!("m{}-surr-long-0", m_idx))
+            .get_element_by_id(&format!("m{}-surr-long-1", m_idx))
             .expect("Nó de surrounding não encontrado");
         let s_surr = render_tree.get_style(sample_surr_node).unwrap();
 
@@ -327,7 +327,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         let sample_over_logic_node = doc
             .get_element_by_id(&format!("m{}-over-logic-0", m_idx))
             .expect("Nó de sobreposição de lógica não encontrado");
-        let s_over_logic = &computed_styles[&sample_over_logic_node];
+        let s_over_logic = render_tree.get_style(sample_over_logic_node).unwrap();
 
         let (ov_m_top, ov_m_right, ov_m_bottom, ov_m_left) = match (wm, dir) {
             (WritingMode::HorizontalTb, Direction::Ltr) => (35, 25, 45, 15),
@@ -358,7 +358,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         let sample_over_phys_node = doc
             .get_element_by_id(&format!("m{}-over-phys-0", m_idx))
             .expect("Nó de sobreposição de física não encontrado");
-        let s_over_phys = &computed_styles[&sample_over_phys_node];
+        let s_over_phys = render_tree.get_style(sample_over_phys_node).unwrap();
         assert_eq!(
             s_over_phys.margin_top(),
             Some(LayoutUnit::from_px(50)),
