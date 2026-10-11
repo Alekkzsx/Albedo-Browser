@@ -76,14 +76,20 @@ impl RuleBucketMap {
         // Prioridade de balde: ID > Class > Tag > Universal
         for simple in &key_compound.simple_selectors {
             if let SimpleSelector::Id(id) = simple {
-                self.id_buckets.entry(id.clone()).or_default().push(rule_ref);
+                self.id_buckets
+                    .entry(id.clone())
+                    .or_default()
+                    .push(rule_ref);
                 return;
             }
         }
 
         for simple in &key_compound.simple_selectors {
             if let SimpleSelector::Class(class) = simple {
-                self.class_buckets.entry(class.clone()).or_default().push(rule_ref);
+                self.class_buckets
+                    .entry(class.clone())
+                    .or_default()
+                    .push(rule_ref);
                 return;
             }
         }

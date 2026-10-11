@@ -169,7 +169,10 @@ impl CalcExpr {
     /// Faz o parse simples de uma expressão `calc(...)`.
     pub fn parse(s: &str) -> Option<Self> {
         let trimmed = s.trim();
-        let content = if let Some(inner) = trimmed.strip_prefix("calc(").and_then(|t| t.strip_suffix(')')) {
+        let content = if let Some(inner) = trimmed
+            .strip_prefix("calc(")
+            .and_then(|t| t.strip_suffix(')'))
+        {
             inner.trim()
         } else {
             trimmed
@@ -277,8 +280,15 @@ impl LengthPercentage {
         ref_size: Option<f32>,
     ) -> Option<LayoutUnit> {
         match self {
-            Self::Length(len) => len.to_layout_unit_with_ref(font_size_px, root_font_size_px, viewport_size, ref_size),
-            Self::Calc(expr) => expr.eval_layout_unit(font_size_px, root_font_size_px, viewport_size, ref_size),
+            Self::Length(len) => len.to_layout_unit_with_ref(
+                font_size_px,
+                root_font_size_px,
+                viewport_size,
+                ref_size,
+            ),
+            Self::Calc(expr) => {
+                expr.eval_layout_unit(font_size_px, root_font_size_px, viewport_size, ref_size)
+            }
         }
     }
 

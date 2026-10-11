@@ -290,8 +290,10 @@ impl<'a> Tokenizer<'a> {
     fn starts_identifier(&self, s: &str) -> bool {
         let mut chars = s.chars();
         match chars.next() {
-            Some(c) if c == '-' => match chars.next() {
-                Some(c2) => c2 == '-' || c2 == '_' || c2.is_alphabetic() || c2 == '\\' || c2 as u32 >= 0x80,
+            Some('-') => match chars.next() {
+                Some(c2) => {
+                    c2 == '-' || c2 == '_' || c2.is_alphabetic() || c2 == '\\' || c2 as u32 >= 0x80
+                }
                 None => false,
             },
             Some(c) => c == '_' || c.is_alphabetic() || c == '\\' || c as u32 >= 0x80,
@@ -303,7 +305,10 @@ impl<'a> Tokenizer<'a> {
         let mut chars = s.chars();
         match chars.next() {
             Some('+' | '-') => match chars.next() {
-                Some(c) => c.is_ascii_digit() || (c == '.' && chars.next().is_some_and(|c3| c3.is_ascii_digit())),
+                Some(c) => {
+                    c.is_ascii_digit()
+                        || (c == '.' && chars.next().is_some_and(|c3| c3.is_ascii_digit()))
+                }
                 None => false,
             },
             Some('.') => chars.next().is_some_and(|c| c.is_ascii_digit()),

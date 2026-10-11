@@ -133,7 +133,8 @@ impl StyleEngine {
         // Computa o estilo do nó raiz na thread principal
         let mut sorter = CascadeSorter::new();
         let filter = AncestorFilter::new();
-        let root_style = self.compute_single_element_style(doc, root_id, None, Some(&filter), &mut sorter);
+        let root_style =
+            self.compute_single_element_style(doc, root_id, None, Some(&filter), &mut sorter);
 
         if root_style.is_display_none() {
             return RenderTree::default();
@@ -155,12 +156,17 @@ impl StyleEngine {
         }
 
         // Paraleliza a resolução das sub-árvores com Rayon
+        type SubtreeResolution = (Option<RenderTreeNode>, Vec<(NodeId, Arc<ComputedStyle>)>);
+
         let stylesheets = &self.stylesheets;
         let bucket_map = &self.bucket_map;
         let layer_registry = &self.layer_registry;
-        let viewport_size = (self.media_context.viewport_width, self.media_context.viewport_height);
+        let viewport_size = (
+            self.media_context.viewport_width,
+            self.media_context.viewport_height,
+        );
 
-        let subtrees: Vec<(Option<RenderTreeNode>, Vec<(NodeId, Arc<ComputedStyle>)>)> = child_ids
+        let subtrees: Vec<SubtreeResolution> = child_ids
             .into_par_iter()
             .map(|cid| {
                 let mut local_sorter = CascadeSorter::new();
@@ -329,7 +335,10 @@ impl StyleEngine {
         sorter.resolve_cascade(&matched_rules, &inline_decls, &self.layer_registry);
 
         let root_font_size = 16.0;
-        let viewport_size = (self.media_context.viewport_width, self.media_context.viewport_height);
+        let viewport_size = (
+            self.media_context.viewport_width,
+            self.media_context.viewport_height,
+        );
 
         let computed = resolve_computed_style(
             sorter.winning_declarations(),
@@ -343,6 +352,7 @@ impl StyleEngine {
 }
 
 /// Função pura para resolução de sub-árvore em multithreading sem mutação compartilhada.
+#[allow(clippy::too_many_arguments)]
 fn compute_subtree_pure(
     doc: &Document,
     node_id: NodeId,
@@ -358,7 +368,8 @@ fn compute_subtree_pure(
     let node = doc.get_node(node_id)?;
 
     let computed_style = if node.is_element() {
-        let matched = bucket_map.collect_matching_rules(doc, node_id, stylesheets, Some(ancestor_filter));
+        let matched =
+            bucket_map.collect_matching_rules(doc, node_id, stylesheets, Some(ancestor_filter));
         let inline_decls = node
             .as_element()
             .and_then(|el| el.get_attribute("style"))

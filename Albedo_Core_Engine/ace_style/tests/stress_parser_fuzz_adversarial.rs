@@ -5,11 +5,11 @@
 //! - 1.000 níveis de blocos aninhados (`{ { ... } }`) sem Stack Overflow
 //! - Payloads maliciosos: comentários não fechados, strings corrompidas, bytes nulos e escapes surrogate.
 
+use ace_style::cascade::origin::StyleSheetOrigin;
+use ace_style::model::stylesheet::StyleSheet;
 use ace_style::parser::component_value::ComponentValueParser;
 use ace_style::parser::declaration_parser::parse_declarations;
 use ace_style::parser::tokenizer::Tokenizer;
-use ace_style::model::stylesheet::StyleSheet;
-use ace_style::cascade::origin::StyleSheetOrigin;
 
 #[test]
 fn test_stress_massive_declarations_load() {
@@ -58,7 +58,9 @@ fn test_stress_adversarial_malformed_payloads() {
     let unclosed_comment = "/* Este comentário nunca é fechado...";
     let mut tokenizer = Tokenizer::new(unclosed_comment);
     let tokens = tokenizer.tokenize_all();
-    assert!(tokens.iter().any(|t| matches!(t, ace_style::Token::Comment(_))));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, ace_style::Token::Comment(_))));
 
     // 2. String com bytes nulos e escapes corrompidos
     let null_byte_css = "body { content: \"hello\0world\\u0000test\\xD83D\\x\"; }";

@@ -13,7 +13,12 @@ pub struct RectSides<T> {
 
 impl<T> RectSides<T> {
     pub const fn new(top: T, right: T, bottom: T, left: T) -> Self {
-        Self { top, right, bottom, left }
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
     }
 }
 

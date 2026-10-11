@@ -144,7 +144,7 @@ fn parse_stylesheet_into(
         }
 
         // Se houver sintaxe malformada sem correspondência, avança até o próximo ponto e vírgula ou fecha chave
-        if let Some(idx) = rest.find(|c| c == ';' || c == '}') {
+        if let Some(idx) = rest.find([';', '}']) {
             rest = rest[idx + 1..].trim();
         } else {
             break;
@@ -157,8 +157,8 @@ fn parse_at_rule<'a>(
     active_layer: Option<&Atom>,
     order_counter: &mut u32,
 ) -> Option<(CSSRule, &'a str)> {
-    if input.starts_with("@media") {
-        let rest = input["@media".len()..].trim();
+    if let Some(stripped) = input.strip_prefix("@media") {
+        let rest = stripped.trim();
         let open_brace = rest.find('{')?;
         let query_str = rest[..open_brace].trim();
         let close_brace = find_matching_brace(&rest[open_brace..])?;
@@ -175,8 +175,8 @@ fn parse_at_rule<'a>(
         return Some((CSSRule::Media(media_rule), remaining));
     }
 
-    if input.starts_with("@layer") {
-        let rest = input["@layer".len()..].trim();
+    if let Some(stripped) = input.strip_prefix("@layer") {
+        let rest = stripped.trim();
         // Pode ser declaração @layer a, b; ou bloco @layer name { ... }
         if let Some(semi_idx) = rest.find(';') {
             let brace_idx = rest.find('{');
@@ -188,7 +188,10 @@ fn parse_at_rule<'a>(
                     .map(|s| Atom::new(s.trim()))
                     .filter(|a| !a.as_str().is_empty())
                     .collect();
-                return Some((CSSRule::LayerStatement(LayerStatementRule { names }), remaining));
+                return Some((
+                    CSSRule::LayerStatement(LayerStatementRule { names }),
+                    remaining,
+                ));
             }
         }
 
@@ -217,8 +220,8 @@ fn parse_at_rule<'a>(
         }
     }
 
-    if input.starts_with("@import") {
-        let rest = input["@import".len()..].trim();
+    if let Some(stripped) = input.strip_prefix("@import") {
+        let rest = stripped.trim();
         let semi_idx = rest.find(';')?;
         let stmt = rest[..semi_idx].trim();
         let remaining = &rest[semi_idx + 1..];
@@ -240,8 +243,8 @@ fn parse_at_rule<'a>(
         ));
     }
 
-    if input.starts_with("@keyframes") {
-        let rest = input["@keyframes".len()..].trim();
+    if let Some(stripped) = input.strip_prefix("@keyframes") {
+        let rest = stripped.trim();
         let open_brace = rest.find('{')?;
         let name_str = rest[..open_brace].trim();
         let close_brace = find_matching_brace(&rest[open_brace..])?;

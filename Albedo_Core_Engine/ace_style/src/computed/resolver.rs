@@ -44,7 +44,13 @@ pub fn resolve_computed_style(
     // Se houver declaração de font-size, resolve primeiro para garantir cálculo correto de 'em'
     if let Some(decl) = winning_declarations.get(&Atom::new("font-size")) {
         if let Some(val) = resolve_value_str(&decl.value, &mut var_resolver) {
-            apply_font_size(&mut style, &val, parent_style, root_font_size_px, viewport_size);
+            apply_font_size(
+                &mut style,
+                &val,
+                parent_style,
+                root_font_size_px,
+                viewport_size,
+            );
             font_size_px = style.font_size.to_f32_px();
         }
     }
@@ -131,7 +137,8 @@ fn apply_property(
     viewport_size: (f32, f32),
 ) {
     let to_unit = |v: &str| -> Option<LayoutUnit> {
-        Length::parse(v).and_then(|l| l.to_layout_unit(font_size_px, root_font_size_px, viewport_size))
+        Length::parse(v)
+            .and_then(|l| l.to_layout_unit(font_size_px, root_font_size_px, viewport_size))
     };
 
     match prop {

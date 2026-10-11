@@ -36,9 +36,9 @@ pub fn compare_layer_precedence(
         // Fluxo !important (ordem invertida)
         match (layer_a, layer_b) {
             (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Less,    // Unlayered perde para layered em !important
+            (None, Some(_)) => Ordering::Less, // Unlayered perde para layered em !important
             (Some(_), None) => Ordering::Greater, // Layered vence unlayered em !important
-            (Some(a), Some(b)) => b.cmp(&a),      // Menor ordem vence (invertido!)
+            (Some(a), Some(b)) => b.cmp(&a),   // Menor ordem vence (invertido!)
         }
     }
 }

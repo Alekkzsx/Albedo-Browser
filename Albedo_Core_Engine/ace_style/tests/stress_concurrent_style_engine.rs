@@ -5,9 +5,9 @@
 //! - Ausência de condições de corrida (data races) e determinismo dos resultados
 
 use ace_dom::parse_html;
+use ace_style::cascade::origin::StyleSheetOrigin;
 use ace_style::engine::style_engine::StyleEngine;
 use ace_style::model::stylesheet::StyleSheet;
-use ace_style::cascade::origin::StyleSheetOrigin;
 
 #[test]
 fn test_stress_concurrent_style_engine_rayon() {
@@ -49,10 +49,20 @@ fn test_stress_concurrent_style_engine_rayon() {
     assert!(par_render_tree.root.is_some());
 
     // 3. Valida que os resultados são determinísticos e idênticos entre sequencial e paralelo
-    assert_eq!(seq_render_tree.node_styles.len(), par_render_tree.node_styles.len());
+    assert_eq!(
+        seq_render_tree.node_styles.len(),
+        par_render_tree.node_styles.len()
+    );
 
     for (node_id, seq_style) in &seq_render_tree.node_styles {
-        let par_style = par_render_tree.get_style(*node_id).expect("estilo deve existir no paralelo");
-        assert_eq!(seq_style.as_ref(), par_style.as_ref(), "Estilo do nó {:?} deve ser idêntico", node_id);
+        let par_style = par_render_tree
+            .get_style(*node_id)
+            .expect("estilo deve existir no paralelo");
+        assert_eq!(
+            seq_style.as_ref(),
+            par_style.as_ref(),
+            "Estilo do nó {:?} deve ser idêntico",
+            node_id
+        );
     }
 }

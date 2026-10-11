@@ -25,7 +25,10 @@ pub mod values;
 pub use cascade::{CascadeOrigin, CascadeSorter, StyleSheetOrigin};
 pub use computed::{inherit_from_parent, is_inherited_property, ComputedStyle, VariableResolver};
 pub use engine::{RenderTree, RenderTreeNode, StyleEngine, StyleSharingCache};
-pub use model::{CSSRule, LayerBlockRule, LayerRegistry, MediaContext, MediaQuery, MediaRule, StyleRule, StyleSheet};
+pub use model::{
+    CSSRule, LayerBlockRule, LayerRegistry, MediaContext, MediaQuery, MediaRule, StyleRule,
+    StyleSheet,
+};
 pub use parser::{parse_declarations, ParsedDeclaration, Token, Tokenizer};
 pub use user_agent::default_user_agent_stylesheet;
 pub use values::{Color, CssColor, Display, Length, Position};

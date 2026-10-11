@@ -88,7 +88,10 @@ impl MediaFeature {
     }
 
     pub fn parse(feature_str: &str) -> Option<Self> {
-        let trimmed = feature_str.trim().trim_start_matches('(').trim_end_matches(')');
+        let trimmed = feature_str
+            .trim()
+            .trim_start_matches('(')
+            .trim_end_matches(')');
         let (name, val) = trimmed.split_once(':')?;
         let name = name.trim().to_ascii_lowercase();
         let val = val.trim();

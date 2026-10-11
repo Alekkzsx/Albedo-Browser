@@ -147,10 +147,10 @@ fn should_bloom_reject(selector: &ComplexSelector, filter: &AncestorFilter) -> b
     for i in 0..selector.parts.len() - 1 {
         let (compound, comb) = &selector.parts[i];
         // Se for combinador descendente ou filho
-        if matches!(comb, Some(Combinator::Descendant | Combinator::Child)) {
-            if filter.fast_reject(compound) {
-                return true;
-            }
+        if matches!(comb, Some(Combinator::Descendant | Combinator::Child))
+            && filter.fast_reject(compound)
+        {
+            return true;
         }
     }
 

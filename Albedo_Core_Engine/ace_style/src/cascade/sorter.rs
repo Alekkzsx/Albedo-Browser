@@ -39,9 +39,17 @@ impl CascadeDeclaration {
         if self.is_inline != other.is_inline {
             if self.origin.is_important() {
                 // Em !important, inline vence regras de autor de folhas
-                return if self.is_inline { Ordering::Greater } else { Ordering::Less };
+                return if self.is_inline {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                };
             } else {
-                return if self.is_inline { Ordering::Greater } else { Ordering::Less };
+                return if self.is_inline {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                };
             }
         }
 
@@ -93,7 +101,10 @@ impl CascadeSorter {
 
         // 1. Adiciona declarações das regras casadas
         for rule in matched_rules {
-            let layer_order = rule.layer.as_ref().and_then(|name| layer_registry.get_layer_order(name));
+            let layer_order = rule
+                .layer
+                .as_ref()
+                .and_then(|name| layer_registry.get_layer_order(name));
 
             for decl in &rule.declarations {
                 let origin = CascadeOrigin::from_sheet_origin(rule.sheet_origin, decl.important);
@@ -113,7 +124,10 @@ impl CascadeSorter {
 
         // 2. Adiciona declarações inline (style="...")
         for decl in inline_declarations {
-            let origin = CascadeOrigin::from_sheet_origin(crate::cascade::origin::StyleSheetOrigin::Author, decl.important);
+            let origin = CascadeOrigin::from_sheet_origin(
+                crate::cascade::origin::StyleSheetOrigin::Author,
+                decl.important,
+            );
             // Inline style tem especificidade de (1, 0, 0, 0) conceitual — representamos com flag is_inline = true
             let candidate = CascadeDeclaration {
                 property: decl.property.clone(),
@@ -137,7 +151,8 @@ impl CascadeSorter {
                 }
             }
             None => {
-                self.winning_declarations.insert(candidate.property.clone(), candidate);
+                self.winning_declarations
+                    .insert(candidate.property.clone(), candidate);
             }
         }
     }

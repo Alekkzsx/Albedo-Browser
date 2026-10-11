@@ -14,25 +14,46 @@ fn test_length_conversions() {
     let viewport = (1920.0, 1080.0);
 
     let px = Length::Px(32.0);
-    assert_eq!(px.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::from_px(32)));
+    assert_eq!(
+        px.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::from_px(32))
+    );
 
     let em = Length::Em(2.0);
-    assert_eq!(em.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::from_px(32)));
+    assert_eq!(
+        em.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::from_px(32))
+    );
 
     let rem = Length::Rem(1.5);
-    assert_eq!(rem.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::from_px(24)));
+    assert_eq!(
+        rem.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::from_px(24))
+    );
 
     let vh = Length::Vh(10.0);
-    assert_eq!(vh.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::from_px(108)));
+    assert_eq!(
+        vh.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::from_px(108))
+    );
 
     let vw = Length::Vw(10.0);
-    assert_eq!(vw.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::from_px(192)));
+    assert_eq!(
+        vw.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::from_px(192))
+    );
 
     let auto = Length::Auto;
-    assert_eq!(auto.to_layout_unit(font_size, root_font_size, viewport), None);
+    assert_eq!(
+        auto.to_layout_unit(font_size, root_font_size, viewport),
+        None
+    );
 
     let zero = Length::Zero;
-    assert_eq!(zero.to_layout_unit(font_size, root_font_size, viewport), Some(LayoutUnit::ZERO));
+    assert_eq!(
+        zero.to_layout_unit(font_size, root_font_size, viewport),
+        Some(LayoutUnit::ZERO)
+    );
 }
 
 #[test]
@@ -91,11 +112,21 @@ fn test_tokenizer_normative() {
     let mut tokenizer = Tokenizer::new(css);
     let tokens = tokenizer.tokenize_all();
 
-    assert!(tokens.iter().any(|t| matches!(t, Token::AtKeyword(k) if k == "media")));
-    assert!(tokens.iter().any(|t| matches!(t, Token::Hash { value, .. } if value == "main")));
-    assert!(tokens.iter().any(|t| matches!(t, Token::Ident(i) if i == "active")));
-    assert!(tokens.iter().any(|t| matches!(t, Token::Dimension { value, unit } if *value == 10.0 && unit == "px")));
-    assert!(tokens.iter().any(|t| matches!(t, Token::String(s) if s == "hello \"world\"")));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, Token::AtKeyword(k) if k == "media")));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, Token::Hash { value, .. } if value == "main")));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, Token::Ident(i) if i == "active")));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, Token::Dimension { value, unit } if *value == 10.0 && unit == "px")));
+    assert!(tokens
+        .iter()
+        .any(|t| matches!(t, Token::String(s) if s == "hello \"world\"")));
 }
 
 #[test]

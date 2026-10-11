@@ -147,12 +147,7 @@ fn find_important_flag(s: &str) -> Option<usize> {
 }
 
 /// Expande shorthands CSS em propriedades canônicas primitivas.
-fn expand_shorthand(
-    prop: &str,
-    val: &str,
-    important: bool,
-    output: &mut Vec<ParsedDeclaration>,
-) {
+fn expand_shorthand(prop: &str, val: &str, important: bool, output: &mut Vec<ParsedDeclaration>) {
     match prop {
         "margin" => {
             let parts = split_whitespace_tokens(val);
@@ -160,25 +155,41 @@ fn expand_shorthand(
                 1 => {
                     output.push(ParsedDeclaration::new("margin-top", &parts[0], important));
                     output.push(ParsedDeclaration::new("margin-right", &parts[0], important));
-                    output.push(ParsedDeclaration::new("margin-bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new(
+                        "margin-bottom",
+                        &parts[0],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("margin-left", &parts[0], important));
                 }
                 2 => {
                     output.push(ParsedDeclaration::new("margin-top", &parts[0], important));
                     output.push(ParsedDeclaration::new("margin-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("margin-bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new(
+                        "margin-bottom",
+                        &parts[0],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("margin-left", &parts[1], important));
                 }
                 3 => {
                     output.push(ParsedDeclaration::new("margin-top", &parts[0], important));
                     output.push(ParsedDeclaration::new("margin-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("margin-bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new(
+                        "margin-bottom",
+                        &parts[2],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("margin-left", &parts[1], important));
                 }
                 4 => {
                     output.push(ParsedDeclaration::new("margin-top", &parts[0], important));
                     output.push(ParsedDeclaration::new("margin-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("margin-bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new(
+                        "margin-bottom",
+                        &parts[2],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("margin-left", &parts[3], important));
                 }
                 _ => {
@@ -191,26 +202,58 @@ fn expand_shorthand(
             match parts.len() {
                 1 => {
                     output.push(ParsedDeclaration::new("padding-top", &parts[0], important));
-                    output.push(ParsedDeclaration::new("padding-right", &parts[0], important));
-                    output.push(ParsedDeclaration::new("padding-bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new(
+                        "padding-right",
+                        &parts[0],
+                        important,
+                    ));
+                    output.push(ParsedDeclaration::new(
+                        "padding-bottom",
+                        &parts[0],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("padding-left", &parts[0], important));
                 }
                 2 => {
                     output.push(ParsedDeclaration::new("padding-top", &parts[0], important));
-                    output.push(ParsedDeclaration::new("padding-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("padding-bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new(
+                        "padding-right",
+                        &parts[1],
+                        important,
+                    ));
+                    output.push(ParsedDeclaration::new(
+                        "padding-bottom",
+                        &parts[0],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("padding-left", &parts[1], important));
                 }
                 3 => {
                     output.push(ParsedDeclaration::new("padding-top", &parts[0], important));
-                    output.push(ParsedDeclaration::new("padding-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("padding-bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new(
+                        "padding-right",
+                        &parts[1],
+                        important,
+                    ));
+                    output.push(ParsedDeclaration::new(
+                        "padding-bottom",
+                        &parts[2],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("padding-left", &parts[1], important));
                 }
                 4 => {
                     output.push(ParsedDeclaration::new("padding-top", &parts[0], important));
-                    output.push(ParsedDeclaration::new("padding-right", &parts[1], important));
-                    output.push(ParsedDeclaration::new("padding-bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new(
+                        "padding-right",
+                        &parts[1],
+                        important,
+                    ));
+                    output.push(ParsedDeclaration::new(
+                        "padding-bottom",
+                        &parts[2],
+                        important,
+                    ));
                     output.push(ParsedDeclaration::new("padding-left", &parts[3], important));
                 }
                 _ => {
@@ -221,35 +264,95 @@ fn expand_shorthand(
         "border" => {
             let (w, s, c) = parse_border_components(val);
             if let Some(width) = w {
-                output.push(ParsedDeclaration::new("border-top-width", &width, important));
-                output.push(ParsedDeclaration::new("border-right-width", &width, important));
-                output.push(ParsedDeclaration::new("border-bottom-width", &width, important));
-                output.push(ParsedDeclaration::new("border-left-width", &width, important));
+                output.push(ParsedDeclaration::new(
+                    "border-top-width",
+                    &width,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-right-width",
+                    &width,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-bottom-width",
+                    &width,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-left-width",
+                    &width,
+                    important,
+                ));
             }
             if let Some(style) = s {
-                output.push(ParsedDeclaration::new("border-top-style", &style, important));
-                output.push(ParsedDeclaration::new("border-right-style", &style, important));
-                output.push(ParsedDeclaration::new("border-bottom-style", &style, important));
-                output.push(ParsedDeclaration::new("border-left-style", &style, important));
+                output.push(ParsedDeclaration::new(
+                    "border-top-style",
+                    &style,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-right-style",
+                    &style,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-bottom-style",
+                    &style,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-left-style",
+                    &style,
+                    important,
+                ));
             }
             if let Some(color) = c {
-                output.push(ParsedDeclaration::new("border-top-color", &color, important));
-                output.push(ParsedDeclaration::new("border-right-color", &color, important));
-                output.push(ParsedDeclaration::new("border-bottom-color", &color, important));
-                output.push(ParsedDeclaration::new("border-left-color", &color, important));
+                output.push(ParsedDeclaration::new(
+                    "border-top-color",
+                    &color,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-right-color",
+                    &color,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-bottom-color",
+                    &color,
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "border-left-color",
+                    &color,
+                    important,
+                ));
             }
         }
         "border-top" | "border-right" | "border-bottom" | "border-left" => {
             let side = prop.strip_prefix("border-").unwrap();
             let (w, s, c) = parse_border_components(val);
             if let Some(width) = w {
-                output.push(ParsedDeclaration::new(format!("border-{}-width", side), &width, important));
+                output.push(ParsedDeclaration::new(
+                    format!("border-{}-width", side),
+                    &width,
+                    important,
+                ));
             }
             if let Some(style) = s {
-                output.push(ParsedDeclaration::new(format!("border-{}-style", side), &style, important));
+                output.push(ParsedDeclaration::new(
+                    format!("border-{}-style", side),
+                    &style,
+                    important,
+                ));
             }
             if let Some(color) = c {
-                output.push(ParsedDeclaration::new(format!("border-{}-color", side), &color, important));
+                output.push(ParsedDeclaration::new(
+                    format!("border-{}-color", side),
+                    &color,
+                    important,
+                ));
             }
         }
         "flex" => {
@@ -353,7 +456,8 @@ fn parse_border_components(s: &str) -> (Option<String>, Option<String>, Option<S
     let mut color = None;
 
     let styles = [
-        "none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset", "outset",
+        "none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset",
+        "outset",
     ];
 
     for tok in tokens {

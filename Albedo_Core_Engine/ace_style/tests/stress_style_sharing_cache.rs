@@ -6,9 +6,9 @@
 //! - Medição de tempo e integridade da RenderTree
 
 use ace_dom::parse_html;
+use ace_style::cascade::origin::StyleSheetOrigin;
 use ace_style::engine::style_engine::StyleEngine;
 use ace_style::model::stylesheet::StyleSheet;
-use ace_style::cascade::origin::StyleSheetOrigin;
 use std::sync::Arc;
 
 #[test]
@@ -43,15 +43,20 @@ fn test_stress_style_sharing_10000_identical_siblings() {
     let elapsed = start.elapsed();
 
     println!("Computed styles for 10,000 siblings in {:?}", elapsed);
-    assert!(elapsed.as_millis() < 2500, "10,000 elementos devem ser computados com rapidez graças ao cache");
+    assert!(
+        elapsed.as_millis() < 2500,
+        "10,000 elementos devem ser computados com rapidez graças ao cache"
+    );
 
     // Valida que o cache de compartilhamento de estilo foi ativado
     // A chave de cache para 'li.item' sob o mesmo 'ul' deve ter exatamente 1 entrada
-    assert!(engine.cache.len() > 0);
+    assert!(!engine.cache.is_empty());
 
     // Valida que os 10.000 nós de li compartilham o MESMO ponteiro Arc<ComputedStyle>
     // Estrutura da árvore: Document -> html -> body -> ul
-    let ul_render_node = render_tree.root.as_ref()
+    let ul_render_node = render_tree
+        .root
+        .as_ref()
         .and_then(|doc_node| doc_node.children.first()) // html
         .and_then(|html_node| html_node.children.first()) // body
         .and_then(|body_node| body_node.children.first()) // ul

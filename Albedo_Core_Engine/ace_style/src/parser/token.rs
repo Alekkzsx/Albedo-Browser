@@ -14,10 +14,7 @@ pub enum Token {
     /// At-Keyword (`@media`, `@layer`, etc.)
     AtKeyword(SmolStr),
     /// Hash (`#id` ou valor de cor hexadecimal)
-    Hash {
-        value: SmolStr,
-        is_id: bool,
-    },
+    Hash { value: SmolStr, is_id: bool },
     /// String delimitada por aspas simples ou duplas
     String(SmolStr),
     /// Literal numérico
@@ -29,10 +26,7 @@ pub enum Token {
     /// Porcentagem (`50%`)
     Percentage(f64),
     /// Dimensão com unidade (`12px`, `2em`)
-    Dimension {
-        value: f64,
-        unit: SmolStr,
-    },
+    Dimension { value: f64, unit: SmolStr },
     /// Espaço em branco sequencial
     Whitespace,
     /// Comentário CSS `/* ... */`

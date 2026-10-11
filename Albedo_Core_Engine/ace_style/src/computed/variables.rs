@@ -89,8 +89,7 @@ impl<'a> VariableResolver<'a> {
                 let mut paren_depth = 1;
                 let mut end_call = None;
 
-                let mut inner_chars = text[start_inner..].char_indices();
-                while let Some((inner_idx, inner_ch)) = inner_chars.next() {
+                for (inner_idx, inner_ch) in text[start_inner..].char_indices() {
                     match inner_ch {
                         '(' => paren_depth += 1,
                         ')' => {
@@ -118,12 +117,9 @@ impl<'a> VariableResolver<'a> {
                     Some(v) => v.to_string(),
                     None => {
                         // Tenta resolver o fallback se existir
-                        if let Some(fb) = fallback_str {
-                            let fb_resolved = self.substitute_vars_in_str(fb, depth + 1)?;
-                            fb_resolved.to_string()
-                        } else {
-                            return None; // Sem valor e sem fallback = inválido
-                        }
+                        let fb = fallback_str?;
+                        let fb_resolved = self.substitute_vars_in_str(fb, depth + 1)?;
+                        fb_resolved.to_string()
                     }
                 };
 

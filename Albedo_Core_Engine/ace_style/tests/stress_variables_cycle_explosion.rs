@@ -44,7 +44,10 @@ fn test_stress_ring_cycle_500_nodes_linear_time() {
     let elapsed = start.elapsed();
 
     assert_eq!(result, None);
-    assert!(elapsed.as_millis() < 500, "Ciclo de 500 nós deve ser detectado em milissegundos");
+    assert!(
+        elapsed.as_millis() < 500,
+        "Ciclo de 500 nós deve ser detectado em milissegundos"
+    );
 }
 
 #[test]
@@ -56,7 +59,10 @@ fn test_stress_billion_laughs_css_attack_mitigation() {
     for i in 1..=30 {
         let prev = format!("--x{}", i - 1);
         let curr = format!("--x{}", i);
-        env.insert(Atom::new(&curr), SmolStr::new(format!("var({}) var({})", prev, prev)));
+        env.insert(
+            Atom::new(&curr),
+            SmolStr::new(format!("var({}) var({})", prev, prev)),
+        );
     }
 
     let mut resolver = VariableResolver::new(&env);
@@ -66,7 +72,10 @@ fn test_stress_billion_laughs_css_attack_mitigation() {
 
     // A expansão deve ser abortada com segurança devido ao limite de MAX_EXPANDED_TOKEN_LEN
     assert_eq!(result, None);
-    assert!(elapsed.as_secs() < 1, "Billion laughs attack deve ser abortado instantaneamente");
+    assert!(
+        elapsed.as_secs() < 1,
+        "Billion laughs attack deve ser abortado instantaneamente"
+    );
 }
 
 #[test]

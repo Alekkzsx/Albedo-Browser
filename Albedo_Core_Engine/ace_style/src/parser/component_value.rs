@@ -177,6 +177,9 @@ impl<'a> ComponentValueParser<'a> {
         }
 
         self.depth -= 1;
-        ComponentValue::Function { name, value: values }
+        ComponentValue::Function {
+            name,
+            value: values,
+        }
     }
 }

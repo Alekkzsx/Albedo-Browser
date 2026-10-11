@@ -52,14 +52,20 @@ fn test_stress_eight_normative_origins_matrix() {
             };
 
             let expected = i.cmp(&j);
-            assert_eq!(decl_a.compare(&decl_b), expected, "Comparação entre {:?} e {:?}", origins[i], origins[j]);
+            assert_eq!(
+                decl_a.compare(&decl_b),
+                expected,
+                "Comparação entre {:?} e {:?}",
+                origins[i],
+                origins[j]
+            );
         }
     }
 }
 
 #[test]
 fn test_stress_layer_precedence_inversion_for_important() {
-    let layer_base = Some(1);  // Primeira camada declarada
+    let layer_base = Some(1); // Primeira camada declarada
     let layer_theme = Some(2); // Segunda camada declarada
 
     // 1. Fluxo Normal: camada declarada mais tarde VENCE
