@@ -70,7 +70,7 @@ Métricas verificadas em `2026-10-11`:
 - **`ace_core`:** 101 testes unitários/integração + 3 doctests — **100% aprovados** (`0.00s` a `0.69s`).
 - **`ace_dom`:** 22 testes de reentrância do tokenizer + dezenas de testes de Tree Builder, Live Ranges, Shadow DOM e Sanitizer — **100% aprovados**.
 - **`ace_net`:** 71 testes unitários + testes de Cache RFC 9111, Cookies CHIPS, DoH, descompressão em streaming e teste de estresse de memória de 93s — **100% aprovados**.
-- **`ace_style`:** 18 testes automatizados aprovados (0 falhas) em 7 binários, incluindo 6 baterias de estresse pesado (`stress_cascade_layer_matrix`, `stress_concurrent_style_engine`, `stress_parser_fuzz_adversarial`, `stress_rule_matching_scale`, `stress_style_sharing_cache`, `stress_variables_cycle_explosion`, `unit_values_and_parser_test`) — **100% aprovados** e 0 warnings no Clippy.
+- **`ace_style`:** 24 testes automatizados aprovados (0 falhas) em 13 binários, incluindo 12 baterias de estresse pesado (`stress_style_structs_memory_bench`, `stress_mpc_hit_rate_scale`, `stress_invalidation_reactive_benchmark`, `stress_pseudo_elements_hierarchical`, `stress_math_functions_deep_fuzz`, `stress_logical_properties_bidi_matrix`, `stress_cascade_layer_matrix`, `stress_concurrent_style_engine`, `stress_parser_fuzz_adversarial`, `stress_rule_matching_scale`, `stress_style_sharing_cache`, `stress_variables_cycle_explosion`, `unit_values_and_parser_test`) — **100% aprovados** e 0 warnings no Clippy com `-D warnings`.
 
 ---
 
