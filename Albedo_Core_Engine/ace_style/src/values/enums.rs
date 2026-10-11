@@ -572,3 +572,50 @@ impl ZIndex {
         }
     }
 }
+
+/// Direção do fluxo de texto inline (`direction`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Direction {
+    #[default]
+    Ltr,
+    Rtl,
+}
+
+impl Direction {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "ltr" => Some(Self::Ltr),
+            "rtl" => Some(Self::Rtl),
+            _ => None,
+        }
+    }
+
+    pub fn is_rtl(&self) -> bool {
+        matches!(self, Self::Rtl)
+    }
+}
+
+/// Modo de escrita do fluxo de blocos e linhas (`writing-mode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum WritingMode {
+    #[default]
+    HorizontalTb,
+    VerticalRl,
+    VerticalLr,
+}
+
+impl WritingMode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "horizontal-tb" => Some(Self::HorizontalTb),
+            "vertical-rl" => Some(Self::VerticalRl),
+            "vertical-lr" => Some(Self::VerticalLr),
+            _ => None,
+        }
+    }
+
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, Self::VerticalRl | Self::VerticalLr)
+    }
+}
+

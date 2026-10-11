@@ -414,10 +414,262 @@ fn expand_shorthand(prop: &str, val: &str, important: bool, output: &mut Vec<Par
                 output.push(ParsedDeclaration::new("overflow-y", &parts[1], important));
             }
         }
+        "font" => {
+            parse_font_shorthand(val, important, output);
+        }
+        "margin-inline" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("margin-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("margin-inline-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("margin-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("margin-inline-end", &parts[1], important));
+            }
+        }
+        "margin-block" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("margin-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("margin-block-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("margin-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("margin-block-end", &parts[1], important));
+            }
+        }
+        "padding-inline" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("padding-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("padding-inline-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("padding-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("padding-inline-end", &parts[1], important));
+            }
+        }
+        "padding-block" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("padding-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("padding-block-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("padding-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("padding-block-end", &parts[1], important));
+            }
+        }
+        "inset" => {
+            let parts = split_whitespace_tokens(val);
+            match parts.len() {
+                1 => {
+                    output.push(ParsedDeclaration::new("top", &parts[0], important));
+                    output.push(ParsedDeclaration::new("right", &parts[0], important));
+                    output.push(ParsedDeclaration::new("bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new("left", &parts[0], important));
+                }
+                2 => {
+                    output.push(ParsedDeclaration::new("top", &parts[0], important));
+                    output.push(ParsedDeclaration::new("right", &parts[1], important));
+                    output.push(ParsedDeclaration::new("bottom", &parts[0], important));
+                    output.push(ParsedDeclaration::new("left", &parts[1], important));
+                }
+                3 => {
+                    output.push(ParsedDeclaration::new("top", &parts[0], important));
+                    output.push(ParsedDeclaration::new("right", &parts[1], important));
+                    output.push(ParsedDeclaration::new("bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new("left", &parts[1], important));
+                }
+                4 => {
+                    output.push(ParsedDeclaration::new("top", &parts[0], important));
+                    output.push(ParsedDeclaration::new("right", &parts[1], important));
+                    output.push(ParsedDeclaration::new("bottom", &parts[2], important));
+                    output.push(ParsedDeclaration::new("left", &parts[3], important));
+                }
+                _ => {
+                    output.push(ParsedDeclaration::new(prop, val, important));
+                }
+            }
+        }
+        "inset-inline" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("inset-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("inset-inline-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("inset-inline-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("inset-inline-end", &parts[1], important));
+            }
+        }
+        "inset-block" => {
+            let parts = split_whitespace_tokens(val);
+            if parts.len() == 1 {
+                output.push(ParsedDeclaration::new("inset-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("inset-block-end", &parts[0], important));
+            } else if parts.len() >= 2 {
+                output.push(ParsedDeclaration::new("inset-block-start", &parts[0], important));
+                output.push(ParsedDeclaration::new("inset-block-end", &parts[1], important));
+            }
+        }
         _ => {
             output.push(ParsedDeclaration::new(prop, val, important));
         }
     }
+}
+
+fn parse_font_shorthand(val: &str, important: bool, output: &mut Vec<ParsedDeclaration>) {
+    let tokens = split_whitespace_tokens(val);
+    if tokens.is_empty() {
+        return;
+    }
+
+    let mut style = None;
+    let mut variant = None;
+    let mut weight = None;
+    let mut size = None;
+    let mut line_height = None;
+    let mut family_tokens = Vec::new();
+
+    let mut i = 0;
+    while i < tokens.len() {
+        let tok = &tokens[i];
+        let lower = tok.to_ascii_lowercase();
+
+        // Se já encontramos o size, todo o restante é family
+        if size.is_some() {
+            family_tokens.push(tok.clone());
+            i += 1;
+            continue;
+        }
+
+        // Verifica se é size (contém '/' ou é formato de tamanho)
+        if is_font_size_token(&lower) {
+            if let Some((s, lh)) = tok.split_once('/') {
+                size = Some(s.to_string());
+                line_height = Some(lh.to_string());
+            } else if i + 2 < tokens.len() && tokens[i + 1] == "/" {
+                size = Some(tok.clone());
+                line_height = Some(tokens[i + 2].clone());
+                i += 2;
+            } else {
+                size = Some(tok.clone());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Tenta style
+        if (lower == "italic" || lower == "oblique") && style.is_none() {
+            style = Some(tok.clone());
+            i += 1;
+            continue;
+        }
+
+        // Tenta variant
+        if lower == "small-caps" && variant.is_none() {
+            variant = Some(tok.clone());
+            i += 1;
+            continue;
+        }
+
+        // Tenta weight
+        if (lower == "bold"
+            || lower == "bolder"
+            || lower == "lighter"
+            || lower == "100"
+            || lower == "200"
+            || lower == "300"
+            || lower == "400"
+            || lower == "500"
+            || lower == "600"
+            || lower == "700"
+            || lower == "800"
+            || lower == "900")
+            && weight.is_none()
+        {
+            weight = Some(tok.clone());
+            i += 1;
+            continue;
+        }
+
+        if lower == "normal" {
+            if style.is_none() {
+                style = Some(tok.clone());
+            } else if variant.is_none() {
+                variant = Some(tok.clone());
+            } else if weight.is_none() {
+                weight = Some(tok.clone());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Fallback: se não bateu com nenhum dos anteriores, assume size
+        if let Some((s, lh)) = tok.split_once('/') {
+            size = Some(s.to_string());
+            line_height = Some(lh.to_string());
+        } else {
+            size = Some(tok.clone());
+        }
+        i += 1;
+    }
+
+    if let Some(s) = size {
+        output.push(ParsedDeclaration::new("font-size", &s, important));
+    }
+    if let Some(lh) = line_height {
+        output.push(ParsedDeclaration::new("line-height", &lh, important));
+    }
+    output.push(ParsedDeclaration::new(
+        "font-style",
+        style.as_deref().unwrap_or("normal"),
+        important,
+    ));
+    output.push(ParsedDeclaration::new(
+        "font-variant",
+        variant.as_deref().unwrap_or("normal"),
+        important,
+    ));
+    output.push(ParsedDeclaration::new(
+        "font-weight",
+        weight.as_deref().unwrap_or("normal"),
+        important,
+    ));
+    if !family_tokens.is_empty() {
+        output.push(ParsedDeclaration::new(
+            "font-family",
+            family_tokens.join(" "),
+            important,
+        ));
+    }
+}
+
+fn is_font_size_token(s: &str) -> bool {
+    if s.contains('/') {
+        return true;
+    }
+    s.ends_with("px")
+        || s.ends_with("em")
+        || s.ends_with("rem")
+        || s.ends_with('%')
+        || s.ends_with("pt")
+        || s.ends_with("vh")
+        || s.ends_with("vw")
+        || s.ends_with("ch")
+        || s.starts_with("calc(")
+        || s.starts_with("min(")
+        || s.starts_with("max(")
+        || s.starts_with("clamp(")
+        || matches!(
+            s,
+            "xx-small"
+                | "x-small"
+                | "small"
+                | "medium"
+                | "large"
+                | "x-large"
+                | "xx-large"
+                | "smaller"
+                | "larger"
+        )
 }
 
 fn split_whitespace_tokens(s: &str) -> Vec<String> {
