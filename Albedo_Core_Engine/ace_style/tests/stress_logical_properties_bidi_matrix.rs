@@ -212,7 +212,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         let sample_surr_node = doc
             .get_element_by_id(&format!("m{}-surr-long-0", m_idx))
             .expect("Nó de surrounding não encontrado");
-        let s_surr = &computed_styles[&sample_surr_node];
+        let s_surr = render_tree.get_style(sample_surr_node).unwrap();
 
         let (exp_m_top, exp_m_right, exp_m_bottom, exp_m_left) = match (wm, dir) {
             (WritingMode::HorizontalTb, Direction::Ltr) => (30, 20, 40, 10),
@@ -287,7 +287,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         let sample_inset_node = doc
             .get_element_by_id(&format!("m{}-inset-0", m_idx))
             .expect("Nó de inset não encontrado");
-        let s_inset = &computed_styles[&sample_inset_node];
+        let s_inset = render_tree.get_style(sample_inset_node).unwrap();
 
         let (exp_i_top, exp_i_right, exp_i_bottom, exp_i_left) = match (wm, dir) {
             (WritingMode::HorizontalTb, Direction::Ltr) => (36, 24, 48, 12),
