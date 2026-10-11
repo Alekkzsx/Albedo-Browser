@@ -285,7 +285,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         // Valida insets lógicos
         // inset-inline-start: 12, inset-inline-end: 24, inset-block-start: 36, inset-block-end: 48
         let sample_inset_node = doc
-            .get_element_by_id(&format!("m{}-inset-0", m_idx))
+            .get_element_by_id(&format!("m{}-inset-3", m_idx))
             .expect("Nó de inset não encontrado");
         let s_inset = render_tree.get_style(sample_inset_node).unwrap();
 
@@ -325,7 +325,7 @@ fn test_stress_logical_properties_bidi_matrix() {
 
         // Valida sobrescrita física por lógica (a lógica foi declarada depois da física)
         let sample_over_logic_node = doc
-            .get_element_by_id(&format!("m{}-over-logic-0", m_idx))
+            .get_element_by_id(&format!("m{}-over-logic-4", m_idx))
             .expect("Nó de sobreposição de lógica não encontrado");
         let s_over_logic = render_tree.get_style(sample_over_logic_node).unwrap();
 
@@ -356,7 +356,7 @@ fn test_stress_logical_properties_bidi_matrix() {
 
         // Valida sobrescrita lógica por física (a física foi declarada depois da lógica)
         let sample_over_phys_node = doc
-            .get_element_by_id(&format!("m{}-over-phys-0", m_idx))
+            .get_element_by_id(&format!("m{}-over-phys-4", m_idx))
             .expect("Nó de sobreposição de física não encontrado");
         let s_over_phys = render_tree.get_style(sample_over_phys_node).unwrap();
         assert_eq!(
