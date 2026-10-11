@@ -151,16 +151,16 @@ impl PreloadScanner {
         Self::for_each_attribute(attrs_raw, |name, val| {
             if name.eq_ignore_ascii_case("href") {
                 if href.is_none() { href = Some(val); }
-            } else if name.eq_ignore_ascii_case("src") {
-                if src.is_none() { src = Some(val); }
-            } else if name.eq_ignore_ascii_case("poster") {
-                if poster.is_none() { poster = Some(val); }
-            } else if name.eq_ignore_ascii_case("rel") {
-                if rel.is_none() { rel = Some(val); }
-            } else if name.eq_ignore_ascii_case("as") {
-                if as_type.is_none() { as_type = Some(val); }
-            } else if name.eq_ignore_ascii_case("media") {
-                if media.is_none() { media = Some(val); }
+            } else if name.eq_ignore_ascii_case("src") && src.is_none() {
+                src = Some(val);
+            } else if name.eq_ignore_ascii_case("poster") && poster.is_none() {
+                poster = Some(val);
+            } else if name.eq_ignore_ascii_case("rel") && rel.is_none() {
+                rel = Some(val);
+            } else if name.eq_ignore_ascii_case("as") && as_type.is_none() {
+                as_type = Some(val);
+            } else if name.eq_ignore_ascii_case("media") && media.is_none() {
+                media = Some(val);
             }
         });
 

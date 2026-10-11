@@ -16,7 +16,7 @@ fn test_stress_style_sharing_10000_identical_siblings() {
     // 1. Gera HTML com 10.000 <li> idênticos dentro de um <ul>
     let mut html = String::with_capacity(300_000);
     html.push_str("<html><body><ul id='list'>");
-    for i in 0..10_000 {
+    for _ in 0..10_000 {
         html.push_str("<li class='item'>Texto</li>");
     }
     html.push_str("</ul></body></html>");
@@ -50,9 +50,11 @@ fn test_stress_style_sharing_10000_identical_siblings() {
     assert!(engine.cache.len() > 0);
 
     // Valida que os 10.000 nós de li compartilham o MESMO ponteiro Arc<ComputedStyle>
+    // Estrutura da árvore: Document -> html -> body -> ul
     let ul_render_node = render_tree.root.as_ref()
-        .and_then(|r| r.children.first()) // body
-        .and_then(|b| b.children.first()) // ul
+        .and_then(|doc_node| doc_node.children.first()) // html
+        .and_then(|html_node| html_node.children.first()) // body
+        .and_then(|body_node| body_node.children.first()) // ul
         .expect("ul render node");
 
     assert_eq!(ul_render_node.children.len(), 10_000);

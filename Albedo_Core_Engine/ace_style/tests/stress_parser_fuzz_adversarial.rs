@@ -5,7 +5,7 @@
 //! - 1.000 níveis de blocos aninhados (`{ { ... } }`) sem Stack Overflow
 //! - Payloads maliciosos: comentários não fechados, strings corrompidas, bytes nulos e escapes surrogate.
 
-use ace_style::parser::component_value::{ComponentValueParser, MAX_NESTING_DEPTH};
+use ace_style::parser::component_value::ComponentValueParser;
 use ace_style::parser::declaration_parser::parse_declarations;
 use ace_style::parser::tokenizer::Tokenizer;
 use ace_style::model::stylesheet::StyleSheet;

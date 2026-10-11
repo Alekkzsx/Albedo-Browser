@@ -5,7 +5,6 @@
 //! - Validação da rejeição em O(1) pelo AncestorFilter (Counting Bloom Filter)
 //! - Redução de backtracking para seletores descendentes profundos
 
-use ace_core::intern::Atom;
 use ace_dom::parse_html;
 use ace_dom::query::bloom::AncestorFilter;
 use ace_style::cascade::origin::StyleSheetOrigin;
@@ -43,7 +42,7 @@ fn test_stress_rule_matching_scale_with_bloom_filter() {
 
     // 3. Executa matching com AncestorFilter ativo
     // Para elementos sem 'div.container-*' e 'ul.list' na cadeia ancestral, o AncestorFilter rejeita em O(1)
-    let mut filter = AncestorFilter::new();
+    let filter = AncestorFilter::new();
     let body_id = doc.get_node(doc.root()).unwrap().first_child.unwrap();
 
     let start = std::time::Instant::now();

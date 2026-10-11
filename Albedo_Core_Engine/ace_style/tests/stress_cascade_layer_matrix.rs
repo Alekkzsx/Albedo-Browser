@@ -8,7 +8,7 @@ use ace_core::intern::Atom;
 use ace_dom::query::selector::Specificity;
 use ace_style::cascade::layer_order::compare_layer_precedence;
 use ace_style::cascade::origin::CascadeOrigin;
-use ace_style::cascade::sorter::{CascadeDeclaration, CascadeSorter};
+use ace_style::cascade::sorter::CascadeDeclaration;
 use ace_style::model::layer::LayerRegistry;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
@@ -112,7 +112,7 @@ fn test_stress_full_layer_cascade_resolution() {
     assert!(base_order < theme_order);
 
     // Regra theme !important vs base !important: base vence!
-    let mut decl_base_imp = CascadeDeclaration {
+    let decl_base_imp = CascadeDeclaration {
         property: Atom::new("margin"),
         value: SmolStr::new("10px"),
         origin: CascadeOrigin::AuthorImportant,
