@@ -21,16 +21,48 @@ use ace_style::values::enums::{Direction, WritingMode};
 
 #[test]
 fn test_stress_logical_properties_bidi_matrix() {
-    println!("Iniciando teste de estresse da Matriz Combinatória Bidi & Propriedades Lógicas W3C...");
+    println!(
+        "Iniciando teste de estresse da Matriz Combinatória Bidi & Propriedades Lógicas W3C..."
+    );
 
     // 1. Definição da matriz de 6 combinações canônicas
     let matrix = [
-        (Direction::Ltr, WritingMode::HorizontalTb, "ltr", "horizontal-tb"),
-        (Direction::Rtl, WritingMode::HorizontalTb, "rtl", "horizontal-tb"),
-        (Direction::Ltr, WritingMode::VerticalRl, "ltr", "vertical-rl"),
-        (Direction::Rtl, WritingMode::VerticalRl, "rtl", "vertical-rl"),
-        (Direction::Ltr, WritingMode::VerticalLr, "ltr", "vertical-lr"),
-        (Direction::Rtl, WritingMode::VerticalLr, "rtl", "vertical-lr"),
+        (
+            Direction::Ltr,
+            WritingMode::HorizontalTb,
+            "ltr",
+            "horizontal-tb",
+        ),
+        (
+            Direction::Rtl,
+            WritingMode::HorizontalTb,
+            "rtl",
+            "horizontal-tb",
+        ),
+        (
+            Direction::Ltr,
+            WritingMode::VerticalRl,
+            "ltr",
+            "vertical-rl",
+        ),
+        (
+            Direction::Rtl,
+            WritingMode::VerticalRl,
+            "rtl",
+            "vertical-rl",
+        ),
+        (
+            Direction::Ltr,
+            WritingMode::VerticalLr,
+            "ltr",
+            "vertical-lr",
+        ),
+        (
+            Direction::Rtl,
+            WritingMode::VerticalLr,
+            "rtl",
+            "vertical-lr",
+        ),
     ];
 
     // Constrói folha de estilo de teste abrangente

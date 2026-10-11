@@ -10,8 +10,9 @@ use crate::computed::structs::{
 };
 use crate::values::enums::{
     AlignContent, AlignItems, AlignSelf, BorderStyle, BoxSizing, Direction, Display, FlexDirection,
-    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap, Position,
-    RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode, ZIndex,
+    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap,
+    Position, RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode,
+    ZIndex,
 };
 use ace_core::intern::Atom;
 use ace_core::math::border_radii::BorderRadii;

@@ -33,10 +33,7 @@ impl Default for SanitizerConfig {
             Atom::new("noscript"),
         ];
 
-        let block_attributes = vec![
-            Atom::new("formaction"),
-            Atom::new("action"),
-        ];
+        let block_attributes = vec![Atom::new("formaction"), Atom::new("action")];
 
         Self {
             allow_elements: None,

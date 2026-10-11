@@ -24,7 +24,11 @@ impl HTMLSanitizer {
                 NodeKind::Element(el) => {
                     let tag = el.tag_name.as_str();
                     // Verifica block list (case-insensitive)
-                    if config.block_elements.iter().any(|b| b.as_str().eq_ignore_ascii_case(tag)) {
+                    if config
+                        .block_elements
+                        .iter()
+                        .any(|b| b.as_str().eq_ignore_ascii_case(tag))
+                    {
                         to_remove.push(node_id);
                         continue;
                     }
@@ -53,7 +57,13 @@ impl HTMLSanitizer {
         // 2. Sanitiza atributos nos elementos remanescentes
         let element_ids: Vec<NodeId> = doc
             .descendants(root_id)
-            .filter_map(|(id, n)| if n.as_element().is_some() { Some(id) } else { None })
+            .filter_map(|(id, n)| {
+                if n.as_element().is_some() {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         for el_id in element_ids {
@@ -79,13 +89,20 @@ impl HTMLSanitizer {
                     }
 
                     // Verifica listas de bloqueio
-                    if config.block_attributes.iter().any(|b| b.as_str().eq_ignore_ascii_case(attr.name.as_str())) {
+                    if config
+                        .block_attributes
+                        .iter()
+                        .any(|b| b.as_str().eq_ignore_ascii_case(attr.name.as_str()))
+                    {
                         attrs_to_remove.push(attr.name.clone());
                         continue;
                     }
 
                     if let Some(ref allow_attrs) = config.allow_attributes {
-                        if !allow_attrs.iter().any(|a| a.as_str().eq_ignore_ascii_case(attr.name.as_str())) {
+                        if !allow_attrs
+                            .iter()
+                            .any(|a| a.as_str().eq_ignore_ascii_case(attr.name.as_str()))
+                        {
                             attrs_to_remove.push(attr.name.clone());
                             continue;
                         }

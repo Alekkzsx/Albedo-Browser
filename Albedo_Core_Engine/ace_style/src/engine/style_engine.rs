@@ -181,7 +181,10 @@ impl StyleEngine {
         let mut sibling_targets = InvalidationSet::new();
 
         match mutation {
-            DOMMutation::ClassChanged { old_class, new_class } => {
+            DOMMutation::ClassChanged {
+                old_class,
+                new_class,
+            } => {
                 if let Some(ref oc) = old_class {
                     if let Some(set) = self.invalidation_sets.descendant_class_sets.get(oc) {
                         merge_invalidation_sets(&mut descendant_targets, set);
@@ -358,7 +361,13 @@ impl StyleEngine {
         let subtrees: Vec<SubtreeResolution> = child_ids
             .into_par_iter()
             .map_init(
-                || (CascadeSorter::new(), AncestorFilter::new(), StyleSharingCache::new()),
+                || {
+                    (
+                        CascadeSorter::new(),
+                        AncestorFilter::new(),
+                        StyleSharingCache::new(),
+                    )
+                },
                 |(local_sorter, local_filter, local_cache), cid| {
                     local_sorter.clear();
                     local_filter.clear();

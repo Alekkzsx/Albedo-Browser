@@ -106,7 +106,7 @@ impl CascadeSorter {
                 .as_ref()
                 .and_then(|name| layer_registry.get_layer_order(name));
 
-            for decl in &rule.declarations {
+            for (decl_idx, decl) in rule.declarations.iter().enumerate() {
                 let origin = CascadeOrigin::from_sheet_origin(rule.sheet_origin, decl.important);
                 let candidate = CascadeDeclaration {
                     property: decl.property.clone(),
@@ -115,7 +115,10 @@ impl CascadeSorter {
                     layer_order,
                     specificity: rule.specificity,
                     sheet_index: rule.sheet_index,
-                    source_order: rule.source_order,
+                    source_order: rule
+                        .source_order
+                        .saturating_mul(1024)
+                        .saturating_add(decl_idx as u32),
                     is_inline: false,
                 };
                 self.add_candidate(candidate);
@@ -123,7 +126,7 @@ impl CascadeSorter {
         }
 
         // 2. Adiciona declarações inline (style="...")
-        for decl in inline_declarations {
+        for (decl_idx, decl) in inline_declarations.iter().enumerate() {
             let origin = CascadeOrigin::from_sheet_origin(
                 crate::cascade::origin::StyleSheetOrigin::Author,
                 decl.important,
@@ -136,7 +139,9 @@ impl CascadeSorter {
                 layer_order: None,
                 specificity: Specificity::ZERO,
                 sheet_index: usize::MAX,
-                source_order: u32::MAX,
+                source_order: u32::MAX
+                    .saturating_sub(1024)
+                    .saturating_add(decl_idx as u32),
                 is_inline: true,
             };
             self.add_candidate(candidate);
@@ -146,7 +151,7 @@ impl CascadeSorter {
     fn add_candidate(&mut self, candidate: CascadeDeclaration) {
         match self.winning_declarations.get_mut(&candidate.property) {
             Some(existing) => {
-                if candidate.compare(existing) == Ordering::Greater {
+                if candidate.compare(existing) != Ordering::Less {
                     *existing = candidate;
                 }
             }

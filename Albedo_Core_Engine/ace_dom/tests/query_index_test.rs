@@ -67,17 +67,32 @@ fn test_query_selector_and_query_selector_all() {
 
     // Seletor de Tag
     let form = doc.query_selector("form").expect("form encontrado");
-    assert_eq!(doc.get_node(form).unwrap().tag_name().unwrap().as_str(), "form");
+    assert_eq!(
+        doc.get_node(form).unwrap().tag_name().unwrap().as_str(),
+        "form"
+    );
 
     // Seletor de ID
     let btn = doc.query_selector("#btn-submit").expect("btn encontrado");
-    assert_eq!(doc.get_node(btn).unwrap().tag_name().unwrap().as_str(), "button");
+    assert_eq!(
+        doc.get_node(btn).unwrap().tag_name().unwrap().as_str(),
+        "button"
+    );
 
     // Seletor de Classe (All)
     let inputs = doc.query_selector_all(".form-control");
     assert_eq!(inputs.len(), 2);
 
     // Seletor de Atributo
-    let user_input = doc.query_selector("[name=\"username\"]").expect("input username");
-    assert_eq!(doc.get_node(user_input).unwrap().tag_name().unwrap().as_str(), "input");
+    let user_input = doc
+        .query_selector("[name=\"username\"]")
+        .expect("input username");
+    assert_eq!(
+        doc.get_node(user_input)
+            .unwrap()
+            .tag_name()
+            .unwrap()
+            .as_str(),
+        "input"
+    );
 }

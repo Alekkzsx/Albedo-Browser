@@ -1,6 +1,4 @@
-use ace_dom::bindings::{
-    DOMDataStore, ElementBindings, JSObjectId, NodeBindings,
-};
+use ace_dom::bindings::{DOMDataStore, ElementBindings, JSObjectId, NodeBindings};
 use ace_dom::gc::{MarkTracer, Traceable};
 use ace_dom::parse_html;
 
@@ -11,7 +9,10 @@ fn test_webidl_node_and_element_bindings() {
 
     // 1. NodeBindings
     assert_eq!(NodeBindings::get_node_type(&doc, card_id), Some(1));
-    assert_eq!(NodeBindings::get_node_name(&doc, card_id).as_deref(), Some("DIV"));
+    assert_eq!(
+        NodeBindings::get_node_name(&doc, card_id).as_deref(),
+        Some("DIV")
+    );
     assert_eq!(
         NodeBindings::get_text_content(&doc, card_id).as_deref(),
         Some("Hello World")
@@ -25,8 +26,14 @@ fn test_webidl_node_and_element_bindings() {
     );
 
     // 2. ElementBindings
-    assert_eq!(ElementBindings::get_tag_name(&doc, card_id).as_deref(), Some("DIV"));
-    assert_eq!(ElementBindings::get_id(&doc, card_id).as_deref(), Some("card"));
+    assert_eq!(
+        ElementBindings::get_tag_name(&doc, card_id).as_deref(),
+        Some("DIV")
+    );
+    assert_eq!(
+        ElementBindings::get_id(&doc, card_id).as_deref(),
+        Some("card")
+    );
     assert!(ElementBindings::has_attribute(&doc, card_id, "class"));
     assert_eq!(
         ElementBindings::get_attribute(&doc, card_id, "class").as_deref(),
@@ -62,7 +69,10 @@ fn test_dom_data_store_wrapper_uniqueness_and_gc_tracing() {
         .clone();
 
     assert_eq!(wrapper1.js_object_id, wrapper2.js_object_id);
-    assert_eq!(data_store.get_node_by_js_id(wrapper1.js_object_id), Some(test_id));
+    assert_eq!(
+        data_store.get_node_by_js_id(wrapper1.js_object_id),
+        Some(test_id)
+    );
 
     // Valida GC Tracing através do DataStore
     let mut tracer = MarkTracer::new();

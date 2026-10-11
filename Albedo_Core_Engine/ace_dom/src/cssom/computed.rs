@@ -69,7 +69,8 @@ impl ComputedStyle {
             self.custom_properties.insert(atom, v.clone());
             self.properties.insert(n, v);
         } else {
-            self.properties.insert(SmolStr::new(n.to_ascii_lowercase()), v);
+            self.properties
+                .insert(SmolStr::new(n.to_ascii_lowercase()), v);
         }
     }
 
@@ -261,9 +262,8 @@ impl StyleResolver {
         // 1. Resolve o estilo do elemento pai (para herança automática e variáveis)
         // Usa o cache para evitar O(n²): cada pai é resolvido no máximo uma vez.
         let parent_element_id = find_parent_element(doc, element_id);
-        let parent_style = parent_element_id.map(|pid| {
-            Self::resolve_with_cache(doc, pid, sheets, media_ctx, cache)
-        });
+        let parent_style = parent_element_id
+            .map(|pid| Self::resolve_with_cache(doc, pid, sheets, media_ctx, cache));
 
         // 2. Coleta declarações casadas das folhas de estilo e de estilos inline
         let mut normal_decls: Vec<MatchedProperty> = Vec::new();
@@ -300,7 +300,8 @@ impl StyleResolver {
         // 3.1 Normal stylesheet rules
         for decl in &normal_decls {
             if decl.property.name.as_str().starts_with("--") {
-                declared_custom_props.push((decl.property.name.clone(), decl.property.value.clone()));
+                declared_custom_props
+                    .push((decl.property.name.clone(), decl.property.value.clone()));
             }
         }
 
@@ -322,7 +323,8 @@ impl StyleResolver {
         // 3.3 Important stylesheet rules
         for decl in &important_decls {
             if decl.property.name.as_str().starts_with("--") {
-                declared_custom_props.push((decl.property.name.clone(), decl.property.value.clone()));
+                declared_custom_props
+                    .push((decl.property.name.clone(), decl.property.value.clone()));
             }
         }
 
@@ -398,8 +400,11 @@ impl StyleResolver {
         // Processa cada declaração padrão substituindo var() e avaliando palavras-chave
         for (name_atom, raw_val) in ordered_standard_decls {
             let prop_name = name_atom.as_str();
-            let substituted =
-                resolve_var_in_standard_property(raw_val.as_str(), &resolved_custom_props, &cycle_props);
+            let substituted = resolve_var_in_standard_property(
+                raw_val.as_str(),
+                &resolved_custom_props,
+                &cycle_props,
+            );
 
             if let Some(val_str) = substituted {
                 let trimmed_val = val_str.trim();
@@ -629,7 +634,13 @@ fn resolve_all_custom_properties(
 
     let all_keys: Vec<Atom> = raw_map.keys().cloned().collect();
     for key in all_keys {
-        resolve_custom_prop_dfs(&key, &raw_map, &mut status_map, &mut cycle_props, &mut stack);
+        resolve_custom_prop_dfs(
+            &key,
+            &raw_map,
+            &mut status_map,
+            &mut cycle_props,
+            &mut stack,
+        );
     }
 
     let mut resolved = FxHashMap::default();
@@ -728,13 +739,8 @@ fn substitute_var_tokens_in_custom_prop(
 
             let dep_atom = Atom::new(var_name);
             if raw_map.contains_key(&dep_atom) {
-                let resolved_dep = resolve_custom_prop_dfs(
-                    &dep_atom,
-                    raw_map,
-                    status_map,
-                    cycle_props,
-                    stack,
-                );
+                let resolved_dep =
+                    resolve_custom_prop_dfs(&dep_atom, raw_map, status_map, cycle_props, stack);
 
                 let val = resolved_dep?;
                 output.push_str(val.as_str());
@@ -796,11 +802,8 @@ fn resolve_var_in_standard_property(
                 output.push_str(val.as_str());
             } else {
                 let fb = fallback?;
-                let resolved_fb = resolve_var_in_standard_property(
-                    fb,
-                    resolved_custom_props,
-                    cycle_props,
-                )?;
+                let resolved_fb =
+                    resolve_var_in_standard_property(fb, resolved_custom_props, cycle_props)?;
                 output.push_str(&resolved_fb);
             }
 

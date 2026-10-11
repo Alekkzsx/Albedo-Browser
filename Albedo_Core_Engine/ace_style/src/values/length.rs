@@ -199,7 +199,8 @@ impl CalcExpr {
             Self::Min(args) => {
                 let mut min_val: Option<f32> = None;
                 for arg in args {
-                    let v = arg.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
+                    let v =
+                        arg.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
                     min_val = Some(match min_val {
                         Some(cur) => cur.min(v),
                         None => v,
@@ -210,7 +211,8 @@ impl CalcExpr {
             Self::Max(args) => {
                 let mut max_val: Option<f32> = None;
                 for arg in args {
-                    let v = arg.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
+                    let v =
+                        arg.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
                     max_val = Some(match max_val {
                         Some(cur) => cur.max(v),
                         None => v,
@@ -219,13 +221,19 @@ impl CalcExpr {
                 max_val
             }
             Self::Clamp(min, val, max) => {
-                let min_v = min.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
+                let min_v =
+                    min.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
                 let v = val.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
-                let max_v = max.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
+                let max_v =
+                    max.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
                 // Conforme W3C CSS Values 4: clamp(MIN, VAL, MAX) = max(MIN, min(VAL, MAX))
                 Some(min_v.max(v.min(max_v)))
             }
-            Self::Round { strategy, val, step } => {
+            Self::Round {
+                strategy,
+                val,
+                step,
+            } => {
                 let v = val.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?;
                 let s = if let Some(step_expr) = step {
                     step_expr.eval_px(font_size_px, root_font_size_px, viewport_size, ref_size)?

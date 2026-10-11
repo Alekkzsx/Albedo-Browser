@@ -104,10 +104,7 @@ fn generate_nested_expr(
             let min_v = v1.min(v3).round();
             let max_v = v1.max(v3).round();
             let expected = min_v.max(v2.min(max_v));
-            (
-                format!("clamp({}px, {}, {}px)", min_v, e2, max_v),
-                expected,
-            )
+            (format!("clamp({}px, {}, {}px)", min_v, e2, max_v), expected)
         }
         3 => {
             // round(strategy, val, step)
@@ -154,7 +151,7 @@ fn test_stress_math_functions_deep_fuzz() {
     );
 
     let ref_model = ReferenceModel::new();
-    let mut rng = FastRng::new(0xACE_5717E_2026);
+    let mut rng = FastRng::new(0xACE5_717E_2026);
 
     let mut successful_evaluations = 0;
     let start = std::time::Instant::now();

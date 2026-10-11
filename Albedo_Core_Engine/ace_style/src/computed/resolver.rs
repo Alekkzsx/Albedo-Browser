@@ -85,9 +85,12 @@ pub fn resolve_computed_style(
         }
     }
 
-    // 5. Aplicação das demais propriedades
-    for (prop, decl) in winning_declarations {
-        let prop_name = prop.as_str();
+    // 5. Aplicação das demais propriedades em ordem ascendente de precedência da cascata
+    let mut sorted_decls: Vec<&CascadeDeclaration> = winning_declarations.values().collect();
+    sorted_decls.sort_by(|a, b| a.compare(b));
+
+    for decl in sorted_decls {
+        let prop_name = decl.property.as_str();
         if prop_name.starts_with("--")
             || prop_name == "font-size"
             || prop_name == "direction"
@@ -488,8 +491,7 @@ fn apply_property(
         }
         "border-right-color" => {
             if let Some(c) = CssColor::parse(val) {
-                Arc::make_mut(&mut style.surrounding).border_color.right =
-                    c.resolve(style.color());
+                Arc::make_mut(&mut style.surrounding).border_color.right = c.resolve(style.color());
             }
         }
         "border-bottom-color" => {
@@ -663,9 +665,7 @@ fn apply_inherit_keyword(style: &mut ComputedStyle, parent: &ComputedStyle, prop
         "font-size" => Arc::make_mut(&mut style.font).size = parent.font_size(),
         "font-weight" => Arc::make_mut(&mut style.font).weight = parent.font_weight(),
         "font-style" => Arc::make_mut(&mut style.font).style = parent.font_style(),
-        "font-family" => {
-            Arc::make_mut(&mut style.font).family = SmolStr::new(parent.font_family())
-        }
+        "font-family" => Arc::make_mut(&mut style.font).family = SmolStr::new(parent.font_family()),
         "line-height" => Arc::make_mut(&mut style.font).line_height = parent.line_height(),
         "text-align" => Arc::make_mut(&mut style.text).text_align = parent.text_align(),
         "visibility" => Arc::make_mut(&mut style.text).visibility = parent.visibility(),

@@ -3,7 +3,8 @@ use ace_dom::parse_html;
 
 #[test]
 fn test_css_style_declaration_parsing_and_mutation() {
-    let mut decl = CSSStyleDeclaration::parse("color: #ff0000; font-size: 14px; margin-top: 10px !important;");
+    let mut decl =
+        CSSStyleDeclaration::parse("color: #ff0000; font-size: 14px; margin-top: 10px !important;");
 
     assert_eq!(decl.len(), 3);
     assert_eq!(decl.get_property_value("color"), Some("#ff0000"));
@@ -40,15 +41,23 @@ fn test_element_inline_style_auto_sync() {
     if let Some(n) = doc.get_node_mut(box_id) {
         if let Some(e) = n.as_element_mut() {
             e.set_attribute("style", "display: block; opacity: 0.8;");
-            assert_eq!(e.style().unwrap().get_property_value("display"), Some("block"));
-            assert_eq!(e.style().unwrap().get_property_value("opacity"), Some("0.8"));
+            assert_eq!(
+                e.style().unwrap().get_property_value("display"),
+                Some("block")
+            );
+            assert_eq!(
+                e.style().unwrap().get_property_value("opacity"),
+                Some("0.8")
+            );
         }
     }
 }
 
 #[test]
 fn test_css_cascading_and_computed_style_resolution() {
-    let doc = parse_html(r#"<div id="target" class="btn primary" style="padding: 20px; color: red;">Hello</div>"#);
+    let doc = parse_html(
+        r#"<div id="target" class="btn primary" style="padding: 20px; color: red;">Hello</div>"#,
+    );
     let target_id = doc.get_element_by_id("target").unwrap();
 
     let css = r#"
@@ -70,7 +79,10 @@ fn test_css_cascading_and_computed_style_resolution() {
     assert_eq!(computed.get_property_value("padding"), Some("20px"));
 
     // !important da stylesheet sobrescreve background
-    assert_eq!(computed.get_property_value("background-color"), Some("blue"));
+    assert_eq!(
+        computed.get_property_value("background-color"),
+        Some("blue")
+    );
 }
 
 #[test]
@@ -92,7 +104,10 @@ fn test_css_declaration_comments_and_quote_aware_important() {
     assert_eq!(decl.get_property_value("font-size"), Some("16px"));
     assert_eq!(decl.get_property_priority("font-size"), "important");
 
-    assert_eq!(decl.get_property_value("content"), Some("\"hello !important string\""));
+    assert_eq!(
+        decl.get_property_value("content"),
+        Some("\"hello !important string\"")
+    );
     assert_eq!(decl.get_property_priority("content"), "");
 
     assert_eq!(
@@ -155,11 +170,13 @@ fn test_stylesheet_case_insensitive_at_rules() {
 
 #[test]
 fn test_compound_selector_matching_and_cascade() {
-    let doc = parse_html(r#"
+    let doc = parse_html(
+        r#"
         <div id="main" class="highlight header">Match 1</div>
         <div id="sidebar" class="highlight">No match</div>
         <div id="footer" class="header">No match</div>
-    "#);
+    "#,
+    );
 
     let main_id = doc.get_element_by_id("main").unwrap();
     let sidebar_id = doc.get_element_by_id("sidebar").unwrap();
@@ -176,14 +193,23 @@ fn test_compound_selector_matching_and_cascade() {
     "#;
 
     let sheet = CSSStyleSheet::parse(css);
-    let computed_main = StyleResolver::resolve_element_style(&doc, main_id, std::slice::from_ref(&sheet));
-    let computed_sidebar = StyleResolver::resolve_element_style(&doc, sidebar_id, std::slice::from_ref(&sheet));
-    let computed_footer = StyleResolver::resolve_element_style(&doc, footer_id, std::slice::from_ref(&sheet));
+    let computed_main =
+        StyleResolver::resolve_element_style(&doc, main_id, std::slice::from_ref(&sheet));
+    let computed_sidebar =
+        StyleResolver::resolve_element_style(&doc, sidebar_id, std::slice::from_ref(&sheet));
+    let computed_footer =
+        StyleResolver::resolve_element_style(&doc, footer_id, std::slice::from_ref(&sheet));
 
     // main matches both compound selectors
     assert_eq!(computed_main.get_property_value("color"), Some("purple"));
-    assert_eq!(computed_main.get_property_value("font-weight"), Some("bold"));
-    assert_eq!(computed_main.get_property_value("border"), Some("1px solid black"));
+    assert_eq!(
+        computed_main.get_property_value("font-weight"),
+        Some("bold")
+    );
+    assert_eq!(
+        computed_main.get_property_value("border"),
+        Some("1px solid black")
+    );
 
     // sidebar and footer do not match .highlight.header
     assert_eq!(computed_sidebar.get_property_value("color"), None);

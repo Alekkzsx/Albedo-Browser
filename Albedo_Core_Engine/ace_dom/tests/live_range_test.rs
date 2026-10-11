@@ -39,10 +39,7 @@ fn test_live_range_auto_adjustment_on_node_removal_and_insertion() {
     let i2_id = doc.get_element_by_id("i2").unwrap();
 
     // Range apontando para o li#i2
-    let range = Range::from_points(
-        BoundaryPoint::new(i2_id, 0),
-        BoundaryPoint::new(i2_id, 1),
-    );
+    let range = Range::from_points(BoundaryPoint::new(i2_id, 0), BoundaryPoint::new(i2_id, 1));
 
     let handle = LiveRangeHandle::new(range);
     let mut registry = LiveRangeRegistry::new();

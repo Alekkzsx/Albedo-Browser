@@ -231,10 +231,7 @@ pub enum SimpleSelector {
     /// Seletor de Classe (ex: `.active`)
     Class(Atom),
     /// Seletor de Atributo com operador (ex: `[target="_blank"]`, `[href^="https"]`)
-    Attribute {
-        name: Atom,
-        op: AttributeOp,
-    },
+    Attribute { name: Atom, op: AttributeOp },
     /// Pseudo-classe estrutural ou de estado
     Pseudo(PseudoClass),
     /// Pseudo-elemento gerado
@@ -329,19 +326,31 @@ impl SimpleSelector {
                 return Some(Self::Pseudo(PseudoClass::FocusVisible));
             } else if lower == "target" {
                 return Some(Self::Pseudo(PseudoClass::Target));
-            } else if let Some(arg) = lower.strip_prefix("nth-child(").and_then(|s| s.strip_suffix(')')) {
+            } else if let Some(arg) = lower
+                .strip_prefix("nth-child(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 if let Some((a, b)) = parse_an_plus_b(arg) {
                     return Some(Self::Pseudo(PseudoClass::NthChild(a, b)));
                 }
-            } else if let Some(arg) = lower.strip_prefix("nth-last-child(").and_then(|s| s.strip_suffix(')')) {
+            } else if let Some(arg) = lower
+                .strip_prefix("nth-last-child(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 if let Some((a, b)) = parse_an_plus_b(arg) {
                     return Some(Self::Pseudo(PseudoClass::NthLastChild(a, b)));
                 }
-            } else if let Some(arg) = lower.strip_prefix("nth-of-type(").and_then(|s| s.strip_suffix(')')) {
+            } else if let Some(arg) = lower
+                .strip_prefix("nth-of-type(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 if let Some((a, b)) = parse_an_plus_b(arg) {
                     return Some(Self::Pseudo(PseudoClass::NthOfType(a, b)));
                 }
-            } else if let Some(arg) = lower.strip_prefix("nth-last-of-type(").and_then(|s| s.strip_suffix(')')) {
+            } else if let Some(arg) = lower
+                .strip_prefix("nth-last-of-type(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 if let Some((a, b)) = parse_an_plus_b(arg) {
                     return Some(Self::Pseudo(PseudoClass::NthLastOfType(a, b)));
                 }
@@ -357,7 +366,10 @@ impl SimpleSelector {
                 if !selectors.is_empty() {
                     return Some(Self::Pseudo(PseudoClass::Is(selectors)));
                 }
-            } else if let Some(arg) = lower.strip_prefix("where(").and_then(|s| s.strip_suffix(')')) {
+            } else if let Some(arg) = lower
+                .strip_prefix("where(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 let selectors: Vec<ComplexSelector> = arg
                     .split(',')
                     .filter_map(|s| ComplexSelector::parse(s.trim()))
@@ -397,12 +409,27 @@ impl SimpleSelector {
 
             fn parse_val_and_case(v: &str) -> (String, bool) {
                 let trimmed_v = v.trim();
-                if let Some(rest) = trimmed_v.strip_suffix(" i").or_else(|| trimmed_v.strip_suffix(" I")) {
-                    (rest.trim().trim_matches('"').trim_matches('\'').to_string(), true)
-                } else if let Some(rest) = trimmed_v.strip_suffix(" s").or_else(|| trimmed_v.strip_suffix(" S")) {
-                    (rest.trim().trim_matches('"').trim_matches('\'').to_string(), false)
+                if let Some(rest) = trimmed_v
+                    .strip_suffix(" i")
+                    .or_else(|| trimmed_v.strip_suffix(" I"))
+                {
+                    (
+                        rest.trim().trim_matches('"').trim_matches('\'').to_string(),
+                        true,
+                    )
+                } else if let Some(rest) = trimmed_v
+                    .strip_suffix(" s")
+                    .or_else(|| trimmed_v.strip_suffix(" S"))
+                {
+                    (
+                        rest.trim().trim_matches('"').trim_matches('\'').to_string(),
+                        false,
+                    )
                 } else {
-                    (trimmed_v.trim_matches('"').trim_matches('\'').to_string(), false)
+                    (
+                        trimmed_v.trim_matches('"').trim_matches('\'').to_string(),
+                        false,
+                    )
                 }
             }
 
@@ -513,21 +540,22 @@ impl SimpleSelector {
                     AttributeOp::Includes(word) => {
                         attr_val.is_some_and(|v| v.split_ascii_whitespace().any(|w| w == word))
                     }
-                    AttributeOp::DashMatch(prefix) => attr_val.is_some_and(|v| {
-                        v == prefix || v.starts_with(&format!("{}-", prefix))
-                    }),
+                    AttributeOp::DashMatch(prefix) => attr_val
+                        .is_some_and(|v| v == prefix || v.starts_with(&format!("{}-", prefix))),
                     AttributeOp::ExactCaseInsensitive(expected) => {
                         attr_val.is_some_and(|v| v.eq_ignore_ascii_case(expected))
                     }
-                    AttributeOp::PrefixCaseInsensitive(prefix) => {
-                        attr_val.is_some_and(|v| v.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()))
-                    }
-                    AttributeOp::SuffixCaseInsensitive(suffix) => {
-                        attr_val.is_some_and(|v| v.to_ascii_lowercase().ends_with(&suffix.to_ascii_lowercase()))
-                    }
-                    AttributeOp::ContainsCaseInsensitive(sub) => {
-                        attr_val.is_some_and(|v| v.to_ascii_lowercase().contains(&sub.to_ascii_lowercase()))
-                    }
+                    AttributeOp::PrefixCaseInsensitive(prefix) => attr_val.is_some_and(|v| {
+                        v.to_ascii_lowercase()
+                            .starts_with(&prefix.to_ascii_lowercase())
+                    }),
+                    AttributeOp::SuffixCaseInsensitive(suffix) => attr_val.is_some_and(|v| {
+                        v.to_ascii_lowercase()
+                            .ends_with(&suffix.to_ascii_lowercase())
+                    }),
+                    AttributeOp::ContainsCaseInsensitive(sub) => attr_val.is_some_and(|v| {
+                        v.to_ascii_lowercase().contains(&sub.to_ascii_lowercase())
+                    }),
                 }
             }
             Self::Pseudo(pseudo) => match pseudo {
@@ -597,7 +625,9 @@ impl SimpleSelector {
                 }
                 PseudoClass::Hover => el.has_attribute("data-hover"),
                 PseudoClass::Active => el.has_attribute("data-active"),
-                PseudoClass::Focus => el.has_attribute("data-focus") || el.has_attribute("autofocus"),
+                PseudoClass::Focus => {
+                    el.has_attribute("data-focus") || el.has_attribute("autofocus")
+                }
                 PseudoClass::FocusVisible => {
                     el.has_attribute("data-focus-visible") || el.has_attribute("autofocus")
                 }
@@ -639,9 +669,11 @@ impl SimpleSelector {
             Self::Class(_) | Self::Attribute { .. } => Specificity::new(0, 1, 0),
             Self::Pseudo(p) => match p {
                 PseudoClass::Where(_) => Specificity::ZERO,
-                PseudoClass::Is(selectors) => {
-                    selectors.iter().map(|s| s.specificity()).max().unwrap_or(Specificity::ZERO)
-                }
+                PseudoClass::Is(selectors) => selectors
+                    .iter()
+                    .map(|s| s.specificity())
+                    .max()
+                    .unwrap_or(Specificity::ZERO),
                 PseudoClass::Not(inner) => inner.specificity(),
                 PseudoClass::Has(inner) => inner.specificity(),
                 _ => Specificity::new(0, 1, 0),
@@ -848,7 +880,8 @@ impl ComplexSelector {
                     if !prev_chunk.is_empty() {
                         tokens.push(SelectorToken::Compound(prev_chunk.to_string()));
                         curr.clear();
-                    } else if let Some(SelectorToken::Comb(Combinator::Descendant)) = tokens.last() {
+                    } else if let Some(SelectorToken::Comb(Combinator::Descendant)) = tokens.last()
+                    {
                         tokens.pop();
                     }
                     let comb = match c {

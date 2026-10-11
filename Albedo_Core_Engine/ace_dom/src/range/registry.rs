@@ -45,9 +45,7 @@ pub struct LiveRangeRegistry {
 impl LiveRangeRegistry {
     /// Cria um novo registro vazio.
     pub fn new() -> Self {
-        Self {
-            ranges: Vec::new(),
-        }
+        Self { ranges: Vec::new() }
     }
 
     /// Registra um Range para rastreamento contínuo de mutações.
@@ -74,7 +72,12 @@ impl LiveRangeRegistry {
     }
 
     /// Notifica o registro sobre a remoção de um nó filho (`remove_child`).
-    pub fn notify_node_removal(&mut self, removed_node: NodeId, parent_id: NodeId, child_index: usize) {
+    pub fn notify_node_removal(
+        &mut self,
+        removed_node: NodeId,
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
         self.cleanup();
         for weak in &self.ranges {
             if let Some(arc) = weak.upgrade() {
@@ -114,7 +117,11 @@ impl LiveRangeRegistry {
         for weak in &self.ranges {
             if let Some(arc) = weak.upgrade() {
                 if let Ok(mut r) = arc.lock() {
-                    r.adjust_for_node_removal_with_descendants(removed_nodes, parent_id, child_index);
+                    r.adjust_for_node_removal_with_descendants(
+                        removed_nodes,
+                        parent_id,
+                        child_index,
+                    );
                 }
             }
         }

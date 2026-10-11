@@ -224,7 +224,11 @@ impl CSSStyleDeclaration {
                 let suffix: String = val_chars[idx + 1..].iter().collect();
                 if suffix.trim().eq_ignore_ascii_case("important") {
                     important = true;
-                    final_val = val_chars[..idx].iter().collect::<String>().trim().to_string();
+                    final_val = val_chars[..idx]
+                        .iter()
+                        .collect::<String>()
+                        .trim()
+                        .to_string();
                 } else {
                     final_val = val_trimmed.to_string();
                 }

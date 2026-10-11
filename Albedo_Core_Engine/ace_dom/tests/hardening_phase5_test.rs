@@ -23,14 +23,26 @@ fn test_compound_selector_with_quotes_and_brackets() {
     let doc = parse_html(html);
 
     // Seletor com ponto dentro do valor do atributo
-    let input_id = doc.query_selector("input[data-version=\"1.0\"]").expect("input encontrado");
-    assert_eq!(doc.get_node(input_id).unwrap().tag_name().unwrap().as_str(), "input");
+    let input_id = doc
+        .query_selector("input[data-version=\"1.0\"]")
+        .expect("input encontrado");
+    assert_eq!(
+        doc.get_node(input_id).unwrap().tag_name().unwrap().as_str(),
+        "input"
+    );
 
-    let span_id = doc.query_selector("span[data-info='v2.5.alpha']").expect("span encontrado");
-    assert_eq!(doc.get_node(span_id).unwrap().tag_name().unwrap().as_str(), "span");
+    let span_id = doc
+        .query_selector("span[data-info='v2.5.alpha']")
+        .expect("span encontrado");
+    assert_eq!(
+        doc.get_node(span_id).unwrap().tag_name().unwrap().as_str(),
+        "span"
+    );
 
     // Seletor com atributo case-insensitive
-    let input_case = doc.query_selector("input[data-version=\"1.0\" i]").expect("case-insensitive match");
+    let input_case = doc
+        .query_selector("input[data-version=\"1.0\" i]")
+        .expect("case-insensitive match");
     assert_eq!(input_case, input_id);
 }
 
@@ -50,7 +62,13 @@ fn test_nth_child_and_not_pseudo_classes() {
 
     // :nth-child(2)
     let item2 = doc.query_selector("li:nth-child(2)").expect("item 2");
-    let item2_text = doc.children(item2).next().unwrap().1.text_content().unwrap();
+    let item2_text = doc
+        .children(item2)
+        .next()
+        .unwrap()
+        .1
+        .text_content()
+        .unwrap();
     assert!(item2_text.contains("Item 2"));
 
     // :nth-child(even) -> itens 2 e 4

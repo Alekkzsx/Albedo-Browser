@@ -16,15 +16,17 @@ fn test_complex_multi_segment_rtl_matching() {
     let doc = parse_html(html);
 
     // Multi-segment chain: 3 descendentes/filhos
-    let sel = ComplexSelector::parse("div.main section.content article.post p.summary span.highlight")
-        .expect("selector parsed");
+    let sel =
+        ComplexSelector::parse("div.main section.content article.post p.summary span.highlight")
+            .expect("selector parsed");
 
     let span_nodes = doc.query_selector_all("span.highlight");
     assert_eq!(span_nodes.len(), 1);
     assert!(sel.matches(&doc, span_nodes[0]));
 
     // Seletor com combinador de filho e irmão adjacente
-    let sel2 = ComplexSelector::parse("article.post > h1.title + p.summary").expect("selector parsed");
+    let sel2 =
+        ComplexSelector::parse("article.post > h1.title + p.summary").expect("selector parsed");
     let p_nodes = doc.query_selector_all("p.summary");
     assert_eq!(p_nodes.len(), 1);
     assert!(sel2.matches(&doc, p_nodes[0]));
@@ -49,7 +51,13 @@ fn test_css4_pseudo_classes_is_where_has() {
     let is_sel = ComplexSelector::parse(".card :is(button, a)").expect("is selector");
     let matches_is: Vec<_> = doc
         .descendants(doc.root())
-        .filter_map(|(id, _)| if is_sel.matches(&doc, id) { Some(id) } else { None })
+        .filter_map(|(id, _)| {
+            if is_sel.matches(&doc, id) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .collect();
     assert_eq!(matches_is.len(), 2);
 
@@ -65,7 +73,13 @@ fn test_css4_pseudo_classes_is_where_has() {
     let where_sel = ComplexSelector::parse(":where(h2, button)").expect("where selector");
     let where_matches: Vec<_> = doc
         .descendants(doc.root())
-        .filter_map(|(id, _)| if where_sel.matches(&doc, id) { Some(id) } else { None })
+        .filter_map(|(id, _)| {
+            if where_sel.matches(&doc, id) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .collect();
     assert_eq!(where_matches.len(), 3); // 2 h2s + 1 button
 }

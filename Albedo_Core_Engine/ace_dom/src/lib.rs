@@ -69,9 +69,9 @@ pub use form::{
 pub use fragment::parse_fragment;
 pub use gc::{GcTracer, MarkTracer, Traceable};
 pub use node::{
-    Attribute, CommentData, DoctypeData, DocumentData, DocumentMode, DocumentPosition,
-    DOMStringMap, DOMTokenList, ElementData, ElementRareData, FlatTreeResolver, Namespace,
-    NodeData, NodeKind, ShadowMode, ShadowRootData, TextData,
+    Attribute, CommentData, DOMStringMap, DOMTokenList, DoctypeData, DocumentData, DocumentMode,
+    DocumentPosition, ElementData, ElementRareData, FlatTreeResolver, Namespace, NodeData,
+    NodeKind, ShadowMode, ShadowRootData, TextData,
 };
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
 pub use parser::{BackgroundHTMLParser, BackgroundParserHandle, HTMLParserScheduler, ParsedChunk};
@@ -88,9 +88,9 @@ pub use security::{
 };
 pub use serializer::{serialize_inner_html, serialize_node};
 pub use tokenizer::{
-    find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close, find_unquoted_attr_end,
-    tokenize_to_compact_tokens, CompactHTMLToken, HTMLTokenizer, StreamingTokenSink, Token,
-    TokenSink, TokenizerAction, TokenizerState,
+    find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close,
+    find_unquoted_attr_end, tokenize_to_compact_tokens, CompactHTMLToken, HTMLTokenizer,
+    StreamingTokenSink, Token, TokenSink, TokenizerAction, TokenizerState,
 };
 pub use traversal::{FilterResult, NodeFilter, NodeIterator, TreeWalker};
 pub use tree::Document;

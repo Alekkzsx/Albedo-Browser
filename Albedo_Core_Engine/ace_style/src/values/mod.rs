@@ -11,7 +11,8 @@ pub use color::{Color, CssColor};
 pub use custom_prop::{CustomPropertyName, VarRef};
 pub use enums::{
     AlignContent, AlignItems, AlignSelf, BorderStyle, BoxSizing, Direction, Display, FlexDirection,
-    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap, Position,
-    RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode, ZIndex,
+    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap,
+    Position, RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode,
+    ZIndex,
 };
 pub use length::{CalcExpr, Length, LengthPercentage};

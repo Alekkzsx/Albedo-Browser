@@ -420,41 +420,105 @@ fn expand_shorthand(prop: &str, val: &str, important: bool, output: &mut Vec<Par
         "margin-inline" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("margin-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("margin-inline-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "margin-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "margin-inline-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("margin-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("margin-inline-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "margin-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "margin-inline-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         "margin-block" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("margin-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("margin-block-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "margin-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "margin-block-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("margin-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("margin-block-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "margin-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "margin-block-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         "padding-inline" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("padding-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("padding-inline-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "padding-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "padding-inline-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("padding-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("padding-inline-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "padding-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "padding-inline-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         "padding-block" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("padding-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("padding-block-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "padding-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "padding-block-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("padding-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("padding-block-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "padding-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "padding-block-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         "inset" => {
@@ -492,21 +556,53 @@ fn expand_shorthand(prop: &str, val: &str, important: bool, output: &mut Vec<Par
         "inset-inline" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("inset-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("inset-inline-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "inset-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "inset-inline-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("inset-inline-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("inset-inline-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "inset-inline-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "inset-inline-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         "inset-block" => {
             let parts = split_whitespace_tokens(val);
             if parts.len() == 1 {
-                output.push(ParsedDeclaration::new("inset-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("inset-block-end", &parts[0], important));
+                output.push(ParsedDeclaration::new(
+                    "inset-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "inset-block-end",
+                    &parts[0],
+                    important,
+                ));
             } else if parts.len() >= 2 {
-                output.push(ParsedDeclaration::new("inset-block-start", &parts[0], important));
-                output.push(ParsedDeclaration::new("inset-block-end", &parts[1], important));
+                output.push(ParsedDeclaration::new(
+                    "inset-block-start",
+                    &parts[0],
+                    important,
+                ));
+                output.push(ParsedDeclaration::new(
+                    "inset-block-end",
+                    &parts[1],
+                    important,
+                ));
             }
         }
         _ => {

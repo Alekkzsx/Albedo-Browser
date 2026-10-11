@@ -113,7 +113,10 @@ impl CustomElementReactionsStack {
             if !top_frame.contains(&node_id) {
                 top_frame.push(node_id);
             }
-            self.element_queues.entry(node_id).or_default().push_back(reaction);
+            self.element_queues
+                .entry(node_id)
+                .or_default()
+                .push_back(reaction);
         } else {
             self.flat_queue.push_back(reaction);
         }
@@ -133,14 +136,12 @@ impl CustomElementReactionsStack {
 
     /// Retorna `true` se não houver reações pendentes.
     pub fn is_empty(&self) -> bool {
-        self.flat_queue.is_empty()
-            && self.element_queues.values().all(|q| q.is_empty())
+        self.flat_queue.is_empty() && self.element_queues.values().all(|q| q.is_empty())
     }
 
     /// Retorna o número total de reações pendentes.
     pub fn len(&self) -> usize {
-        self.flat_queue.len()
-            + self.element_queues.values().map(|q| q.len()).sum::<usize>()
+        self.flat_queue.len() + self.element_queues.values().map(|q| q.len()).sum::<usize>()
     }
 
     /// Processa todas as reações pendentes na fila invocando os callbacks registrados no `CustomElementRegistry`.
@@ -200,11 +201,7 @@ impl CustomElementReactionsStack {
                     } => {
                         if let Some(def) = get_definition_for_node(arena, registry, node) {
                             if let Some(ref cb) = def.callbacks.adopted_callback {
-                                cb(
-                                    node,
-                                    old_document.as_deref(),
-                                    new_document.as_deref(),
-                                );
+                                cb(node, old_document.as_deref(), new_document.as_deref());
                             }
                         }
                     }

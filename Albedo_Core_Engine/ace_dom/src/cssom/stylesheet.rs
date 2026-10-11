@@ -94,12 +94,17 @@ impl CSSStyleSheet {
             if remaining.len() >= 7 && remaining[..7].eq_ignore_ascii_case("@import") {
                 if let Some(semi_pos) = remaining.find(';') {
                     let import_stmt = remaining[..semi_pos].trim();
-                    let mut raw_href = if import_stmt.len() >= 7 && import_stmt[..7].eq_ignore_ascii_case("@import") {
+                    let mut raw_href = if import_stmt.len() >= 7
+                        && import_stmt[..7].eq_ignore_ascii_case("@import")
+                    {
                         import_stmt[7..].trim()
                     } else {
                         import_stmt.trim()
                     };
-                    if raw_href.len() >= 4 && raw_href[..4].eq_ignore_ascii_case("url(") && raw_href.ends_with(')') {
+                    if raw_href.len() >= 4
+                        && raw_href[..4].eq_ignore_ascii_case("url(")
+                        && raw_href.ends_with(')')
+                    {
                         raw_href = raw_href[4..raw_href.len() - 1].trim();
                     }
                     let href = raw_href.trim_matches('\'').trim_matches('"').trim();
@@ -131,7 +136,8 @@ impl CSSStyleSheet {
                             condition: SmolStr::new(condition),
                             rules: inner_sheet.rules,
                         });
-                    } else if preamble.len() >= 9 && preamble[..9].eq_ignore_ascii_case("@supports") {
+                    } else if preamble.len() >= 9 && preamble[..9].eq_ignore_ascii_case("@supports")
+                    {
                         // CSS Conditional Rules Level 3 — @supports (min-width: 768px)
                         let condition = preamble[9..].trim();
                         let inner_sheet = CSSStyleSheet::parse(body);
@@ -147,7 +153,9 @@ impl CSSStyleSheet {
                             name: SmolStr::new(name),
                             rules: inner_sheet.rules,
                         });
-                    } else if preamble.len() >= 10 && preamble[..10].eq_ignore_ascii_case("@container") {
+                    } else if preamble.len() >= 10
+                        && preamble[..10].eq_ignore_ascii_case("@container")
+                    {
                         // CSS Container Queries — @container sidebar (min-width: 700px) { ... }
                         let condition = preamble[10..].trim();
                         let inner_sheet = CSSStyleSheet::parse(body);
@@ -155,14 +163,12 @@ impl CSSStyleSheet {
                             condition: SmolStr::new(condition),
                             rules: inner_sheet.rules,
                         });
-                    } else if (preamble.len() >= 10 && preamble[..10].eq_ignore_ascii_case("@keyframes"))
-                        || (preamble.len() >= 18 && preamble[..18].eq_ignore_ascii_case("@-webkit-keyframes"))
+                    } else if (preamble.len() >= 10
+                        && preamble[..10].eq_ignore_ascii_case("@keyframes"))
+                        || (preamble.len() >= 18
+                            && preamble[..18].eq_ignore_ascii_case("@-webkit-keyframes"))
                     {
-                        let name = preamble
-                            .split_whitespace()
-                            .nth(1)
-                            .unwrap_or("")
-                            .trim();
+                        let name = preamble.split_whitespace().nth(1).unwrap_or("").trim();
                         sheet.rules.push(CSSRule::Keyframes {
                             name: SmolStr::new(name),
                             css_text: SmolStr::new(body),

@@ -118,7 +118,8 @@ impl RuleInvalidationSets {
                                 add_targets_to_set(set, target_compound);
                             }
                             SimpleSelector::Attribute { name, .. } => {
-                                let set = self.descendant_attr_sets.entry(name.clone()).or_default();
+                                let set =
+                                    self.descendant_attr_sets.entry(name.clone()).or_default();
                                 add_targets_to_set(set, target_compound);
                             }
                             _ => {}

@@ -92,7 +92,10 @@ impl ElementIndex {
     #[inline]
     pub fn get_by_class(&self, class_name: &str) -> &[NodeId] {
         let atom = Atom::new(class_name);
-        self.class_map.get(&atom).map(|v| v.as_slice()).unwrap_or(&[])
+        self.class_map
+            .get(&atom)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 }
 

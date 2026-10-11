@@ -30,10 +30,11 @@ pub fn run_adoption_agency_algorithm(
     // Passo 2 & 3: Loop externo (máximo de 8 iterações normativas)
     for _ in 0..8 {
         // Passo 3.1: Encontra o formatting_element mais recente após o último marcador
-        let formatting_element_id = match active_formatting.find_element_after_last_marker(doc, subject) {
-            Some(id) => id,
-            None => return,
-        };
+        let formatting_element_id =
+            match active_formatting.find_element_after_last_marker(doc, subject) {
+                Some(id) => id,
+                None => return,
+            };
 
         // Passo 3.2: Se não estiver na pilha, remove da lista e retorna
         if !open_elements.contains(formatting_element_id) {

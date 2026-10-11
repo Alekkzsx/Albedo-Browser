@@ -44,7 +44,11 @@ pub struct EventListener {
 
 impl EventListener {
     /// Cria um novo ouvinte simples.
-    pub fn new(id: usize, capture: bool, callback: impl Fn(&mut Event) + Send + Sync + 'static) -> Self {
+    pub fn new(
+        id: usize,
+        capture: bool,
+        callback: impl Fn(&mut Event) + Send + Sync + 'static,
+    ) -> Self {
         Self {
             id,
             options: AddEventListenerOptions {
@@ -121,7 +125,8 @@ impl Event {
     #[inline]
     pub fn stop_immediate_propagation(&self) {
         self.propagation_stopped.store(true, Ordering::Release);
-        self.immediate_propagation_stopped.store(true, Ordering::Release);
+        self.immediate_propagation_stopped
+            .store(true, Ordering::Release);
     }
 
     /// Cancela a ação padrão associada ao evento se `cancelable == true`.

@@ -1,6 +1,4 @@
-use ace_dom::cssom::{
-    ColorScheme, CSSStyleSheet, MediaContext, MediaType, StyleResolver,
-};
+use ace_dom::cssom::{CSSStyleSheet, ColorScheme, MediaContext, MediaType, StyleResolver};
 use ace_dom::parse_html;
 use ace_dom::query::selector::CompoundSelector;
 
@@ -11,14 +9,26 @@ fn test_remediation_compound_selector_parse_atomic_not_swallowed() {
 
     let comp = CompoundSelector::parse(".highlight.header").expect("parse compound");
     assert_eq!(comp.simple_selectors.len(), 2);
-    assert_eq!(comp.simple_selectors[0], SimpleSelector::Class(Atom::new("highlight")));
-    assert_eq!(comp.simple_selectors[1], SimpleSelector::Class(Atom::new("header")));
+    assert_eq!(
+        comp.simple_selectors[0],
+        SimpleSelector::Class(Atom::new("highlight"))
+    );
+    assert_eq!(
+        comp.simple_selectors[1],
+        SimpleSelector::Class(Atom::new("header"))
+    );
     assert_eq!(comp.specificity(), Specificity::new(0, 2, 0));
 
     let comp2 = CompoundSelector::parse("#main.active").expect("parse compound");
     assert_eq!(comp2.simple_selectors.len(), 2);
-    assert_eq!(comp2.simple_selectors[0], SimpleSelector::Id(Atom::new("main")));
-    assert_eq!(comp2.simple_selectors[1], SimpleSelector::Class(Atom::new("active")));
+    assert_eq!(
+        comp2.simple_selectors[0],
+        SimpleSelector::Id(Atom::new("main"))
+    );
+    assert_eq!(
+        comp2.simple_selectors[1],
+        SimpleSelector::Class(Atom::new("active"))
+    );
     assert_eq!(comp2.specificity(), Specificity::new(1, 1, 0));
 }
 
@@ -242,8 +252,7 @@ fn test_adversarial_mq_comma_disjunction_and_units() {
     let ctx5 = MediaContext::new()
         .with_media_type(MediaType::Screen)
         .with_viewport(1000.0, 800.0);
-    let c5 =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx5);
+    let c5 = StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx5);
     assert_eq!(c5.get_property_value("padding"), Some("40px"));
 }
 
@@ -293,12 +302,8 @@ fn test_adversarial_media_query_cascading_and_specificity() {
     // 2. font-size: '16px'
     // 3. margin: '30px'
     let ctx_no_match = MediaContext::new().with_viewport(500.0, 600.0);
-    let c_nomatch = StyleResolver::resolve_element_style_with_context(
-        &doc,
-        title_id,
-        &[sheet],
-        &ctx_no_match,
-    );
+    let c_nomatch =
+        StyleResolver::resolve_element_style_with_context(&doc, title_id, &[sheet], &ctx_no_match);
     assert_eq!(c_nomatch.get_property_value("color"), Some("red"));
     assert_eq!(c_nomatch.get_property_value("font-size"), Some("16px"));
     assert_eq!(c_nomatch.get_property_value("margin"), Some("30px"));
@@ -415,7 +420,8 @@ fn test_adversarial_important_declarations_in_media_queries() {
     // 1. color: inline style (purple) vence stylesheet #target (black)
     // 2. font-weight: #target (bold)
     let ctx_no = MediaContext::new().with_viewport(400.0, 600.0);
-    let c_no = StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx_no);
+    let c_no =
+        StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx_no);
     assert_eq!(c_no.get_property_value("color"), Some("purple"));
     assert_eq!(c_no.get_property_value("font-weight"), Some("bold"));
 }

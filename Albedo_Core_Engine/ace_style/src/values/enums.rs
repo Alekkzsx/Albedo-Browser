@@ -618,4 +618,3 @@ impl WritingMode {
         matches!(self, Self::VerticalRl | Self::VerticalLr)
     }
 }
-

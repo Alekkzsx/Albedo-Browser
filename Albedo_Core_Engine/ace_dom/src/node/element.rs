@@ -220,7 +220,8 @@ impl ElementData {
     /// Remove um atributo pelo nome.
     pub fn remove_attribute(&mut self, name: &str) -> bool {
         let before_len = self.attributes.len();
-        self.attributes.retain(|attr| !attr.name.eq_ignore_ascii_case(name));
+        self.attributes
+            .retain(|attr| !attr.name.eq_ignore_ascii_case(name));
         let removed = self.attributes.len() < before_len;
 
         if removed {
@@ -241,7 +242,9 @@ impl ElementData {
 
     /// Retorna uma referência à declaração de estilo inline (`CSSStyleDeclaration`), se existir.
     pub fn style(&self) -> Option<&crate::cssom::CSSStyleDeclaration> {
-        self.rare_data.as_ref().and_then(|r| r.inline_style_decl.as_deref())
+        self.rare_data
+            .as_ref()
+            .and_then(|r| r.inline_style_decl.as_deref())
     }
 
     /// Retorna uma referência mutável à declaração de estilo inline, criando-a sob demanda se necessário.
@@ -256,7 +259,10 @@ impl ElementData {
     /// Retorna `true` se o elemento contiver a classe especificada.
     #[inline]
     pub fn has_class(&self, class_name: &str) -> bool {
-        self.classes.as_slice().iter().any(|c| c.eq_ignore_ascii_case(class_name))
+        self.classes
+            .as_slice()
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(class_name))
     }
 
     /// Retorna o estado do elemento customizado (WHATWG §4.13.2).
@@ -274,14 +280,18 @@ impl ElementData {
 
     /// Define o estado do elemento customizado.
     pub fn set_custom_element_state(&mut self, state: crate::custom_elements::CustomElementState) {
-        if state != crate::custom_elements::CustomElementState::Uncustomized || self.rare_data.is_some() {
+        if state != crate::custom_elements::CustomElementState::Uncustomized
+            || self.rare_data.is_some()
+        {
             self.ensure_rare_data().custom_element_state = state;
         }
     }
 
     /// Retorna o nome da definição do elemento customizado associado.
     pub fn custom_element_definition(&self) -> Option<Atom> {
-        self.rare_data.as_ref().and_then(|r| r.custom_element_definition.clone())
+        self.rare_data
+            .as_ref()
+            .and_then(|r| r.custom_element_definition.clone())
     }
 
     /// Define o nome da definição do elemento customizado associado.
@@ -320,8 +330,12 @@ impl ElementData {
 
         self.set_attribute(name_atom.clone(), value_str.clone());
 
-        if value_changed && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom {
-            let def_name = self.custom_element_definition().unwrap_or_else(|| self.tag_name.clone());
+        if value_changed
+            && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom
+        {
+            let def_name = self
+                .custom_element_definition()
+                .unwrap_or_else(|| self.tag_name.clone());
             if let Some(def) = registry.get(def_name.as_str()) {
                 if def.observes_attribute(name_atom.as_str()) {
                     reactions.enqueue_attribute_changed(
@@ -346,16 +360,15 @@ impl ElementData {
         let old_value = self.get_attribute(name).map(SmolStr::new);
         let removed = self.remove_attribute(name);
 
-        if removed && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom {
-            let def_name = self.custom_element_definition().unwrap_or_else(|| self.tag_name.clone());
+        if removed
+            && self.custom_element_state() == crate::custom_elements::CustomElementState::Custom
+        {
+            let def_name = self
+                .custom_element_definition()
+                .unwrap_or_else(|| self.tag_name.clone());
             if let Some(def) = registry.get(def_name.as_str()) {
                 if def.observes_attribute(name) {
-                    reactions.enqueue_attribute_changed(
-                        node_id,
-                        name,
-                        old_value,
-                        None,
-                    );
+                    reactions.enqueue_attribute_changed(node_id, name, old_value, None);
                 }
             }
         }
@@ -368,4 +381,3 @@ impl ElementData {
         crate::node::dataset::DOMStringMap::new(self)
     }
 }
-

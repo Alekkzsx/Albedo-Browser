@@ -233,9 +233,11 @@ fn evaluate_media_feature(feature_expr: &str, ctx: &MediaContext) -> bool {
         "orientation" => {
             if let Some(val_str) = val {
                 if val_str.eq_ignore_ascii_case("portrait") {
-                    ctx.viewport_height >= ctx.viewport_width || ctx.orientation == Orientation::Portrait
+                    ctx.viewport_height >= ctx.viewport_width
+                        || ctx.orientation == Orientation::Portrait
                 } else if val_str.eq_ignore_ascii_case("landscape") {
-                    ctx.viewport_width >= ctx.viewport_height || ctx.orientation == Orientation::Landscape
+                    ctx.viewport_width >= ctx.viewport_height
+                        || ctx.orientation == Orientation::Landscape
                 } else {
                     false
                 }
@@ -385,11 +387,23 @@ pub fn parse_css_length(s: &str) -> Option<f32> {
     } else if let Some(val_str) = lower.strip_suffix("in") {
         val_str.trim().parse::<f32>().ok().map(|v| v * 96.0)
     } else if let Some(val_str) = lower.strip_suffix("cm") {
-        val_str.trim().parse::<f32>().ok().map(|v| v * (96.0 / 2.54))
+        val_str
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|v| v * (96.0 / 2.54))
     } else if let Some(val_str) = lower.strip_suffix("mm") {
-        val_str.trim().parse::<f32>().ok().map(|v| v * (96.0 / 25.4))
+        val_str
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|v| v * (96.0 / 25.4))
     } else if let Some(val_str) = lower.strip_suffix("pt") {
-        val_str.trim().parse::<f32>().ok().map(|v| v * (96.0 / 72.0))
+        val_str
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|v| v * (96.0 / 72.0))
     } else {
         trimmed.parse::<f32>().ok()
     }

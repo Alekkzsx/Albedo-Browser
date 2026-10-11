@@ -5,8 +5,9 @@
 
 use crate::values::enums::{
     AlignContent, AlignItems, AlignSelf, BorderStyle, BoxSizing, Direction, Display, FlexDirection,
-    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap, Position,
-    RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode, ZIndex,
+    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap,
+    Position, RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode,
+    ZIndex,
 };
 use ace_core::math::border_radii::BorderRadii;
 use ace_core::math::color::Color;
@@ -21,12 +22,16 @@ use std::sync::{Arc, LazyLock};
 pub static INITIAL_BOX: LazyLock<Arc<StyleBox>> = LazyLock::new(|| Arc::new(StyleBox::initial()));
 pub static INITIAL_SURROUNDING: LazyLock<Arc<StyleSurrounding>> =
     LazyLock::new(|| Arc::new(StyleSurrounding::initial()));
-pub static INITIAL_FONT: LazyLock<Arc<StyleFont>> = LazyLock::new(|| Arc::new(StyleFont::initial()));
+pub static INITIAL_FONT: LazyLock<Arc<StyleFont>> =
+    LazyLock::new(|| Arc::new(StyleFont::initial()));
 pub static INITIAL_COLOR: LazyLock<Arc<StyleColor>> =
     LazyLock::new(|| Arc::new(StyleColor::initial()));
-pub static INITIAL_TEXT: LazyLock<Arc<StyleText>> = LazyLock::new(|| Arc::new(StyleText::initial()));
-pub static INITIAL_FLEX: LazyLock<Arc<StyleFlex>> = LazyLock::new(|| Arc::new(StyleFlex::initial()));
-pub static INITIAL_GRID: LazyLock<Arc<StyleGrid>> = LazyLock::new(|| Arc::new(StyleGrid::initial()));
+pub static INITIAL_TEXT: LazyLock<Arc<StyleText>> =
+    LazyLock::new(|| Arc::new(StyleText::initial()));
+pub static INITIAL_FLEX: LazyLock<Arc<StyleFlex>> =
+    LazyLock::new(|| Arc::new(StyleFlex::initial()));
+pub static INITIAL_GRID: LazyLock<Arc<StyleGrid>> =
+    LazyLock::new(|| Arc::new(StyleGrid::initial()));
 
 // ---------------------------------------------------------------------------
 // 2. Structs Resetadas (Reset Structs)

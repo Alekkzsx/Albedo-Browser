@@ -185,7 +185,10 @@ impl FormData {
     pub fn from_form_element(doc: &crate::tree::Document, form_id: ace_core::id::NodeId) -> Self {
         let mut form_data = Self::new();
 
-        let form_id_attr = doc.get_node(form_id).and_then(|n| n.as_element()).and_then(|el| el.get_attribute("id"));
+        let form_id_attr = doc
+            .get_node(form_id)
+            .and_then(|n| n.as_element())
+            .and_then(|el| el.get_attribute("id"));
 
         let mut candidate_ids = Vec::new();
 
@@ -237,9 +240,14 @@ impl FormData {
                                 if let Some(opt_el) = opt_node.as_element() {
                                     if opt_el.tag_name.eq_ignore_ascii_case("option") {
                                         let is_selected = opt_el.has_attribute("selected");
-                                        let opt_v = opt_el.get_attribute("value").map(|s| s.to_string()).unwrap_or_else(|| {
-                                            doc.children(opt_id).filter_map(|(_, n)| n.text_content()).collect::<String>()
-                                        });
+                                        let opt_v = opt_el
+                                            .get_attribute("value")
+                                            .map(|s| s.to_string())
+                                            .unwrap_or_else(|| {
+                                                doc.children(opt_id)
+                                                    .filter_map(|(_, n)| n.text_content())
+                                                    .collect::<String>()
+                                            });
                                         if is_selected || selected_val.is_none() {
                                             selected_val = Some(opt_v);
                                         }

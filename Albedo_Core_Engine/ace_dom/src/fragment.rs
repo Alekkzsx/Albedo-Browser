@@ -11,11 +11,7 @@ use ace_core::id::NodeId;
 use ace_core::text::SegmentedString;
 
 /// Faz o parsing de um fragmento HTML considerando o contexto do elemento pai (WHATWG §13.4).
-pub fn parse_fragment(
-    doc: &mut Document,
-    context_node_id: Option<NodeId>,
-    html: &str,
-) -> NodeId {
+pub fn parse_fragment(doc: &mut Document, context_node_id: Option<NodeId>, html: &str) -> NodeId {
     let frag_id = doc.create_document_fragment();
 
     let mut builder = HTMLTreeBuilder::new(None);
@@ -91,7 +87,10 @@ pub fn parse_fragment(
     let temp_doc = builder.finish();
 
     // Encontra os nós construídos e clona-os para o fragmento do documento de destino
-    let search_root = temp_doc.body.or(temp_doc.document_element).unwrap_or(temp_doc.root());
+    let search_root = temp_doc
+        .body
+        .or(temp_doc.document_element)
+        .unwrap_or(temp_doc.root());
     let mut cloned_nodes = Vec::new();
 
     for (child_id, _) in temp_doc.children(search_root) {
@@ -113,7 +112,9 @@ fn clone_node_into_doc(
     src_node_id: NodeId,
     dest_doc: &mut Document,
 ) -> Result<NodeId, crate::error::DomError> {
-    let src_node = src_doc.get_node(src_node_id).ok_or(crate::error::DomError::InvalidNodeId(src_node_id))?;
+    let src_node = src_doc
+        .get_node(src_node_id)
+        .ok_or(crate::error::DomError::InvalidNodeId(src_node_id))?;
     let new_kind = src_node.kind.clone();
 
     let dummy_id = NodeId::new();

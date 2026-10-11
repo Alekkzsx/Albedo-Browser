@@ -47,7 +47,10 @@ fn test_nested_var_fallbacks() {
 
     let computed = StyleResolver::resolve_element_style(&doc, target_id, &[]);
     assert_eq!(computed.get_property_value("color"), Some("purple"));
-    assert_eq!(computed.get_property_value("background-color"), Some("orange"));
+    assert_eq!(
+        computed.get_property_value("background-color"),
+        Some("orange")
+    );
 }
 
 #[test]
@@ -146,7 +149,10 @@ fn test_custom_properties_case_sensitivity() {
 
     let computed = StyleResolver::resolve_element_style(&doc, target_id, &[]);
     assert_eq!(computed.get_property_value("color"), Some("#ff0000"));
-    assert_eq!(computed.get_property_value("background-color"), Some("#00ff00"));
+    assert_eq!(
+        computed.get_property_value("background-color"),
+        Some("#00ff00")
+    );
     assert_eq!(computed.get_property_value("border-color"), Some("#0000ff"));
     assert_eq!(computed.get_custom_property("--mainColor"), Some("#ff0000"));
     assert_eq!(computed.get_custom_property("--maincolor"), Some("#00ff00"));

@@ -74,7 +74,8 @@ impl Document {
 
     /// Reconstrói o índice de busca rápida de IDs e Classes do documento.
     pub fn rebuild_index(&mut self) {
-        self.element_index.rebuild_from_arena(&self.arena, self.root);
+        self.element_index
+            .rebuild_from_arena(&self.arena, self.root);
     }
 
     /// Retorna o `NodeId` do nó raiz do documento.
@@ -217,10 +218,12 @@ impl Document {
         host_id: NodeId,
         mode: crate::node::ShadowMode,
     ) -> Result<NodeId, DomError> {
-        let host_node = self.get_node(host_id).ok_or(DomError::InvalidNodeId(host_id))?;
-        let el_data = host_node
-            .as_element()
-            .ok_or_else(|| DomError::HierarchyRequestError("Apenas Elementos podem hospedar Shadow DOM".into()))?;
+        let host_node = self
+            .get_node(host_id)
+            .ok_or(DomError::InvalidNodeId(host_id))?;
+        let el_data = host_node.as_element().ok_or_else(|| {
+            DomError::HierarchyRequestError("Apenas Elementos podem hospedar Shadow DOM".into())
+        })?;
 
         if el_data.shadow_root().is_some() {
             return Err(DomError::HierarchyRequestError(
@@ -229,7 +232,10 @@ impl Document {
         }
 
         let dummy_id = NodeId::new();
-        let shadow_data = crate::node::ShadowRootData { mode, host: host_id };
+        let shadow_data = crate::node::ShadowRootData {
+            mode,
+            host: host_id,
+        };
         let shadow_node = NodeData::new(dummy_id, NodeKind::ShadowRoot(Box::new(shadow_data)));
         let arena_id = self.arena.alloc(shadow_node);
         let shadow_root_id = arena_id.to_node_id();
@@ -255,7 +261,9 @@ impl Document {
 
     /// Clona um nó existente no documento. Se `deep == true`, clona recursivamente todos os descendentes.
     pub fn clone_node(&mut self, node_id: NodeId, deep: bool) -> Result<NodeId, DomError> {
-        let original_node = self.get_node(node_id).ok_or(DomError::InvalidNodeId(node_id))?;
+        let original_node = self
+            .get_node(node_id)
+            .ok_or(DomError::InvalidNodeId(node_id))?;
         let new_kind = original_node.kind.clone();
 
         let dummy_id = NodeId::new();
@@ -333,15 +341,23 @@ impl Document {
     /// Divide um nó de texto em dois nós consecutivos no deslocamento `offset` especificado (WHATWG Text §4.6).
     pub fn split_text(&mut self, text_id: NodeId, offset: usize) -> Result<NodeId, DomError> {
         let (parent_id, left_text, right_text) = {
-            let node = self.get_node(text_id).ok_or(DomError::InvalidNodeId(text_id))?;
+            let node = self
+                .get_node(text_id)
+                .ok_or(DomError::InvalidNodeId(text_id))?;
             if let NodeKind::Text(ref t) = node.kind {
                 let s = t.data.as_str();
                 if offset > s.len() || !s.is_char_boundary(offset) {
                     return Err(DomError::IndexSizeError);
                 }
-                (node.parent, s[..offset].to_string(), s[offset..].to_string())
+                (
+                    node.parent,
+                    s[..offset].to_string(),
+                    s[offset..].to_string(),
+                )
             } else {
-                return Err(DomError::HierarchyRequestError("Nó não é do tipo Text".into()));
+                return Err(DomError::HierarchyRequestError(
+                    "Nó não é do tipo Text".into(),
+                ));
             }
         };
 
@@ -368,17 +384,28 @@ impl Document {
         let mut prev_text_id: Option<NodeId> = None;
 
         for child_id in children_ids {
-            let is_text = self.get_node(child_id).map(|n| matches!(n.kind, NodeKind::Text(_))).unwrap_or(false);
+            let is_text = self
+                .get_node(child_id)
+                .map(|n| matches!(n.kind, NodeKind::Text(_)))
+                .unwrap_or(false);
 
             if is_text {
-                let is_empty = self.get_node(child_id).and_then(|n| n.text_content()).map(|t| t.is_empty()).unwrap_or(false);
+                let is_empty = self
+                    .get_node(child_id)
+                    .and_then(|n| n.text_content())
+                    .map(|t| t.is_empty())
+                    .unwrap_or(false);
                 if is_empty {
                     self.remove_child(root_id, child_id)?;
                     continue;
                 }
 
                 if let Some(prev_id) = prev_text_id {
-                    let next_content = self.get_node(child_id).and_then(|n| n.text_content()).unwrap_or_default().to_string();
+                    let next_content = self
+                        .get_node(child_id)
+                        .and_then(|n| n.text_content())
+                        .unwrap_or_default()
+                        .to_string();
                     if let Some(prev_node) = self.get_node_mut(prev_id) {
                         if let NodeKind::Text(ref mut t) = prev_node.kind {
                             let mut merged = t.data.to_string();
@@ -432,7 +459,11 @@ impl Document {
     }
 
     /// Compara a posição deste nó em relação a outro na árvore DOM conforme o padrão WHATWG DOM §4.2.
-    pub fn compare_document_position(&self, node_a: NodeId, node_b: NodeId) -> crate::node::DocumentPosition {
+    pub fn compare_document_position(
+        &self,
+        node_a: NodeId,
+        node_b: NodeId,
+    ) -> crate::node::DocumentPosition {
         crate::node::compare_document_position(self, node_a, node_b)
     }
 

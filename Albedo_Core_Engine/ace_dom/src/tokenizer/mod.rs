@@ -6,7 +6,9 @@ pub mod simd;
 pub mod state;
 pub mod token;
 
-pub use simd::{find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close, find_unquoted_attr_end};
+pub use simd::{
+    find_comment_dash, find_html_text_delimiter, find_quote, find_tag_close, find_unquoted_attr_end,
+};
 pub use state::TokenizerState;
 pub use token::{CompactHTMLToken, DoctypeToken, EndTagToken, StartTagToken, Token};
 
@@ -176,7 +178,11 @@ impl HTMLTokenizer {
     }
 
     /// Tokeniza o buffer disponível até o momento sem emitir `Token::Eof` obrigatoriamente.
-    pub fn tokenize_chunk(&mut self, input: &mut SegmentedString, sink: &mut dyn TokenSink) -> bool {
+    pub fn tokenize_chunk(
+        &mut self,
+        input: &mut SegmentedString,
+        sink: &mut dyn TokenSink,
+    ) -> bool {
         self.tokenize_internal(input, sink, false)
     }
 
@@ -250,7 +256,8 @@ impl HTMLTokenizer {
     #[inline]
     fn flush_doctype_name(&mut self) {
         if !self.current_doctype_name.is_empty() {
-            self.current_doctype.name = Some(SmolStr::new(std::mem::take(&mut self.current_doctype_name)));
+            self.current_doctype.name =
+                Some(SmolStr::new(std::mem::take(&mut self.current_doctype_name)));
         }
     }
 
@@ -328,7 +335,9 @@ impl HTMLTokenizer {
                     TokenizerState::Data => match ch {
                         '&' => {
                             let remaining = peek_str(input, 32);
-                            if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            if let Some((decoded, consumed)) =
+                                decode_character_reference(&remaining)
+                            {
                                 for _ in 0..consumed {
                                     input.advance();
                                 }
@@ -341,7 +350,11 @@ impl HTMLTokenizer {
                             self.state = TokenizerState::TagOpen;
                         }
                         '\0' => {
-                            self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
+                            self.emit_token(
+                                Token::Character(SmolStr::new("\u{FFFD}")),
+                                sink,
+                                input,
+                            );
                         }
                         other => {
                             self.emit_token(Token::Character(char_to_smolstr(other)), sink, input);
@@ -525,7 +538,9 @@ impl HTMLTokenizer {
                         }
                         '&' => {
                             let remaining = peek_str(input, 32);
-                            if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            if let Some((decoded, consumed)) =
+                                decode_character_reference(&remaining)
+                            {
                                 for _ in 0..consumed {
                                     input.advance();
                                 }
@@ -550,7 +565,9 @@ impl HTMLTokenizer {
                         }
                         '&' => {
                             let remaining = peek_str(input, 32);
-                            if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            if let Some((decoded, consumed)) =
+                                decode_character_reference(&remaining)
+                            {
                                 for _ in 0..consumed {
                                     input.advance();
                                 }
@@ -575,7 +592,9 @@ impl HTMLTokenizer {
                         }
                         '&' => {
                             let remaining = peek_str(input, 32);
-                            if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            if let Some((decoded, consumed)) =
+                                decode_character_reference(&remaining)
+                            {
                                 for _ in 0..consumed {
                                     input.advance();
                                 }
@@ -876,9 +895,14 @@ impl HTMLTokenizer {
                                 if let Some(after_slash) = peeked.strip_prefix('/') {
                                     if after_slash.to_ascii_lowercase().starts_with(expected_str) {
                                         let remainder = &after_slash[expected_str.len()..];
-                                        if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                        if remainder.starts_with('>')
+                                            || remainder.starts_with(' ')
+                                            || remainder.starts_with('\t')
+                                            || remainder.starts_with('\n')
+                                            || remainder.starts_with('/')
+                                        {
                                             // Consome '/' e o nome da tag
-                                             input.advance(); // consome '/'
+                                            input.advance(); // consome '/'
                                             for _ in 0..expected_str.len() {
                                                 input.advance();
                                             }
@@ -888,9 +912,13 @@ impl HTMLTokenizer {
                                                     break;
                                                 }
                                             }
-                                            self.emit_token(Token::EndTag(EndTagToken {
-                                                name: expected_tag.clone(),
-                                            }), sink, input);
+                                            self.emit_token(
+                                                Token::EndTag(EndTagToken {
+                                                    name: expected_tag.clone(),
+                                                }),
+                                                sink,
+                                                input,
+                                            );
                                             self.state = TokenizerState::Data;
                                             continue;
                                         }
@@ -900,7 +928,11 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("<")), sink, input);
                         }
                         '\0' => {
-                            self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
+                            self.emit_token(
+                                Token::Character(SmolStr::new("\u{FFFD}")),
+                                sink,
+                                input,
+                            );
                         }
                         c => {
                             self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
@@ -911,7 +943,9 @@ impl HTMLTokenizer {
                     TokenizerState::RCDATA => match ch {
                         '&' => {
                             let remaining = peek_str(input, 32);
-                            if let Some((decoded, consumed)) = decode_character_reference(&remaining) {
+                            if let Some((decoded, consumed)) =
+                                decode_character_reference(&remaining)
+                            {
                                 for _ in 0..consumed {
                                     input.advance();
                                 }
@@ -929,7 +963,12 @@ impl HTMLTokenizer {
                                 if let Some(after_slash) = peeked.strip_prefix('/') {
                                     if after_slash.to_ascii_lowercase().starts_with(expected_str) {
                                         let remainder = &after_slash[expected_str.len()..];
-                                        if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                        if remainder.starts_with('>')
+                                            || remainder.starts_with(' ')
+                                            || remainder.starts_with('\t')
+                                            || remainder.starts_with('\n')
+                                            || remainder.starts_with('/')
+                                        {
                                             input.advance(); // consome '/'
                                             for _ in 0..expected_str.len() {
                                                 input.advance();
@@ -939,9 +978,13 @@ impl HTMLTokenizer {
                                                     break;
                                                 }
                                             }
-                                            self.emit_token(Token::EndTag(EndTagToken {
-                                                name: expected_tag.clone(),
-                                            }), sink, input);
+                                            self.emit_token(
+                                                Token::EndTag(EndTagToken {
+                                                    name: expected_tag.clone(),
+                                                }),
+                                                sink,
+                                                input,
+                                            );
                                             self.state = TokenizerState::Data;
                                             continue;
                                         }
@@ -951,7 +994,11 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("<")), sink, input);
                         }
                         '\0' => {
-                            self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
+                            self.emit_token(
+                                Token::Character(SmolStr::new("\u{FFFD}")),
+                                sink,
+                                input,
+                            );
                         }
                         c => {
                             self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
@@ -964,7 +1011,12 @@ impl HTMLTokenizer {
                             let peeked = peek_str(input, 8); // '/script'
                             if peeked.to_ascii_lowercase().starts_with("/script") {
                                 let remainder = &peeked[7..];
-                                if remainder.starts_with('>') || remainder.starts_with(' ') || remainder.starts_with('\t') || remainder.starts_with('\n') || remainder.starts_with('/') {
+                                if remainder.starts_with('>')
+                                    || remainder.starts_with(' ')
+                                    || remainder.starts_with('\t')
+                                    || remainder.starts_with('\n')
+                                    || remainder.starts_with('/')
+                                {
                                     for _ in 0..7 {
                                         input.advance();
                                     }
@@ -973,9 +1025,13 @@ impl HTMLTokenizer {
                                             break;
                                         }
                                     }
-                                    self.emit_token(Token::EndTag(EndTagToken {
-                                        name: Atom::new("script"),
-                                    }), sink, input);
+                                    self.emit_token(
+                                        Token::EndTag(EndTagToken {
+                                            name: Atom::new("script"),
+                                        }),
+                                        sink,
+                                        input,
+                                    );
                                     self.state = TokenizerState::Data;
                                     continue;
                                 }
@@ -983,7 +1039,11 @@ impl HTMLTokenizer {
                             self.emit_token(Token::Character(SmolStr::new("<")), sink, input);
                         }
                         '\0' => {
-                            self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
+                            self.emit_token(
+                                Token::Character(SmolStr::new("\u{FFFD}")),
+                                sink,
+                                input,
+                            );
                         }
                         c => {
                             self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);
@@ -993,7 +1053,11 @@ impl HTMLTokenizer {
                     // 30. PLAINTEXT State (WHATWG §12.2.5.5 - ex: <plaintext>)
                     TokenizerState::PLAINTEXT => match ch {
                         '\0' => {
-                            self.emit_token(Token::Character(SmolStr::new("\u{FFFD}")), sink, input);
+                            self.emit_token(
+                                Token::Character(SmolStr::new("\u{FFFD}")),
+                                sink,
+                                input,
+                            );
                         }
                         c => {
                             self.emit_token(Token::Character(char_to_smolstr(c)), sink, input);

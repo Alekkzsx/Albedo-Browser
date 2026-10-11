@@ -25,7 +25,11 @@ bitflags::bitflags! {
 }
 
 /// Executa a comparação de posição documental normativa entre dois nós.
-pub fn compare_document_position(doc: &Document, node_a: NodeId, node_b: NodeId) -> DocumentPosition {
+pub fn compare_document_position(
+    doc: &Document,
+    node_a: NodeId,
+    node_b: NodeId,
+) -> DocumentPosition {
     if node_a == node_b {
         return DocumentPosition::empty();
     }
@@ -87,7 +91,9 @@ pub fn compare_document_position(doc: &Document, node_a: NodeId, node_b: NodeId)
             } else {
                 DocumentPosition::FOLLOWING
             };
-            DocumentPosition::DISCONNECTED | DocumentPosition::IMPLEMENTATION_SPECIFIC | fallback_order
+            DocumentPosition::DISCONNECTED
+                | DocumentPosition::IMPLEMENTATION_SPECIFIC
+                | fallback_order
         }
     }
 }

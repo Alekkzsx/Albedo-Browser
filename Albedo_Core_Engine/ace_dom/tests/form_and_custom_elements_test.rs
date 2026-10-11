@@ -35,14 +35,25 @@ fn test_form_data_serialization() {
     let mut fd = FormData::new();
     fd.append("username", "albedo_user");
     fd.append("search query", "rust browser engine");
-    fd.append_file("avatar", "profile.png", "image/png", vec![0x89, 0x50, 0x4E, 0x47]);
+    fd.append_file(
+        "avatar",
+        "profile.png",
+        "image/png",
+        vec![0x89, 0x50, 0x4E, 0x47],
+    );
 
     assert_eq!(fd.len(), 3);
-    assert_eq!(fd.get("username").and_then(|v| v.as_text()), Some("albedo_user"));
+    assert_eq!(
+        fd.get("username").and_then(|v| v.as_text()),
+        Some("albedo_user")
+    );
 
     // Valida codificação url-encoded
     let encoded = fd.to_url_encoded();
-    assert_eq!(encoded, "username=albedo_user&search+query=rust+browser+engine");
+    assert_eq!(
+        encoded,
+        "username=albedo_user&search+query=rust+browser+engine"
+    );
 
     // Valida montagem multipart
     let multipart = fd.to_multipart("---BOUND123");

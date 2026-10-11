@@ -126,7 +126,9 @@ impl CSPPolicy {
         if let Some(sources) = self.directives.get(&directive) {
             Some(sources.as_slice())
         } else {
-            self.directives.get(&CSPDirective::DefaultSrc).map(|s| s.as_slice())
+            self.directives
+                .get(&CSPDirective::DefaultSrc)
+                .map(|s| s.as_slice())
         }
     }
 

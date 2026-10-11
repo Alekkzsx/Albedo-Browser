@@ -6,13 +6,13 @@
 //! - Integração com WebIDL bindings (`TextBindings`, `NodeBindings`) e Live Ranges.
 //! - Testes de estresse e invariantes estruturais da arena.
 
+use ace_core::id::NodeId;
 use ace_dom::bindings::{NodeBindings, TextBindings, WebIDLException};
 use ace_dom::error::DomError;
 use ace_dom::node::element::Namespace;
 use ace_dom::parse_html;
 use ace_dom::range::{BoundaryPoint, LiveRangeHandle, LiveRangeRegistry, Range};
 use ace_dom::tree::Document;
-use ace_core::id::NodeId;
 
 #[test]
 fn test_split_text_middle_with_parent() {
@@ -81,7 +81,9 @@ fn test_split_text_at_length() {
     doc.append_child(div_id, text_id).unwrap();
 
     let len = "AlbedoEngine".len();
-    let new_text_id = doc.split_text(text_id, len).expect("split_text no offset len");
+    let new_text_id = doc
+        .split_text(text_id, len)
+        .expect("split_text no offset len");
 
     let left = doc.get_node(text_id).unwrap();
     assert_eq!(left.text_content().unwrap(), "AlbedoEngine");
@@ -126,7 +128,10 @@ fn test_split_text_orphaned_node_at_zero_and_len() {
 
     let orphan2 = doc.create_text_node("Beta");
     let new2 = doc.split_text(orphan2, 4).unwrap();
-    assert_eq!(doc.get_node(orphan2).unwrap().text_content().unwrap(), "Beta");
+    assert_eq!(
+        doc.get_node(orphan2).unwrap().text_content().unwrap(),
+        "Beta"
+    );
     assert_eq!(doc.get_node(new2).unwrap().text_content().unwrap(), "");
 }
 
@@ -149,9 +154,17 @@ fn test_split_text_utf8_multibyte_boundary_safety() {
     // Divisão em limites válidos de caracteres UTF-8
     // "Olá " -> offset 5 (O=1, l=1, á=2, ' '=1 -> 5 bytes)
     assert!(text_content.is_char_boundary(5));
-    let right_id = doc.split_text(text_id, 5).expect("split_text em char boundary valido");
-    assert_eq!(doc.get_node(text_id).unwrap().text_content().unwrap(), "Olá ");
-    assert_eq!(doc.get_node(right_id).unwrap().text_content().unwrap(), "🦀 Mundo 🚀!");
+    let right_id = doc
+        .split_text(text_id, 5)
+        .expect("split_text em char boundary valido");
+    assert_eq!(
+        doc.get_node(text_id).unwrap().text_content().unwrap(),
+        "Olá "
+    );
+    assert_eq!(
+        doc.get_node(right_id).unwrap().text_content().unwrap(),
+        "🦀 Mundo 🚀!"
+    );
 
     // Agora tenta dividir '🦀' (4 bytes: de 0 a 4 no right_id) no meio (offset 1, 2 ou 3)
     let err1 = doc.split_text(right_id, 1);
@@ -164,9 +177,17 @@ fn test_split_text_utf8_multibyte_boundary_safety() {
     assert_eq!(err3, Err(DomError::IndexSizeError));
 
     // No offset 4 (logo após o emoji do caranguejo '🦀') deve funcionar perfeitamente
-    let after_crab = doc.split_text(right_id, 4).expect("split_text apos o emoji 🦀");
-    assert_eq!(doc.get_node(right_id).unwrap().text_content().unwrap(), "🦀");
-    assert_eq!(doc.get_node(after_crab).unwrap().text_content().unwrap(), " Mundo 🚀!");
+    let after_crab = doc
+        .split_text(right_id, 4)
+        .expect("split_text apos o emoji 🦀");
+    assert_eq!(
+        doc.get_node(right_id).unwrap().text_content().unwrap(),
+        "🦀"
+    );
+    assert_eq!(
+        doc.get_node(after_crab).unwrap().text_content().unwrap(),
+        " Mundo 🚀!"
+    );
 }
 
 #[test]
@@ -251,7 +272,10 @@ fn test_normalize_consecutive_text_nodes() {
     assert_eq!(children[0], t1);
 
     let unified_node = doc.get_node(t1).unwrap();
-    assert_eq!(unified_node.text_content().unwrap(), "Hello Beautiful World");
+    assert_eq!(
+        unified_node.text_content().unwrap(),
+        "Hello Beautiful World"
+    );
     assert_eq!(unified_node.prev_sibling, None);
     assert_eq!(unified_node.next_sibling, None);
     assert_eq!(doc.get_node(p_id).unwrap().first_child, Some(t1));
@@ -281,7 +305,10 @@ fn test_normalize_empty_text_nodes_removal() {
     let children: Vec<NodeId> = doc.children(p_id).map(|(id, _)| id).collect();
     assert_eq!(children.len(), 1);
     assert_eq!(children[0], t1);
-    assert_eq!(doc.get_node(t1).unwrap().text_content().unwrap(), "FirstSecond");
+    assert_eq!(
+        doc.get_node(t1).unwrap().text_content().unwrap(),
+        "FirstSecond"
+    );
 }
 
 #[test]
@@ -334,8 +361,14 @@ fn test_normalize_mixed_elements_and_comments_boundaries() {
     // Esperado: [t1 ("Part1Part2"), comment, t3 ("Part3Part4"), span, t5 ("Part5")]
     assert_eq!(children, vec![t1, comment, t3, span, t5]);
 
-    assert_eq!(doc.get_node(t1).unwrap().text_content().unwrap(), "Part1Part2");
-    assert_eq!(doc.get_node(t3).unwrap().text_content().unwrap(), "Part3Part4");
+    assert_eq!(
+        doc.get_node(t1).unwrap().text_content().unwrap(),
+        "Part1Part2"
+    );
+    assert_eq!(
+        doc.get_node(t3).unwrap().text_content().unwrap(),
+        "Part3Part4"
+    );
     assert_eq!(doc.get_node(t5).unwrap().text_content().unwrap(), "Part5");
 }
 
@@ -384,7 +417,10 @@ fn test_normalize_idempotency() {
     for _ in 0..5 {
         doc.normalize(doc.root()).unwrap();
         assert_eq!(doc.children(p).count(), 1);
-        assert_eq!(doc.get_node(t1).unwrap().text_content().unwrap(), "Test idempotency");
+        assert_eq!(
+            doc.get_node(t1).unwrap().text_content().unwrap(),
+            "Test idempotency"
+        );
     }
 }
 
@@ -398,7 +434,10 @@ fn test_normalize_text_node_and_invalid_node() {
 
     // Normalizar ID inexistente retorna erro
     let fake_id = NodeId::new();
-    assert_eq!(doc.normalize(fake_id), Err(DomError::InvalidNodeId(fake_id)));
+    assert_eq!(
+        doc.normalize(fake_id),
+        Err(DomError::InvalidNodeId(fake_id))
+    );
 }
 
 #[test]
@@ -408,13 +447,22 @@ fn test_webidl_text_and_node_bindings() {
     let text_node = doc.first_child(container).unwrap();
 
     // Valida getters de TextBindings
-    assert_eq!(TextBindings::get_data(&doc, text_node).as_deref(), Some("FirstSecond"));
+    assert_eq!(
+        TextBindings::get_data(&doc, text_node).as_deref(),
+        Some("FirstSecond")
+    );
     assert_eq!(TextBindings::get_length(&doc, text_node), Some(11));
 
     // Executa splitText via WebIDL
     let new_text = TextBindings::split_text(&mut doc, text_node, 5).expect("split_text via WebIDL");
-    assert_eq!(TextBindings::get_data(&doc, text_node).as_deref(), Some("First"));
-    assert_eq!(TextBindings::get_data(&doc, new_text).as_deref(), Some("Second"));
+    assert_eq!(
+        TextBindings::get_data(&doc, text_node).as_deref(),
+        Some("First")
+    );
+    assert_eq!(
+        TextBindings::get_data(&doc, new_text).as_deref(),
+        Some("Second")
+    );
 
     // Tenta splitText fora dos limites via WebIDL
     let err = TextBindings::split_text(&mut doc, text_node, 100);
@@ -423,7 +471,10 @@ fn test_webidl_text_and_node_bindings() {
     // Normaliza via NodeBindings
     NodeBindings::normalize(&mut doc, container).expect("normalize via WebIDL");
     assert_eq!(doc.children(container).count(), 1);
-    assert_eq!(TextBindings::get_data(&doc, text_node).as_deref(), Some("FirstSecond"));
+    assert_eq!(
+        TextBindings::get_data(&doc, text_node).as_deref(),
+        Some("FirstSecond")
+    );
 }
 
 #[test]

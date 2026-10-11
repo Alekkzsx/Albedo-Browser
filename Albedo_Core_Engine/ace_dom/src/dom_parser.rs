@@ -48,7 +48,11 @@ impl DOMParser {
     }
 
     /// Faz o parsing de uma string de acordo com o tipo MIME informado.
-    pub fn parse_from_string(&self, text: &str, mime_type: SupportedType) -> Result<Document, DomError> {
+    pub fn parse_from_string(
+        &self,
+        text: &str,
+        mime_type: SupportedType,
+    ) -> Result<Document, DomError> {
         match mime_type {
             SupportedType::TextHtml => Ok(parse_html(text)),
             SupportedType::ImageSvgXml => {

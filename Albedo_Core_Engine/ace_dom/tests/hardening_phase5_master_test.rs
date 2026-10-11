@@ -96,12 +96,20 @@ fn test_form_data_remote_association_with_form_attr() {
     "#;
 
     let doc = parse_html(html);
-    let form_id = doc.get_element_by_id("contact-form").expect("form encontrado");
+    let form_id = doc
+        .get_element_by_id("contact-form")
+        .expect("form encontrado");
 
     let form_data = FormData::from_form_element(&doc, form_id);
 
-    assert_eq!(form_data.get("username").unwrap().as_text(), Some("albedo_dev"));
-    assert_eq!(form_data.get("email").unwrap().as_text(), Some("dev@albedo.org"));
+    assert_eq!(
+        form_data.get("username").unwrap().as_text(),
+        Some("albedo_dev")
+    );
+    assert_eq!(
+        form_data.get("email").unwrap().as_text(),
+        Some("dev@albedo.org")
+    );
     assert_eq!(
         form_data.get("bio").unwrap().as_text(),
         Some("Engenharia de navegadores de alta performance.")
@@ -202,7 +210,9 @@ fn test_select_and_colgroup_insertion_modes() {
     let doc = parse_html(html);
 
     // Valida que o select gerou 2 optgroups e 3 options
-    let _select_id = doc.get_element_by_id("country-select").expect("select encontrado");
+    let _select_id = doc
+        .get_element_by_id("country-select")
+        .expect("select encontrado");
     let options = doc.query_selector_all("option");
     assert_eq!(options.len(), 3);
 

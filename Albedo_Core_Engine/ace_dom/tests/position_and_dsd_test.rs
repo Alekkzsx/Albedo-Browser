@@ -19,7 +19,10 @@ fn test_compare_document_position_topological_relations() {
     doc.append_child(root, parent).unwrap();
 
     // 1. Mesmo nó retorna 0 (vazio)
-    assert_eq!(doc.compare_document_position(child1, child1), DocumentPosition::empty());
+    assert_eq!(
+        doc.compare_document_position(child1, child1),
+        DocumentPosition::empty()
+    );
 
     // 2. parent em relação a child1 (parent CONTAINS e PRECEDES child1)
     let parent_rel = doc.compare_document_position(child1, parent);

@@ -51,8 +51,12 @@ impl BackgroundChunkSink {
                 }
             }
             if let Some(h) = href {
-                let is_stylesheet = rel.as_deref().is_some_and(|r| r.eq_ignore_ascii_case("stylesheet"));
-                let is_preload = rel.as_deref().is_some_and(|r| r.eq_ignore_ascii_case("preload"));
+                let is_stylesheet = rel
+                    .as_deref()
+                    .is_some_and(|r| r.eq_ignore_ascii_case("stylesheet"));
+                let is_preload = rel
+                    .as_deref()
+                    .is_some_and(|r| r.eq_ignore_ascii_case("preload"));
                 if is_stylesheet || (is_preload && as_kind.as_deref() == Some("style")) {
                     return Some(PreloadRequest {
                         url: SmolStr::new(h),
@@ -99,10 +103,8 @@ impl BackgroundChunkSink {
         if !self.current_chunk.tokens.is_empty() || is_last {
             self.current_chunk.is_last = is_last;
             self.current_chunk.ending_state = ending_state;
-            let chunk_to_send = std::mem::replace(
-                &mut self.current_chunk,
-                ParsedChunk::new(ending_state),
-            );
+            let chunk_to_send =
+                std::mem::replace(&mut self.current_chunk, ParsedChunk::new(ending_state));
             let _ = self.sender.send(chunk_to_send);
         }
     }

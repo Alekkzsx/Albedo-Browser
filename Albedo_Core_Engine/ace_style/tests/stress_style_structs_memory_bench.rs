@@ -23,10 +23,7 @@ fn test_stress_style_structs_memory_bench() {
     for i in 0..5_000 {
         html.push_str("<div class='container'>");
         for j in 0..9 {
-            html.push_str(&format!(
-                "<span class='text-item'>Texto {}-{}</span>",
-                i, j
-            ));
+            html.push_str(&format!("<span class='text-item'>Texto {}-{}</span>", i, j));
         }
         html.push_str("</div>");
     }
@@ -131,7 +128,8 @@ fn test_stress_style_structs_memory_bench() {
         + (total - shared_grid);
 
     let theoretical_max_allocations = total * 4;
-    let savings_rate = 1.0 - (actual_allocated_substructs_per_node as f64 / theoretical_max_allocations as f64);
+    let savings_rate =
+        1.0 - (actual_allocated_substructs_per_node as f64 / theoretical_max_allocations as f64);
 
     println!(
         "Economia de memória heap de structs resetadas: {:.2}% (tamanho struct de referência: {}B)",

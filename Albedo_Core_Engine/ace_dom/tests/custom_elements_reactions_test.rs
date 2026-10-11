@@ -15,8 +15,8 @@ use ace_dom::custom_elements::{
 };
 use ace_dom::node::element::Namespace;
 use ace_dom::tree::mutation::{
-    append_child_with_reactions, insert_after_with_reactions,
-    prepend_child_with_reactions, remove_child_with_reactions, replace_child_with_reactions,
+    append_child_with_reactions, insert_after_with_reactions, prepend_child_with_reactions,
+    remove_child_with_reactions, replace_child_with_reactions,
 };
 use ace_dom::tree::Document;
 use smol_str::SmolStr;
@@ -96,7 +96,10 @@ fn test_connected_callback_on_tree_insertion_and_ordering() {
     let child1 = doc.create_element("child-widget", Namespace::Html);
     let child2 = doc.create_element("child-widget", Namespace::Html);
 
-    if let Some(el) = doc.get_node_mut(parent_elem).and_then(|n| n.as_element_mut()) {
+    if let Some(el) = doc
+        .get_node_mut(parent_elem)
+        .and_then(|n| n.as_element_mut())
+    {
         el.set_custom_element_state(CustomElementState::Custom);
     }
     if let Some(el) = doc.get_node_mut(child1).and_then(|n| n.as_element_mut()) {
@@ -112,7 +115,10 @@ fn test_connected_callback_on_tree_insertion_and_ordering() {
     append_child_with_reactions(doc.arena_mut(), parent_elem, child2, &mut reactions).unwrap();
     reactions.process_reactions(doc.arena(), &registry);
 
-    assert!(connection_log.lock().unwrap().is_empty(), "Não deve disparar em árvore desconectada");
+    assert!(
+        connection_log.lock().unwrap().is_empty(),
+        "Não deve disparar em árvore desconectada"
+    );
 
     // 2. Anexa a subárvore completa à raiz do Document
     // Deve disparar connectedCallback em ordem pré-ordem (parent -> child1 -> child2)
@@ -189,7 +195,14 @@ fn test_disconnected_callback_on_node_removal_and_replace() {
     reactions.drain_all();
 
     disconnection_log.lock().unwrap().clear();
-    replace_child_with_reactions(doc.arena_mut(), doc_root, new_node, root_node, &mut reactions).unwrap();
+    replace_child_with_reactions(
+        doc.arena_mut(),
+        doc_root,
+        new_node,
+        root_node,
+        &mut reactions,
+    )
+    .unwrap();
 
     let queued_reactions = reactions.drain_all();
     assert!(queued_reactions.contains(&CustomElementReaction::Disconnected(root_node)));
@@ -202,7 +215,9 @@ fn test_attribute_changed_callback_lifecycle_and_filters() {
     let mut registry = CustomElementRegistry::new();
     let mut reactions = CustomElementReactionsStack::new();
 
-    let attr_log = Arc::new(Mutex::new(Vec::<(String, Option<String>, Option<String>)>::new()));
+    let attr_log = Arc::new(Mutex::new(
+        Vec::<(String, Option<String>, Option<String>)>::new(),
+    ));
     let log_a = attr_log.clone();
 
     let callbacks = CustomElementCallbacks::new().with_attribute_changed({
@@ -269,7 +284,11 @@ fn test_attribute_changed_callback_lifecycle_and_filters() {
     );
     assert_eq!(
         log_result[1],
-        ("theme".to_string(), Some("dark".to_string()), Some("light".to_string()))
+        (
+            "theme".to_string(),
+            Some("dark".to_string()),
+            Some("light".to_string())
+        )
     );
     assert_eq!(
         log_result[2],
@@ -299,7 +318,14 @@ fn test_insert_after_and_prepend_with_reactions() {
     // Prepend
     prepend_child_with_reactions(doc.arena_mut(), parent_id, custom_first, &mut reactions).unwrap();
     // Insert after
-    insert_after_with_reactions(doc.arena_mut(), parent_id, custom_after, ref_node, &mut reactions).unwrap();
+    insert_after_with_reactions(
+        doc.arena_mut(),
+        parent_id,
+        custom_after,
+        ref_node,
+        &mut reactions,
+    )
+    .unwrap();
 
     let drained = reactions.drain_all();
     assert!(drained.contains(&CustomElementReaction::Connected(custom_first)));
@@ -353,7 +379,8 @@ fn test_custom_elements_stress_500_nodes() {
                 &registry,
             );
         }
-        append_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions).unwrap();
+        append_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions)
+            .unwrap();
         created_nodes.push(node_id);
     }
 
@@ -365,7 +392,8 @@ fn test_custom_elements_stress_500_nodes() {
 
     // Remove todos os nós
     for node_id in created_nodes {
-        remove_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions).unwrap();
+        remove_child_with_reactions(doc.arena_mut(), container_id, node_id, &mut reactions)
+            .unwrap();
     }
     reactions.process_reactions(doc.arena(), &registry);
 
