@@ -8,7 +8,6 @@ use crate::rule_tree::bucket::pseudo_class_to_atom;
 use ace_core::id::NodeId;
 use ace_core::intern::Atom;
 use ace_dom::query::selector::{Combinator, ComplexSelector, SimpleSelector};
-use ace_dom::tree::Document;
 use bitflags::bitflags;
 use rustc_hash::{FxHashMap, FxHashSet};
 
