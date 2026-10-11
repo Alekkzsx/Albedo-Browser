@@ -154,18 +154,18 @@ fn test_stress_logical_properties_bidi_matrix() {
     let doc = parse_html(&html);
 
     let start = std::time::Instant::now();
-    let computed_styles = engine.compute_styles(&doc);
+    let render_tree = engine.compute_styles(&doc);
     let duration = start.elapsed();
     println!(
         "Estilização de {} nós concluída em {:?}",
-        computed_styles.len(),
+        render_tree.node_styles.len(),
         duration
     );
 
     assert!(
-        computed_styles.len() >= 6_000,
+        render_tree.node_styles.len() >= 6_000,
         "Total de nós estilizados esperado >= 6000, obtido: {}",
-        computed_styles.len()
+        render_tree.node_styles.len()
     );
 
     // 3. Validação matemática estrita contra W3C Writing Modes L1
@@ -174,7 +174,7 @@ fn test_stress_logical_properties_bidi_matrix() {
         let sample_dims_node = doc
             .get_element_by_id(&format!("m{}-dims-0", m_idx))
             .expect("Nó de dimensões não encontrado");
-        let s_dims = &computed_styles[&sample_dims_node];
+        let s_dims = render_tree.get_style(sample_dims_node).unwrap();
 
         assert_eq!(s_dims.direction(), *dir);
         assert_eq!(s_dims.writing_mode(), *wm);
