@@ -212,6 +212,13 @@ pub enum PseudoClass {
     Has(Box<ComplexSelector>),
 }
 
+/// Pseudo-elementos estruturais suportados (::before, ::after).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PseudoElement {
+    Before,
+    After,
+}
+
 /// Um seletor simples que pode ser casado contra um único nó.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimpleSelector {
@@ -230,6 +237,8 @@ pub enum SimpleSelector {
     },
     /// Pseudo-classe estrutural ou de estado
     Pseudo(PseudoClass),
+    /// Pseudo-elemento gerado
+    PseudoElement(PseudoElement),
 }
 
 impl SimpleSelector {
@@ -286,7 +295,11 @@ impl SimpleSelector {
 
         if let Some(pseudo_str) = trimmed.strip_prefix(':') {
             let lower = pseudo_str.to_ascii_lowercase();
-            if lower == "first-child" {
+            if lower == "before" || lower == ":before" {
+                return Some(Self::PseudoElement(PseudoElement::Before));
+            } else if lower == "after" || lower == ":after" {
+                return Some(Self::PseudoElement(PseudoElement::After));
+            } else if lower == "first-child" {
                 return Some(Self::Pseudo(PseudoClass::FirstChild));
             } else if lower == "last-child" {
                 return Some(Self::Pseudo(PseudoClass::LastChild));
@@ -615,6 +628,7 @@ impl SimpleSelector {
                     false
                 }
             },
+            Self::PseudoElement(_) => false,
         }
     }
 
@@ -632,7 +646,7 @@ impl SimpleSelector {
                 PseudoClass::Has(inner) => inner.specificity(),
                 _ => Specificity::new(0, 1, 0),
             },
-            Self::Tag(_) => Specificity::new(0, 0, 1),
+            Self::Tag(_) | Self::PseudoElement(_) => Specificity::new(0, 0, 1),
             Self::Universal => Specificity::ZERO,
         }
     }
