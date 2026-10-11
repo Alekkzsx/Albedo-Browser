@@ -1,13 +1,11 @@
 //! # Testes Unitários de Valores Primitivos e Parser L3 (Tier 1 & Tier 2)
 
 use ace_core::math::layout_unit::LayoutUnit;
-use ace_style::parser::component_value::{ComponentValueParser, MAX_NESTING_DEPTH};
 use ace_style::parser::declaration_parser::parse_declarations;
 use ace_style::parser::token::Token;
 use ace_style::parser::tokenizer::Tokenizer;
 use ace_style::values::color::CssColor;
-use ace_style::values::enums::*;
-use ace_style::values::length::{CalcExpr, Length, LengthPercentage};
+use ace_style::values::length::{CalcExpr, Length};
 
 #[test]
 fn test_length_conversions() {
