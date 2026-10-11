@@ -34,3 +34,4 @@ Adotamos a crate de geometria fortemente tipada [`euclid`](https://docs.rs/eucli
   - Zero custo de abstração em runtime (as tags de unidade são tipos fantasma de tamanho zero).
 - **Negativas / Riscos:**
   - Assinaturas de funções geométricas mais verbosas exigindo a parametrização do espaço de unidades.
+

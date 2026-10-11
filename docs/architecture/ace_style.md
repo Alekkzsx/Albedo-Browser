@@ -211,3 +211,4 @@ cargo clippy -p ace_style --all-targets --all-features -- -D warnings
 # Validar formatação do código
 cargo fmt --check -p ace_style
 ```
+

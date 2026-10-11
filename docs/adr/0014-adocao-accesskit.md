@@ -33,3 +33,4 @@ Adotamos a biblioteca Rust de código aberto [`AccessKit`](https://github.com/Ac
   - Conformidade estrita com o Paradigma Pragmático (Regra 1): a alma da árvore semântica é nossa, a infraestrutura de ponte é alavancada de uma crate madura da comunidade Rust.
 - **Negativas / Riscos:**
   - Dependência do ciclo de lançamentos e evolução do projeto AccessKit para novas extensões de acessibilidade da plataforma.
+

@@ -33,3 +33,4 @@ Aprovou-se a migração definitiva de todo o CSSOM, parser de sintaxe CSS e moto
   - Cobertura de testes e suítes de estresse independentes (18 testes automatizados, 6 baterias de estresse pesado).
 - **Negativas / Riscos:**
   - Exige que o `StyleEngine` receba dados do elemento através da interface da arena do DOM (`NodeId`, tags, atributos e classes) em vez de acoplamento direto de ponteiros.
+

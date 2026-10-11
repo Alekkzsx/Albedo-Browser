@@ -33,3 +33,4 @@ Adotamos a arquitetura de **Rastreamento de Liveness Unificado com GC Tracing Bu
 - **Negativas / Riscos:**
   - Requer coordenação estrita e protocolo de handshake durante os ciclos de GC.
   - Pequeno overhead na fase de marcação para inspecionar nós ativos mantidos por closures de eventos.
+

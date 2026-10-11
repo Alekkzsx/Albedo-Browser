@@ -35,3 +35,4 @@ Adotamos a implementação nativa em `ace_net::dns` de dois padrões normativos 
 - **Negativas / Riscos:**
   - Maior complexidade na gestão de timers assíncronos e cancelamento de sockets parciais.
   - Consumo ligeiramente superior de sockets temporários durante handshakes em redes com alta latência.
+

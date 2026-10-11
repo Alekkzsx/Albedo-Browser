@@ -35,3 +35,4 @@ Padronizamos formalmente a disciplina de tratamento de erros no workspace do Alb
   - Impossibilidade de quebrar clientes de biblioteca por encapsulamento dinâmico opaco de erros.
 - **Negativas / Riscos:**
   - Exige declaração explícita de variantes de erro e mapeamentos via `From`/`?` em transições entre submódulos.
+
