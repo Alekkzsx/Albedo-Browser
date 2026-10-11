@@ -1,8 +1,10 @@
 //! # Tabela Formal de Herança de Propriedades CSS (Inheritance Table)
 //!
-//! Separação normativa entre propriedades hereditárias e não-hereditárias.
+//! Separação normativa entre propriedades hereditárias e não-hereditárias,
+//! com clonagem de custo zero para ponteiros `Arc` de sub-estruturas herdadas.
 
 use crate::computed::style::ComputedStyle;
+use std::sync::Arc;
 
 /// Retorna `true` se a propriedade CSS for herdada por padrão pelo elemento filho.
 pub fn is_inherited_property(property: &str) -> bool {
@@ -23,23 +25,17 @@ pub fn is_inherited_property(property: &str) -> bool {
             | "white-space"
             | "word-break"
             | "overflow-wrap"
+            | "direction"
+            | "writing-mode"
     )
 }
 
 /// Aplica a herança de estilo do elemento pai para um novo estilo computado.
 pub fn inherit_from_parent(style: &mut ComputedStyle, parent: &ComputedStyle) {
-    // 1. Tipografia e Cores
-    style.color = parent.color;
-    style.font_size = parent.font_size;
-    style.font_weight = parent.font_weight;
-    style.font_style = parent.font_style;
-    style.font_family = parent.font_family.clone();
-    style.line_height = parent.line_height;
-    style.text_align = parent.text_align;
-    style.visibility = parent.visibility;
-    style.white_space = parent.white_space;
-    style.word_break = parent.word_break;
-    style.overflow_wrap = parent.overflow_wrap;
+    // 1. Structs Herdadas: compartilhamento direto de instâncias via Arc
+    style.font = Arc::clone(&parent.font);
+    style.color = Arc::clone(&parent.color);
+    style.text = Arc::clone(&parent.text);
 
     // 2. Custom Properties (todas as variáveis CSS herdam por padrão)
     style.custom_properties = parent.custom_properties.clone();

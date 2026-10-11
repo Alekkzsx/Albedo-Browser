@@ -738,7 +738,7 @@ impl CompoundSelector {
                     }
                 }
                 '.' | '#' | ':' if !in_bracket && in_quote.is_none() && in_paren == 0 => {
-                    if !curr.is_empty() {
+                    if !curr.is_empty() && (ch != ':' || curr != ":") {
                         if let Some(s) = SimpleSelector::parse_atomic(&curr) {
                             simple_selectors.push(s);
                         }
