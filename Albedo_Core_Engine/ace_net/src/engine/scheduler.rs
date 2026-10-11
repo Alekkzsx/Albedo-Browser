@@ -1,4 +1,5 @@
 use crate::engine::priority::{PrioritizedItem, PriorityLevel};
+use ace_core::id::RequestId;
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
@@ -6,7 +7,6 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use ace_core::id::RequestId;
 
 /// Identificador único de aba do navegador para controle dinâmico de recursos.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -63,7 +63,8 @@ pub struct SchedulerPermit {
 impl Drop for SchedulerPermit {
     fn drop(&mut self) {
         if !self.host.is_empty() {
-            self.scheduler.release_permit(&self.host, self.priority, self.scheduler.clone());
+            self.scheduler
+                .release_permit(&self.host, self.priority, self.scheduler.clone());
         }
     }
 }
@@ -89,7 +90,12 @@ impl ResourceScheduler {
 
     /// Tenta adquirir um slot de execução. Se os limites (global ou por host) estiverem saturados,
     /// aguarda em uma fila de prioridade. Requisições `VeryHigh` sempre recebem bypass.
-    pub async fn acquire(self: &Arc<Self>, request_id: RequestId, priority: PriorityLevel, host: SmolStr) -> SchedulerPermit {
+    pub async fn acquire(
+        self: &Arc<Self>,
+        request_id: RequestId,
+        priority: PriorityLevel,
+        host: SmolStr,
+    ) -> SchedulerPermit {
         // Bypass completo para documentos críticos
         if priority == PriorityLevel::VeryHigh {
             return SchedulerPermit {
@@ -131,13 +137,16 @@ impl ResourceScheduler {
                 sequence_id: seq,
                 item: request_id,
             });
-            state.pending.insert(request_id, PendingRequest {
-                host: host.clone(),
-                wake_tx: tx,
-                priority,
-                sequence_id: seq,
-            });
-            
+            state.pending.insert(
+                request_id,
+                PendingRequest {
+                    host: host.clone(),
+                    wake_tx: tx,
+                    priority,
+                    sequence_id: seq,
+                },
+            );
+
             crate::telemetry::net_log::log_net_event(
                 crate::telemetry::net_log::NetEventType::Queue,
                 host.as_str(),
@@ -154,7 +163,12 @@ impl ResourceScheduler {
         })
     }
 
-    fn release_permit(&self, host: &SmolStr, priority: PriorityLevel, arc_self: Arc<ResourceScheduler>) {
+    fn release_permit(
+        &self,
+        host: &SmolStr,
+        priority: PriorityLevel,
+        arc_self: Arc<ResourceScheduler>,
+    ) {
         let mut state = self.state.lock();
 
         // 1. Libera a contagem
@@ -172,10 +186,10 @@ impl ResourceScheduler {
         // 2. Procura o próximo elegível na fila (maior prioridade que respeite os limites per-host)
         // Tail Scheduling: Se a próxima request for Low, verificamos se tem High ativa.
         let mut skipped: Vec<(RequestId, PendingRequest)> = Vec::new();
-        
+
         while let Some(prioritized) = state.queue.pop_last() {
             let request_id = prioritized.item;
-            
+
             // Tail Scheduling
             let is_low_priority = prioritized.priority <= PriorityLevel::Low;
             if is_low_priority && state.active_high_priority > 0 {
@@ -191,7 +205,11 @@ impl ResourceScheduler {
             // Remover do pending temporariamente para examinar
             if let Some(pending) = state.pending.remove(&request_id) {
                 let pending_host = &pending.host;
-                let host_count = state.active_per_host.get(pending_host).copied().unwrap_or(0);
+                let host_count = state
+                    .active_per_host
+                    .get(pending_host)
+                    .copied()
+                    .unwrap_or(0);
 
                 if host_count < self.config.max_per_host {
                     // Acorda esta request
@@ -199,7 +217,10 @@ impl ResourceScheduler {
                     if pending.priority >= PriorityLevel::High {
                         state.active_high_priority += 1;
                     }
-                    *state.active_per_host.entry(pending_host.clone()).or_insert(0) += 1;
+                    *state
+                        .active_per_host
+                        .entry(pending_host.clone())
+                        .or_insert(0) += 1;
 
                     let permit = SchedulerPermit {
                         scheduler: arc_self,
@@ -209,9 +230,9 @@ impl ResourceScheduler {
 
                     // Melhor soltar o lock antes de enviar
                     drop(state);
-                    
+
                     let _send_result = pending.wake_tx.send(permit);
-                    
+
                     // Re-adquire o lock para devolver os skips
                     let mut state2 = self.state.lock();
                     for (req_id_skipped, pending_skipped) in skipped {
@@ -222,7 +243,7 @@ impl ResourceScheduler {
                         });
                         state2.pending.insert(req_id_skipped, pending_skipped);
                     }
-                    
+
                     return;
                 } else {
                     // Host limit reached, guarda para devolver pra fila
@@ -250,7 +271,7 @@ impl ResourceScheduler {
         if let Some(mut pending) = state.pending.remove(&request_id) {
             let old_priority = pending.priority;
             let sequence_id = pending.sequence_id;
-            
+
             // Remove from BTreeSet
             state.queue.remove(&PrioritizedItem {
                 priority: old_priority,
@@ -277,7 +298,11 @@ impl ResourceScheduler {
         reprioritized
     }
 
-    pub fn register_active_stream(&self, request_id: RequestId, sender: tokio::sync::watch::Sender<PriorityLevel>) {
+    pub fn register_active_stream(
+        &self,
+        request_id: RequestId,
+        sender: tokio::sync::watch::Sender<PriorityLevel>,
+    ) {
         self.state.lock().active_streams.insert(request_id, sender);
     }
 
@@ -286,10 +311,21 @@ impl ResourceScheduler {
     }
 
     /// Associa uma requisição ativa a uma aba do navegador.
-    pub fn associate_tab(&self, request_id: RequestId, tab_id: TabId, original_priority: PriorityLevel) {
+    pub fn associate_tab(
+        &self,
+        request_id: RequestId,
+        tab_id: TabId,
+        original_priority: PriorityLevel,
+    ) {
         let mut state = self.state.lock();
-        state.tab_requests.entry(tab_id).or_default().push(request_id);
-        state.original_priorities.insert(request_id, original_priority);
+        state
+            .tab_requests
+            .entry(tab_id)
+            .or_default()
+            .push(request_id);
+        state
+            .original_priorities
+            .insert(request_id, original_priority);
     }
 
     /// Desassocia uma requisição concluída da sua respectiva aba.
@@ -318,7 +354,11 @@ impl ResourceScheduler {
             let mut targets = Vec::with_capacity(reqs.len());
             for req_id in reqs {
                 let target_priority = if is_visible {
-                    state.original_priorities.get(&req_id).copied().unwrap_or(PriorityLevel::Medium)
+                    state
+                        .original_priorities
+                        .get(&req_id)
+                        .copied()
+                        .unwrap_or(PriorityLevel::Medium)
                 } else {
                     PriorityLevel::Lowest
                 };

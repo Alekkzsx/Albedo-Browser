@@ -75,13 +75,20 @@ async fn test_fetcher_cookie_lifecycle_live() {
                                 let resp = HyperResponse::builder()
                                     .status(200)
                                     .header("cache-control", "no-store")
-                                    .header(SET_COOKIE, "session_auth=secret_token_999; Path=/; Max-Age=3600")
+                                    .header(
+                                        SET_COOKIE,
+                                        "session_auth=secret_token_999; Path=/; Max-Age=3600",
+                                    )
                                     .body(Full::new(Bytes::from_static(b"Logged In")))
                                     .unwrap();
                                 Ok::<_, hyper::Error>(resp)
                             } else {
                                 // Segunda requisição: lê o cabeçalho Cookie enviado pelo cliente
-                                let cookie_hdr = req.headers().get(COOKIE).map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+                                let cookie_hdr = req
+                                    .headers()
+                                    .get(COOKIE)
+                                    .map(|v| v.to_str().unwrap().to_string())
+                                    .unwrap_or_default();
                                 let resp = HyperResponse::builder()
                                     .status(200)
                                     .body(Full::new(Bytes::from(cookie_hdr)))
@@ -111,5 +118,8 @@ async fn test_fetcher_cookie_lifecycle_live() {
     // 2. Segunda requisição deve enviar automaticamente o cookie armazenado
     let req2 = Request::get(&url).unwrap().build();
     let resp2 = fetcher.fetch(req2).await.unwrap();
-    assert_eq!(resp2.clone().text_async().await.unwrap(), "session_auth=secret_token_999");
+    assert_eq!(
+        resp2.clone().text_async().await.unwrap(),
+        "session_auth=secret_token_999"
+    );
 }

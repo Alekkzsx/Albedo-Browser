@@ -100,7 +100,12 @@ impl WebSocketSession {
 
         let (ws_stream, response) = tokio_tungstenite::connect_async(url.as_str())
             .await
-            .map_err(|e| NetError::ConnectionFailed(url.host_str().unwrap_or("").into(), format!("WebSocket falhou: {}", e)))?;
+            .map_err(|e| {
+                NetError::ConnectionFailed(
+                    url.host_str().unwrap_or("").into(),
+                    format!("WebSocket falhou: {}", e),
+                )
+            })?;
 
         crate::telemetry::net_log::log_net_event(
             crate::telemetry::net_log::NetEventType::TcpConnectEnd,
@@ -166,10 +171,12 @@ impl WebSocketSession {
 
     /// Envia uma mensagem pelo socket.
     pub async fn send(&self, msg: WebSocketMessage) -> NetResult<()> {
-        self.tx_sender
-            .send(msg)
-            .await
-            .map_err(|_| NetError::ConnectionFailed(self.url.host_str().unwrap_or("").into(), "WebSocket fechado".into()))
+        self.tx_sender.send(msg).await.map_err(|_| {
+            NetError::ConnectionFailed(
+                self.url.host_str().unwrap_or("").into(),
+                "WebSocket fechado".into(),
+            )
+        })
     }
 
     /// Recebe a próxima mensagem assíncrona do socket.
@@ -240,7 +247,10 @@ impl WebSocketUpgrade {
 
         let nonce = Self::generate_nonce();
         if let Ok(val) = HeaderValue::from_str(&nonce) {
-            req_builder = req_builder.header(http::header::HeaderName::from_static("sec-websocket-key"), val);
+            req_builder = req_builder.header(
+                http::header::HeaderName::from_static("sec-websocket-key"),
+                val,
+            );
         }
 
         req_builder.build()
@@ -320,12 +330,17 @@ mod tests {
         let session = WebSocketSession::new(url, tx, client_rx);
 
         // Teste de envio
-        session.send(WebSocketMessage::Text("ping".into())).await.unwrap();
+        session
+            .send(WebSocketMessage::Text("ping".into()))
+            .await
+            .unwrap();
 
         // Teste de recebimento
-        server_tx.send(WebSocketMessage::Text("pong".into())).await.unwrap();
+        server_tx
+            .send(WebSocketMessage::Text("pong".into()))
+            .await
+            .unwrap();
         let received = session.recv().await.unwrap();
         assert_eq!(received, WebSocketMessage::Text("pong".into()));
     }
 }
-

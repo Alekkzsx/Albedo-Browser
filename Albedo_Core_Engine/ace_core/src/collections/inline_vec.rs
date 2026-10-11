@@ -390,13 +390,19 @@ impl<T, const N: usize> InlineVec<T, N> {
             std::ops::Bound::Excluded(&n) => n,
             std::ops::Bound::Unbounded => len,
         };
-        assert!(start <= end && end <= len, "intervalo de drain fora dos limites");
+        assert!(
+            start <= end && end <= len,
+            "intervalo de drain fora dos limites"
+        );
 
         let count = end - start;
         let mut out = Vec::with_capacity(count);
 
         match &mut self.storage {
-            InlineVecStorage::Inline { len: inline_len, data } => {
+            InlineVecStorage::Inline {
+                len: inline_len,
+                data,
+            } => {
                 let p = data.as_mut_ptr();
                 for i in start..end {
                     out.push(unsafe { p.add(i).read().assume_init() });

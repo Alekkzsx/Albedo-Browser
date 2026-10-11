@@ -1,9 +1,11 @@
-pub mod fetcher;
-pub mod scheduler;
-pub mod priority;
-pub mod pipeline;
-pub mod contention;
 pub mod cancel;
+pub mod contention;
+pub mod critical_scheduler;
+pub mod css_loader;
+pub mod download;
+pub mod fetcher;
+pub mod pipeline;
+pub mod priority;
+pub mod scheduler;
 pub mod service_worker_hook;
 pub mod throttle;
-pub mod download;

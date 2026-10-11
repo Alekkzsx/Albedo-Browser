@@ -2,13 +2,15 @@ use crate::error::{NetError, NetResult};
 use crate::http::request::{CredentialsMode, Method, Request, RequestMode};
 use crate::http::response::Response;
 use ace_core::security::origin::Origin;
-use http::header::{
-    ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN,
-};
+use http::header::{ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN};
 
 /// Verifica se a requisição cruza origens.
 pub fn is_cross_origin(req: &Request) -> bool {
-    let req_origin_str = req.headers.get(ORIGIN).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let req_origin_str = req
+        .headers
+        .get(ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if req_origin_str.is_empty() {
         return false;
     }
@@ -27,7 +29,12 @@ pub fn is_safelisted_method(method: &Method) -> bool {
 /// - multipart/form-data
 /// - text/plain
 pub fn is_safelisted_content_type(ct: &str) -> bool {
-    let essence = ct.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    let essence = ct
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
     matches!(
         essence.as_str(),
         "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain"
@@ -245,9 +252,13 @@ mod tests {
 
     #[test]
     fn test_cors_safelisted_content_types() {
-        assert!(is_safelisted_content_type("application/x-www-form-urlencoded"));
+        assert!(is_safelisted_content_type(
+            "application/x-www-form-urlencoded"
+        ));
         assert!(is_safelisted_content_type("text/plain; charset=utf-8"));
-        assert!(is_safelisted_content_type("multipart/form-data; boundary=something"));
+        assert!(is_safelisted_content_type(
+            "multipart/form-data; boundary=something"
+        ));
         assert!(!is_safelisted_content_type("application/json"));
         assert!(!is_safelisted_content_type("application/xml"));
     }
@@ -256,7 +267,8 @@ mod tests {
     fn test_requires_preflight_on_custom_header() {
         let url = Url::parse("https://api.example.com/data").unwrap();
         let mut req = Request::builder(url, Method::POST).unwrap().build();
-        req.headers.insert(ORIGIN, HeaderValue::from_static("https://app.com"));
+        req.headers
+            .insert(ORIGIN, HeaderValue::from_static("https://app.com"));
 
         // Com Content-Type application/x-www-form-urlencoded -> simples
         req.headers.insert(
@@ -273,11 +285,16 @@ mod tests {
         assert!(requires_preflight(&req));
 
         // Adicionando Authorization -> DEVE disparar preflight
-        let mut req2 = Request::builder(Url::parse("https://api.example.com/user").unwrap(), Method::GET)
-            .unwrap()
-            .build();
-        req2.headers.insert(ORIGIN, HeaderValue::from_static("https://app.com"));
-        req2.headers.insert("authorization", HeaderValue::from_static("Bearer token123"));
+        let mut req2 = Request::builder(
+            Url::parse("https://api.example.com/user").unwrap(),
+            Method::GET,
+        )
+        .unwrap()
+        .build();
+        req2.headers
+            .insert(ORIGIN, HeaderValue::from_static("https://app.com"));
+        req2.headers
+            .insert("authorization", HeaderValue::from_static("Bearer token123"));
         assert!(requires_preflight(&req2));
     }
 
@@ -285,14 +302,22 @@ mod tests {
     fn test_build_preflight_request_includes_request_headers() {
         let url = Url::parse("https://api.example.com/data").unwrap();
         let mut req = Request::builder(url, Method::PUT).unwrap().build();
-        req.headers.insert(ORIGIN, HeaderValue::from_static("https://app.com"));
-        req.headers.insert(http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        req.headers.insert("x-custom-key", HeaderValue::from_static("val"));
+        req.headers
+            .insert(ORIGIN, HeaderValue::from_static("https://app.com"));
+        req.headers.insert(
+            http::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        req.headers
+            .insert("x-custom-key", HeaderValue::from_static("val"));
 
         let preflight = build_preflight_request(&req).unwrap();
         assert_eq!(preflight.method, Method::OPTIONS);
         assert_eq!(
-            preflight.headers.get("access-control-request-method").unwrap(),
+            preflight
+                .headers
+                .get("access-control-request-method")
+                .unwrap(),
             "PUT"
         );
         let req_headers = preflight
@@ -305,4 +330,3 @@ mod tests {
         assert!(req_headers.contains("x-custom-key"));
     }
 }
-

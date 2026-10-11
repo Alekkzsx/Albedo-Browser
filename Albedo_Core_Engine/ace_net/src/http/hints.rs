@@ -1,11 +1,10 @@
 //! # Resource Hints (Early Hints 103 & Link Preload)
-//! 
+//!
 //! Dispatcher de respostas parciais (103 Early Hints) e parser de cabeçalhos
 //! `Link: <...>; rel=preload` para acelerar o First Contentful Paint.
 
-
-use tokio::sync::mpsc;
 use smol_str::SmolStr;
+use tokio::sync::mpsc;
 use url::Url;
 
 /// Dica de recurso (Resource Hint) extraída da rede.
@@ -21,30 +20,35 @@ impl EarlyHint {
     /// Converte a EarlyHint para a variante correspondente de `ResourceHint`.
     pub fn to_resource_hint(&self) -> Option<crate::telemetry::hints::ResourceHint> {
         match self.rel.as_str() {
-            "dns-prefetch" => {
-                self.url.host_str().map(|h| crate::telemetry::hints::ResourceHint::dns_prefetch(h))
-            }
-            "preconnect" => {
-                ace_core::security::origin::Origin::parse(self.url.as_str()).ok().map(|origin| {
+            "dns-prefetch" => self
+                .url
+                .host_str()
+                .map(crate::telemetry::hints::ResourceHint::dns_prefetch),
+            "preconnect" => ace_core::security::origin::Origin::parse(self.url.as_str())
+                .ok()
+                .map(|origin| {
                     crate::telemetry::hints::ResourceHint::preconnect(origin, self.crossorigin)
-                })
-            }
+                }),
             "preload" => {
                 let dest = match self.as_type.as_deref() {
                     Some("style") => crate::http::request::RequestDestination::Style,
                     Some("script") => crate::http::request::RequestDestination::Script,
                     Some("font") => crate::http::request::RequestDestination::Font,
                     Some("image") => crate::http::request::RequestDestination::Image,
-                    Some("video") | Some("audio") => crate::http::request::RequestDestination::Media,
+                    Some("video") | Some("audio") => {
+                        crate::http::request::RequestDestination::Media
+                    }
                     _ => crate::http::request::RequestDestination::Other,
                 };
-                Some(crate::telemetry::hints::ResourceHint::preload(self.url.clone(), dest))
+                Some(crate::telemetry::hints::ResourceHint::preload(
+                    self.url.clone(),
+                    dest,
+                ))
             }
             _ => None,
         }
     }
 }
-
 
 /// Canal para injetar hints de rede assincronamente no pipeline do DOM.
 #[derive(Debug, Clone)]
@@ -69,12 +73,12 @@ impl EarlyHintsDispatcher {
             // Parser manual hiper-rápido (zero regex)
             let mut iter = part.split(';');
             let url_part = iter.next().unwrap_or("").trim();
-            
+
             if !url_part.starts_with('<') || !url_part.ends_with('>') {
                 continue;
             }
-            
-            let url_str = &url_part[1..url_part.len()-1];
+
+            let url_str = &url_part[1..url_part.len() - 1];
             let resolved_url = match base_url.join(url_str) {
                 Ok(u) => u,
                 Err(_) => continue,

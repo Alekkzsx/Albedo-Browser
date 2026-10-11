@@ -13,7 +13,8 @@ fn test_content_type_charset_parsing() {
         Some("utf-8")
     );
     assert_eq!(
-        extract_charset_from_content_type("application/javascript; charset=iso-8859-1; version=2").as_deref(),
+        extract_charset_from_content_type("application/javascript; charset=iso-8859-1; version=2")
+            .as_deref(),
         Some("iso-8859-1")
     );
     assert_eq!(

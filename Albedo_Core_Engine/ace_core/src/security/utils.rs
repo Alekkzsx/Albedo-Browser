@@ -28,7 +28,6 @@ pub fn matches_domain_pattern(pattern: &str, host: &str) -> bool {
     false
 }
 
-
 /// Determina se uma origem é considerada "Potencialmente Confiável" (W3C Secure Contexts).
 #[inline]
 pub fn is_potentially_trustworthy_origin(origin: &Origin) -> bool {

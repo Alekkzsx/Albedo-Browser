@@ -1,14 +1,14 @@
-use crate::error::NetResult;
 use crate::engine::priority::PriorityLevel;
 use crate::engine::scheduler::ResourceScheduler;
+use crate::error::NetResult;
 use ace_core::id::RequestId;
 use bytes::Bytes;
+use futures_core::Stream;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::future::Future;
 use tokio::sync::watch;
-use futures_core::Stream;
 
 pub struct ThrottledStream {
     inner: crate::http::response::BoxByteStream,

@@ -3,8 +3,8 @@
 //! Representa os metadados HTTP, cabeçalhos, métricas de performance (Navigation Timing)
 //! e stream assíncrono do corpo de bytes recebido.
 
-use crate::http::compression::ContentEncoding;
 use crate::engine::contention::RetryAfter;
+use crate::http::compression::ContentEncoding;
 use crate::http::range::ContentRange;
 use bytes::Bytes;
 pub use http::header::HeaderMap;
@@ -44,11 +44,8 @@ pub struct PerformanceResourceTiming {
 impl ResponseTiming {
     pub fn to_w3c(&self) -> PerformanceResourceTiming {
         let mut t = PerformanceResourceTiming::default();
-        t.start_time = 0.0;
-        t.fetch_start = 0.0;
-        
         let mut current_offset = 0.0;
-        
+
         if let Some(dns) = self.dns_duration {
             t.domain_lookup_start = current_offset;
             current_offset += dns.as_secs_f64() * 1000.0;
@@ -57,13 +54,14 @@ impl ResponseTiming {
             t.domain_lookup_start = 0.0;
             t.domain_lookup_end = 0.0;
         }
-        
+
         if let Some(tcp) = self.tcp_duration {
             t.connect_start = current_offset;
             if let Some(tls) = self.tls_duration {
                 // Approximate TLS start by subtracting TLS duration from total TCP duration
                 // (This assumes TLS happens right at the end of the TCP connection phase)
-                t.secure_connection_start = current_offset + (tcp.as_secs_f64() - tls.as_secs_f64()) * 1000.0;
+                t.secure_connection_start =
+                    current_offset + (tcp.as_secs_f64() - tls.as_secs_f64()) * 1000.0;
             }
             current_offset += tcp.as_secs_f64() * 1000.0;
             t.connect_end = current_offset;
@@ -71,11 +69,11 @@ impl ResponseTiming {
             t.connect_start = current_offset;
             t.connect_end = current_offset;
         }
-        
+
         t.request_start = current_offset;
         t.response_start = self.ttfb.as_secs_f64() * 1000.0;
         t.response_end = self.total_duration.as_secs_f64() * 1000.0;
-        
+
         t
     }
 }
@@ -93,7 +91,10 @@ struct SingleChunkStream(Option<Bytes>);
 
 impl futures_core::Stream for SingleChunkStream {
     type Item = NetResult<Bytes>;
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
         std::task::Poll::Ready(self.0.take().map(Ok))
     }
 }
@@ -153,13 +154,17 @@ impl ResponseBody {
                 let mut guard = stream_mutex.lock().await;
                 if let Some(mut stream) = guard.take() {
                     let mut buf = bytes::BytesMut::new();
-                    while let Some(chunk_res) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+                    while let Some(chunk_res) =
+                        std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await
+                    {
                         let chunk = chunk_res?;
                         buf.extend_from_slice(&chunk);
                     }
                     Ok(buf.freeze())
                 } else {
-                    Err(NetError::HttpProtocolError("Corpo de streaming já foi consumido (disturbed body)".into()))
+                    Err(NetError::HttpProtocolError(
+                        "Corpo de streaming já foi consumido (disturbed body)".into(),
+                    ))
                 }
             }
         }
@@ -317,4 +322,3 @@ mod tests {
         assert_eq!(collected.as_ref(), b"Hello Streaming World!");
     }
 }
-

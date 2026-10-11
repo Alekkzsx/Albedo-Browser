@@ -39,10 +39,13 @@ use std::time::Duration;
 fn tier4_workload_01_navigation_pipeline() {
     // Step 1: Incoming navigation URL decoding
     let raw_url = "https://admin:p%40ssw0rd@example.com:443/search?query=rust%20async%20engine&status=100%_concluido#main-view";
-    
+
     // Percent decoding of complex query parameters
     let decoded_query = percent_decode("query=rust%20async%20engine&status=100%_concluido");
-    assert_eq!(decoded_query, "query=rust async engine&status=100%_concluido");
+    assert_eq!(
+        decoded_query,
+        "query=rust async engine&status=100%_concluido"
+    );
 
     // Step 2: Canonical Origin Parsing and Normalization
     let current_origin = Origin::parse(raw_url).expect("Should parse valid URL into Origin");
@@ -59,7 +62,8 @@ fn tier4_workload_01_navigation_pipeline() {
     assert!(current_origin.is_secure());
 
     // File origin parsing: file schemes should not emit port 0
-    let file_origin = Origin::parse("file:///C:/Users/app/index.html").expect("Should parse file URL");
+    let file_origin =
+        Origin::parse("file:///C:/Users/app/index.html").expect("Should parse file URL");
     assert_eq!(file_origin.ascii_serialization(), "file://");
 
     // Opaque origin for about:blank and data URLs
@@ -124,7 +128,11 @@ fn tier4_workload_01_navigation_pipeline() {
         assert!(!token.is_empty(), "Token must not be empty/null");
         assert!(token.high() != 0 || token.low() != 0);
         let hex = token.to_hex();
-        assert_eq!(hex.len(), 32, "Hex representation must be exactly 32 chars (128 bits)");
+        assert_eq!(
+            hex.len(),
+            32,
+            "Hex representation must be exactly 32 chars (128 bits)"
+        );
         assert!(tokens.insert(token), "Each token must be unique");
     }
 
@@ -132,10 +140,12 @@ fn tier4_workload_01_navigation_pipeline() {
     let html_payload = b"  \r\n\t<!DOCTYPE html>\n<html><head><title>Ace</title></head><body><h1>OK</h1></body></html>";
     assert_eq!(sniff_mime_type(html_payload), "text/html");
 
-    let png_payload = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06";
+    let png_payload =
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06";
     assert_eq!(sniff_mime_type(png_payload), "image/png");
 
-    let svg_payload = b"<?xml version=\"1.0\" encoding=\"utf-8\"?><svg width=\"100\" height=\"100\"></svg>";
+    let svg_payload =
+        b"<?xml version=\"1.0\" encoding=\"utf-8\"?><svg width=\"100\" height=\"100\"></svg>";
     assert_eq!(sniff_mime_type(svg_payload), "image/svg+xml");
 
     let pdf_payload = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>";
@@ -143,7 +153,10 @@ fn tier4_workload_01_navigation_pipeline() {
 
     let mime_parsed = MimeType::parse("text/html; charset=UTF-8; boundary=something").unwrap();
     assert_eq!(mime_parsed.essence(), "text/html");
-    assert_eq!(mime_parsed.charset().map(str::to_ascii_lowercase), Some("utf-8".to_string()));
+    assert_eq!(
+        mime_parsed.charset().map(str::to_ascii_lowercase),
+        Some("utf-8".to_string())
+    );
 }
 
 // ============================================================================
@@ -217,10 +230,16 @@ fn tier4_workload_02_animation_frame_pipeline() {
     }
 
     // Verify consumer received frames in strict monotonic order without tearing
-    assert!(!consumed_frames.is_empty(), "Compositor should consume published frames");
+    assert!(
+        !consumed_frames.is_empty(),
+        "Compositor should consume published frames"
+    );
     let mut prev_frame_idx = 0;
     for frame in &consumed_frames {
-        assert!(frame.frame_idx > prev_frame_idx, "Monotonic frame ordering must hold");
+        assert!(
+            frame.frame_idx > prev_frame_idx,
+            "Monotonic frame ordering must hold"
+        );
         prev_frame_idx = frame.frame_idx;
         assert_eq!(frame.box_left + frame.box_width, frame.box_right);
     }
@@ -306,10 +325,26 @@ fn tier4_workload_03_heavy_event_loop_load() {
     }
 
     // Assert all tasks across all sources were drained completely
-    assert_eq!(ui_count.load(Ordering::SeqCst), 1000, "All 1000 UI tasks must execute");
-    assert_eq!(net_count.load(Ordering::SeqCst), 50, "All 50 Network tasks must execute");
-    assert_eq!(timer_count.load(Ordering::SeqCst), 20, "All 20 Timers must execute");
-    assert_eq!(micro_count.load(Ordering::SeqCst), 200, "All 200 Microtasks must execute");
+    assert_eq!(
+        ui_count.load(Ordering::SeqCst),
+        1000,
+        "All 1000 UI tasks must execute"
+    );
+    assert_eq!(
+        net_count.load(Ordering::SeqCst),
+        50,
+        "All 50 Network tasks must execute"
+    );
+    assert_eq!(
+        timer_count.load(Ordering::SeqCst),
+        20,
+        "All 20 Timers must execute"
+    );
+    assert_eq!(
+        micro_count.load(Ordering::SeqCst),
+        200,
+        "All 200 Microtasks must execute"
+    );
 
     let log = execution_log.lock().unwrap();
     assert_eq!(log.len(), 1070);
@@ -317,7 +352,10 @@ fn tier4_workload_03_heavy_event_loop_load() {
     let has_ui = log.iter().any(|(s, _)| *s == TaskSource::UserInteraction);
     let has_net = log.iter().any(|(s, _)| *s == TaskSource::Networking);
     let has_timer = log.iter().any(|(s, _)| *s == TaskSource::Timer);
-    assert!(has_ui && has_net && has_timer, "Fair execution across all sources without starvation");
+    assert!(
+        has_ui && has_net && has_timer,
+        "Fair execution across all sources without starvation"
+    );
 }
 
 // ============================================================================
@@ -407,7 +445,8 @@ fn tier4_workload_04_style_mutation_and_arena_lifecycle() {
     breadcrumbs.record("style", "Style invalidation applied to main#container", 200);
 
     // Verify descendants can be traversed and dirtied
-    let children_slice: Vec<ArenaId<DomNode>> = arena.get(main_id).unwrap().children.as_slice().to_vec();
+    let children_slice: Vec<ArenaId<DomNode>> =
+        arena.get(main_id).unwrap().children.as_slice().to_vec();
     for child_id in children_slice {
         let child = arena.get_mut(child_id).unwrap();
         child.flags |= NodeFlags::DIRTY_STYLE;
@@ -467,40 +506,74 @@ fn tier4_workload_05_security_origin_csp_evaluation() {
 
     assert!(sandbox_iframe_origin.is_opaque());
     assert!(second_sandbox_origin.is_opaque());
-    assert!(!sandbox_iframe_origin.same_origin(&second_sandbox_origin), "Opaque origins must never be same-origin");
+    assert!(
+        !sandbox_iframe_origin.same_origin(&second_sandbox_origin),
+        "Opaque origins must never be same-origin"
+    );
     assert!(!sandbox_iframe_origin.is_secure());
 
     // 3. Same-Origin Policy (SOP) and Same-Site
-    assert!(!top_origin.same_origin(&sub_origin), "Different subdomains are cross-origin");
-    assert!(top_origin.is_same_site(&sub_origin), "Subdomains of same eTLD+1 share SchemefulSite");
+    assert!(
+        !top_origin.same_origin(&sub_origin),
+        "Different subdomains are cross-origin"
+    );
+    assert!(
+        top_origin.is_same_site(&sub_origin),
+        "Subdomains of same eTLD+1 share SchemefulSite"
+    );
     assert!(top_origin.is_same_site(&cdn_origin));
     assert!(!top_origin.is_same_site(&external_origin));
-    assert!(!top_origin.same_origin(&insecure_origin), "Different schemes (HTTPS vs HTTP) are cross-origin");
+    assert!(
+        !top_origin.same_origin(&insecure_origin),
+        "Different schemes (HTTPS vs HTTP) are cross-origin"
+    );
 
     // 4. Potentially Trustworthy Origin checks
     assert!(is_potentially_trustworthy_origin(&top_origin));
-    assert!(is_potentially_trustworthy_origin(&Origin::parse("http://localhost:3000").unwrap()));
-    assert!(is_potentially_trustworthy_origin(&Origin::parse("http://127.0.0.1:8080").unwrap()));
+    assert!(is_potentially_trustworthy_origin(
+        &Origin::parse("http://localhost:3000").unwrap()
+    ));
+    assert!(is_potentially_trustworthy_origin(
+        &Origin::parse("http://127.0.0.1:8080").unwrap()
+    ));
     assert!(!is_potentially_trustworthy_origin(&insecure_origin));
 
     // 5. CSP Wildcard Domain Pattern Matching (W3C CSP Level 3 §6.7.2)
     let csp_pattern = "*.albedo-browser.org";
 
     // Direct subdomain matches
-    assert!(matches_domain_pattern(csp_pattern, "api.albedo-browser.org"));
-    assert!(matches_domain_pattern(csp_pattern, "static.cdn.albedo-browser.org"));
-    assert!(matches_domain_pattern(csp_pattern, "dev.albedo-browser.org"));
+    assert!(matches_domain_pattern(
+        csp_pattern,
+        "api.albedo-browser.org"
+    ));
+    assert!(matches_domain_pattern(
+        csp_pattern,
+        "static.cdn.albedo-browser.org"
+    ));
+    assert!(matches_domain_pattern(
+        csp_pattern,
+        "dev.albedo-browser.org"
+    ));
 
     // Case-insensitivity
-    assert!(matches_domain_pattern(csp_pattern, "API.ALBEDO-BROWSER.ORG"));
+    assert!(matches_domain_pattern(
+        csp_pattern,
+        "API.ALBEDO-BROWSER.ORG"
+    ));
 
     // Critical CSP requirement: *.domain.com must NOT match the apex domain itself or attacker spoofing
     assert!(
         !matches_domain_pattern(csp_pattern, "albedo-browser.org"),
         "Apex domain must NOT match wildcard *.domain.com per CSP3 spec"
     );
-    assert!(!matches_domain_pattern(csp_pattern, "fake-albedo-browser.org"));
-    assert!(!matches_domain_pattern(csp_pattern, "albedo-browser.org.evil.com"));
+    assert!(!matches_domain_pattern(
+        csp_pattern,
+        "fake-albedo-browser.org"
+    ));
+    assert!(!matches_domain_pattern(
+        csp_pattern,
+        "albedo-browser.org.evil.com"
+    ));
     assert!(!matches_domain_pattern(csp_pattern, "analytics.google.com"));
 
     // Wildcard-all pattern "*"
@@ -542,7 +615,7 @@ fn tier4_workload_06_css_color_transformation_pipeline() {
     // Blend Red (Hue ~29° in Oklch) with Magenta (Hue ~328° in Oklch)
     // Shortest path must interpolate smoothly across the 0° wrap boundary
     let c1 = Color::from_hsla(350.0, 1.0, 0.5, 1.0); // Near red/magenta
-    let c2 = Color::from_hsla(10.0, 1.0, 0.5, 1.0);  // Near red/orange
+    let c2 = Color::from_hsla(10.0, 1.0, 0.5, 1.0); // Near red/orange
 
     let mixed = mix_colors(ColorSpace::Oklch, c1, Some(0.5), c2, Some(0.5))
         .expect("mix_colors in Oklch must succeed");
@@ -550,7 +623,11 @@ fn tier4_workload_06_css_color_transformation_pipeline() {
     let mixed_lch = mixed.to_oklch();
     // Midpoint hue between 350° and 10° via shortest arc should be 0° (or 360°)
     let is_near_zero = mixed_lch.h < 30.0 || mixed_lch.h > 330.0;
-    assert!(is_near_zero, "Polar interpolation across 0° must take shortest arc, got hue {}", mixed_lch.h);
+    assert!(
+        is_near_zero,
+        "Polar interpolation across 0° must take shortest arc, got hue {}",
+        mixed_lch.h
+    );
 
     // 3. Alpha Premultiplication for Compositing / GPU Shaders
     let semi_color = Color::from_rgba(100, 200, 50, 128); // 50% opacity (alpha = 128/255)
@@ -642,7 +719,8 @@ fn tier4_workload_07_dom_tree_memory_stress() {
         // 3. Remove half of the roots and their children explicitly
         for i in (0..cycle_roots.len()).step_by(2) {
             let root_id = cycle_roots[i];
-            let children_vec: Vec<ArenaId<HeavyNode>> = arena.get(root_id).unwrap().children.as_slice().to_vec();
+            let children_vec: Vec<ArenaId<HeavyNode>> =
+                arena.get(root_id).unwrap().children.as_slice().to_vec();
             for child_id in children_vec {
                 let removed_child = arena.remove(child_id);
                 assert!(removed_child.is_some());
@@ -662,7 +740,10 @@ fn tier4_workload_07_dom_tree_memory_stress() {
     let stats = arena.stats();
     assert_eq!(stats.live, 0);
     assert!(stats.total_allocated > 0);
-    assert!(stats.slot_reuses > 0, "Arena must reuse free list slots across cycles");
+    assert!(
+        stats.slot_reuses > 0,
+        "Arena must reuse free list slots across cycles"
+    );
 }
 
 // ============================================================================
@@ -677,7 +758,8 @@ fn tier4_workload_08_network_stream_mime_decoding() {
     // First chunk has 513 bytes (511 ASCII bytes + 2 bytes of the emoji)
     // Second chunk has the remaining 2 bytes + further HTML content.
     let mut stream_bytes = Vec::with_capacity(1024);
-    let html_header = b"<!DOCTYPE html><html><head><title>Streamed Document</title></head><body><p>";
+    let html_header =
+        b"<!DOCTYPE html><html><head><title>Streamed Document</title></head><body><p>";
     stream_bytes.extend_from_slice(html_header);
 
     // Pad with ASCII characters up to 511 bytes
@@ -697,19 +779,27 @@ fn tier4_workload_08_network_stream_mime_decoding() {
     // 2. Perform MIME sniffing on the initial 512-byte boundary window
     let boundary_sample = &stream_bytes[..512];
     let sniffed_boundary = sniff_mime_type(boundary_sample);
-    assert_eq!(sniffed_boundary, "text/html", "MIME sniffer must gracefully handle split UTF-8 bytes");
+    assert_eq!(
+        sniffed_boundary, "text/html",
+        "MIME sniffer must gracefully handle split UTF-8 bytes"
+    );
 
     // Full stream sniffing
     let full_sniffed = sniff_mime_type(&stream_bytes);
     assert_eq!(full_sniffed, "text/html");
 
     // 3. Extract and parse percent-encoded queries from HTTP headers / URLs
-    let encoded_query = "title=%F0%9F%A6%80%20Albedo%20Engine&version=1.0%2B2026&malformed=test%20100%_done";
+    let encoded_query =
+        "title=%F0%9F%A6%80%20Albedo%20Engine&version=1.0%2B2026&malformed=test%20100%_done";
     let decoded_query = percent_decode(encoded_query);
-    assert_eq!(decoded_query, "title=🦀 Albedo Engine&version=1.0+2026&malformed=test 100%_done");
+    assert_eq!(
+        decoded_query,
+        "title=🦀 Albedo Engine&version=1.0+2026&malformed=test 100%_done"
+    );
 
     // 4. Verify MIME types parsing and parameter retrieval
-    let ct = MimeType::parse("text/html; charset=utf-8; profile=\"https://standards.org\"").unwrap();
+    let ct =
+        MimeType::parse("text/html; charset=utf-8; profile=\"https://standards.org\"").unwrap();
     assert!(ct.is_html());
     assert_eq!(ct.charset(), Some("utf-8"));
     assert_eq!(ct.get_param("profile"), Some("https://standards.org"));
@@ -762,11 +852,25 @@ fn tier4_workload_09_timer_storm_and_microtask_drain() {
             });
 
             // Recurse to next depth
-            schedule_recursive_timer(depth + 1, max_depth, q_clone, clock_clone, exec_clone, micro_clone);
+            schedule_recursive_timer(
+                depth + 1,
+                max_depth,
+                q_clone,
+                clock_clone,
+                exec_clone,
+                micro_clone,
+            );
         });
     }
 
-    schedule_recursive_timer(1, 7, queue, Arc::clone(&mock_clock), Arc::clone(&execution_times), Arc::clone(&microtasks_executed));
+    schedule_recursive_timer(
+        1,
+        7,
+        queue,
+        Arc::clone(&mock_clock),
+        Arc::clone(&execution_times),
+        Arc::clone(&microtasks_executed),
+    );
 
     // Step through the event loop advancing time 1ms at a time, draining all available work at each timestamp
     for _ in 0..50 {
@@ -775,7 +879,11 @@ fn tier4_workload_09_timer_storm_and_microtask_drain() {
     }
 
     let records = execution_times.lock().unwrap().clone();
-    assert_eq!(records.len(), 7, "All 7 nesting levels must eventually execute");
+    assert_eq!(
+        records.len(),
+        7,
+        "All 7 nesting levels must eventually execute"
+    );
 
     // Depth 1..=4 have 0ms delay, should execute at t=0
     for &(depth, time) in &records {
@@ -783,13 +891,25 @@ fn tier4_workload_09_timer_storm_and_microtask_drain() {
             assert_eq!(time, 0, "Depth {} should fire at t=0", depth);
         } else if depth == 5 {
             // Depth 5 must be clamped to min 4ms
-            assert!(time >= 4, "Depth 5 must clamp to >= 4ms, executed at t={}", time);
+            assert!(
+                time >= 4,
+                "Depth 5 must clamp to >= 4ms, executed at t={}",
+                time
+            );
         } else if depth == 6 {
             // Depth 6 must be clamped to min 4ms after depth 5 (t >= 8ms)
-            assert!(time >= 8, "Depth 6 must clamp to >= 8ms, executed at t={}", time);
+            assert!(
+                time >= 8,
+                "Depth 6 must clamp to >= 8ms, executed at t={}",
+                time
+            );
         } else if depth == 7 {
             // Depth 7 must be clamped to min 4ms after depth 6 (t >= 12ms)
-            assert!(time >= 12, "Depth 7 must clamp to >= 12ms, executed at t={}", time);
+            assert!(
+                time >= 12,
+                "Depth 7 must clamp to >= 12ms, executed at t={}",
+                time
+            );
         }
     }
 

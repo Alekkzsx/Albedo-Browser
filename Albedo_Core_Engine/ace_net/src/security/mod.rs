@@ -1,11 +1,11 @@
+pub mod captive_portal;
+pub mod clear_site_data;
 pub mod cors;
 pub mod cors_cache;
-pub mod pna;
-pub mod hsts;
-pub mod sri;
 pub mod fetch_metadata;
-pub mod clear_site_data;
-pub mod ohttp;
+pub mod hsts;
 pub mod isolation;
 pub mod mixed_content;
-pub mod captive_portal;
+pub mod ohttp;
+pub mod pna;
+pub mod sri;

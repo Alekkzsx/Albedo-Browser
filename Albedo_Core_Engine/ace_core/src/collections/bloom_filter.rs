@@ -49,7 +49,11 @@ impl<const WORDS: usize> BloomFilter<WORDS> {
         macro_rules! set_step {
             ($step:expr) => {
                 let h = h1.wrapping_add($step * h2) as usize;
-                let bit_idx = if is_power_of_two { h & mask } else { h % Self::BITS };
+                let bit_idx = if is_power_of_two {
+                    h & mask
+                } else {
+                    h % Self::BITS
+                };
                 let word_idx = bit_idx >> 6;
                 let bit_in_word = bit_idx & 63;
                 self.words[word_idx] |= 1u64 << bit_in_word;
@@ -79,7 +83,11 @@ impl<const WORDS: usize> BloomFilter<WORDS> {
         macro_rules! check_step {
             ($step:expr) => {
                 let h = h1.wrapping_add($step * h2) as usize;
-                let bit_idx = if is_power_of_two { h & mask } else { h % Self::BITS };
+                let bit_idx = if is_power_of_two {
+                    h & mask
+                } else {
+                    h % Self::BITS
+                };
                 let word_idx = bit_idx >> 6;
                 let bit_in_word = bit_idx & 63;
                 if (self.words[word_idx] & (1u64 << bit_in_word)) == 0 {

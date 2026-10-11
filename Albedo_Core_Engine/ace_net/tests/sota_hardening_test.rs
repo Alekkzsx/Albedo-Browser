@@ -11,9 +11,11 @@
 use ace_net::cache::entry::CacheEntry;
 use ace_net::cache::storage::HttpCache;
 use ace_net::cookie::{is_public_suffix, is_valid_cookie_domain, CookieJar};
-use ace_net::security::pna::{classify_ip, is_host_private_or_local, validate_private_network_access, IpAddressSpace};
 use ace_net::http::request::Request;
 use ace_net::http::response::ResponseBody;
+use ace_net::security::pna::{
+    classify_ip, is_host_private_or_local, validate_private_network_access, IpAddressSpace,
+};
 use bytes::Bytes;
 use http::header::{CACHE_CONTROL, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -69,7 +71,10 @@ async fn test_streaming_flag_and_stream_consumption() {
     assert!(!response_body.is_empty());
 
     let collected = response_body.collect_bytes().await.unwrap();
-    assert_eq!(collected.as_ref(), b"video_frame_0;video_frame_1;video_frame_2");
+    assert_eq!(
+        collected.as_ref(),
+        b"video_frame_0;video_frame_1;video_frame_2"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -90,11 +95,17 @@ async fn test_atomic_disk_cache_persistence_and_cleanup() {
     let cache = HttpCache::new(10 * 1024 * 1024).with_disk_path(temp_dir.clone());
 
     // O arquivo .tmp deve ter sido limpo na inicialização
-    assert!(!orphan_tmp.exists(), "Arquivos .tmp orfaos devem ser limpos na carga do indice");
+    assert!(
+        !orphan_tmp.exists(),
+        "Arquivos .tmp orfaos devem ser limpos na carga do indice"
+    );
 
     let url = Url::parse("https://cdn.example.com/bundle.js").unwrap();
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/javascript"));
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/javascript"),
+    );
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("max-age=3600"));
 
     let entry = CacheEntry::new(
@@ -119,13 +130,22 @@ async fn test_atomic_disk_cache_persistence_and_cleanup() {
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect();
 
-    assert!(files.iter().any(|f| f.ends_with(".cache")), "O arquivo de cache deve ter sido gravado");
-    assert!(!files.iter().any(|f| f.ends_with(".tmp")), "Nenhum arquivo .tmp temporario deve restar");
+    assert!(
+        files.iter().any(|f| f.ends_with(".cache")),
+        "O arquivo de cache deve ter sido gravado"
+    );
+    assert!(
+        !files.iter().any(|f| f.ends_with(".tmp")),
+        "Nenhum arquivo .tmp temporario deve restar"
+    );
 
     // Reinicia o cache do mesmo diretório e valida carga do índice L2
     let restored_cache = HttpCache::new(10 * 1024 * 1024).with_disk_path(temp_dir.clone());
     let hit = restored_cache.get(None, &url).await;
-    assert!(hit.is_some(), "Entrada gravada em disco deve ser encontrada no L2");
+    assert!(
+        hit.is_some(),
+        "Entrada gravada em disco deve ser encontrada no L2"
+    );
     assert_eq!(hit.unwrap().body.as_ref(), b"console.log('albedo sota');");
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -170,7 +190,8 @@ fn test_stale_if_error_rfc5861() {
 // ---------------------------------------------------------------------------
 #[test]
 fn test_cookie_persistence_disk_roundtrip() {
-    let temp_file = std::env::temp_dir().join(format!("albedo_cookies_test_{}.tsv", std::process::id()));
+    let temp_file =
+        std::env::temp_dir().join(format!("albedo_cookies_test_{}.tsv", std::process::id()));
     let _ = std::fs::remove_file(&temp_file);
 
     let jar = CookieJar::new();
@@ -181,7 +202,9 @@ fn test_cookie_persistence_disk_roundtrip() {
     let mut h1 = HeaderMap::new();
     h1.insert(
         SET_COOKIE,
-        HeaderValue::from_static("auth_token=secret_xyz; Secure; HttpOnly; SameSite=Strict; Max-Age=86400"),
+        HeaderValue::from_static(
+            "auth_token=secret_xyz; Secure; HttpOnly; SameSite=Strict; Max-Age=86400",
+        ),
     );
     jar.process_response_headers(&url, &h1, None, now);
 
@@ -197,7 +220,9 @@ fn test_cookie_persistence_disk_roundtrip() {
     let mut h3 = HeaderMap::new();
     h3.insert(
         SET_COOKIE,
-        HeaderValue::from_static("widget_state=active; Secure; Partitioned; SameSite=None; Max-Age=3600"),
+        HeaderValue::from_static(
+            "widget_state=active; Secure; Partitioned; SameSite=None; Max-Age=3600",
+        ),
     );
     jar.process_response_headers(&url, &h3, Some("example.com"), now);
 
@@ -213,15 +238,31 @@ fn test_cookie_persistence_disk_roundtrip() {
 
     // Apenas cookies persistentes (auth_token e widget_state) devem ser restaurados.
     // O cookie de sessão efêmero (session_temp) deve ser descartado no reinício!
-    assert_eq!(loaded_count, 2, "Apenas os 2 cookies persistentes devem ser carregados");
+    assert_eq!(
+        loaded_count, 2,
+        "Apenas os 2 cookies persistentes devem ser carregados"
+    );
     assert_eq!(new_jar.len(), 2);
 
     let hdr = new_jar
-        .build_cookie_header(&url, None, ace_net::http::request::CredentialsMode::SameOrigin, true, true, now)
+        .build_cookie_header(
+            &url,
+            None,
+            ace_net::http::request::CredentialsMode::SameOrigin,
+            true,
+            true,
+            now,
+        )
         .unwrap();
     let hdr_str = hdr.to_str().unwrap();
-    assert!(hdr_str.contains("auth_token=secret_xyz"), "Cookie persistente deve estar presente");
-    assert!(!hdr_str.contains("session_temp=volatile_123"), "Cookie de sessao volatil nao deve persistir");
+    assert!(
+        hdr_str.contains("auth_token=secret_xyz"),
+        "Cookie persistente deve estar presente"
+    );
+    assert!(
+        !hdr_str.contains("session_temp=volatile_123"),
+        "Cookie de sessao volatil nao deve persistir"
+    );
 
     let _ = std::fs::remove_file(&temp_file);
 }
@@ -257,7 +298,10 @@ fn test_extended_psl_trie_super_cookie_rejection() {
     assert!(!is_valid_cookie_domain("pages.dev", "meusite.pages.dev"));
     assert!(!is_valid_cookie_domain("vercel.app", "projeto.vercel.app"));
     assert!(!is_valid_cookie_domain("com.br", "empresa.com.br"));
-    assert!(is_valid_cookie_domain("meusite.pages.dev", "meusite.pages.dev"));
+    assert!(is_valid_cookie_domain(
+        "meusite.pages.dev",
+        "meusite.pages.dev"
+    ));
     assert!(is_valid_cookie_domain("empresa.com.br", "empresa.com.br"));
 }
 

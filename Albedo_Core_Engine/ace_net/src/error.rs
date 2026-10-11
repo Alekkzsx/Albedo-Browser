@@ -109,7 +109,10 @@ mod tests {
         assert_eq!(err.to_string(), "URL inválida: ht!tp://invalid");
 
         let redirect_err = NetError::TooManyRedirects(20);
-        assert_eq!(redirect_err.to_string(), "Excedido o limite de redirecionamentos (20)");
+        assert_eq!(
+            redirect_err.to_string(),
+            "Excedido o limite de redirecionamentos (20)"
+        );
     }
 
     #[test]

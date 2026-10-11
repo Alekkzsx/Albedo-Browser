@@ -71,7 +71,14 @@ pub fn parse_alt_svc(header_str: &str, now: SystemTime) -> Vec<AltSvcRecord> {
             Some(idx) => {
                 let h = &target_quoted[..idx];
                 let p = &target_quoted[idx + 1..];
-                (if h.is_empty() { None } else { Some(SmolStr::from(h)) }, p)
+                (
+                    if h.is_empty() {
+                        None
+                    } else {
+                        Some(SmolStr::from(h))
+                    },
+                    p,
+                )
             }
             None => continue,
         };
@@ -182,7 +189,11 @@ impl AltSvcRegistry {
         let key = (nik.map(|k| k.serialize()), origin_host.to_ascii_lowercase());
         let map = self.entries.read();
         match map.get(&key) {
-            Some(records) => records.iter().filter(|r| r.is_valid(now)).cloned().collect(),
+            Some(records) => records
+                .iter()
+                .filter(|r| r.is_valid(now))
+                .cloned()
+                .collect(),
             None => Vec::new(),
         }
     }
@@ -190,7 +201,9 @@ impl AltSvcRegistry {
     /// Retorna o primeiro serviço alternativo válido para o host especificado (sem NIK isolado).
     pub fn get(&self, origin_host: &str, _port: u16) -> Option<AltSvcRecord> {
         let now = SystemTime::now();
-        self.get_alternatives(None, origin_host, now).into_iter().next()
+        self.get_alternatives(None, origin_host, now)
+            .into_iter()
+            .next()
     }
 
     /// Salva em disco de forma atômica todos os registros Alt-Svc que possuem a diretiva `persist=1` e são válidos.
@@ -224,7 +237,9 @@ impl AltSvcRegistry {
             }
         }
 
-        let file_struct = PersistentAltSvcFile { entries: persistent_entries };
+        let file_struct = PersistentAltSvcFile {
+            entries: persistent_entries,
+        };
         let json_data = serde_json::to_string_pretty(&file_struct)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
@@ -297,7 +312,6 @@ struct PersistentRecord {
     expires_at: SystemTime,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,7 +353,9 @@ mod tests {
         assert_eq!(alternatives[0].protocol_id.as_str(), "h3");
 
         registry.clear(None, "example.com");
-        assert!(registry.get_alternatives(None, "example.com", now).is_empty());
+        assert!(registry
+            .get_alternatives(None, "example.com", now)
+            .is_empty());
     }
 
     #[test]
@@ -367,7 +383,10 @@ mod tests {
         let now = SystemTime::now();
 
         // Insere um registro persistente (persist=1) e outro volátil (sem persist)
-        let records = parse_alt_svc("h3=\":443\"; ma=86400; persist=1, h2=\":8443\"; ma=3600", now);
+        let records = parse_alt_svc(
+            "h3=\":443\"; ma=86400; persist=1, h2=\":8443\"; ma=3600",
+            now,
+        );
         registry.insert(None, "fast.cdn.net", records);
 
         let temp_dir = tempfile::tempdir().unwrap();
@@ -386,4 +405,3 @@ mod tests {
         assert_eq!(alts[0].port, 443);
     }
 }
-

@@ -1,10 +1,10 @@
-pub mod request;
-pub mod response;
+pub mod auth;
 pub mod compression;
+pub mod dictionary;
 pub mod encoding;
+pub mod hints;
 pub mod range;
 pub mod redirect;
-pub mod hints;
-pub mod dictionary;
+pub mod request;
+pub mod response;
 pub mod sniffing;
-pub mod auth;

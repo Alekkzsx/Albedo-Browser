@@ -40,6 +40,25 @@ pub enum RenderNodeKind {
     Text,
 }
 
+/// Categoria de caixa para geração de layout pelo motor `ace_layout`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoxGenerationKind {
+    /// Caixa de bloco tradicional (`display: block`)
+    Block,
+    /// Caixa inline tradicional (`display: inline`)
+    Inline,
+    /// Caixa inline-block (`display: inline-block`)
+    InlineBlock,
+    /// Container Flexbox (`display: flex`)
+    Flex,
+    /// Container Grid (`display: grid`)
+    Grid,
+    /// Caixa anônima (`::before` / `::after`)
+    Anonymous,
+    /// Execução de texto simples (Text run)
+    TextRun,
+}
+
 /// Nó da árvore de renderização associado a um `Arc<ComputedStyle>` imutável.
 #[derive(Debug, Clone)]
 pub struct RenderTreeNode {
@@ -79,6 +98,32 @@ impl RenderTreeNode {
             style,
             children: Vec::new(),
         }
+    }
+
+    /// Retorna a categoria normativa de caixa de layout correspondente ao estilo do nó.
+    pub fn box_generation_kind(&self) -> BoxGenerationKind {
+        match self.kind {
+            RenderNodeKind::AnonymousBefore | RenderNodeKind::AnonymousAfter => {
+                BoxGenerationKind::Anonymous
+            }
+            RenderNodeKind::Text => BoxGenerationKind::TextRun,
+            RenderNodeKind::Element => match self.style.display() {
+                crate::values::enums::Display::Block => BoxGenerationKind::Block,
+                crate::values::enums::Display::Inline => BoxGenerationKind::Inline,
+                crate::values::enums::Display::InlineBlock => BoxGenerationKind::InlineBlock,
+                crate::values::enums::Display::Flex => BoxGenerationKind::Flex,
+                crate::values::enums::Display::Grid => BoxGenerationKind::Grid,
+                _ => BoxGenerationKind::Block,
+            },
+        }
+    }
+
+    /// Retorna se o nó possui posicionamento fora do fluxo normal (absolute ou fixed).
+    pub fn is_out_of_flow(&self) -> bool {
+        matches!(
+            self.style.position(),
+            crate::values::enums::Position::Absolute | crate::values::enums::Position::Fixed
+        )
     }
 }
 

@@ -14,7 +14,9 @@ use ace_core::math::color::Color;
 use ace_core::math::layout_unit::{LayoutUnit, MAX, MIN, ZERO};
 use ace_core::math::oklab::Oklch;
 use ace_core::net::{percent_decode, sniff_mime_type};
-use ace_core::security::{compute_referrer, matches_domain_pattern, Origin, ReferrerPolicy, UnguessableToken};
+use ace_core::security::{
+    compute_referrer, matches_domain_pattern, Origin, ReferrerPolicy, UnguessableToken,
+};
 use ace_core::time::MockClock;
 
 use rustc_hash::FxHashSet;
@@ -392,7 +394,8 @@ fn tier2_feat04_arena_boundary_invalid_and_corrupted_keys() {
     let valid_id = arena.alloc(42);
 
     let oob_id = ArenaId::<i32>::from_raw((1u64 << 32) | 999_999).unwrap();
-    let wrong_version_id = ArenaId::<i32>::from_raw((9999u64 << 32) | (valid_id.raw() as u32 as u64)).unwrap();
+    let wrong_version_id =
+        ArenaId::<i32>::from_raw((9999u64 << 32) | (valid_id.raw() as u32 as u64)).unwrap();
 
     assert_eq!(arena.get(oob_id), None);
     assert_eq!(arena.get(wrong_version_id), None);
@@ -551,15 +554,30 @@ fn tier2_feat06_unguessable_token_boundary_ordering_and_equality() {
 fn tier2_feat07_compute_referrer_boundary_malformed_urls() {
     let origin = Origin::parse("https://example.com").unwrap();
     assert_eq!(
-        compute_referrer(&origin, "not_a_url", "https://example.com/api", ReferrerPolicy::SameOrigin),
+        compute_referrer(
+            &origin,
+            "not_a_url",
+            "https://example.com/api",
+            ReferrerPolicy::SameOrigin
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, "javascript:void(0)", "https://example.com", ReferrerPolicy::UnsafeUrl),
+        compute_referrer(
+            &origin,
+            "javascript:void(0)",
+            "https://example.com",
+            ReferrerPolicy::UnsafeUrl
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, "", "https://example.com", ReferrerPolicy::UnsafeUrl),
+        compute_referrer(
+            &origin,
+            "",
+            "https://example.com",
+            ReferrerPolicy::UnsafeUrl
+        ),
         None
     );
 }
@@ -568,11 +586,21 @@ fn tier2_feat07_compute_referrer_boundary_malformed_urls() {
 fn tier2_feat07_compute_referrer_boundary_missing_or_non_http_schemes() {
     let origin = Origin::parse("file:///local/path").unwrap_or_else(|_| Origin::new_opaque());
     assert_eq!(
-        compute_referrer(&origin, "file:///C:/Users/file.html", "https://example.com", ReferrerPolicy::UnsafeUrl),
+        compute_referrer(
+            &origin,
+            "file:///C:/Users/file.html",
+            "https://example.com",
+            ReferrerPolicy::UnsafeUrl
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, "data:text/html,test", "https://example.com", ReferrerPolicy::UnsafeUrl),
+        compute_referrer(
+            &origin,
+            "data:text/html,test",
+            "https://example.com",
+            ReferrerPolicy::UnsafeUrl
+        ),
         None
     );
 }
@@ -584,10 +612,20 @@ fn tier2_feat07_compute_referrer_boundary_ipv6_origins() {
     let target_same = "https://[::1]:8080/api/v1";
     let target_cross = "https://[::1]:9090/api/v1";
 
-    let ref_same = compute_referrer(&origin, current_url, target_same, ReferrerPolicy::SameOrigin);
+    let ref_same = compute_referrer(
+        &origin,
+        current_url,
+        target_same,
+        ReferrerPolicy::SameOrigin,
+    );
     assert_eq!(ref_same, Some("https://[::1]:8080/dashboard".to_string()));
 
-    let ref_cross = compute_referrer(&origin, current_url, target_cross, ReferrerPolicy::SameOrigin);
+    let ref_cross = compute_referrer(
+        &origin,
+        current_url,
+        target_cross,
+        ReferrerPolicy::SameOrigin,
+    );
     assert_eq!(ref_cross, None);
 }
 
@@ -598,7 +636,12 @@ fn tier2_feat07_compute_referrer_boundary_extreme_lengths_and_fragments() {
     let current_url = format!("https://example.com/{}#frag1#frag2", long_path);
     let target_url = "https://example.com/landing";
 
-    let result = compute_referrer(&origin, &current_url, target_url, ReferrerPolicy::SameOrigin);
+    let result = compute_referrer(
+        &origin,
+        &current_url,
+        target_url,
+        ReferrerPolicy::SameOrigin,
+    );
     assert_eq!(result, Some(format!("https://example.com/{}", long_path)));
 }
 
@@ -609,23 +652,48 @@ fn tier2_feat07_compute_referrer_boundary_downgrade_matrix() {
     let insecure_target = "http://insecure.example.com/tracker";
 
     assert_eq!(
-        compute_referrer(&origin, secure_url, insecure_target, ReferrerPolicy::NoReferrer),
+        compute_referrer(
+            &origin,
+            secure_url,
+            insecure_target,
+            ReferrerPolicy::NoReferrer
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, secure_url, insecure_target, ReferrerPolicy::NoReferrerWhenDowngrade),
+        compute_referrer(
+            &origin,
+            secure_url,
+            insecure_target,
+            ReferrerPolicy::NoReferrerWhenDowngrade
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, secure_url, insecure_target, ReferrerPolicy::StrictOrigin),
+        compute_referrer(
+            &origin,
+            secure_url,
+            insecure_target,
+            ReferrerPolicy::StrictOrigin
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, secure_url, insecure_target, ReferrerPolicy::StrictOriginWhenCrossOrigin),
+        compute_referrer(
+            &origin,
+            secure_url,
+            insecure_target,
+            ReferrerPolicy::StrictOriginWhenCrossOrigin
+        ),
         None
     );
     assert_eq!(
-        compute_referrer(&origin, secure_url, insecure_target, ReferrerPolicy::SameOrigin),
+        compute_referrer(
+            &origin,
+            secure_url,
+            insecure_target,
+            ReferrerPolicy::SameOrigin
+        ),
         None
     );
     assert_eq!(
@@ -672,7 +740,10 @@ fn tier2_feat08_origin_boundary_port_extremes() {
     assert_eq!(default_https.ascii_serialization(), "https://example.com");
 
     let non_default_http = Origin::parse("http://example.com:8080/").unwrap();
-    assert_eq!(non_default_http.ascii_serialization(), "http://example.com:8080");
+    assert_eq!(
+        non_default_http.ascii_serialization(),
+        "http://example.com:8080"
+    );
 
     let default_http = Origin::parse("http://example.com:80/").unwrap();
     assert_eq!(default_http.ascii_serialization(), "http://example.com");
@@ -682,7 +753,10 @@ fn tier2_feat08_origin_boundary_port_extremes() {
 fn tier2_feat08_origin_boundary_file_scheme() {
     let file_origin = Origin::parse("file:///C:/Users/app/index.html").unwrap();
     let ascii = file_origin.ascii_serialization();
-    assert!(!ascii.contains(":0"), "Port :0 must not appear in file origin serialization");
+    assert!(
+        !ascii.contains(":0"),
+        "Port :0 must not appear in file origin serialization"
+    );
     assert!(ascii.starts_with("file://"));
 }
 
@@ -712,7 +786,10 @@ fn tier2_feat09_matches_domain_pattern_boundary_wildcard_star() {
 #[test]
 fn tier2_feat09_matches_domain_pattern_boundary_subdomain_matching() {
     assert!(matches_domain_pattern("*.example.com", "sub.example.com"));
-    assert!(matches_domain_pattern("*.example.com", "deep.nested.sub.example.com"));
+    assert!(matches_domain_pattern(
+        "*.example.com",
+        "deep.nested.sub.example.com"
+    ));
     assert!(!matches_domain_pattern("*.example.com", "notexample.com"));
     assert!(!matches_domain_pattern("*.example.com", "example.org"));
 }
@@ -733,8 +810,14 @@ fn tier2_feat09_matches_domain_pattern_boundary_case_insensitivity_and_spaces() 
 
 #[test]
 fn tier2_feat09_matches_domain_pattern_boundary_internationalized_domains() {
-    assert!(matches_domain_pattern("*.xn--e1afmkfd.xn--p1ai", "sub.xn--e1afmkfd.xn--p1ai"));
-    assert!(!matches_domain_pattern("*.xn--e1afmkfd.xn--p1ai", "other.xn--p1ai"));
+    assert!(matches_domain_pattern(
+        "*.xn--e1afmkfd.xn--p1ai",
+        "sub.xn--e1afmkfd.xn--p1ai"
+    ));
+    assert!(!matches_domain_pattern(
+        "*.xn--e1afmkfd.xn--p1ai",
+        "other.xn--p1ai"
+    ));
 }
 
 // ============================================================================
@@ -766,7 +849,10 @@ fn tier2_feat10_percent_decode_boundary_consecutive_percents() {
 #[test]
 fn tier2_feat10_percent_decode_boundary_empty_and_no_escape() {
     assert_eq!(percent_decode(""), "");
-    assert_eq!(percent_decode("normal plain text 123"), "normal plain text 123");
+    assert_eq!(
+        percent_decode("normal plain text 123"),
+        "normal plain text 123"
+    );
 }
 
 #[test]
@@ -925,7 +1011,11 @@ fn tier2_feat13_microtask_checkpoint_boundary_nested_depth_100() {
     let q = el.handle();
     let counter = Arc::new(AtomicUsize::new(0));
 
-    fn schedule_recurse(q: ace_core::event_loop::TaskQueue, counter: Arc<AtomicUsize>, depth: usize) {
+    fn schedule_recurse(
+        q: ace_core::event_loop::TaskQueue,
+        counter: Arc<AtomicUsize>,
+        depth: usize,
+    ) {
         if depth > 0 {
             let q_clone = q.clone();
             let c_clone = Arc::clone(&counter);
@@ -1051,7 +1141,10 @@ fn tier2_feat14_atomic_timer_boundary_immediate_cancellation() {
     clock.advance_millis(100);
 
     assert!(el.step());
-    assert!(!fired.load(Ordering::SeqCst), "Cancelled timer must not execute");
+    assert!(
+        !fired.load(Ordering::SeqCst),
+        "Cancelled timer must not execute"
+    );
 }
 
 #[test]
@@ -1293,7 +1386,11 @@ fn tier2_feat17_css_color_polar_boundary_hue_wrap_around_0_360() {
 
     // Shortest angular arc between 350° and 10° crosses 0°/360°, midpoint is 0° (or 360°)
     let h_diff = (mid_oklch.h - 0.0).abs().min((mid_oklch.h - 360.0).abs());
-    assert!(h_diff < 5.0, "Expected hue ~0deg, got {:.2}deg", mid_oklch.h);
+    assert!(
+        h_diff < 5.0,
+        "Expected hue ~0deg, got {:.2}deg",
+        mid_oklch.h
+    );
 }
 
 #[test]
@@ -1388,7 +1485,10 @@ fn tier2_feat18_layout_unit_snapping_boundary_adjacent_boxes_no_gap() {
     let box2_start = box1_end;
     let box2_end = box2_start + box2_size;
 
-    assert_eq!(box1_end, box2_start, "Adjacent boxes must share identical boundary");
+    assert_eq!(
+        box1_end, box2_start,
+        "Adjacent boxes must share identical boundary"
+    );
     assert_eq!(box2_end, LayoutUnit::from_px(100));
     assert_eq!(box2_end.round_px(), 100);
 }
@@ -1455,7 +1555,9 @@ fn tier2_feat19_style_hint_flags_boundary_repaint_vs_reflow() {
 
 #[test]
 fn tier2_feat19_style_hint_flags_boundary_is_node_dirty_exhaustive() {
-    assert!(!is_node_dirty(NodeFlags::IS_ELEMENT | NodeFlags::IS_CONNECTED));
+    assert!(!is_node_dirty(
+        NodeFlags::IS_ELEMENT | NodeFlags::IS_CONNECTED
+    ));
     assert!(is_node_dirty(NodeFlags::DIRTY_STYLE));
     assert!(is_node_dirty(NodeFlags::DIRTY_LAYOUT));
     assert!(is_node_dirty(NodeFlags::DIRTY_PAINT));

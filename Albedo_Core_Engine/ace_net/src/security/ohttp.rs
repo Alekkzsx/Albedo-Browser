@@ -26,8 +26,8 @@ impl Default for OhttpKeyConfig {
     fn default() -> Self {
         Self {
             key_id: 1,
-            kem_id: 0x0020, // DHKEM(X25519, HKDF-SHA256)
-            kdf_id: 0x0001, // HKDF-SHA256
+            kem_id: 0x0020,  // DHKEM(X25519, HKDF-SHA256)
+            kdf_id: 0x0001,  // HKDF-SHA256
             aead_id: 0x0001, // AES-128-GCM
             public_key: vec![0u8; 32],
         }
@@ -151,7 +151,11 @@ impl OhttpEncapsulator {
     }
 
     /// Desencapsula a resposta criptografada `message/ohttp-res` retornada pelo relay.
-    pub fn decapsulate_response(&self, enc_response: &[u8], original_enc_key: &[u8]) -> NetResult<Bytes> {
+    pub fn decapsulate_response(
+        &self,
+        enc_response: &[u8],
+        original_enc_key: &[u8],
+    ) -> NetResult<Bytes> {
         if enc_response.is_empty() {
             return Err(NetError::HttpProtocolError("Resposta OHTTP vazia".into()));
         }
@@ -186,10 +190,8 @@ impl OhttpEncapsulator {
             CONTENT_TYPE,
             http::HeaderValue::from_static("message/ohttp-req"),
         );
-        req.headers.insert(
-            ACCEPT,
-            http::HeaderValue::from_static("message/ohttp-res"),
-        );
+        req.headers
+            .insert(ACCEPT, http::HeaderValue::from_static("message/ohttp-res"));
 
         Ok(req)
     }
@@ -215,7 +217,9 @@ mod tests {
         assert_eq!(parsed.aead_id, 0x0001);
         assert_eq!(parsed.enc_key.len(), 32);
 
-        let dec = enc.decapsulate_response(&parsed.ciphertext, &parsed.enc_key).unwrap();
+        let dec = enc
+            .decapsulate_response(&parsed.ciphertext, &parsed.enc_key)
+            .unwrap();
         assert_eq!(dec.as_ref(), payload);
     }
 
@@ -228,13 +232,7 @@ mod tests {
         let req = enc.build_relay_request(dummy_bytes).unwrap();
 
         assert_eq!(req.method, Method::POST);
-        assert_eq!(
-            req.headers.get(CONTENT_TYPE).unwrap(),
-            "message/ohttp-req"
-        );
-        assert_eq!(
-            req.headers.get(ACCEPT).unwrap(),
-            "message/ohttp-res"
-        );
+        assert_eq!(req.headers.get(CONTENT_TYPE).unwrap(), "message/ohttp-req");
+        assert_eq!(req.headers.get(ACCEPT).unwrap(), "message/ohttp-res");
     }
 }

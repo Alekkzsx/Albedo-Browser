@@ -82,7 +82,8 @@ mod tests {
 
     #[test]
     fn test_parse_clear_site_data_case_insensitive() {
-        let val = HeaderValue::from_static("\"CACHE\", \"COOKIES\", \"STORAGE\", \"ExecutionContexts\"");
+        let val =
+            HeaderValue::from_static("\"CACHE\", \"COOKIES\", \"STORAGE\", \"ExecutionContexts\"");
         let action = ClearSiteDataAction::parse(&val);
 
         assert!(action.clear_cache);

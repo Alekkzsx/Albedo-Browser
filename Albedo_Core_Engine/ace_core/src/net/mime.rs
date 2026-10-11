@@ -316,13 +316,16 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         }
 
         // RIFF Container (WEBP / WAVE)
-        if first4 == 0x5249_4646 { // "RIFF"
+        if first4 == 0x5249_4646 {
+            // "RIFF"
             if len >= 12 {
                 let tag = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
-                if tag == 0x5745_4250 { // "WEBP"
+                if tag == 0x5745_4250 {
+                    // "WEBP"
                     return "image/webp";
                 }
-                if tag == 0x5741_5645 { // "WAVE"
+                if tag == 0x5741_5645 {
+                    // "WAVE"
                     return "audio/wav";
                 }
             }
@@ -330,10 +333,12 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
 
         // FTYP Box (MP4 / AVIF)
         let ftyp = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
-        if ftyp == 0x6674_7970 { // "ftyp"
+        if ftyp == 0x6674_7970 {
+            // "ftyp"
             if len >= 12 {
                 let brand = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
-                if brand == 0x6176_6966 || brand == 0x6176_6973 { // "avif" / "avis"
+                if brand == 0x6176_6966 || brand == 0x6176_6973 {
+                    // "avif" / "avis"
                     return "image/avif";
                 }
             }
@@ -341,16 +346,20 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         }
 
         // Fontes Web
-        if first4 == 0x774F_4646 { // "wOFF"
+        if first4 == 0x774F_4646 {
+            // "wOFF"
             return "font/woff";
         }
-        if first4 == 0x774F_4632 { // "wOF2"
+        if first4 == 0x774F_4632 {
+            // "wOF2"
             return "font/woff2";
         }
-        if first4 == 0x0001_0000 || first4 == 0x7472_7565 || first4 == 0x7479_7031 { // "\0\1\0\0" | "true" | "typ1"
+        if first4 == 0x0001_0000 || first4 == 0x7472_7565 || first4 == 0x7479_7031 {
+            // "\0\1\0\0" | "true" | "typ1"
             return "font/ttf";
         }
-        if first4 == 0x4F54_544F { // "OTTO"
+        if first4 == 0x4F54_544F {
+            // "OTTO"
             return "font/otf";
         }
 
@@ -409,7 +418,10 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
         if bytes.starts_with(b"wOF2") {
             return "font/woff2";
         }
-        if bytes.starts_with(b"\x00\x01\x00\x00") || bytes.starts_with(b"true") || bytes.starts_with(b"typ1") {
+        if bytes.starts_with(b"\x00\x01\x00\x00")
+            || bytes.starts_with(b"true")
+            || bytes.starts_with(b"typ1")
+        {
             return "font/ttf";
         }
         if bytes.starts_with(b"OTTO") {
@@ -459,7 +471,8 @@ pub fn sniff_mime_type(bytes: &[u8]) -> &'static str {
 
     if contains_ignore_ascii_case(sample, "<svg")
         || contains_ignore_ascii_case(sample, "<!doctype svg")
-        || (starts_with_ignore_ascii_case(sample, "<?xml") && contains_ignore_ascii_case(sample, "<svg"))
+        || (starts_with_ignore_ascii_case(sample, "<?xml")
+            && contains_ignore_ascii_case(sample, "<svg"))
     {
         return "image/svg+xml";
     }
@@ -486,7 +499,10 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     if haystack.len() < n.len() {
         return false;
     }
-    haystack.as_bytes().windows(n.len()).any(|w| w.eq_ignore_ascii_case(n))
+    haystack
+        .as_bytes()
+        .windows(n.len())
+        .any(|w| w.eq_ignore_ascii_case(n))
 }
 
 /// Valida um cabeçalho de frame de áudio MPEG (MP3) conforme as restrições da especificação WHATWG MIME Sniffing.

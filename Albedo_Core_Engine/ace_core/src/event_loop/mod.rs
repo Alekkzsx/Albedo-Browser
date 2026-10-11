@@ -17,9 +17,7 @@ pub mod source;
 pub mod task;
 pub mod utils;
 
-pub use budget::{
-    AntiStarvationSelector, BackgroundTabThrottler, CPUTimeBudgetPool, TaskPriority,
-};
+pub use budget::{AntiStarvationSelector, BackgroundTabThrottler, CPUTimeBudgetPool, TaskPriority};
 pub use coalescer::{CoalescedMovement, InputEventCoalescer};
 pub use idle::{IdleDeadline, IdleTaskFn, IdleTaskQueue, ScheduledIdleTask};
 pub use scope::{ScopedTaskQueue, TaskScope};
@@ -139,7 +137,11 @@ impl TaskSourceQueues {
     #[inline]
     pub fn push(&self, task: Task) {
         let idx = task.source.priority() as usize;
-        let target = if idx < NUM_TASK_SOURCES { idx } else { NUM_TASK_SOURCES - 1 };
+        let target = if idx < NUM_TASK_SOURCES {
+            idx
+        } else {
+            NUM_TASK_SOURCES - 1
+        };
         self.queues[target].push(task);
         self.active_mask.fetch_or(1 << target, Ordering::Release);
     }
@@ -378,7 +380,8 @@ impl TaskQueue {
 
         self.timers.lock().push(timer);
         self.timer_count.fetch_add(1, Ordering::Release);
-        self.earliest_deadline_ms.fetch_min(target_ms, Ordering::Release);
+        self.earliest_deadline_ms
+            .fetch_min(target_ms, Ordering::Release);
         self.wake();
         (id, is_cancelled)
     }
@@ -582,7 +585,8 @@ impl EventLoop {
             let remaining_count = timers.len() as u32;
             self.timer_count.store(remaining_count, Ordering::Release);
             if let Some(earliest) = timers.peek() {
-                self.earliest_deadline_ms.store(earliest.target_ms, Ordering::Release);
+                self.earliest_deadline_ms
+                    .store(earliest.target_ms, Ordering::Release);
             } else {
                 self.earliest_deadline_ms.store(u64::MAX, Ordering::Release);
             }

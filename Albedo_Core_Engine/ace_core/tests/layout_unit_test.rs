@@ -88,9 +88,17 @@ fn test_layout_unit_box_snapping_zero_pixel_cracking() {
     let (x3, w3) = snap_box(o3, s3);
 
     // Right edge of Box 1 MUST identically equal Left edge of Box 2
-    assert_eq!(x1 + w1, x2, "Pixel cracking detected between Box 1 and Box 2");
+    assert_eq!(
+        x1 + w1,
+        x2,
+        "Pixel cracking detected between Box 1 and Box 2"
+    );
     // Right edge of Box 2 MUST identically equal Left edge of Box 3
-    assert_eq!(x2 + w2, x3, "Pixel cracking detected between Box 2 and Box 3");
+    assert_eq!(
+        x2 + w2,
+        x3,
+        "Pixel cracking detected between Box 2 and Box 3"
+    );
 
     // Total snapped width must equal snapped total span
     assert_eq!(w1 + w2 + w3, 100);
@@ -126,4 +134,3 @@ fn test_layout_unit_box_snapping_zero_pixel_cracking() {
         }
     }
 }
-

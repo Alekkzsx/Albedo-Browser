@@ -67,11 +67,7 @@ pub enum CssBlendMode {
 }
 
 /// Executa a composição Porter-Duff com alfa pré-multiplicado.
-pub fn composite_porter_duff(
-    src: ColorRgba,
-    dst: ColorRgba,
-    op: PorterDuffOperator,
-) -> ColorRgba {
+pub fn composite_porter_duff(src: ColorRgba, dst: ColorRgba, op: PorterDuffOperator) -> ColorRgba {
     let (cs_r, cs_g, cs_b, as_) = (src.r * src.a, src.g * src.a, src.b * src.a, src.a);
     let (cb_r, cb_g, cb_b, ab) = (dst.r * dst.a, dst.g * dst.a, dst.b * dst.a, dst.a);
 
@@ -172,12 +168,9 @@ pub fn composite_blend(src: ColorRgba, dst: ColorRgba, mode: CssBlendMode) -> Co
     let blend_g = blend_channel(dst.g, src.g, mode);
     let blend_b = blend_channel(dst.b, src.b, mode);
 
-    let out_r =
-        ((1.0 - ab) * as_ * src.r + (1.0 - as_) * ab * dst.r + as_ * ab * blend_r) / out_a;
-    let out_g =
-        ((1.0 - ab) * as_ * src.g + (1.0 - as_) * ab * dst.g + as_ * ab * blend_g) / out_a;
-    let out_b =
-        ((1.0 - ab) * as_ * src.b + (1.0 - as_) * ab * dst.b + as_ * ab * blend_b) / out_a;
+    let out_r = ((1.0 - ab) * as_ * src.r + (1.0 - as_) * ab * dst.r + as_ * ab * blend_r) / out_a;
+    let out_g = ((1.0 - ab) * as_ * src.g + (1.0 - as_) * ab * dst.g + as_ * ab * blend_g) / out_a;
+    let out_b = ((1.0 - ab) * as_ * src.b + (1.0 - as_) * ab * dst.b + as_ * ab * blend_b) / out_a;
 
     ColorRgba::new(out_r, out_g, out_b, out_a).clamp()
 }

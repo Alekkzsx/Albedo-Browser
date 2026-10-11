@@ -15,9 +15,27 @@ use tokio::net::TcpListener;
 
 #[test]
 fn test_range_spec_variants() {
-    assert_eq!(ByteRangeSpec::From(2048).to_header_value().to_str().unwrap(), "bytes=2048-");
-    assert_eq!(ByteRangeSpec::Range(100, 200).to_header_value().to_str().unwrap(), "bytes=100-200");
-    assert_eq!(ByteRangeSpec::Suffix(1024).to_header_value().to_str().unwrap(), "bytes=-1024");
+    assert_eq!(
+        ByteRangeSpec::From(2048)
+            .to_header_value()
+            .to_str()
+            .unwrap(),
+        "bytes=2048-"
+    );
+    assert_eq!(
+        ByteRangeSpec::Range(100, 200)
+            .to_header_value()
+            .to_str()
+            .unwrap(),
+        "bytes=100-200"
+    );
+    assert_eq!(
+        ByteRangeSpec::Suffix(1024)
+            .to_header_value()
+            .to_str()
+            .unwrap(),
+        "bytes=-1024"
+    );
 }
 
 #[tokio::test]
@@ -73,7 +91,9 @@ async fn test_range_request_live_server_206() {
     assert_eq!(resp.status, StatusCode::PARTIAL_CONTENT);
     assert!(resp.is_partial());
 
-    let cr = resp.content_range.expect("Deve conter ContentRange parseado");
+    let cr = resp
+        .content_range
+        .expect("Deve conter ContentRange parseado");
     assert_eq!(cr.start, 0);
     assert_eq!(cr.end, 9);
     assert_eq!(cr.total, Some(36));

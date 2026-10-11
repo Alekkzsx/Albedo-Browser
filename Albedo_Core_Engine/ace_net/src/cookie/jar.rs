@@ -190,7 +190,7 @@ impl CookieJar {
         }
         let now = SystemTime::now();
         let serialized = self.export_persistent(now);
-        
+
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, serialized)?;
         if path.exists() {
@@ -300,11 +300,12 @@ mod tests {
         assert_eq!(jar.len(), MAX_COOKIES_PER_DOMAIN);
 
         // O primeiro cookie (c_0) deve ter sido despejado (LRU)
-        let hdr = jar.build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now).unwrap();
+        let hdr = jar
+            .build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now)
+            .unwrap();
         let s = hdr.to_str().unwrap();
         assert!(!s.contains("c_0="));
         assert!(s.contains("c_1="));
         assert!(s.contains(&format!("c_{}=", MAX_COOKIES_PER_DOMAIN)));
     }
 }
-

@@ -590,7 +590,13 @@ impl Color {
 
     /// Interpolação polar genérica (Oklch, Lch, Hsl) no espaço e método especificados.
     #[inline]
-    pub fn interpolate_polar(self, other: Self, t: f32, space: ColorSpace, method: HueInterpolation) -> Self {
+    pub fn interpolate_polar(
+        self,
+        other: Self,
+        t: f32,
+        space: ColorSpace,
+        method: HueInterpolation,
+    ) -> Self {
         match space {
             ColorSpace::Oklch => self.interpolate_oklch(other, t, method),
             ColorSpace::Lch => self.interpolate_lch(other, t, method),
@@ -1155,10 +1161,18 @@ pub fn mix_colors_with_hue(
         ColorSpace::SrgbLinear => {
             let (r1, g1, b1, _) = c1.to_rgba_f32();
             let (r2, g2, b2, _) = c2.to_rgba_f32();
-            let r_lin = (srgb_to_linear(r1) * a1 * w1 + srgb_to_linear(r2) * a2 * w2) / out_a_premul;
-            let g_lin = (srgb_to_linear(g1) * a1 * w1 + srgb_to_linear(g2) * a2 * w2) / out_a_premul;
-            let b_lin = (srgb_to_linear(b1) * a1 * w1 + srgb_to_linear(b2) * a2 * w2) / out_a_premul;
-            Color::from_rgba_f32(linear_to_srgb(r_lin), linear_to_srgb(g_lin), linear_to_srgb(b_lin), final_alpha)
+            let r_lin =
+                (srgb_to_linear(r1) * a1 * w1 + srgb_to_linear(r2) * a2 * w2) / out_a_premul;
+            let g_lin =
+                (srgb_to_linear(g1) * a1 * w1 + srgb_to_linear(g2) * a2 * w2) / out_a_premul;
+            let b_lin =
+                (srgb_to_linear(b1) * a1 * w1 + srgb_to_linear(b2) * a2 * w2) / out_a_premul;
+            Color::from_rgba_f32(
+                linear_to_srgb(r_lin),
+                linear_to_srgb(g_lin),
+                linear_to_srgb(b_lin),
+                final_alpha,
+            )
         }
         ColorSpace::DisplayP3 => {
             let (r1, g1, b1, _) = c1.to_rgba_f32();
@@ -1244,9 +1258,17 @@ pub fn interpolate_hue(h1: f32, h2: f32, t: f32, method: HueInterpolation) -> f3
 
     let h = h1 + (h2 - h1) * t;
     if h >= 360.0 {
-        if h < 720.0 { h - 360.0 } else { normalize_hue(h) }
+        if h < 720.0 {
+            h - 360.0
+        } else {
+            normalize_hue(h)
+        }
     } else if h < 0.0 {
-        if h >= -360.0 { h + 360.0 } else { normalize_hue(h) }
+        if h >= -360.0 {
+            h + 360.0
+        } else {
+            normalize_hue(h)
+        }
     } else {
         h
     }
@@ -1275,7 +1297,7 @@ pub const D50_XN: f32 = 0.96422;
 pub const D50_YN: f32 = 1.00000;
 pub const D50_ZN: f32 = 0.82521;
 pub const CIE_EPSILON: f32 = 216.0 / 24389.0; // ≈ 0.008856451679035631
-pub const CIE_KAPPA: f32 = 24389.0 / 27.0;    // ≈ 903.2962962962963
+pub const CIE_KAPPA: f32 = 24389.0 / 27.0; // ≈ 903.2962962962963
 
 /// Converte CIE XYZ (D50) para CIE L*a*b* (D50).
 #[inline(always)]

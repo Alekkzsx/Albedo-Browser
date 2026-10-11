@@ -23,13 +23,34 @@ fn test_render_blocking_classification() {
 
 #[test]
 fn test_request_destination_priorities() {
-    assert_eq!(RequestDestination::Document.default_priority(), PriorityLevel::VeryHigh);
-    assert_eq!(RequestDestination::Style.default_priority(), PriorityLevel::High);
-    assert_eq!(RequestDestination::Script.default_priority(), PriorityLevel::High);
-    assert_eq!(RequestDestination::Font.default_priority(), PriorityLevel::High);
-    assert_eq!(RequestDestination::Image.default_priority(), PriorityLevel::Medium);
-    assert_eq!(RequestDestination::Media.default_priority(), PriorityLevel::Low);
-    assert_eq!(RequestDestination::Fetch.default_priority(), PriorityLevel::Low);
+    assert_eq!(
+        RequestDestination::Document.default_priority(),
+        PriorityLevel::VeryHigh
+    );
+    assert_eq!(
+        RequestDestination::Style.default_priority(),
+        PriorityLevel::High
+    );
+    assert_eq!(
+        RequestDestination::Script.default_priority(),
+        PriorityLevel::High
+    );
+    assert_eq!(
+        RequestDestination::Font.default_priority(),
+        PriorityLevel::High
+    );
+    assert_eq!(
+        RequestDestination::Image.default_priority(),
+        PriorityLevel::Medium
+    );
+    assert_eq!(
+        RequestDestination::Media.default_priority(),
+        PriorityLevel::Low
+    );
+    assert_eq!(
+        RequestDestination::Fetch.default_priority(),
+        PriorityLevel::Low
+    );
 }
 
 #[test]

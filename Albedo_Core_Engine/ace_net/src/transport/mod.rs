@@ -4,10 +4,10 @@
 
 pub mod client;
 pub mod dns;
-pub mod timing;
-pub mod proxy;
-pub mod network_change;
 pub mod dns_cache;
+pub mod network_change;
+pub mod proxy;
+pub mod timing;
 
 pub use client::TransportClient;
 pub use dns::DohHappyEyeballsResolver;

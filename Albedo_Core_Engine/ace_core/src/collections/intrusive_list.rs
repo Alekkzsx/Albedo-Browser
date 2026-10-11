@@ -110,7 +110,10 @@ impl<T: IntrusiveNode + ?Sized> IntrusiveList<T> {
     /// Dispara pânico se o nó já estiver vinculado a alguma lista.
     pub fn push_back(&mut self, node: &T) {
         let link = node.intrusive_link();
-        assert!(!link.is_linked.get(), "Tentativa de inserir nó já vinculado");
+        assert!(
+            !link.is_linked.get(),
+            "Tentativa de inserir nó já vinculado"
+        );
 
         let link_ptr = NonNull::from(link);
         link.is_linked.set(true);
@@ -135,7 +138,10 @@ impl<T: IntrusiveNode + ?Sized> IntrusiveList<T> {
     /// Dispara pânico se o nó já estiver vinculado a alguma lista.
     pub fn push_front(&mut self, node: &T) {
         let link = node.intrusive_link();
-        assert!(!link.is_linked.get(), "Tentativa de inserir nó já vinculado");
+        assert!(
+            !link.is_linked.get(),
+            "Tentativa de inserir nó já vinculado"
+        );
 
         let link_ptr = NonNull::from(link);
         link.is_linked.set(true);

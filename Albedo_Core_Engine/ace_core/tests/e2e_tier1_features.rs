@@ -480,10 +480,7 @@ fn tier1_feat06_unguessable_token_raw_reconstruction_roundtrip() {
 fn tier1_feat06_unguessable_token_empty_token_behavior() {
     let zero_token = UnguessableToken::from_raw(0, 0);
     assert!(zero_token.is_empty());
-    assert_eq!(
-        zero_token.to_hex(),
-        "00000000000000000000000000000000"
-    );
+    assert_eq!(zero_token.to_hex(), "00000000000000000000000000000000");
 
     let default_token = UnguessableToken::default();
     assert!(default_token.is_empty());
@@ -565,12 +562,7 @@ fn tier1_feat07_compute_referrer_origin_only_policy_strips_path_and_query() {
     let current_url = "https://albedo.org/secret/report?token=abc123xyz";
     let cross_target = "https://partner.com/webhook";
 
-    let ref_origin = compute_referrer(
-        &origin,
-        current_url,
-        cross_target,
-        ReferrerPolicy::Origin,
-    );
+    let ref_origin = compute_referrer(&origin, current_url, cross_target, ReferrerPolicy::Origin);
     assert_eq!(ref_origin, Some("https://albedo.org".to_string()));
 }
 
@@ -711,14 +703,8 @@ fn tier1_feat09_matches_domain_pattern_wildcard_rejects_apex_domain() {
 
 #[test]
 fn tier1_feat09_matches_domain_pattern_rejects_malicious_subdomain_prefixes() {
-    assert!(!matches_domain_pattern(
-        "*.example.com",
-        "evil-example.com"
-    ));
-    assert!(!matches_domain_pattern(
-        "*.example.com",
-        "notexample.com"
-    ));
+    assert!(!matches_domain_pattern("*.example.com", "evil-example.com"));
+    assert!(!matches_domain_pattern("*.example.com", "notexample.com"));
     assert!(!matches_domain_pattern("*.example.com", "example.org"));
 }
 
@@ -744,7 +730,10 @@ fn tier1_feat10_percent_decode_utf8_multibyte_sequences() {
 
 #[test]
 fn tier1_feat10_percent_decode_plain_string_unmodified() {
-    assert_eq!(percent_decode("plain_text_without_escapes"), "plain_text_without_escapes");
+    assert_eq!(
+        percent_decode("plain_text_without_escapes"),
+        "plain_text_without_escapes"
+    );
     assert_eq!(percent_decode("1234567890"), "1234567890");
     assert_eq!(percent_decode(""), "");
 }
@@ -887,10 +876,7 @@ fn tier1_feat12_event_loop_starvation_task_source_priority_order() {
 
     // 3º deve ser Internal
     assert!(el.step());
-    assert_eq!(
-        *execution_order.lock(),
-        vec!["user", "network", "internal"]
-    );
+    assert_eq!(*execution_order.lock(), vec!["user", "network", "internal"]);
 }
 
 #[test]

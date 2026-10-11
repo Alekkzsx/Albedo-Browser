@@ -200,7 +200,10 @@ mod tests {
     fn test_psl_etld_plus_one() {
         let trie = CompactPslTrie::new_with_standard_rules();
 
-        assert_eq!(trie.get_etld_plus_one("sub.example.com"), Some("example.com"));
+        assert_eq!(
+            trie.get_etld_plus_one("sub.example.com"),
+            Some("example.com")
+        );
         assert_eq!(
             trie.get_etld_plus_one("portal.service.gov.br"),
             Some("service.gov.br")

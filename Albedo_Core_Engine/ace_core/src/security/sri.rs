@@ -140,8 +140,7 @@ mod tests {
         hasher.update(data);
         let expected_digest = hasher.finalize().to_vec();
 
-        let mut streaming =
-            StreamingSriHasher::new(SriAlgorithm::Sha256, expected_digest.clone());
+        let mut streaming = StreamingSriHasher::new(SriAlgorithm::Sha256, expected_digest.clone());
 
         streaming.update(&data[0..10]);
         streaming.update(&data[10..20]);

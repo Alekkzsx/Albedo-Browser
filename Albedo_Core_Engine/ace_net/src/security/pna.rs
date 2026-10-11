@@ -122,7 +122,10 @@ pub fn is_host_private_or_local(host: &str) -> bool {
 
 /// Valida uma requisição segundo as diretrizes de Private Network Access.
 /// Se a origem da requisição for pública e o destino for um IP local ou privado, aborta a requisição.
-pub fn validate_private_network_access(initiator_is_public: bool, target_ip: IpAddr) -> NetResult<()> {
+pub fn validate_private_network_access(
+    initiator_is_public: bool,
+    target_ip: IpAddr,
+) -> NetResult<()> {
     if initiator_is_public && is_private_or_local(target_ip) {
         let space = classify_ip(target_ip);
         crate::telemetry::net_log::log_net_event(
@@ -145,27 +148,69 @@ mod tests {
 
     #[test]
     fn test_classify_ipv4_addresses() {
-        assert_eq!(classify_ipv4("127.0.0.1".parse().unwrap()), IpAddressSpace::Local);
-        assert_eq!(classify_ipv4("127.0.1.1".parse().unwrap()), IpAddressSpace::Local);
-        assert_eq!(classify_ipv4("169.254.10.20".parse().unwrap()), IpAddressSpace::Local);
+        assert_eq!(
+            classify_ipv4("127.0.0.1".parse().unwrap()),
+            IpAddressSpace::Local
+        );
+        assert_eq!(
+            classify_ipv4("127.0.1.1".parse().unwrap()),
+            IpAddressSpace::Local
+        );
+        assert_eq!(
+            classify_ipv4("169.254.10.20".parse().unwrap()),
+            IpAddressSpace::Local
+        );
 
-        assert_eq!(classify_ipv4("10.0.0.1".parse().unwrap()), IpAddressSpace::Private);
-        assert_eq!(classify_ipv4("172.16.5.10".parse().unwrap()), IpAddressSpace::Private);
-        assert_eq!(classify_ipv4("172.31.255.254".parse().unwrap()), IpAddressSpace::Private);
-        assert_eq!(classify_ipv4("192.168.1.1".parse().unwrap()), IpAddressSpace::Private);
-        assert_eq!(classify_ipv4("100.64.0.1".parse().unwrap()), IpAddressSpace::Private);
+        assert_eq!(
+            classify_ipv4("10.0.0.1".parse().unwrap()),
+            IpAddressSpace::Private
+        );
+        assert_eq!(
+            classify_ipv4("172.16.5.10".parse().unwrap()),
+            IpAddressSpace::Private
+        );
+        assert_eq!(
+            classify_ipv4("172.31.255.254".parse().unwrap()),
+            IpAddressSpace::Private
+        );
+        assert_eq!(
+            classify_ipv4("192.168.1.1".parse().unwrap()),
+            IpAddressSpace::Private
+        );
+        assert_eq!(
+            classify_ipv4("100.64.0.1".parse().unwrap()),
+            IpAddressSpace::Private
+        );
 
-        assert_eq!(classify_ipv4("1.1.1.1".parse().unwrap()), IpAddressSpace::Public);
-        assert_eq!(classify_ipv4("8.8.8.8".parse().unwrap()), IpAddressSpace::Public);
-        assert_eq!(classify_ipv4("142.250.190.46".parse().unwrap()), IpAddressSpace::Public);
+        assert_eq!(
+            classify_ipv4("1.1.1.1".parse().unwrap()),
+            IpAddressSpace::Public
+        );
+        assert_eq!(
+            classify_ipv4("8.8.8.8".parse().unwrap()),
+            IpAddressSpace::Public
+        );
+        assert_eq!(
+            classify_ipv4("142.250.190.46".parse().unwrap()),
+            IpAddressSpace::Public
+        );
     }
 
     #[test]
     fn test_classify_ipv6_addresses() {
         assert_eq!(classify_ipv6("::1".parse().unwrap()), IpAddressSpace::Local);
-        assert_eq!(classify_ipv6("fe80::1".parse().unwrap()), IpAddressSpace::Local);
-        assert_eq!(classify_ipv6("fd00::1".parse().unwrap()), IpAddressSpace::Private);
-        assert_eq!(classify_ipv6("2606:4700:4700::1111".parse().unwrap()), IpAddressSpace::Public);
+        assert_eq!(
+            classify_ipv6("fe80::1".parse().unwrap()),
+            IpAddressSpace::Local
+        );
+        assert_eq!(
+            classify_ipv6("fd00::1".parse().unwrap()),
+            IpAddressSpace::Private
+        );
+        assert_eq!(
+            classify_ipv6("2606:4700:4700::1111".parse().unwrap()),
+            IpAddressSpace::Public
+        );
     }
 
     #[test]

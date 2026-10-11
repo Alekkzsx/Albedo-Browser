@@ -97,7 +97,12 @@ fn test_triple_buffer_multi_threaded_sync() {
     let mut last_seen = 0;
     for _ in 0..15 {
         if let Some(&frame) = consumer.consume() {
-            assert!(frame >= last_seen, "Frame regression detected: {} < {}", frame, last_seen);
+            assert!(
+                frame >= last_seen,
+                "Frame regression detected: {} < {}",
+                frame,
+                last_seen
+            );
             last_seen = frame;
         }
         thread::sleep(Duration::from_millis(2));
@@ -125,7 +130,12 @@ fn test_triple_buffer_high_throughput_stress() {
         let mut received = 0;
         while last_val < iterations {
             if let Some(&val) = consumer.consume() {
-                assert!(val >= last_val, "Monotonic ordering violation: {} < {}", val, last_val);
+                assert!(
+                    val >= last_val,
+                    "Monotonic ordering violation: {} < {}",
+                    val,
+                    last_val
+                );
                 last_val = val;
                 received += 1;
             }

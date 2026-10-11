@@ -45,8 +45,6 @@ pub struct Cookie {
     pub partition_key: Option<String>,
 }
 
-
-
 /// Verifica se uma cadeia de domínio representa um sufixo público registrado.
 pub fn is_public_suffix(domain: &str) -> bool {
     let clean = domain.trim_start_matches('.').to_ascii_lowercase();
@@ -398,12 +396,18 @@ mod tests {
 
         // Tentativa de injetar super-cookie para .co.uk
         let super_cookie = Cookie::parse("session=hacked; Domain=co.uk", &url, None, now);
-        assert!(super_cookie.is_none(), "Super-cookie para .co.uk deve ser rejeitado");
+        assert!(
+            super_cookie.is_none(),
+            "Super-cookie para .co.uk deve ser rejeitado"
+        );
 
         // Tentativa de injetar super-cookie para .com
         let url_com = Url::parse("https://evil.com/page").unwrap();
         let super_com = Cookie::parse("session=hacked; Domain=com", &url_com, None, now);
-        assert!(super_com.is_none(), "Super-cookie para .com deve ser rejeitado");
+        assert!(
+            super_com.is_none(),
+            "Super-cookie para .com deve ser rejeitado"
+        );
 
         // Tentativa de injetar domínio fora do escopo (ex: evil.com tentando definir para other.com)
         let mismatch = Cookie::parse("session=hacked; Domain=other.com", &url_com, None, now);
@@ -424,7 +428,10 @@ mod tests {
         let huge_val = "x".repeat(5000);
         let header = format!("token={}", huge_val);
         let parsed = Cookie::parse(&header, &url, None, now);
-        assert!(parsed.is_none(), "Cookie maior que 4096 bytes deve ser rejeitado");
+        assert!(
+            parsed.is_none(),
+            "Cookie maior que 4096 bytes deve ser rejeitado"
+        );
     }
 
     #[test]
@@ -443,8 +450,14 @@ mod tests {
         assert!(Cookie::parse("__Host-id=abc; Secure", &https_url, None, now).is_some()); // Default path é / -> OK
         assert!(Cookie::parse("__Host-id=abc; Secure; Path=/", &https_url, None, now).is_some()); // OK
         assert!(Cookie::parse("__Host-id=abc; Secure; Path=/app", &https_url, None, now).is_none()); // Path != /
-        assert!(Cookie::parse("__Host-id=abc; Secure; Domain=bank.com", &https_url, None, now).is_none()); // Tem Domain
-        assert!(Cookie::parse("__Host-id=abc; Secure", &http_url, None, now).is_none()); // HTTP
+        assert!(Cookie::parse(
+            "__Host-id=abc; Secure; Domain=bank.com",
+            &https_url,
+            None,
+            now
+        )
+        .is_none()); // Tem Domain
+        assert!(Cookie::parse("__Host-id=abc; Secure", &http_url, None, now).is_none());
+        // HTTP
     }
 }
-

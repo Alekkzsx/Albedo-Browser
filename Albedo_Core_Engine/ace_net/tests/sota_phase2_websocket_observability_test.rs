@@ -28,12 +28,20 @@ async fn test_websocket_local_echo_server_bidirectional_roundtrip() {
                     match msg {
                         tungstenite::Message::Text(t) => {
                             let reply = format!("echo: {}", t);
-                            if ws_stream.send(tungstenite::Message::Text(reply)).await.is_err() {
+                            if ws_stream
+                                .send(tungstenite::Message::Text(reply))
+                                .await
+                                .is_err()
+                            {
                                 break;
                             }
                         }
                         tungstenite::Message::Binary(b) => {
-                            if ws_stream.send(tungstenite::Message::Binary(b)).await.is_err() {
+                            if ws_stream
+                                .send(tungstenite::Message::Binary(b))
+                                .await
+                                .is_err()
+                            {
                                 break;
                             }
                         }
@@ -59,7 +67,10 @@ async fn test_websocket_local_echo_server_bidirectional_roundtrip() {
         .await
         .expect("Falha ao enviar mensagem de texto");
     let received = session.recv().await.expect("Não recebeu mensagem de volta");
-    assert_eq!(received, WebSocketMessage::Text("echo: Albedo SOTA Net".into()));
+    assert_eq!(
+        received,
+        WebSocketMessage::Text("echo: Albedo SOTA Net".into())
+    );
 
     // Teste de mensagem de buffer binário
     let payload = Bytes::from_static(b"\xde\xad\xbe\xef");
@@ -91,7 +102,10 @@ async fn test_resource_fetcher_in_memory_har_recording() {
     let req = Request::get("data:text/html;charset=utf-8,<h1>HAR%20Test</h1>")
         .unwrap()
         .build();
-    let resp = fetcher.fetch(req).await.expect("Falha ao processar data uri");
+    let resp = fetcher
+        .fetch(req)
+        .await
+        .expect("Falha ao processar data uri");
     assert_eq!(resp.status, http::StatusCode::OK);
 
     assert_eq!(exporter.entries_count(), 1);
@@ -157,4 +171,3 @@ async fn test_har_disk_export_file() {
     assert!(file_content.contains("\"version\": \"1.2\""));
     assert!(file_content.contains("data:text/plain,Hello"));
 }
-

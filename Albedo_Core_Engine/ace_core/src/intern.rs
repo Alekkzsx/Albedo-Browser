@@ -492,3 +492,52 @@ pub fn lookup_static(s: &str) -> Option<Atom> {
         _ => None,
     }
 }
+
+/// Pool concorrente e thread-safe de internamento de strings para desduplicação em larga escala.
+#[derive(Debug, Default)]
+pub struct AtomPool {
+    pool: parking_lot::RwLock<rustc_hash::FxHashSet<Atom>>,
+}
+
+impl AtomPool {
+    /// Cria um novo pool de átomos thread-safe.
+    pub fn new() -> Self {
+        Self {
+            pool: parking_lot::RwLock::new(rustc_hash::FxHashSet::default()),
+        }
+    }
+
+    /// Interna uma string no pool. Retorna átomos estáticos imediatos em O(1), ou reutiliza instâncias já alocadas.
+    pub fn intern(&self, text: &str) -> Atom {
+        if let Some(static_atom) = lookup_static(text) {
+            return static_atom;
+        }
+
+        let target = Atom::new(text);
+        {
+            let read = self.pool.read();
+            if let Some(existing) = read.get(&target) {
+                return existing.clone();
+            }
+        }
+
+        let mut write = self.pool.write();
+        write.insert(target.clone());
+        target
+    }
+
+    /// Retorna a quantidade de átomos dinâmicos armazenados no pool.
+    pub fn len(&self) -> usize {
+        self.pool.read().len()
+    }
+
+    /// Retorna se o pool está vazio.
+    pub fn is_empty(&self) -> bool {
+        self.pool.read().is_empty()
+    }
+
+    /// Limpa o cache dinâmico de átomos.
+    pub fn clear(&self) {
+        self.pool.write().clear();
+    }
+}

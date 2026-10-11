@@ -37,7 +37,9 @@ const fn make_encode_bitmap(set: PercentEncodeSet) -> [u64; 4] {
                 PercentEncodeSet::C0Control => false,
                 PercentEncodeSet::Fragment => matches!(byte, b' ' | b'"' | b'<' | b'>' | b'`'),
                 PercentEncodeSet::Query => matches!(byte, b' ' | b'"' | b'#' | b'<' | b'>'),
-                PercentEncodeSet::SpecialQuery => matches!(byte, b' ' | b'"' | b'#' | b'<' | b'>' | b'\''),
+                PercentEncodeSet::SpecialQuery => {
+                    matches!(byte, b' ' | b'"' | b'#' | b'<' | b'>' | b'\'')
+                }
                 PercentEncodeSet::Path => matches!(
                     byte,
                     b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'^' | b'`' | b'{' | b'}'

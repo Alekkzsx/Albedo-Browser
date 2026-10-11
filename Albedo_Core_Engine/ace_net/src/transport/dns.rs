@@ -4,10 +4,11 @@
 //! sobre o resolver assíncrono `hickory_resolver` com interleaving de endereços
 //! IPv6 e IPv4 conforme o algoritmo Happy Eyeballs v2.
 
+use crate::transport::timing::CONNECTION_TIMING;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
-use hickory_resolver::TokioAsyncResolver;
-use hickory_resolver::proto::rr::RecordType;
 use hickory_resolver::proto::rr::rdata::svcb::{SvcParamKey, SvcParamValue};
+use hickory_resolver::proto::rr::RecordType;
+use hickory_resolver::TokioAsyncResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -16,7 +17,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 use tower_service::Service;
-use crate::transport::timing::CONNECTION_TIMING;
 
 /// Resolucão de DNS criptografado via HTTPS (DoH) com ordenação Happy Eyeballs v2 (RFC 8305)
 /// e failover transparente para o resolver do sistema operacional.
@@ -31,7 +31,9 @@ impl DohHappyEyeballsResolver {
     /// Cria uma nova instância de `DohHappyEyeballsResolver` apontando para o DoH Cloudflare 1.1.1.1
     /// e fallback habilitado para o resolver local do sistema operacional.
     pub fn new() -> Self {
-        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf()
+            .ok()
+            .map(Arc::new);
         Self {
             resolver: Arc::new(TokioAsyncResolver::tokio(
                 ResolverConfig::cloudflare_https(),
@@ -44,8 +46,14 @@ impl DohHappyEyeballsResolver {
 
     /// Cria uma instância a partir de um resolver Hickory já configurado.
     pub fn with_resolver(resolver: Arc<TokioAsyncResolver>) -> Self {
-        let system_resolver = TokioAsyncResolver::tokio_from_system_conf().ok().map(Arc::new);
-        Self { resolver, system_resolver, block_private_ips: false }
+        let system_resolver = TokioAsyncResolver::tokio_from_system_conf()
+            .ok()
+            .map(Arc::new);
+        Self {
+            resolver,
+            system_resolver,
+            block_private_ips: false,
+        }
     }
 
     /// Configura explicitamente o resolver de fallback do sistema.
@@ -100,7 +108,10 @@ impl DohHappyEyeballsResolver {
     }
 
     /// Resolve A, AAAA e HTTPS (Tipo 65) concorrentemente, retornando IPs intercalados e o ECH Config (se houver).
-    pub async fn resolve_with_ech(&self, host: &str) -> Result<(std::vec::IntoIter<SocketAddr>, Option<Vec<u8>>), std::io::Error> {
+    pub async fn resolve_with_ech(
+        &self,
+        host: &str,
+    ) -> Result<(std::vec::IntoIter<SocketAddr>, Option<Vec<u8>>), std::io::Error> {
         let start = Instant::now();
         if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
             let mut guard = timing_arc.lock().await;
@@ -134,7 +145,10 @@ impl DohHappyEyeballsResolver {
                         }
                     }
                 } else {
-                    return Err(std::io::Error::other(format!("Falha DoH para '{}': {}", host, e)));
+                    return Err(std::io::Error::other(format!(
+                        "Falha DoH para '{}': {}",
+                        host, e
+                    )));
                 }
             }
         };
@@ -145,14 +159,21 @@ impl DohHappyEyeballsResolver {
 
         let interleaved = Self::interleave_happy_eyeballs(ips);
         if interleaved.is_empty() {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Nenhum IP para '{}'", host)));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Nenhum IP para '{}'", host),
+            ));
         }
 
         let mut ech_config = None;
         if let Ok(https_lookup) = https_res {
             for record in https_lookup.iter() {
                 if let Some(svcb) = record.as_svcb() {
-                    if let Some((_, SvcParamValue::EchConfig(ech))) = svcb.svc_params().iter().find(|(k, _)| *k == SvcParamKey::EchConfig) {
+                    if let Some((_, SvcParamValue::EchConfig(ech))) = svcb
+                        .svc_params()
+                        .iter()
+                        .find(|(k, _)| *k == SvcParamKey::EchConfig)
+                    {
                         ech_config = Some(ech.0.clone());
                         break;
                     }
@@ -227,7 +248,10 @@ impl Service<Name> for DohHappyEyeballsResolver {
                     if interleaved.is_empty() {
                         Err(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
-                            format!("Nenhum endereço IP retornado via DoH/Sistema para '{}'", host_str),
+                            format!(
+                                "Nenhum endereço IP retornado via DoH/Sistema para '{}'",
+                                host_str
+                            ),
                         ))
                     } else {
                         Ok(interleaved.into_iter())

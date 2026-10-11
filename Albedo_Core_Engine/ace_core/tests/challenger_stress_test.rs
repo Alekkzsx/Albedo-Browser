@@ -22,7 +22,7 @@ fn test_adversarial_unguessable_token_distribution() {
     for _ in 0..SAMPLES {
         let token = UnguessableToken::new();
         assert!(!token.is_empty(), "Token must never be empty");
-        
+
         let high = token.high();
         let low = token.low();
         assert!(high != 0 || low != 0, "Token bits must not be all zero");
@@ -38,7 +38,10 @@ fn test_adversarial_unguessable_token_distribution() {
         }
 
         let inserted = seen.insert((high, low));
-        assert!(inserted, "Cryptographic collision detected in UnguessableToken!");
+        assert!(
+            inserted,
+            "Cryptographic collision detected in UnguessableToken!"
+        );
     }
 
     assert_eq!(seen.len(), SAMPLES);
@@ -164,7 +167,10 @@ fn test_adversarial_matches_domain_pattern_csp3() {
     // Valid wildcards matching subdomains
     assert!(matches_domain_pattern("*.example.com", "sub.example.com"));
     assert!(matches_domain_pattern("*.example.com", "a.b.example.com"));
-    assert!(matches_domain_pattern("*.example.com", "deep.nested.sub.example.com"));
+    assert!(matches_domain_pattern(
+        "*.example.com",
+        "deep.nested.sub.example.com"
+    ));
     assert!(matches_domain_pattern("*.EXAMPLE.COM", "sub.example.com"));
     assert!(matches_domain_pattern("*.example.com", "SUB.EXAMPLE.COM"));
 
@@ -177,7 +183,10 @@ fn test_adversarial_matches_domain_pattern_csp3() {
     assert!(!matches_domain_pattern("*.example.com", "notexample.com"));
     assert!(!matches_domain_pattern("*.example.com", "fakeexample.com"));
     assert!(!matches_domain_pattern("*.example.com", ".example.com"));
-    assert!(!matches_domain_pattern("*.example.com", "example.com.attacker.com"));
+    assert!(!matches_domain_pattern(
+        "*.example.com",
+        "example.com.attacker.com"
+    ));
 
     // Global wildcard
     assert!(matches_domain_pattern("*", "anything.com"));

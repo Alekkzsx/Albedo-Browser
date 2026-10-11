@@ -1,5 +1,5 @@
-use ace_net::transport::client::TransportClient;
 use ace_net::http::request::Request;
+use ace_net::transport::client::TransportClient;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::server::conn::http1;
@@ -32,10 +32,15 @@ async fn test_streaming_memory_stress() {
     });
 
     let client = TransportClient::new().unwrap();
-    let req = Request::get(format!("http://127.0.0.1:{}", addr.port())).unwrap().build();
+    let req = Request::get(format!("http://127.0.0.1:{}", addr.port()))
+        .unwrap()
+        .build();
 
     let resp_res = client.execute(&req).await;
-    assert!(resp_res.is_ok(), "Requisição deve ser atendida com sucesso pelo mock local");
+    assert!(
+        resp_res.is_ok(),
+        "Requisição deve ser atendida com sucesso pelo mock local"
+    );
     let resp = resp_res.unwrap();
     assert!(resp.status.is_success());
     assert!(!resp.body.is_empty());

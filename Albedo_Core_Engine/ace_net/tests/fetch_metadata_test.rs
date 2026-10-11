@@ -1,8 +1,8 @@
 //! # Testes de W3C Fetch Metadata Request Headers
 
 use ace_core::security::origin::Origin;
-use ace_net::security::fetch_metadata::SecFetchSite;
 use ace_net::http::request::{Request, RequestDestination, RequestMode};
+use ace_net::security::fetch_metadata::SecFetchSite;
 use ace_net::ResourceFetcher;
 use bytes::Bytes;
 use http_body_util::Full;
@@ -20,10 +20,22 @@ fn test_fetch_metadata_site_logic() {
     let url_same_site = Url::parse("https://sub.example.com/assets/app.js").unwrap();
     let url_cross_site = Url::parse("https://another-domain.org/data").unwrap();
 
-    assert_eq!(SecFetchSite::compute(Some(&origin_a), &url_same_origin), SecFetchSite::SameOrigin);
-    assert_eq!(SecFetchSite::compute(Some(&origin_a), &url_same_site), SecFetchSite::SameSite);
-    assert_eq!(SecFetchSite::compute(Some(&origin_a), &url_cross_site), SecFetchSite::CrossSite);
-    assert_eq!(SecFetchSite::compute(None, &url_same_origin), SecFetchSite::None);
+    assert_eq!(
+        SecFetchSite::compute(Some(&origin_a), &url_same_origin),
+        SecFetchSite::SameOrigin
+    );
+    assert_eq!(
+        SecFetchSite::compute(Some(&origin_a), &url_same_site),
+        SecFetchSite::SameSite
+    );
+    assert_eq!(
+        SecFetchSite::compute(Some(&origin_a), &url_cross_site),
+        SecFetchSite::CrossSite
+    );
+    assert_eq!(
+        SecFetchSite::compute(None, &url_same_origin),
+        SecFetchSite::None
+    );
 }
 
 #[tokio::test]
@@ -38,12 +50,30 @@ async fn test_fetch_metadata_live_server_reception() {
                 tokio::spawn(async move {
                     let service = service_fn(|req: HyperRequest<Incoming>| async move {
                         // Valida se os cabeçalhos Sec-Fetch-* foram injetados corretamente
-                        let site = req.headers().get("sec-fetch-site").map(|v| v.to_str().unwrap().to_string());
-                        let mode = req.headers().get("sec-fetch-mode").map(|v| v.to_str().unwrap().to_string());
-                        let dest = req.headers().get("sec-fetch-dest").map(|v| v.to_str().unwrap().to_string());
-                        let user = req.headers().get("sec-fetch-user").map(|v| v.to_str().unwrap().to_string());
+                        let site = req
+                            .headers()
+                            .get("sec-fetch-site")
+                            .map(|v| v.to_str().unwrap().to_string());
+                        let mode = req
+                            .headers()
+                            .get("sec-fetch-mode")
+                            .map(|v| v.to_str().unwrap().to_string());
+                        let dest = req
+                            .headers()
+                            .get("sec-fetch-dest")
+                            .map(|v| v.to_str().unwrap().to_string());
+                        let user = req
+                            .headers()
+                            .get("sec-fetch-user")
+                            .map(|v| v.to_str().unwrap().to_string());
 
-                        let body_text = format!("{}:{}:{}:{}", site.unwrap_or_default(), mode.unwrap_or_default(), dest.unwrap_or_default(), user.unwrap_or_default());
+                        let body_text = format!(
+                            "{}:{}:{}:{}",
+                            site.unwrap_or_default(),
+                            mode.unwrap_or_default(),
+                            dest.unwrap_or_default(),
+                            user.unwrap_or_default()
+                        );
 
                         let resp = HyperResponse::builder()
                             .status(200)

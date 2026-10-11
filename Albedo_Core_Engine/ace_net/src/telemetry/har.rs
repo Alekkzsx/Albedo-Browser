@@ -81,12 +81,26 @@ impl HarEntry {
 
         let timings = HarTimings {
             blocked: -1.0,
-            dns: resp.timing.dns_duration.map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
-            connect: resp.timing.tcp_duration.map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
-            ssl: resp.timing.tls_duration.map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
+            dns: resp
+                .timing
+                .dns_duration
+                .map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
+            connect: resp
+                .timing
+                .tcp_duration
+                .map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
+            ssl: resp
+                .timing
+                .tls_duration
+                .map_or(-1.0, |d| d.as_secs_f64() * 1000.0),
             send: 0.0,
             wait: resp.timing.ttfb.as_secs_f64() * 1000.0,
-            receive: resp.timing.total_duration.saturating_sub(resp.timing.ttfb).as_secs_f64() * 1000.0,
+            receive: resp
+                .timing
+                .total_duration
+                .saturating_sub(resp.timing.ttfb)
+                .as_secs_f64()
+                * 1000.0,
         };
 
         Self {

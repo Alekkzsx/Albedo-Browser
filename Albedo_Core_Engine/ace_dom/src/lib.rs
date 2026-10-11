@@ -74,7 +74,10 @@ pub use node::{
     NodeKind, ShadowMode, ShadowRootData, TextData,
 };
 pub use observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
-pub use parser::{BackgroundHTMLParser, BackgroundParserHandle, HTMLParserScheduler, ParsedChunk};
+pub use parser::{
+    BackgroundHTMLParser, BackgroundParserHandle, HTMLParserScheduler, ParsedChunk,
+    StreamingHtmlParser,
+};
 pub use preload_scanner::{PreloadKind, PreloadRequest, PreloadScanner};
 pub use query::{
     AncestorFilter, AttributeOp, Combinator, ComplexSelector, CompoundSelector, ElementIndex,

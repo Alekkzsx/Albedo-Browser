@@ -75,9 +75,7 @@ pub fn validate_nosniff_content_type(expected_dest: RequestDestination, actual_m
             // WHATWG: Estilos CSS devem ser estritamente text/css
             essence == "text/css"
         }
-        RequestDestination::Image => {
-            essence.starts_with("image/") || essence == "image/svg+xml"
-        }
+        RequestDestination::Image => essence.starts_with("image/") || essence == "image/svg+xml",
         RequestDestination::Font => {
             essence.starts_with("font/")
                 || essence == "application/font-woff"
@@ -86,9 +84,7 @@ pub fn validate_nosniff_content_type(expected_dest: RequestDestination, actual_m
                 || essence == "application/x-font-ttf"
                 || essence == "application/vnd.ms-fontobject"
         }
-        RequestDestination::Media => {
-            essence.starts_with("audio/") || essence.starts_with("video/")
-        }
+        RequestDestination::Media => essence.starts_with("audio/") || essence.starts_with("video/"),
         RequestDestination::Document => {
             matches!(
                 essence.as_str(),
@@ -146,7 +142,9 @@ pub fn sniff_mime_type(supplied_type: Option<&str>, body_bytes: &[u8], nosniff: 
     if sample.starts_with(b"BM") && sample.len() >= 14 {
         return SmolStr::new("image/bmp");
     }
-    if sample.starts_with(&[0x00, 0x00, 0x01, 0x00]) || sample.starts_with(&[0x00, 0x00, 0x02, 0x00]) {
+    if sample.starts_with(&[0x00, 0x00, 0x01, 0x00])
+        || sample.starts_with(&[0x00, 0x00, 0x02, 0x00])
+    {
         return SmolStr::new("image/x-icon");
     }
     if sample.len() >= 12 && sample.starts_with(b"RIFF") && &sample[8..12] == b"WEBP" {
@@ -224,7 +222,10 @@ pub fn sniff_mime_type(supplied_type: Option<&str>, body_bytes: &[u8], nosniff: 
 
     // JSON heurístico básico: inicia com `{` ou `[` e possui delimitador de string
     if (text_slice.starts_with(b"{") || text_slice.starts_with(b"["))
-        && (text_slice.contains(&b':') || text_slice.contains(&b'"') || text_slice.ends_with(b"}") || text_slice.ends_with(b"]"))
+        && (text_slice.contains(&b':')
+            || text_slice.contains(&b'"')
+            || text_slice.ends_with(b"}")
+            || text_slice.ends_with(b"]"))
     {
         return SmolStr::new("application/json");
     }
@@ -232,10 +233,7 @@ pub fn sniff_mime_type(supplied_type: Option<&str>, body_bytes: &[u8], nosniff: 
     // 3. Fallback: Verificação de bytes binários
     // Bytes não-imprimíveis e caracteres de controle indicam octet-stream
     let has_binary_bytes = sample.iter().any(|&b| {
-        (b <= 0x08)
-            || b == 0x0B
-            || (0x0E..=0x1A).contains(&b)
-            || (0x1C..=0x1F).contains(&b)
+        (b <= 0x08) || b == 0x0B || (0x0E..=0x1A).contains(&b) || (0x1C..=0x1F).contains(&b)
     });
 
     if has_binary_bytes {
@@ -289,9 +287,15 @@ mod tests {
 
     #[test]
     fn test_extract_mime_essence() {
-        assert_eq!(extract_mime_essence("text/html; charset=utf-8"), "text/html");
+        assert_eq!(
+            extract_mime_essence("text/html; charset=utf-8"),
+            "text/html"
+        );
         assert_eq!(extract_mime_essence("IMAGE/PNG "), "image/png");
-        assert_eq!(extract_mime_essence("application/json;odata=verbose"), "application/json");
+        assert_eq!(
+            extract_mime_essence("application/json;odata=verbose"),
+            "application/json"
+        );
     }
 
     #[test]
@@ -326,13 +330,31 @@ mod tests {
         );
 
         // Validação de destinos com nosniff
-        assert!(!validate_nosniff_content_type(RequestDestination::Script, "image/png"));
-        assert!(!validate_nosniff_content_type(RequestDestination::Script, "text/plain"));
-        assert!(validate_nosniff_content_type(RequestDestination::Script, "text/javascript"));
-        assert!(validate_nosniff_content_type(RequestDestination::Script, "application/javascript"));
+        assert!(!validate_nosniff_content_type(
+            RequestDestination::Script,
+            "image/png"
+        ));
+        assert!(!validate_nosniff_content_type(
+            RequestDestination::Script,
+            "text/plain"
+        ));
+        assert!(validate_nosniff_content_type(
+            RequestDestination::Script,
+            "text/javascript"
+        ));
+        assert!(validate_nosniff_content_type(
+            RequestDestination::Script,
+            "application/javascript"
+        ));
 
-        assert!(!validate_nosniff_content_type(RequestDestination::Style, "text/html"));
-        assert!(validate_nosniff_content_type(RequestDestination::Style, "text/css"));
+        assert!(!validate_nosniff_content_type(
+            RequestDestination::Style,
+            "text/html"
+        ));
+        assert!(validate_nosniff_content_type(
+            RequestDestination::Style,
+            "text/css"
+        ));
     }
 
     #[test]
@@ -341,13 +363,19 @@ mod tests {
         assert_eq!(sniff_mime_type(None, plain_text, false), "text/plain");
 
         let binary_payload = [0x01, 0x02, 0x00, 0x7F, 0x80];
-        assert_eq!(sniff_mime_type(None, &binary_payload, false), "application/octet-stream");
+        assert_eq!(
+            sniff_mime_type(None, &binary_payload, false),
+            "application/octet-stream"
+        );
     }
 
     #[test]
     fn test_sniff_avif_and_wasm() {
         let wasm_bytes = [0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
-        assert_eq!(sniff_mime_type(None, &wasm_bytes, false), "application/wasm");
+        assert_eq!(
+            sniff_mime_type(None, &wasm_bytes, false),
+            "application/wasm"
+        );
 
         let mut avif_bytes = vec![0x00, 0x00, 0x00, 0x20]; // box length
         avif_bytes.extend_from_slice(b"ftypavif");

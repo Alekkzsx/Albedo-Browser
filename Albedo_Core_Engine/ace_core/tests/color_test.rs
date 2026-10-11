@@ -179,15 +179,39 @@ fn test_w3c_bradford_chromatic_adaptation_lab_lch() {
 
     // Reference white test in D50 Lab
     let (white_l, white_a, white_b, _) = Color::WHITE.to_lab();
-    assert!((white_l - 100.0).abs() < 0.05, "White L* should be 100, got {}", white_l);
-    assert!(white_a.abs() < 0.05, "White a* should be ~0, got {}", white_a);
-    assert!(white_b.abs() < 0.05, "White b* should be ~0, got {}", white_b);
+    assert!(
+        (white_l - 100.0).abs() < 0.05,
+        "White L* should be 100, got {}",
+        white_l
+    );
+    assert!(
+        white_a.abs() < 0.05,
+        "White a* should be ~0, got {}",
+        white_a
+    );
+    assert!(
+        white_b.abs() < 0.05,
+        "White b* should be ~0, got {}",
+        white_b
+    );
 
     // Reference black test in D50 Lab
     let (black_l, black_a, black_b, _) = Color::BLACK.to_lab();
-    assert!(black_l.abs() < 0.05, "Black L* should be 0, got {}", black_l);
-    assert!(black_a.abs() < 0.05, "Black a* should be ~0, got {}", black_a);
-    assert!(black_b.abs() < 0.05, "Black b* should be ~0, got {}", black_b);
+    assert!(
+        black_l.abs() < 0.05,
+        "Black L* should be 0, got {}",
+        black_l
+    );
+    assert!(
+        black_a.abs() < 0.05,
+        "Black a* should be ~0, got {}",
+        black_a
+    );
+    assert!(
+        black_b.abs() < 0.05,
+        "Black b* should be ~0, got {}",
+        black_b
+    );
 
     // High precision roundtrips: Delta E < 0.001
     for &c in &colors {
@@ -198,7 +222,9 @@ fn test_w3c_bradford_chromatic_adaptation_lab_lch() {
         assert!(
             delta_e_lab < 0.001,
             "Delta E exceeds 0.001 for {:?}: got {} (rt: {:?})",
-            c, delta_e_lab, rt_lab
+            c,
+            delta_e_lab,
+            rt_lab
         );
         assert_eq!(c, rt_lab, "Lab roundtrip equality failed for {:?}", c);
 
@@ -209,7 +235,9 @@ fn test_w3c_bradford_chromatic_adaptation_lab_lch() {
         assert!(
             delta_e_lch < 0.001,
             "Delta E (Lch) exceeds 0.001 for {:?}: got {} (rt: {:?})",
-            c, delta_e_lch, rt_lch
+            c,
+            delta_e_lch,
+            rt_lch
         );
         assert_eq!(c, rt_lch, "Lch roundtrip equality failed for {:?}", c);
     }
@@ -279,17 +307,23 @@ fn test_polar_hue_interpolation_methods() {
     assert!((h_dec - 0.0).abs() < 1e-4 || (h_dec - 360.0).abs() < 1e-4);
 
     // Color::interpolate_oklch with different methods
-    let c1 = Color::from_rgb(255, 0, 0);   // Red
-    let c2 = Color::from_rgb(0, 0, 255);   // Blue
+    let c1 = Color::from_rgb(255, 0, 0); // Red
+    let c2 = Color::from_rgb(0, 0, 255); // Blue
 
     let mid_short = c1.interpolate_oklch(c2, 0.5, HueInterpolation::Shorter);
     let mid_long = c1.interpolate_oklch(c2, 0.5, HueInterpolation::Longer);
-    assert_ne!(mid_short, mid_long, "Shorter and Longer should yield distinct hues");
+    assert_ne!(
+        mid_short, mid_long,
+        "Shorter and Longer should yield distinct hues"
+    );
 
     // Color::interpolate_hsl
     let hsl_inc = c1.interpolate_hsl(c2, 0.5, HueInterpolation::Increasing);
     let hsl_dec = c1.interpolate_hsl(c2, 0.5, HueInterpolation::Decreasing);
-    assert_ne!(hsl_inc, hsl_dec, "Increasing and Decreasing should yield distinct hues");
+    assert_ne!(
+        hsl_inc, hsl_dec,
+        "Increasing and Decreasing should yield distinct hues"
+    );
 }
 
 #[test]
@@ -309,7 +343,8 @@ fn test_powerless_components() {
     assert!(
         (mid_oklch.h - red_oklch.h).abs() < 2.0,
         "Powerless hue should adopt red's hue: mid.h={}, red.h={}",
-        mid_oklch.h, red_oklch.h
+        mid_oklch.h,
+        red_oklch.h
     );
 
     // In HSL
@@ -319,7 +354,8 @@ fn test_powerless_components() {
     assert!(
         (mid_h - red_h).abs() < 2.0,
         "Powerless HSL hue should adopt red's hue: mid.h={}, red.h={}",
-        mid_h, red_h
+        mid_h,
+        red_h
     );
 }
 
@@ -365,4 +401,3 @@ fn test_color_mix_css_level_4_and_5_advanced() {
     let mix_hsl = Color::parse("color-mix(in hsl increasing hue, red, blue)").unwrap();
     assert_eq!(mix_hsl.a, 255);
 }
-

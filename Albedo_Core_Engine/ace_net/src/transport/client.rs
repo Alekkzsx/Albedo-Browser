@@ -3,36 +3,36 @@
 //! Orquestra o pool de conexões assíncronas, ALPN para negociação h2/http1.1,
 //! handshake TLS seguro via `rustls` (WebPKI roots) e suporte nativo a `data:` URIs.
 
-use crate::http::compression::ContentEncoding;
+use crate::cache::partition::NetworkIsolationKey;
 use crate::engine::contention::RetryAfter;
-use crate::http::encoding::extract_charset_from_content_type;
 use crate::error::{NetError, NetResult};
+use crate::http::compression::ContentEncoding;
+use crate::http::encoding::extract_charset_from_content_type;
 use crate::http::range::ContentRange;
 use crate::http::request::Request;
 use crate::http::response::{Response, ResponseBody, ResponseTiming};
+use crate::transport::dns::DohHappyEyeballsResolver;
 use ace_core::net::data_url::parse_data_url;
 use bytes::{Buf, Bytes};
+use hickory_resolver::proto::rr::rdata::svcb::SvcParamKey;
+use hickory_resolver::proto::rr::RecordType;
 use http::{HeaderValue, StatusCode};
 use http_body_util::Full;
+use hyper::body::Body as HyperBody;
 use hyper::header::{CONTENT_TYPE, USER_AGENT};
 use hyper::Request as HyperRequest;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
+use rustc_hash::FxHashMap;
+use rustls::client::{EchConfig, EchMode};
 use smol_str::SmolStr;
 use std::pin::Pin;
-use std::time::{Duration, Instant};
-use crate::cache::partition::NetworkIsolationKey;
-use crate::transport::dns::DohHappyEyeballsResolver;
-use hyper::body::Body as HyperBody;
-use url::Url;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use rustc_hash::FxHashMap;
-use hickory_resolver::proto::rr::rdata::svcb::SvcParamKey;
-use hickory_resolver::proto::rr::RecordType;
-use rustls::client::{EchConfig, EchMode};
+use url::Url;
 
 /// Stream assíncrono que encapsula o corpo bruto do Hyper para consumo com backpressure.
 struct HyperIncomingStream {
@@ -42,7 +42,10 @@ struct HyperIncomingStream {
 impl futures_core::Stream for HyperIncomingStream {
     type Item = NetResult<Bytes>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
         loop {
             match Pin::new(&mut self.body).poll_frame(cx) {
                 std::task::Poll::Ready(Some(Ok(frame))) => {
@@ -52,7 +55,9 @@ impl futures_core::Stream for HyperIncomingStream {
                     // Ignora trailers ou continua poll
                 }
                 std::task::Poll::Ready(Some(Err(e))) => {
-                    return std::task::Poll::Ready(Some(Err(NetError::HttpProtocolError(e.to_string()))));
+                    return std::task::Poll::Ready(Some(Err(NetError::HttpProtocolError(
+                        e.to_string(),
+                    ))));
                 }
                 std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
                 std::task::Poll::Pending => return std::task::Poll::Pending,
@@ -61,14 +66,22 @@ impl futures_core::Stream for HyperIncomingStream {
     }
 }
 
-pub type TimingHttpsClient = Client<crate::transport::timing::TimingConnector<HttpsConnector<crate::transport::timing::TimingConnector<HttpConnector<DohHappyEyeballsResolver>>>>, Full<Bytes>>;
+pub type TimingHttpsClient = Client<
+    crate::transport::timing::TimingConnector<
+        HttpsConnector<
+            crate::transport::timing::TimingConnector<HttpConnector<DohHappyEyeballsResolver>>,
+        >,
+    >,
+    Full<Bytes>,
+>;
 
+type IsolatedEchClientMap = FxHashMap<(Option<NetworkIsolationKey>, String), TimingHttpsClient>;
 
 /// Cliente de transporte HTTP de baixo nível com pool de sockets seguro e DoH Happy Eyeballs v2.
 #[derive(Clone)]
 pub struct TransportClient {
     isolated_clients: Arc<RwLock<FxHashMap<Option<NetworkIsolationKey>, TimingHttpsClient>>>,
-    isolated_ech_clients: Arc<RwLock<FxHashMap<(Option<NetworkIsolationKey>, String), TimingHttpsClient>>>,
+    isolated_ech_clients: Arc<RwLock<IsolatedEchClientMap>>,
     root_store: rustls::RootCertStore,
     quinn_endpoint: quinn::Endpoint,
     user_agent: HeaderValue,
@@ -87,28 +100,32 @@ impl TransportClient {
         let mut root_store = rustls::RootCertStore::empty();
         root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-        let mut tls_config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .with_root_certificates(root_store.clone())
-            .with_no_client_auth();
+        let mut tls_config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(root_store.clone())
+        .with_no_client_auth();
         tls_config.alpn_protocols = vec![b"h3".to_vec()];
 
         let quic_client_config = quinn::crypto::rustls::QuicClientConfig::try_from(tls_config)
             .map_err(|e| NetError::HttpProtocolError(format!("QUIC config error: {}", e)))?;
         let client_config = quinn::ClientConfig::new(Arc::new(quic_client_config));
-        
+
         let mut quinn_endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap()).unwrap();
         quinn_endpoint.set_default_client_config(client_config);
 
-        let user_agent = HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)");
+        let user_agent = HeaderValue::from_static(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Albedo/0.1.0 (ACE Engine)",
+        );
 
-        Ok(Self { 
+        Ok(Self {
             isolated_clients: Arc::new(RwLock::new(FxHashMap::default())),
             isolated_ech_clients: Arc::new(RwLock::new(FxHashMap::default())),
             root_store,
-            quinn_endpoint, 
-            user_agent 
+            quinn_endpoint,
+            user_agent,
         })
     }
 
@@ -121,9 +138,13 @@ impl TransportClient {
         let builder_versions = rustls::ClientConfig::builder_with_provider(provider.clone());
 
         let builder_verifier = if let Some(ech) = ech_config {
-            builder_versions.with_ech(EchMode::Enable(ech)).map_err(|e| NetError::HttpProtocolError(format!("ECH config error: {}", e)))?
+            builder_versions
+                .with_ech(EchMode::Enable(ech))
+                .map_err(|e| NetError::HttpProtocolError(format!("ECH config error: {}", e)))?
         } else {
-            builder_versions.with_safe_default_protocol_versions().map_err(|e| NetError::HttpProtocolError(format!("TLS config error: {}", e)))?
+            builder_versions
+                .with_safe_default_protocol_versions()
+                .map_err(|e| NetError::HttpProtocolError(format!("TLS config error: {}", e)))?
         };
 
         let mut config = builder_verifier
@@ -149,7 +170,8 @@ impl TransportClient {
         http_connector.enforce_http(false);
         http_connector.set_happy_eyeballs_timeout(Some(Duration::from_millis(250)));
 
-        let tcp_timing_connector = crate::transport::timing::TimingConnector::new(http_connector, false);
+        let tcp_timing_connector =
+            crate::transport::timing::TimingConnector::new(http_connector, false);
 
         let https = HttpsConnectorBuilder::new()
             .with_tls_config(config)
@@ -171,9 +193,15 @@ impl TransportClient {
     /// Executa um preconnect especulativo (W3C Resource Hints).
     /// Estabelece a conexão TCP e realiza o handshake TLS 1.3/ALPN,
     /// mantendo o socket no pool de conexões ociosas (idle pool) para requisições subsequentes.
-    pub async fn preconnect(&self, origin: &ace_core::security::origin::Origin, nik: Option<&NetworkIsolationKey>) -> NetResult<()> {
+    pub async fn preconnect(
+        &self,
+        origin: &ace_core::security::origin::Origin,
+        nik: Option<&NetworkIsolationKey>,
+    ) -> NetResult<()> {
         let (scheme, host, port) = match origin {
-            ace_core::security::origin::Origin::Tuple { scheme, host, port } => (scheme.as_str(), host.as_str(), *port),
+            ace_core::security::origin::Origin::Tuple { scheme, host, port } => {
+                (scheme.as_str(), host.as_str(), *port)
+            }
             ace_core::security::origin::Origin::Opaque { .. } => return Ok(()),
         };
 
@@ -187,7 +215,9 @@ impl TransportClient {
             format!("{}://{}:{}/", scheme, host, port)
         };
 
-        let uri: hyper::Uri = url_str.parse().map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
+        let uri: hyper::Uri = url_str
+            .parse()
+            .map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
 
         // 1. Obtém ou constrói o cliente hiper-particionado para o NIK
         let target_client = {
@@ -205,9 +235,7 @@ impl TransportClient {
         };
 
         // 2. Dispara uma requisição leve HEAD que estabelece conexão e aquece o pool de idle sockets
-        let mut hyper_builder = HyperRequest::builder()
-            .method(http::Method::HEAD)
-            .uri(uri);
+        let mut hyper_builder = HyperRequest::builder().method(http::Method::HEAD).uri(uri);
 
         if let Some(headers_mut) = hyper_builder.headers_mut() {
             headers_mut.insert(USER_AGENT, self.user_agent.clone());
@@ -218,7 +246,8 @@ impl TransportClient {
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
 
         // Timeout curto de 5s para preconnect sem afetar a fila do usuário
-        let _ = tokio::time::timeout(Duration::from_secs(5), target_client.request(hyper_req)).await;
+        let _ =
+            tokio::time::timeout(Duration::from_secs(5), target_client.request(hyper_req)).await;
 
         Ok(())
     }
@@ -252,38 +281,48 @@ impl TransportClient {
 
         // 0.5. Roteamento Alt-Svc / HTTP/3 (Arquitetura M2) com Socket Racing
         if req.force_h3 {
-            crate::telemetry::net_log::log_net_event(crate::telemetry::net_log::NetEventType::Redirect, req.url.as_str(), "Tentando transporte QUIC HTTP/3 e TCP/TLS em paralelo (Socket Racing)");
-            
+            crate::telemetry::net_log::log_net_event(
+                crate::telemetry::net_log::NetEventType::Redirect,
+                req.url.as_str(),
+                "Tentando transporte QUIC HTTP/3 e TCP/TLS em paralelo (Socket Racing)",
+            );
+
             let req_clone = req.clone();
             let self_clone = self.clone();
             let req_tcp = req.clone();
             let self_tcp = self.clone();
-            
+
             let (tx, mut rx) = tokio::sync::mpsc::channel(2);
             let tx2 = tx.clone();
-            
+
             tokio::spawn(async move {
                 let res = self_clone.execute_h3(&req_clone, start_time).await;
                 let _ = tx.send((true, res)).await;
             });
-            
+
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                 let res = self_tcp.execute_tcp(&req_tcp, start_time).await;
                 let _ = tx2.send((false, res)).await;
             });
-            
+
             let mut h3_failed = false;
             let mut tcp_failed = false;
-            let mut last_err = NetError::ConnectionFailed(req.url.to_string(), "Ambas as conexoes falharam".into());
-            
+            let mut last_err = NetError::ConnectionFailed(
+                req.url.to_string(),
+                "Ambas as conexoes falharam".into(),
+            );
+
             while let Some((is_h3, res)) = rx.recv().await {
                 match res {
                     Ok(resp) => {
                         crate::telemetry::net_log::log_net_event(
                             crate::telemetry::net_log::NetEventType::Warning,
                             req.url.as_str(),
-                            &format!("Corrida vencida por {}", if is_h3 { "QUIC HTTP/3" } else { "TCP/TLS" }),
+                            &format!(
+                                "Corrida vencida por {}",
+                                if is_h3 { "QUIC HTTP/3" } else { "TCP/TLS" }
+                            ),
                         );
                         return Ok(resp);
                     }
@@ -293,13 +332,16 @@ impl TransportClient {
                             crate::telemetry::net_log::log_net_event(
                                 crate::telemetry::net_log::NetEventType::Warning,
                                 req.url.as_str(),
-                                &format!("Falha na conexao QUIC HTTP/3 ({}). Aguardando TCP/TLS.", err),
+                                &format!(
+                                    "Falha na conexao QUIC HTTP/3 ({}). Aguardando TCP/TLS.",
+                                    err
+                                ),
                             );
                         } else {
                             tcp_failed = true;
                         }
                         last_err = err;
-                        
+
                         if h3_failed && tcp_failed {
                             return Err(last_err);
                         }
@@ -313,7 +355,6 @@ impl TransportClient {
     }
 
     async fn execute_tcp(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
-
         // 3. Montagem da requisição Hyper
         let uri: hyper::Uri = req
             .url
@@ -321,9 +362,7 @@ impl TransportClient {
             .parse()
             .map_err(|e| NetError::InvalidUrl(format!("{}", e)))?;
 
-        let mut hyper_builder = HyperRequest::builder()
-            .method(req.method.clone())
-            .uri(uri);
+        let mut hyper_builder = HyperRequest::builder().method(req.method.clone()).uri(uri);
 
         // Copia cabeçalhos do Request
         if let Some(headers_mut) = hyper_builder.headers_mut() {
@@ -374,19 +413,23 @@ impl TransportClient {
         };
 
         if target_client.is_none() {
-            let new_client = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), None)?;
+            let new_client = Self::build_hyper_client(
+                req.network_isolation_key.as_ref(),
+                self.root_store.clone(),
+                None,
+            )?;
             let mut map = self.isolated_clients.write().await;
             map.insert(req.network_isolation_key.clone(), new_client.clone());
             target_client = Some(new_client);
         }
-        
+
         let mut target_client = target_client.unwrap();
 
         // NOVO: Busca do ECH particionada
         if let Some(host) = req.url.host_str() {
             if req.url.scheme() == "https" {
                 let cache_key = (req.network_isolation_key.clone(), host.to_string());
-                
+
                 // Tenta ler do cache de ECH primeiro
                 let cached = {
                     let map = self.isolated_ech_clients.read().await;
@@ -411,11 +454,18 @@ impl TransportClient {
                                 }
                             }
                         }
-                        
+
                         if let Some(bytes) = ech_config_bytes {
                             // Construir novo client configurado para ECH
-                            if let Ok(ech_config) = EchConfig::new(bytes.into(), rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES) {
-                                if let Ok(new_client) = Self::build_hyper_client(req.network_isolation_key.as_ref(), self.root_store.clone(), Some(ech_config)) {
+                            if let Ok(ech_config) = EchConfig::new(
+                                bytes.into(),
+                                rustls::crypto::aws_lc_rs::hpke::ALL_SUPPORTED_SUITES,
+                            ) {
+                                if let Ok(new_client) = Self::build_hyper_client(
+                                    req.network_isolation_key.as_ref(),
+                                    self.root_store.clone(),
+                                    Some(ech_config),
+                                ) {
                                     target_client = new_client.clone();
                                     let mut map = self.isolated_ech_clients.write().await;
                                     map.insert(cache_key, new_client);
@@ -429,12 +479,12 @@ impl TransportClient {
 
         // 4. Disparo com controle de timeout, cancelamento atômico e escopo de métricas
         let timeout_duration = req.timeout.unwrap_or(Duration::from_secs(30));
-        
-        let timing_state = std::sync::Arc::new(tokio::sync::Mutex::new(crate::transport::timing::ConnectionTiming::default()));
-        let request_future = crate::transport::timing::CONNECTION_TIMING.scope(
-            timing_state.clone(),
-            target_client.request(hyper_req)
-        );
+
+        let timing_state = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::transport::timing::ConnectionTiming::default(),
+        ));
+        let request_future = crate::transport::timing::CONNECTION_TIMING
+            .scope(timing_state.clone(), target_client.request(hyper_req));
 
         let hyper_resp = tokio::select! {
             _ = req.cancellation_token.cancelled() => {
@@ -468,19 +518,25 @@ impl TransportClient {
 
         let content_encoding = ContentEncoding::from_headers(&headers);
 
-        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
+        let _content_length = headers
+            .get(hyper::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
 
         // 5. Streaming reativo de bytes do corpo com suporte a cancelamento
-        let stream = HyperIncomingStream { body: hyper_resp.into_body() };
+        let stream = HyperIncomingStream {
+            body: hyper_resp.into_body(),
+        };
         let raw_stream = ResponseBody::from_stream(stream);
-        
+
         // 6. Descompressão transparente de conteúdo (Content-Encoding) via pipeline de stream
         let mut response_body = if let Some(encoding) = content_encoding {
             if let Some(stream_box) = raw_stream.take_stream().await {
-                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
-                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+                let decompressed_stream =
+                    crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                    decompressed_stream,
+                ))))
             } else {
                 raw_stream
             }
@@ -498,7 +554,9 @@ impl TransportClient {
 
         let retry_after = RetryAfter::from_headers(&headers);
         let content_range = if status == StatusCode::PARTIAL_CONTENT {
-            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+            headers
+                .get(http::header::CONTENT_RANGE)
+                .and_then(ContentRange::parse)
         } else {
             None
         };
@@ -554,15 +612,21 @@ impl TransportClient {
     async fn execute_h3(&self, req: &Request, start_time: Instant) -> NetResult<Response> {
         let host = req.url.host_str().unwrap_or("");
         let port = req.url.port().unwrap_or(443);
-        
+
         let resolver = DohHappyEyeballsResolver::new();
-        let ips = resolver.resolver().lookup_ip(host).await
+        let ips = resolver
+            .resolver()
+            .lookup_ip(host)
+            .await
             .map_err(|e| NetError::DnsResolutionFailed(host.to_string(), e.to_string()))?;
-        
+
         let addrs: Vec<std::net::IpAddr> = ips.iter().collect();
         let interleaved = DohHappyEyeballsResolver::interleave_happy_eyeballs(addrs);
         if interleaved.is_empty() {
-            return Err(NetError::DnsResolutionFailed(host.to_string(), "No IPs found".into()));
+            return Err(NetError::DnsResolutionFailed(
+                host.to_string(),
+                "No IPs found".into(),
+            ));
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -584,9 +648,17 @@ impl TransportClient {
             }
         });
 
-        let connection = tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv()).await
-            .map_err(|_| NetError::ConnectionFailed(host.to_string(), "QUIC connection timeout".into()))?
-            .ok_or_else(|| NetError::ConnectionFailed(host.to_string(), "All QUIC connection attempts failed".into()))?;
+        let connection = tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv())
+            .await
+            .map_err(|_| {
+                NetError::ConnectionFailed(host.to_string(), "QUIC connection timeout".into())
+            })?
+            .ok_or_else(|| {
+                NetError::ConnectionFailed(
+                    host.to_string(),
+                    "All QUIC connection attempts failed".into(),
+                )
+            })?;
 
         let h3_conn = h3_quinn::Connection::new(connection);
         let (mut driver, mut send_request) = h3::client::new(h3_conn)
@@ -599,34 +671,42 @@ impl TransportClient {
         });
 
         let uri = req.url.as_str().parse::<http::Uri>().unwrap();
-        let mut builder = http::Request::builder()
-            .method(req.method.clone())
-            .uri(uri);
-            
+        let mut builder = http::Request::builder().method(req.method.clone()).uri(uri);
+
         for (k, v) in &req.headers {
             builder = builder.header(k, v);
         }
-        
-        let http_req = builder.body(()).unwrap();
-        
-        let mut stream = send_request.send_request(http_req).await
-            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
-            
-        if let Some(body) = &req.body {
-            stream.send_data(body.clone()).await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
-        }
-        stream.finish().await.map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
 
-        let h3_resp = stream.recv_response().await
+        let http_req = builder.body(()).unwrap();
+
+        let mut stream = send_request
+            .send_request(http_req)
+            .await
             .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
-            
+
+        if let Some(body) = &req.body {
+            stream
+                .send_data(body.clone())
+                .await
+                .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+        }
+        stream
+            .finish()
+            .await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
+        let h3_resp = stream
+            .recv_response()
+            .await
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+
         let status = h3_resp.status();
         let headers = h3_resp.headers().clone();
-        
+
         let ttfb = start_time.elapsed();
 
         let content_encoding = ContentEncoding::from_headers(&headers);
-        
+
         let h3_stream = futures_util::stream::unfold(stream, |mut s| async move {
             match s.recv_data().await {
                 Ok(Some(mut chunk)) => Some((Ok(chunk.copy_to_bytes(chunk.remaining())), s)),
@@ -634,16 +714,20 @@ impl TransportClient {
                 Err(e) => Some((Err(NetError::HttpProtocolError(e.to_string())), s)),
             }
         });
-        
+
         let raw_stream = ResponseBody::from_stream(h3_stream);
-        let _content_length = headers.get(hyper::header::CONTENT_LENGTH)
+        let _content_length = headers
+            .get(hyper::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
 
         let mut response_body = if let Some(encoding) = content_encoding {
             if let Some(stream_box) = raw_stream.take_stream().await {
-                let decompressed_stream = crate::http::compression::decompress_stream(encoding, stream_box);
-                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(decompressed_stream))))
+                let decompressed_stream =
+                    crate::http::compression::decompress_stream(encoding, stream_box);
+                ResponseBody::Stream(std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                    decompressed_stream,
+                ))))
             } else {
                 raw_stream
             }
@@ -661,15 +745,26 @@ impl TransportClient {
 
         let retry_after = RetryAfter::from_headers(&headers);
         let content_range = if status == StatusCode::PARTIAL_CONTENT {
-            headers.get(http::header::CONTENT_RANGE).and_then(ContentRange::parse)
+            headers
+                .get(http::header::CONTENT_RANGE)
+                .and_then(ContentRange::parse)
         } else {
             None
         };
         let total_duration = start_time.elapsed();
 
-        let content_type_str = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+        let content_type_str = headers
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
         let mime_type: SmolStr = if !content_type_str.is_empty() {
-            content_type_str.split(';').next().unwrap_or("application/octet-stream").trim().to_ascii_lowercase().into()
+            content_type_str
+                .split(';')
+                .next()
+                .unwrap_or("application/octet-stream")
+                .trim()
+                .to_ascii_lowercase()
+                .into()
         } else {
             "application/octet-stream".into()
         };
@@ -741,7 +836,9 @@ mod tests {
     #[tokio::test]
     async fn test_data_url_execution() {
         let client = TransportClient::new().unwrap();
-        let req = Request::get("data:text/html;charset=utf-8,<h1>Albedo</h1>").unwrap().build();
+        let req = Request::get("data:text/html;charset=utf-8,<h1>Albedo</h1>")
+            .unwrap()
+            .build();
 
         let resp = client.execute(&req).await.unwrap();
         assert_eq!(resp.status, http::StatusCode::OK);
@@ -752,7 +849,9 @@ mod tests {
     #[tokio::test]
     async fn test_unsupported_scheme() {
         let client = TransportClient::new().unwrap();
-        let req = Request::get("ftp://files.example.com/file.txt").unwrap().build();
+        let req = Request::get("ftp://files.example.com/file.txt")
+            .unwrap()
+            .build();
 
         let result = client.execute(&req).await;
         assert!(matches!(result, Err(NetError::UnsupportedScheme(_))));

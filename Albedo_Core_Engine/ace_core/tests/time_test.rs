@@ -28,4 +28,3 @@ fn test_time_quantization_and_spectre_mitigation() {
     let qclock = QuantizedClock::new(mock, 20);
     assert_eq!(qclock.now_us(), 1000);
 }
-

@@ -75,7 +75,8 @@ impl<T> PartialOrd for PrioritizedItem<T> {
 impl<T> Ord for PrioritizedItem<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         // Prioridade maior sai primeiro
-        self.priority.cmp(&other.priority)
+        self.priority
+            .cmp(&other.priority)
             // Se mesma prioridade, menor sequence_id (FIFO) sai primeiro
             .then_with(|| other.sequence_id.cmp(&self.sequence_id))
     }
@@ -124,7 +125,7 @@ mod tests {
 
         assert_eq!(heap.pop().unwrap().item, "index.html"); // VeryHigh
         assert_eq!(heap.pop().unwrap().item, "styles.css"); // High (FIFO id 3)
-        assert_eq!(heap.pop().unwrap().item, "script.js");  // High (FIFO id 4)
-        assert_eq!(heap.pop().unwrap().item, "image.png");  // Low
+        assert_eq!(heap.pop().unwrap().item, "script.js"); // High (FIFO id 4)
+        assert_eq!(heap.pop().unwrap().item, "image.png"); // Low
     }
 }

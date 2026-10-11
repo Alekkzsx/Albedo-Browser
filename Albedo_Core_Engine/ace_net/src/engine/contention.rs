@@ -62,7 +62,10 @@ mod tests {
         let retry = RetryAfter::from_header_value(&val).unwrap();
 
         assert_eq!(retry, RetryAfter::Seconds(Duration::from_secs(60)));
-        assert_eq!(retry.retry_delay(SystemTime::now()), Duration::from_secs(60));
+        assert_eq!(
+            retry.retry_delay(SystemTime::now()),
+            Duration::from_secs(60)
+        );
     }
 
     #[test]

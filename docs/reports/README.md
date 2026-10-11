@@ -20,10 +20,11 @@
 
 | Subsistema / Fase | Documento de Relatório | Status Auditado | Testes Comprovados | Dívidas & Observações |
 | :--- | :--- | :---: | :---: | :--- |
-| **Fase 2 (`ace_core`)** | [**`fase2_ace_core.md`**](./fase2_ace_core.md) | 🟡 Parcial | **101 unit/integração + 3 doctests** (100% OK) | Pendente implementação do IPC in-process em `ace_ipc` (DV-01). |
-| **Fase 3 (`ace_net`)** | [**`fase3_ace_net.md`**](./fase3_ace_net.md) | 🚧 Fechamento | **71 unitários + 17 arquivos de integração + estresse de 93s** | Cache RFC 9111, DoH, H2/H3 e threshold de 1MB aprovados. Em fechamento de PR. |
-| **Fase 5 (`ace_dom`)** | [**`fase5_ace_dom.md`**](./fase5_ace_dom.md) | 🟡 Parcial | **22 testes de reentrância + dezenas de testes de Tree Builder** | Tokenizer FSM e AAA validados; pendente vendorização dos testes oficiais `html5lib-tests` (DV-11). |
-| **Fase 6 (`ace_style`)** | [**`fase6_ace_style.md`**](./fase6_ace_style.md) | ✅ Concluída | **18 testes automatizados (6 suítes pesadas de estresse)** | 5.675 linhas, Syntax L3, Cascata L5/L6, @layer, StyleSharingCache e RenderTree. |
+| **Fase 2 (`ace_core` & `ace_ipc`)** | [**`fase2_ace_core.md`**](./fase2_ace_core.md) | ✅ Concluída | **104 unit/integração + 3 doctests** (100% OK) | Dívida DV-01 quitada com `ace_ipc` (canais lock-free, router Pub/Sub e 1M msgs). |
+| **Fase 3 (`ace_net`)** | [**`fase3_ace_net.md`**](./fase3_ace_net.md) | ✅ Concluída | **71 unitários + 19 arquivos de integração (130 testes)** | Cache RFC 9111, DoH, H2/H3, agendador crítico RFC 9218 e CssLoader. |
+| **Fase 5 (`ace_dom`)** | [**`fase5_ace_dom.md`**](./fase5_ace_dom.md) | ✅ Concluída | **36 arquivos de integração + suíte html5lib oficial** | Dívida DV-11 quitada com suite `.dat` oficial e `StreamingHtmlParser`. |
+| **Fase 6 (`ace_style`)** | [**`fase6_ace_style.md`**](./fase6_ace_style.md) | ✅ Concluída | **25 testes em 14 binários (13 suítes de estresse)** | Style Structs, MPC, RestyleDriver reativo, BoxGenerationKind e RenderTree. |
+| **Integração Cruzada (`ace_browser`)** | [**`cross_subsystem_integration.md`**](./cross_subsystem_integration.md) | ✅ Concluída | **Suíte E2E Mestra (`stress_pipeline_e2e_full_browser_cycle.rs`)** | Pipeline ponta a ponta: Rede -> DOM -> Estilo -> IPC -> RenderTree. |
 
 ---
 
