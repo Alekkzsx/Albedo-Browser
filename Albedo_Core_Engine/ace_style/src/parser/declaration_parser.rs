@@ -36,9 +36,25 @@ pub fn parse_declarations(input: &str) -> Vec<ParsedDeclaration> {
 
     for ch in input.chars() {
         match ch {
+            '{' if in_quote.is_none() => {
+                // Descarta qualquer prefixo de seletor (ex: "p {")
+                curr_chunk.clear();
+            }
+            '}' if in_quote.is_none() => {
+                let trimmed = curr_chunk.trim();
+                if !trimmed.is_empty() {
+                    parse_single_declaration(trimmed, &mut declarations);
+                }
+                curr_chunk.clear();
+            }
             '\n' | '\r' => {
-                in_quote = None;
-                curr_chunk.push(ch);
+                if in_quote.is_some() {
+                    // W3C CSS Syntax L3: nova linha encerra string como bad-string e invalida a declaração
+                    in_quote = None;
+                    curr_chunk.clear();
+                } else {
+                    curr_chunk.push(ch);
+                }
             }
             '"' | '\'' => {
                 if in_quote == Some(ch) {
