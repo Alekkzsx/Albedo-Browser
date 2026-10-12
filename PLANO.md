@@ -671,7 +671,7 @@ Decisões de design são permanentes até que outro ADR o revogue.
 1. **Bus Factor & Tamanho do Time:** A equipe inicial é minúscula para o tamanho do desafio. *Mitigação: Automação absurda, modularidade, e pragmatismo (Fundações fortes).*
 2. **Afirmações sem Evidência:** Agentes ou humanos marcando Fases concluídas ilusoriamente. *Mitigação: Regra de Evidência e CI irredutível.*
 3. **Escopo Creeping (Inflação de Escopo):** Adição de features não essenciais da spec HTML5 no meio do projeto. *Mitigação: `mvp_scope.md` é o corte fixo. A Fase 3 já fugiu do escopo original.*
-4. **Supply Chain Attacks:** Confiança cega em dezenas de crates do `crates.io`. *Mitigação: `cargo-deny`, `cargo-audit`, e uso de dependabot com auditoria manual.*
+4. **Supply Chain Attacks:** Confiança cega em dezenas de crates do `crates.io`. *Mitigação: `cargo-deny`, `cargo-audit`, e auditoria periódica manual de dependências.*
 5. **Dívida de C/C++:** A dependência contínua de FFI para certas tarefas que não existem em Rust puro. *Mitigação: Isolar todos os wrappers FFI, exigir `unsafe` rigorosamente auditado, e eventualmente migrar para alternativas nativas quando surgirem (ex: `rustls` substituindo OpenSSL).*
 
 ---
