@@ -73,21 +73,21 @@ flowchart TD
 Em vez de uma struct plana monolítica, o `ComputedStyle` é composto por 8 sub-estruturas temáticas em `Arc`:
 
 1. **Structs Herdadas (*Inherited Structs*):**
-   - [`StyleFont`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): `size`, `weight`, `style`, `family`, `line_height`.
-   - [`StyleColor`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): `color`, `opacity`.
-   - [`StyleText`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): `text_align`, `text_decoration`, `white_space`, `word_break`, `overflow_wrap`, `direction`, `writing_mode`, `visibility`.
+   - [`StyleFont`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): `size`, `weight`, `style`, `family`, `line_height`.
+   - [`StyleColor`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): `color`, `opacity`.
+   - [`StyleText`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): `text_align`, `text_decoration`, `white_space`, `word_break`, `overflow_wrap`, `direction`, `writing_mode`, `visibility`.
    *Propagação:* Quando um elemento não sobrescreve cor ou tipografia, ele herda diretamente o ponteiro do pai (`child.font = Arc::clone(&parent.font)`).
 2. **Structs Resetadas (*Reset Structs*):**
-   - [`StyleBox`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): `display`, `position`, `box_sizing`, `z_index`, `width`, `height`, etc.
-   - [`StyleSurrounding`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): `margin`, `padding`, `border_width`, `border_style`, `border_color`, `border_radius`.
-   - [`StyleFlex`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): alinhamentos, direções e fatores flexíveis.
-   - [`StyleGrid`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/structs.rs): autoflow de grid.
+   - [`StyleBox`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): `display`, `position`, `box_sizing`, `z_index`, `width`, `height`, etc.
+   - [`StyleSurrounding`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): `margin`, `padding`, `border_width`, `border_style`, `border_color`, `border_radius`.
+   - [`StyleFlex`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): alinhamentos, direções e fatores flexíveis.
+   - [`StyleGrid`](../../Albedo_Core_Engine/ace_style/src/computed/structs.rs): autoflow de grid.
    *Singletons Estáticos:* Elementos sem regras específicas apontam para instâncias estáticas globais (`INITIAL_BOX`, `INITIAL_SURROUNDING`), reduzindo o consumo de memória em mais de 65% em páginas com dezenas de milhares de nós.
 
 ---
 
 ### 2.2 Matched Properties Cache (MPC)
-O [`MatchedPropertiesCache`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/engine/mpc.rs) gera uma assinatura numérica de 64 bits (`MpcKey`) para cada elemento combinando:
+O [`MatchedPropertiesCache`](../../Albedo_Core_Engine/ace_style/src/engine/mpc.rs) gera uma assinatura numérica de 64 bits (`MpcKey`) para cada elemento combinando:
 - A lista ordenada de IDs de regras casadas.
 - O endereço de memória das structs herdadas do pai (`font`, `color`, `text`).
 - O tamanho da fonte raiz (`root_font_size`).
@@ -97,7 +97,7 @@ Se dois elementos em partes completamente diferentes do documento combinarem com
 ---
 
 ### 2.3 Invalidação Reativa Cirúrgica (*Rule Invalidation Sets* — Modelo Blink)
-O módulo [`invalidation.rs`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/engine/invalidation.rs) mantém grafos de dependência entre regras e mutações:
+O módulo [`invalidation.rs`](../../Albedo_Core_Engine/ace_style/src/engine/invalidation.rs) mantém grafos de dependência entre regras e mutações:
 - **`DescendantInvalidationSet`:** Registra quais classes, tags e atributos descendentes podem ter seu estilo alterado quando um ancestral muda de classe ou ID.
 - **`SiblingInvalidationSet`:** Rastreia combinadores de irmãos (`+` e `~`) como `input:checked + label`.
 - **`StyleEngine::invalidate_mutation()`:** Ao receber uma mutação (`ClassAdded`, `ClassRemoved`, `IdChanged`, `AttributeChanged`), marca com flags de dirty apenas os nós que casam com o conjunto de dependências, recalculando menos de 1% da árvore por ciclo.
@@ -105,22 +105,22 @@ O módulo [`invalidation.rs`](file:///home/alekkzsx/Documents/Github/Albedo-Brow
 ---
 
 ### 2.4 Indexação Estendida e Caixas Anônimas de Pseudo-Elementos
-- **Baldes Estendidos no [`RuleBucketMap`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/rule_tree/bucket.rs):**
+- **Baldes Estendidos no [`RuleBucketMap`](../../Albedo_Core_Engine/ace_style/src/rule_tree/bucket.rs):**
   - `attribute_buckets`: Indexa regras como `[type="text"]`, `[disabled]`.
   - `state_buckets`: Indexa pseudo-classes como `:checked`, `:disabled`.
   - Evita poluição do `universal_bucket`, acelerando a triagem de regras em até 8x.
-- **Árvore Anônima na [`RenderTree`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/engine/style_engine.rs):**
+- **Árvore Anônima na [`RenderTree`](../../Albedo_Core_Engine/ace_style/src/engine/style_engine.rs):**
   - Nós do tipo `RenderNodeKind::AnonymousBefore` e `RenderNodeKind::AnonymousAfter` são criados dinamicamente quando regras para `::before` e `::after` definem a propriedade `content`.
   - Herdam o estilo do elemento hospedeiro e posicionam-se como primeiro e último filho na ordem formal de pintura.
 
 ---
 
 ### 2.5 Matemática W3C Avançada & Propriedades Lógicas
-- **Expressões [`CalcExpr`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/values/length.rs):**
+- **Expressões [`CalcExpr`](../../Albedo_Core_Engine/ace_style/src/values/length.rs):**
   - `clamp(min, val, max)`, `min(...)`, `max(...)`.
   - `round(strategy, val, step)`, `abs(val)`, `sign(val)`.
   - Avaliação recursiva com unidades mistas (`px`, `vw`, `vh`, `%`, `em`, `rem`).
-- **CSS Writing Modes & Bidi ([`resolver.rs`](file:///home/alekkzsx/Documents/Github/Albedo-Browser/Albedo_Core_Engine/ace_style/src/computed/resolver.rs)):**
+- **CSS Writing Modes & Bidi ([`resolver.rs`](../../Albedo_Core_Engine/ace_style/src/computed/resolver.rs)):**
   - Mapeamento determinístico de `inline-size`, `block-size`, `margin-inline-start/end`, `padding-inline-start/end`, `inset-inline-start/end`.
   - Resolução correta para todas as combinações de `direction: ltr | rtl` e `writing-mode: horizontal-tb | vertical-rl | vertical-lr`.
 - **Shorthand Canônica de `font:`:**

@@ -1,7 +1,7 @@
 # ADR-0012: Localização do CSSOM e Migração para ace_style na Fase 6
 
-- **Status:** Aceito & Implementado (Fase 6)
-- **Data:** 2026-10-07 (Implementado em 2026-10-11)
+- **Status:** Aceito & Implementado
+- **Data:** 2026-10-07 (Implementado em 2026-10-11 na Fase 6)
 - **Decisores:** Engenharia Central do Albedo
 - **Subsistemas Afetados:** `ace_dom`, `ace_style`
 
@@ -30,7 +30,22 @@ Aprovou-se a migração definitiva de todo o CSSOM, parser de sintaxe CSS e moto
   - Resolução integral da dívida arquitetural **DV-05**.
   - Pipeline estritamente desacoplado (`ace_dom` -> `ace_style` -> `ace_layout`).
   - Suporte a paralelismo limpo na resolução de estilos via `rayon`.
-  - Cobertura de testes e suítes de estresse independentes (18 testes automatizados, 6 baterias de estresse pesado).
+  - Cobertura de testes e suítes de estresse independentes (25 testes automatizados em 14 binários).
 - **Negativas / Riscos:**
   - Exige que o `StyleEngine` receba dados do elemento através da interface da arena do DOM (`NodeId`, tags, atributos e classes) em vez de acoplamento direto de ponteiros.
+
+## 4. Notas de Implementação
+
+> [!NOTE]
+> **Status de Materialização:** Implementado e validado no crate `ace_style` na Fase 6, quitando integralmente a dívida técnica DV-05 com `#![forbid(unsafe_code)]` e 25 testes verdes em 14 binários.
+
+- **`ace_style` (`Albedo_Core_Engine/ace_style/`):**
+  - Diretiva de Segurança: `#![forbid(unsafe_code)]` na raiz de `src/lib.rs`.
+  - Módulos do CSSOM e Parser: `src/parser/` e `src/cssom/` implementando tokenizer e parser streaming em conformidade com W3C CSS Syntax Level 3.
+  - Cascata e Regras: `src/cascade/` implementando a matriz formal das 8 origens normativas da cascata W3C e resolução de `@layer` (CSS Cascade 5).
+  - Resolução de Variáveis: `src/engine/` implementando resolução acíclica em DAG de `var()` com mitigação de ataques *Billion Laughs CSS*.
+  - Classificação de Caixas: `src/engine/style_engine.rs` exportando o enum `BoxGenerationKind` (`Block`, `Inline`, `InlineBlock`, `Flex`, `Grid`, `Anonymous`, `TextRun`) como contrato com `ace_layout`.
+  - Render Tree: `src/computed/` e `RenderTree` desacoplados da arena do DOM, gerando árvores imutáveis com `Arc<ComputedStyle>`.
+- **Desacoplamento de `ace_dom`:**
+  - O código temporário de CSSOM foi removido de `ace_dom`, mantendo o DOM estritamente focado no ciclo de vida de nós e parser HTML5.
 
