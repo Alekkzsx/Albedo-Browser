@@ -15,10 +15,7 @@ pub enum ResourceHint {
     /// Resolução DNS antecipada para o domínio informado.
     DnsPrefetch(String),
     /// Pré-conexão TCP e handshake TLS para a origem informada.
-    Preconnect {
-        origin: Origin,
-        cross_origin: bool,
-    },
+    Preconnect { origin: Origin, cross_origin: bool },
     /// Pré-carregamento especulativo de um recurso específico.
     Preload {
         url: Url,
@@ -34,7 +31,10 @@ impl ResourceHint {
 
     /// Cria uma dica de pré-conexão para uma origem.
     pub fn preconnect(origin: Origin, cross_origin: bool) -> Self {
-        Self::Preconnect { origin, cross_origin }
+        Self::Preconnect {
+            origin,
+            cross_origin,
+        }
     }
 
     /// Cria uma dica de pré-carregamento com destino de recurso.
@@ -68,11 +68,13 @@ mod tests {
         let origin = Origin::parse("https://fonts.googleapis.com").unwrap();
         let hint_preconnect = ResourceHint::preconnect(origin, true);
         assert!(matches!(hint_preconnect, ResourceHint::Preconnect { .. }));
-        assert_eq!(hint_preconnect.target_host().as_deref(), Some("fonts.googleapis.com"));
+        assert_eq!(
+            hint_preconnect.target_host().as_deref(),
+            Some("fonts.googleapis.com")
+        );
 
         let url = Url::parse("https://example.com/style.css").unwrap();
         let hint_preload = ResourceHint::preload(url, RequestDestination::Style);
         assert_eq!(hint_preload.target_host().as_deref(), Some("example.com"));
     }
 }
-

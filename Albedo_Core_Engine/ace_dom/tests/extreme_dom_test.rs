@@ -38,7 +38,9 @@ fn test_template_element_inactive_fragment_isolation() {
     "#;
 
     let doc = parse_html(html);
-    let template_id = doc.get_element_by_id("my-template").expect("template encontrado");
+    let template_id = doc
+        .get_element_by_id("my-template")
+        .expect("template encontrado");
     let template_node = doc.get_node(template_id).unwrap();
     let el = template_node.as_element().unwrap();
 
@@ -71,11 +73,21 @@ fn test_foreign_content_svg_case_fixups() {
     let doc = parse_html(html);
 
     // Verifica se a tag <linearGradient> e <foreignObject> foram corrigidas para CamelCase
-    let grad_id = doc.query_selector("linearGradient").expect("linearGradient encontrado via CamelCase");
-    assert_eq!(doc.get_node(grad_id).unwrap().tag_name().unwrap().as_str(), "linearGradient");
+    let grad_id = doc
+        .query_selector("linearGradient")
+        .expect("linearGradient encontrado via CamelCase");
+    assert_eq!(
+        doc.get_node(grad_id).unwrap().tag_name().unwrap().as_str(),
+        "linearGradient"
+    );
 
-    let fo_id = doc.query_selector("foreignObject").expect("foreignObject encontrado");
-    assert_eq!(doc.get_node(fo_id).unwrap().tag_name().unwrap().as_str(), "foreignObject");
+    let fo_id = doc
+        .query_selector("foreignObject")
+        .expect("foreignObject encontrado");
+    assert_eq!(
+        doc.get_node(fo_id).unwrap().tag_name().unwrap().as_str(),
+        "foreignObject"
+    );
 
     // Verifica atributos corrigidos
     let svg_id = doc.query_selector("svg").expect("svg encontrado");
@@ -91,7 +103,10 @@ fn test_shadow_dom_slot_assignment_and_flat_tree() {
 
     // Filhos do Light DOM (slotables)
     let named_child = doc.create_element("span", Namespace::Html);
-    if let Some(el) = doc.get_node_mut(named_child).and_then(|n| n.as_element_mut()) {
+    if let Some(el) = doc
+        .get_node_mut(named_child)
+        .and_then(|n| n.as_element_mut())
+    {
         el.set_attribute("slot", "username");
     }
     let default_child = doc.create_element("p", Namespace::Html);
@@ -104,7 +119,10 @@ fn test_shadow_dom_slot_assignment_and_flat_tree() {
 
     // Slots no Shadow DOM
     let slot_named = doc.create_element("slot", Namespace::Html);
-    if let Some(el) = doc.get_node_mut(slot_named).and_then(|n| n.as_element_mut()) {
+    if let Some(el) = doc
+        .get_node_mut(slot_named)
+        .and_then(|n| n.as_element_mut())
+    {
         el.set_attribute("name", "username");
     }
 

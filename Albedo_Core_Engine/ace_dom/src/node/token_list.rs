@@ -38,7 +38,9 @@ impl<'a> DOMTokenList<'a> {
     /// Remove uma classe da lista.
     pub fn remove(&mut self, token: &str) {
         let before_len = self.element.classes.len();
-        self.element.classes.retain(|c| !c.eq_ignore_ascii_case(token));
+        self.element
+            .classes
+            .retain(|c| !c.eq_ignore_ascii_case(token));
         if self.element.classes.len() < before_len {
             self.sync_attribute();
         }

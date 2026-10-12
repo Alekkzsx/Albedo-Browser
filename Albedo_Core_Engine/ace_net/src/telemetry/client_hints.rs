@@ -10,7 +10,8 @@ use http::header::HeaderMap;
 use http::{HeaderName, HeaderValue};
 
 /// Versão padrão e marcas de compatibilidade do Albedo Browser.
-pub const DEFAULT_SEC_CH_UA: &str = "\"Albedo\";v=\"0.1\", \"Chromium\";v=\"130\", \"Not?A_Brand\";v=\"99\"";
+pub const DEFAULT_SEC_CH_UA: &str =
+    "\"Albedo\";v=\"0.1\", \"Chromium\";v=\"130\", \"Not?A_Brand\";v=\"99\"";
 pub const DEFAULT_SEC_CH_UA_PLATFORM: &str = "\"Windows\"";
 
 /// Injeta automaticamente os cabeçalhos essenciais de Client Hints modernos na requisição.
@@ -28,7 +29,10 @@ pub fn inject_default_client_hints(headers: &mut HeaderMap) {
     }
 
     if !headers.contains_key(&platform_name) {
-        headers.insert(platform_name, HeaderValue::from_static(DEFAULT_SEC_CH_UA_PLATFORM));
+        headers.insert(
+            platform_name,
+            HeaderValue::from_static(DEFAULT_SEC_CH_UA_PLATFORM),
+        );
     }
 }
 
@@ -43,6 +47,9 @@ mod tests {
 
         assert_eq!(headers.get("sec-ch-ua").unwrap(), DEFAULT_SEC_CH_UA);
         assert_eq!(headers.get("sec-ch-ua-mobile").unwrap(), "?0");
-        assert_eq!(headers.get("sec-ch-ua-platform").unwrap(), DEFAULT_SEC_CH_UA_PLATFORM);
+        assert_eq!(
+            headers.get("sec-ch-ua-platform").unwrap(),
+            DEFAULT_SEC_CH_UA_PLATFORM
+        );
     }
 }

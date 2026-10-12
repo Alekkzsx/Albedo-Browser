@@ -223,13 +223,19 @@ fn test_custom_element_state_initialization() {
     let div_id = doc.create_element("div", Namespace::Html);
     let div_node = doc.get_node(div_id).unwrap();
     let div_el = div_node.as_element().unwrap();
-    assert_eq!(div_el.custom_element_state(), CustomElementState::Uncustomized);
+    assert_eq!(
+        div_el.custom_element_state(),
+        CustomElementState::Uncustomized
+    );
 
     // 2. Elemento com nome customizado válido antes de registro -> Undefined
     let custom_id = doc.create_element("user-badge", Namespace::Html);
     let custom_node = doc.get_node(custom_id).unwrap();
     let custom_el = custom_node.as_element().unwrap();
-    assert_eq!(custom_el.custom_element_state(), CustomElementState::Undefined);
+    assert_eq!(
+        custom_el.custom_element_state(),
+        CustomElementState::Undefined
+    );
 
     // 3. Mutação manual de estado
     if let Some(el_mut) = doc.get_node_mut(custom_id).and_then(|n| n.as_element_mut()) {
@@ -239,15 +245,15 @@ fn test_custom_element_state_initialization() {
     }
 
     let updated_el = doc.get_node(custom_id).unwrap().as_element().unwrap();
-    assert_eq!(updated_el.custom_element_state(), CustomElementState::Custom);
+    assert_eq!(
+        updated_el.custom_element_state(),
+        CustomElementState::Custom
+    );
     assert_eq!(
         updated_el.custom_element_definition(),
         Some(Atom::new("user-badge"))
     );
-    assert_eq!(
-        updated_el.is_value(),
-        Some(Atom::new("custom-button"))
-    );
+    assert_eq!(updated_el.is_value(), Some(Atom::new("custom-button")));
 }
 
 #[test]
@@ -268,11 +274,17 @@ fn test_custom_element_upgrade_algorithm() {
     let user_item_2 = doc.create_element("user-item", Namespace::Html);
     let p_id = doc.create_element("p", Namespace::Html);
 
-    if let Some(el) = doc.get_node_mut(user_item_1).and_then(|n| n.as_element_mut()) {
+    if let Some(el) = doc
+        .get_node_mut(user_item_1)
+        .and_then(|n| n.as_element_mut())
+    {
         el.set_attribute("theme", "dark");
         el.set_attribute("unobserved", "foo");
     }
-    if let Some(el) = doc.get_node_mut(user_item_2).and_then(|n| n.as_element_mut()) {
+    if let Some(el) = doc
+        .get_node_mut(user_item_2)
+        .and_then(|n| n.as_element_mut())
+    {
         el.set_attribute("theme", "light");
     }
 
@@ -284,11 +296,19 @@ fn test_custom_element_upgrade_algorithm() {
 
     // Confirma que os nós ainda estão Undefined
     assert_eq!(
-        doc.get_node(user_item_1).unwrap().as_element().unwrap().custom_element_state(),
+        doc.get_node(user_item_1)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_state(),
         CustomElementState::Undefined
     );
     assert_eq!(
-        doc.get_node(user_item_2).unwrap().as_element().unwrap().custom_element_state(),
+        doc.get_node(user_item_2)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_state(),
         CustomElementState::Undefined
     );
 
@@ -302,11 +322,19 @@ fn test_custom_element_upgrade_algorithm() {
 
     // Verifica se os nós transicionaram para Custom
     assert_eq!(
-        doc.get_node(user_item_1).unwrap().as_element().unwrap().custom_element_state(),
+        doc.get_node(user_item_1)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_state(),
         CustomElementState::Custom
     );
     assert_eq!(
-        doc.get_node(user_item_2).unwrap().as_element().unwrap().custom_element_state(),
+        doc.get_node(user_item_2)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .custom_element_state(),
         CustomElementState::Custom
     );
 

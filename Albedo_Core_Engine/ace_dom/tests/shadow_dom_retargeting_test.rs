@@ -8,7 +8,9 @@
 //! - Interrupção de propagação (`stopPropagation`, `stopImmediatePropagation`) e `preventDefault`.
 
 use ace_dom::bindings::EventBindings;
-use ace_dom::events::{dispatch_event, AddEventListenerOptions, Event, EventListener, EventPhase, EventRegistry};
+use ace_dom::events::{
+    dispatch_event, AddEventListenerOptions, Event, EventListener, EventPhase, EventRegistry,
+};
 use ace_dom::node::element::Namespace;
 use ace_dom::node::ShadowMode;
 use ace_dom::tree::Document;
@@ -68,7 +70,11 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
             assert_eq!(e.phase, EventPhase::AtTarget);
             assert_eq!(e.target, Some(inner_btn));
             assert_eq!(e.current_target, Some(inner_btn));
-            log_clone1.lock().unwrap().push(("inner_btn", e.target.unwrap(), e.composed_path().to_vec()));
+            log_clone1.lock().unwrap().push((
+                "inner_btn",
+                e.target.unwrap(),
+                e.composed_path().to_vec(),
+            ));
         }),
     );
 
@@ -81,7 +87,11 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
             assert_eq!(e.phase, EventPhase::BubblingPhase);
             assert_eq!(e.target, Some(inner_btn));
             assert_eq!(e.current_target, Some(inner_div));
-            log_clone2.lock().unwrap().push(("inner_div", e.target.unwrap(), e.composed_path().to_vec()));
+            log_clone2.lock().unwrap().push((
+                "inner_div",
+                e.target.unwrap(),
+                e.composed_path().to_vec(),
+            ));
         }),
     );
 
@@ -94,7 +104,11 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
             assert_eq!(e.phase, EventPhase::BubblingPhase);
             assert_eq!(e.target, Some(inner_btn));
             assert_eq!(e.current_target, Some(shadow_root_id));
-            log_clone3.lock().unwrap().push(("shadow_root", e.target.unwrap(), e.composed_path().to_vec()));
+            log_clone3.lock().unwrap().push((
+                "shadow_root",
+                e.target.unwrap(),
+                e.composed_path().to_vec(),
+            ));
         }),
     );
 
@@ -107,7 +121,11 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
             assert_eq!(e.phase, EventPhase::BubblingPhase);
             assert_eq!(e.target, Some(host_id));
             assert_eq!(e.current_target, Some(host_id));
-            log_clone4.lock().unwrap().push(("host", e.target.unwrap(), e.composed_path().to_vec()));
+            log_clone4.lock().unwrap().push((
+                "host",
+                e.target.unwrap(),
+                e.composed_path().to_vec(),
+            ));
         }),
     );
 
@@ -120,7 +138,11 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
             assert_eq!(e.phase, EventPhase::BubblingPhase);
             assert_eq!(e.target, Some(host_id));
             assert_eq!(e.current_target, Some(body_id));
-            log_clone5.lock().unwrap().push(("body", e.target.unwrap(), e.composed_path().to_vec()));
+            log_clone5.lock().unwrap().push((
+                "body",
+                e.target.unwrap(),
+                e.composed_path().to_vec(),
+            ));
         }),
     );
 
@@ -149,7 +171,14 @@ fn test_shadow_dom_composed_true_retargeting_pipeline() {
     assert_eq!(entries[4].1, host_id); // Retargeted para o host!
 
     // Valida composed_path completo
-    let expected_composed_path = vec![inner_btn, inner_div, shadow_root_id, host_id, body_id, doc.root()];
+    let expected_composed_path = vec![
+        inner_btn,
+        inner_div,
+        shadow_root_id,
+        host_id,
+        body_id,
+        doc.root(),
+    ];
     assert_eq!(event.composed_path(), expected_composed_path.as_slice());
 }
 
@@ -205,9 +234,18 @@ fn test_shadow_dom_composed_false_containment() {
 
     dispatch_event(&mut registry, &doc, inner_btn, &mut event);
 
-    assert!(*inner_called.lock().unwrap(), "Ouvinte interno DEVE ser chamado");
-    assert!(!*host_called.lock().unwrap(), "Host NÃO DEVE ser chamado quando composed: false");
-    assert!(!*body_called.lock().unwrap(), "Body NÃO DEVE ser chamado quando composed: false");
+    assert!(
+        *inner_called.lock().unwrap(),
+        "Ouvinte interno DEVE ser chamado"
+    );
+    assert!(
+        !*host_called.lock().unwrap(),
+        "Host NÃO DEVE ser chamado quando composed: false"
+    );
+    assert!(
+        !*body_called.lock().unwrap(),
+        "Body NÃO DEVE ser chamado quando composed: false"
+    );
 
     // Caminho composto encerra na ShadowRoot
     assert_eq!(event.composed_path(), &[inner_btn, shadow_root_id]);
@@ -241,7 +279,10 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
         deep_btn,
         "deep-click",
         EventListener::new(1, false, move |e| {
-            t_clone1.lock().unwrap().push(("deep_btn", e.target.unwrap()));
+            t_clone1
+                .lock()
+                .unwrap()
+                .push(("deep_btn", e.target.unwrap()));
         }),
     );
 
@@ -251,7 +292,10 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
         inner_shadow,
         "deep-click",
         EventListener::new(2, false, move |e| {
-            t_clone2.lock().unwrap().push(("inner_shadow", e.target.unwrap()));
+            t_clone2
+                .lock()
+                .unwrap()
+                .push(("inner_shadow", e.target.unwrap()));
         }),
     );
 
@@ -261,7 +305,10 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
         inner_host,
         "deep-click",
         EventListener::new(3, false, move |e| {
-            t_clone3.lock().unwrap().push(("inner_host", e.target.unwrap()));
+            t_clone3
+                .lock()
+                .unwrap()
+                .push(("inner_host", e.target.unwrap()));
         }),
     );
 
@@ -271,7 +318,10 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
         outer_shadow,
         "deep-click",
         EventListener::new(4, false, move |e| {
-            t_clone4.lock().unwrap().push(("outer_shadow", e.target.unwrap()));
+            t_clone4
+                .lock()
+                .unwrap()
+                .push(("outer_shadow", e.target.unwrap()));
         }),
     );
 
@@ -281,7 +331,10 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
         outer_host,
         "deep-click",
         EventListener::new(5, false, move |e| {
-            t_clone5.lock().unwrap().push(("outer_host", e.target.unwrap()));
+            t_clone5
+                .lock()
+                .unwrap()
+                .push(("outer_host", e.target.unwrap()));
         }),
     );
 
@@ -301,18 +354,29 @@ fn test_multi_level_nested_shadow_dom_retargeting() {
     dispatch_event(&mut registry, &doc, deep_btn, &mut event);
 
     let log = target_log.lock().unwrap().clone();
-    assert_eq!(log, vec![
-        ("deep_btn", deep_btn),
-        ("inner_shadow", deep_btn),
-        ("inner_host", inner_host),
-        ("outer_shadow", inner_host),
-        ("outer_host", outer_host),
-        ("body", outer_host),
-    ]);
+    assert_eq!(
+        log,
+        vec![
+            ("deep_btn", deep_btn),
+            ("inner_shadow", deep_btn),
+            ("inner_host", inner_host),
+            ("outer_shadow", inner_host),
+            ("outer_host", outer_host),
+            ("body", outer_host),
+        ]
+    );
 
     assert_eq!(
         event.composed_path(),
-        &[deep_btn, inner_shadow, inner_host, outer_shadow, outer_host, body_id, doc.root()]
+        &[
+            deep_btn,
+            inner_shadow,
+            inner_host,
+            outer_shadow,
+            outer_host,
+            body_id,
+            doc.root()
+        ]
     );
 }
 
@@ -378,10 +442,16 @@ fn test_shadow_dom_capture_phase_retargeting() {
         "capture-test",
         EventListener::with_options(
             1,
-            AddEventListenerOptions { capture: true, ..Default::default() },
+            AddEventListenerOptions {
+                capture: true,
+                ..Default::default()
+            },
             move |e| {
                 assert_eq!(e.phase, EventPhase::CapturingPhase);
-                c_clone1.lock().unwrap().push(("body_capture", e.target.unwrap()));
+                c_clone1
+                    .lock()
+                    .unwrap()
+                    .push(("body_capture", e.target.unwrap()));
             },
         ),
     );
@@ -393,10 +463,16 @@ fn test_shadow_dom_capture_phase_retargeting() {
         "capture-test",
         EventListener::with_options(
             2,
-            AddEventListenerOptions { capture: true, ..Default::default() },
+            AddEventListenerOptions {
+                capture: true,
+                ..Default::default()
+            },
             move |e| {
                 assert_eq!(e.phase, EventPhase::CapturingPhase);
-                c_clone2.lock().unwrap().push(("host_capture", e.target.unwrap()));
+                c_clone2
+                    .lock()
+                    .unwrap()
+                    .push(("host_capture", e.target.unwrap()));
             },
         ),
     );
@@ -408,10 +484,16 @@ fn test_shadow_dom_capture_phase_retargeting() {
         "capture-test",
         EventListener::with_options(
             3,
-            AddEventListenerOptions { capture: true, ..Default::default() },
+            AddEventListenerOptions {
+                capture: true,
+                ..Default::default()
+            },
             move |e| {
                 assert_eq!(e.phase, EventPhase::CapturingPhase);
-                c_clone3.lock().unwrap().push(("shadow_capture", e.target.unwrap()));
+                c_clone3
+                    .lock()
+                    .unwrap()
+                    .push(("shadow_capture", e.target.unwrap()));
             },
         ),
     );
@@ -422,11 +504,14 @@ fn test_shadow_dom_capture_phase_retargeting() {
     dispatch_event(&mut registry, &doc, inner_btn, &mut event);
 
     let log = capture_log.lock().unwrap().clone();
-    assert_eq!(log, vec![
-        ("body_capture", host_id),
-        ("host_capture", host_id),
-        ("shadow_capture", inner_btn),
-    ]);
+    assert_eq!(
+        log,
+        vec![
+            ("body_capture", host_id),
+            ("host_capture", host_id),
+            ("shadow_capture", inner_btn),
+        ]
+    );
 }
 
 #[test]
@@ -468,7 +553,10 @@ fn test_shadow_dom_stop_propagation() {
 
     dispatch_event(&mut registry, &doc, inner_btn, &mut event);
 
-    assert!(!*host_reached.lock().unwrap(), "Stop propagation deve impedir o borbulhamento para o host");
+    assert!(
+        !*host_reached.lock().unwrap(),
+        "Stop propagation deve impedir o borbulhamento para o host"
+    );
 }
 
 #[test]
@@ -495,7 +583,10 @@ fn test_shadow_dom_prevent_default() {
     event.composed = true;
 
     let allowed = dispatch_event(&mut registry, &doc, btn_id, &mut event);
-    assert!(!allowed, "dispatch_event deve retornar false quando prevent_default() for chamado");
+    assert!(
+        !allowed,
+        "dispatch_event deve retornar false quando prevent_default() for chamado"
+    );
     assert!(event.is_default_prevented());
 }
 

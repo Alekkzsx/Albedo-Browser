@@ -1,9 +1,9 @@
 //! # Bateria de Testes do MutationObserver (ace_dom)
 
+use ace_core::intern::Atom;
 use ace_dom::node::element::Namespace;
 use ace_dom::observer::{MutationObserver, MutationObserverInit, MutationRecord, MutationType};
 use ace_dom::tree::Document;
-use ace_core::intern::Atom;
 use smol_str::SmolStr;
 
 #[test]
@@ -22,13 +22,7 @@ fn test_mutation_observer_child_list_recording() {
     );
 
     // Simula a adição do filho
-    let record = MutationRecord::child_list(
-        parent_id,
-        vec![child1],
-        Vec::new(),
-        None,
-        None,
-    );
+    let record = MutationRecord::child_list(parent_id, vec![child1], Vec::new(), None, None);
     observer.notify_mutation(record);
 
     let records = observer.take_records();

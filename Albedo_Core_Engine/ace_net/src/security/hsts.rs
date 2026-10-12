@@ -207,7 +207,6 @@ impl HstsStore {
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
 
@@ -262,4 +261,3 @@ mod tests {
         assert!(new_store.should_upgrade("sub.secure.corp.local", now));
     }
 }
-

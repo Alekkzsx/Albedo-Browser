@@ -82,7 +82,10 @@ fn tier3_combo_01_arena_and_inline_vec() {
     root.children.push(head_id);
     root.children.push(meta_id);
     root.children.push(body_id);
-    assert!(root.children.is_inline(), "3 filhos cabem no buffer inline de N=4");
+    assert!(
+        root.children.is_inline(),
+        "3 filhos cabem no buffer inline de N=4"
+    );
     assert_eq!(root.children.len(), 3);
 
     // Adiciona mais filhos para forçar spill para heap no InlineVec
@@ -100,7 +103,10 @@ fn tier3_combo_01_arena_and_inline_vec() {
     let root = arena.get_mut(root_id).expect("root deve existir");
     root.children.push(script_id);
     root.children.push(style_id);
-    assert!(!root.children.is_inline(), "5 filhos forçam transição para heap");
+    assert!(
+        !root.children.is_inline(),
+        "5 filhos forçam transição para heap"
+    );
     assert_eq!(root.children.len(), 5);
 
     // Valida integridade do grafo pai-filho
@@ -189,7 +195,9 @@ fn tier3_combo_02_triple_buffer_and_color() {
     }
 
     // Consumer consome o frame mais recente publicado
-    let latest = consumer.consume().expect("Último frame deve estar disponível");
+    let latest = consumer
+        .consume()
+        .expect("Último frame deve estar disponível");
     assert_eq!(latest.background, Color::LIME);
     assert_eq!(latest.foreground, Color::WHITE);
 
@@ -240,7 +248,10 @@ fn tier3_combo_03_origin_and_compute_referrer() {
         "http://insecure.net/tracker",
         ReferrerPolicy::StrictOriginWhenCrossOrigin,
     );
-    assert_eq!(ref3, None, "Downgrade de HTTPS para HTTP deve suprimir o Referer");
+    assert_eq!(
+        ref3, None,
+        "Downgrade de HTTPS para HTTP deve suprimir o Referer"
+    );
 
     // 4. SameOrigin policy em requisição cross-origin
     let ref4 = compute_referrer(
@@ -249,7 +260,10 @@ fn tier3_combo_03_origin_and_compute_referrer() {
         "https://other.com/page",
         ReferrerPolicy::SameOrigin,
     );
-    assert_eq!(ref4, None, "SameOrigin policy deve retornar None para cross-origin");
+    assert_eq!(
+        ref4, None,
+        "SameOrigin policy deve retornar None para cross-origin"
+    );
 
     // 5. File URL não deve emitir cabeçalho Referer
     let ref5 = compute_referrer(
@@ -258,7 +272,10 @@ fn tier3_combo_03_origin_and_compute_referrer() {
         "https://albedo.org/home",
         ReferrerPolicy::UnsafeUrl,
     );
-    assert_eq!(ref5, None, "Esquemas não-HTTP/HTTPS não devem gerar Referer");
+    assert_eq!(
+        ref5, None,
+        "Esquemas não-HTTP/HTTPS não devem gerar Referer"
+    );
 
     // 6. NoReferrer policy
     let ref6 = compute_referrer(
@@ -375,11 +392,20 @@ fn tier3_combo_06_percent_decode_and_origin() {
     // Teste com sequências malformadas de % (ex: 100%_concluido)
     let malformed_url = "http://localhost:8080/files/100%_concluido.pdf";
     let decoded_malformed = percent_decode(malformed_url);
-    assert_eq!(decoded_malformed, "http://localhost:8080/files/100%_concluido.pdf");
+    assert_eq!(
+        decoded_malformed,
+        "http://localhost:8080/files/100%_concluido.pdf"
+    );
 
     let origin_malformed = Origin::parse(&decoded_malformed).unwrap();
-    assert_eq!(origin_malformed.ascii_serialization(), "http://localhost:8080");
-    assert!(origin_malformed.is_secure(), "Localhost deve ser contexto seguro");
+    assert_eq!(
+        origin_malformed.ascii_serialization(),
+        "http://localhost:8080"
+    );
+    assert!(
+        origin_malformed.is_secure(),
+        "Localhost deve ser contexto seguro"
+    );
 }
 
 // =========================================================================
@@ -478,10 +504,8 @@ fn tier3_combo_08_event_loop_task_source_and_microtask() {
 fn tier3_combo_09_event_loop_timers_and_starvation_prevention() {
     let mock_clock = Arc::new(MockClock::new(1000));
     // Configura limite de starvation para 4 passos determinísticos
-    let event_loop = EventLoop::with_clock_and_starvation_limit(
-        Arc::clone(&mock_clock) as Arc<dyn Clock>,
-        4,
-    );
+    let event_loop =
+        EventLoop::with_clock_and_starvation_limit(Arc::clone(&mock_clock) as Arc<dyn Clock>, 4);
     let handle = event_loop.handle();
 
     let timer_executed = Arc::new(AtomicBool::new(false));
@@ -504,7 +528,10 @@ fn tier3_combo_09_event_loop_timers_and_starvation_prevention() {
     // Executa 2 passos antes do timer expirar
     event_loop.step();
     event_loop.step();
-    assert!(!timer_executed.load(Ordering::SeqCst), "Timer não deve ter disparado antes do prazo");
+    assert!(
+        !timer_executed.load(Ordering::SeqCst),
+        "Timer não deve ter disparado antes do prazo"
+    );
 
     // Avança o relógio para depois do prazo do timer (+60ms)
     mock_clock.advance_millis(60);
@@ -560,7 +587,10 @@ fn tier3_combo_10_event_loop_dynamic_timer_nesting_and_microtasks() {
         assert!(logs.contains(&"Timer_Nesting_2".to_string()));
         assert!(logs.contains(&"Timer_Nesting_3".to_string()));
         assert!(logs.contains(&"Timer_Nesting_4".to_string()));
-        assert!(!logs.contains(&"Timer_Nesting_5".to_string()), "Nível 5 sofre clamp para 4ms!");
+        assert!(
+            !logs.contains(&"Timer_Nesting_5".to_string()),
+            "Nível 5 sofre clamp para 4ms!"
+        );
     }
 
     // Avança para t = 4ms: nível 5 dispara
@@ -607,7 +637,10 @@ fn tier3_combo_11_layout_unit_and_color() {
     // Verificação de continuidade e ausência de pixel-cracking
     let right1 = box1.x + box1.width;
     let left2 = box2.x;
-    assert_eq!(right1, left2, "Bordas adjacentes devem ser estritamente contíguas em LayoutUnit");
+    assert_eq!(
+        right1, left2,
+        "Bordas adjacentes devem ser estritamente contíguas em LayoutUnit"
+    );
     assert_eq!(box1.height, LayoutUnit::from_px(50));
     assert_eq!(box2.height, LayoutUnit::from_px(50));
 
@@ -661,7 +694,8 @@ fn tier3_combo_12_layout_unit_and_style_hint_to_node_flags() {
     // Se estiver dirty de layout, recalculamos as dimensões com LayoutUnit
     if lbox.flags.contains(NodeFlags::DIRTY_LAYOUT) {
         lbox.bounds.2 = LayoutUnit::from_f32_px(350.5); // Novo width
-        lbox.flags.remove(NodeFlags::DIRTY_LAYOUT | NodeFlags::DIRTY_PAINT);
+        lbox.flags
+            .remove(NodeFlags::DIRTY_LAYOUT | NodeFlags::DIRTY_PAINT);
     }
 
     assert_eq!(lbox.bounds.2.to_f32_px(), 350.5);
@@ -826,7 +860,10 @@ fn tier3_combo_16_color_bradford_adaptation_and_polar_interpolation() {
 #[test]
 fn tier3_combo_17_unguessable_token_and_compute_referrer() {
     let token = UnguessableToken::new();
-    let auth_url = format!("https://auth.bank.com/session?token={}#credentials", token.to_hex());
+    let auth_url = format!(
+        "https://auth.bank.com/session?token={}#credentials",
+        token.to_hex()
+    );
     let bank_origin = Origin::parse(&auth_url).unwrap();
 
     // 1. Cross-origin request para terceiro com StrictOriginWhenCrossOrigin
@@ -855,7 +892,10 @@ fn tier3_combo_17_unguessable_token_and_compute_referrer() {
     );
     assert!(same_origin_ref.is_some());
     let sanitized = same_origin_ref.unwrap();
-    assert!(!sanitized.contains("#credentials"), "Fragmentos devem ser removidos");
+    assert!(
+        !sanitized.contains("#credentials"),
+        "Fragmentos devem ser removidos"
+    );
 }
 
 // =========================================================================
@@ -901,7 +941,9 @@ fn tier3_combo_18_triple_buffer_and_layout_unit() {
     producer.publish();
 
     // Thread de Renderização consome o frame zero-copy e realiza box snapping
-    let frame = consumer.consume().expect("Frame de layout deve estar pronto");
+    let frame = consumer
+        .consume()
+        .expect("Frame de layout deve estar pronto");
     assert_eq!(frame.rects.len(), 2);
 
     let box1 = frame.rects[0];
@@ -978,7 +1020,8 @@ fn tier3_combo_19_arena_inline_vec_and_style_hint_to_node_flags() {
     for (_id, elem) in arena.iter_mut() {
         if elem.flags.contains(NodeFlags::DIRTY_STYLE) {
             elem.width += LayoutUnit::from_px(10); // Ajuste de padding
-            elem.flags.remove(NodeFlags::DIRTY_STYLE | NodeFlags::SUBTREE_DIRTY);
+            elem.flags
+                .remove(NodeFlags::DIRTY_STYLE | NodeFlags::SUBTREE_DIRTY);
         }
     }
 

@@ -329,7 +329,11 @@ impl Range {
     }
 
     /// Envelopa o conteúdo do Range dentro de um novo elemento pai.
-    pub fn surround_contents(&mut self, doc: &mut Document, new_parent: NodeId) -> Result<(), DomError> {
+    pub fn surround_contents(
+        &mut self,
+        doc: &mut Document,
+        new_parent: NodeId,
+    ) -> Result<(), DomError> {
         let extracted = self.extract_contents(doc)?;
         doc.append_child(new_parent, extracted)?;
         self.insert_node(doc, new_parent)?;
@@ -337,7 +341,12 @@ impl Range {
     }
 
     /// Ajusta os pontos de contorno quando um nó de texto é dividido em dois (WHATWG DOM §5.5).
-    pub fn adjust_for_split_text(&mut self, orig_node: NodeId, new_node: NodeId, split_offset: usize) {
+    pub fn adjust_for_split_text(
+        &mut self,
+        orig_node: NodeId,
+        new_node: NodeId,
+        split_offset: usize,
+    ) {
         if self.start.node == orig_node && self.start.offset > split_offset {
             self.start.node = new_node;
             self.start.offset -= split_offset;
@@ -349,7 +358,12 @@ impl Range {
     }
 
     /// Ajusta os pontos de contorno quando um nó é removido (WHATWG DOM §5.5).
-    pub fn adjust_for_node_removal(&mut self, removed_node: NodeId, parent_id: NodeId, child_index: usize) {
+    pub fn adjust_for_node_removal(
+        &mut self,
+        removed_node: NodeId,
+        parent_id: NodeId,
+        child_index: usize,
+    ) {
         if self.start.node == removed_node {
             self.start.node = parent_id;
             self.start.offset = child_index;
@@ -373,7 +387,8 @@ impl Range {
         parent_id: NodeId,
         child_index: usize,
     ) {
-        let is_start_in_removed = self.start.node == removed_node || doc.contains(removed_node, self.start.node);
+        let is_start_in_removed =
+            self.start.node == removed_node || doc.contains(removed_node, self.start.node);
         if is_start_in_removed {
             self.start.node = parent_id;
             self.start.offset = child_index;
@@ -381,7 +396,8 @@ impl Range {
             self.start.offset -= 1;
         }
 
-        let is_end_in_removed = self.end.node == removed_node || doc.contains(removed_node, self.end.node);
+        let is_end_in_removed =
+            self.end.node == removed_node || doc.contains(removed_node, self.end.node);
         if is_end_in_removed {
             self.end.node = parent_id;
             self.end.offset = child_index;

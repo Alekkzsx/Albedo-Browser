@@ -1,7 +1,7 @@
 //! # Testes de W3C Clear-Site-Data (RFC 8879)
 
-use ace_net::security::clear_site_data::ClearSiteDataAction;
 use ace_net::cookie::Cookie;
+use ace_net::security::clear_site_data::ClearSiteDataAction;
 use ace_net::ResourceFetcher;
 use http::header::HeaderValue;
 use std::time::SystemTime;

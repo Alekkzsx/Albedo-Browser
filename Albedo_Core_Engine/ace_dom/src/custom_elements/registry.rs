@@ -352,10 +352,13 @@ impl CustomElementRegistry {
                 };
 
                 let state = el.custom_element_state();
-                if state == CustomElementState::Undefined || state == CustomElementState::Precustomized {
+                if state == CustomElementState::Undefined
+                    || state == CustomElementState::Precustomized
+                {
                     let tag_name = el.tag_name.as_str();
                     if let Some(def) = self.get(tag_name) {
-                        let is_conn = crate::tree::mutation::is_connected_to_document(arena, node_id);
+                        let is_conn =
+                            crate::tree::mutation::is_connected_to_document(arena, node_id);
                         let mut observed = Vec::new();
                         for attr in el.attributes.as_slice() {
                             if def.observes_attribute(attr.name.as_str()) {

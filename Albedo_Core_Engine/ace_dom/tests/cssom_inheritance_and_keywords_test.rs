@@ -53,7 +53,10 @@ fn test_keyword_inherit_explicit() {
 
     let computed = StyleResolver::resolve_element_style(&doc, child_id, &[]);
     assert_eq!(computed.get_property_value("border"), Some("2px solid red"));
-    assert_eq!(computed.get_property_value("background-color"), Some("blue"));
+    assert_eq!(
+        computed.get_property_value("background-color"),
+        Some("blue")
+    );
 }
 
 #[test]
@@ -92,7 +95,8 @@ fn test_keyword_unset_dispatch() {
 
 #[test]
 fn test_root_element_keyword_defaults() {
-    let html = r#"<html id="root" style="color: inherit; display: inherit; margin: inherit;"></html>"#;
+    let html =
+        r#"<html id="root" style="color: inherit; display: inherit; margin: inherit;"></html>"#;
     let doc = parse_html(html);
     let root_id = doc.get_element_by_id("root").expect("root element");
 

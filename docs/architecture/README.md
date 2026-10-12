@@ -50,10 +50,11 @@ flowchart TD
 ## 📚 Especificações Técnicas dos Subsistemas
 
 | Subsistema | Documento de Arquitetura | Fase no PLANO | Responsabilidade Principal |
-| :--- | :--- | :---: | :--- |
+| :--- | :--- | :--- | :--- |
 | **`ace_core`** | [**`ace_core.md`**](./ace_core.md) | Fase 2 | Arenas geracionais com EBR, `Option<NodeId>` em 8B, `TripleBuffer` lock-free, matemática `euclid`, cores CSS Color 4 e Event Loop WHATWG. |
 | **`ace_net`** | [**`ace_net.md`**](./ace_net.md) | Fase 3 | `ResourceFetcher`, Cache RFC 9111 L1/L2 com WAL, DoH Happy Eyeballs v2, Early Hints 103, Cookies CHIPS e conector HTTP/3 (QUIC). |
 | **`ace_dom`** | [**`ace_dom.md`**](./ace_dom.md) | Fase 5 | Tokenizer HTML5 SIMD, Tree Builder com 16-AAA, seletores CSS4 com Ancestor Bloom Filter de 64 buckets, DSD, MutationObserver e Sanitizer API. |
+| **`ace_style`** | [**`ace_style.md`**](./ace_style.md) | Fase 6 | CSS Syntax L3 SIMD, RuleBucketMap, cascata de 8 origens + @layer, VariableResolver DAG anti-cycle, StyleSharingCache e RenderTree. |
 | **Infra de Testes** | [**`test_infra.md`**](./test_infra.md) | Transversal | Arquitetura 4-Tier para baixo nível e estratégia em 4 estágios para o consórcio Web Platform Tests (WPT). |
 
 ---

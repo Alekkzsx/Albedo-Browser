@@ -141,7 +141,11 @@ impl HttpAuthManager {
     }
 
     /// Gera o cabeçalho `Authorization` adequado a partir do cache caso haja credenciais conhecidas.
-    pub fn resolve_authorization_header(&self, origin: &str, challenge: &HttpAuthChallenge) -> Option<String> {
+    pub fn resolve_authorization_header(
+        &self,
+        origin: &str,
+        challenge: &HttpAuthChallenge,
+    ) -> Option<String> {
         if challenge.scheme.eq_ignore_ascii_case("basic") {
             let creds = self.cache.get(origin, challenge.realm.as_str())?;
             Some(creds.to_basic_header_value())
@@ -171,7 +175,11 @@ mod tests {
         let origin = "https://internal.corp";
         let realm = "Restricted Area";
 
-        manager.cache().insert(origin, realm, HttpAuthCredentials::new("alice", "p@ssword123"));
+        manager.cache().insert(
+            origin,
+            realm,
+            HttpAuthCredentials::new("alice", "p@ssword123"),
+        );
 
         let challenge = HttpAuthChallenge {
             scheme: SmolStr::new("Basic"),
@@ -187,4 +195,3 @@ mod tests {
         assert_eq!(val, "Basic YWxpY2U6cEBzc3dvcmQxMjM=");
     }
 }
-

@@ -3,16 +3,16 @@
 //! Gerencia o ciclo de vida, cotas em bytes e algoritmo de Least Recently Used (LRU)
 //! para armazenamento de respostas em conformidade com a RFC 9111.
 
+use super::disk::DiskCacheEngine;
 use super::entry::CacheEntry;
 use super::partition::NetworkIsolationKey;
-use super::disk::DiskCacheEngine;
 use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 use url::Url;
-use std::path::PathBuf;
 /// Estatísticas de operação do cache HTTP para telemetria.
 #[derive(Debug, Default)]
 pub struct CacheStats {
@@ -70,7 +70,10 @@ impl HttpCache {
                 _ => {
                     let (tx, rx) = std::sync::mpsc::sync_channel(1);
                     std::thread::spawn(move || {
-                        if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                        {
                             let res = rt.block_on(DiskCacheEngine::new(path, max_disk_capacity));
                             let _ = tx.send(res);
                         }
@@ -120,7 +123,7 @@ impl HttpCache {
     /// Busca uma entrada no cache. Se encontrada na memória (L1) ou disco (L2), move-a para o topo da ordem LRU.
     pub async fn get(&self, nik: Option<&NetworkIsolationKey>, url: &Url) -> Option<CacheEntry> {
         let key = Self::make_key(nik, url);
-        
+
         // 1. Lookup em memória (L1)
         {
             let mut inner = self.inner.write();
@@ -133,13 +136,13 @@ impl HttpCache {
                 return Some(entry);
             }
         }
-        
+
         // 2. Lookup no Disco (L2) com hash determinístico estável
         let hash = Self::hash_key(&key);
         if let Some(engine) = &self.disk_engine {
             if let Some(entry) = engine.get(hash).await {
                 let entry_size = entry.body.len() + 256;
-                
+
                 if entry_size <= self.max_capacity_bytes {
                     let mut inner = self.inner.write();
                     if let Some(old) = inner.entries.remove(&key) {
@@ -151,7 +154,9 @@ impl HttpCache {
                     while inner.total_bytes + entry_size > self.max_capacity_bytes {
                         if let Some(evicted_key) = inner.order.pop_front() {
                             if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
-                                inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                                inner.total_bytes = inner
+                                    .total_bytes
+                                    .saturating_sub(evicted_entry.body.len() + 256);
                                 self.stats.evictions.fetch_add(1, Ordering::Relaxed);
                             }
                         } else {
@@ -161,8 +166,10 @@ impl HttpCache {
                     inner.total_bytes += entry_size;
                     inner.order.push_back(key.clone());
                     inner.entries.insert(key, entry.clone());
-                    
-                    self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+
+                    self.stats
+                        .current_bytes
+                        .store(inner.total_bytes as u64, Ordering::Relaxed);
                 }
                 self.stats.hits.fetch_add(1, Ordering::Relaxed);
                 return Some(entry);
@@ -181,7 +188,7 @@ impl HttpCache {
 
         if entry_size <= self.max_capacity_bytes {
             let mut inner = self.inner.write();
-            
+
             // Se já existia, remove o tamanho antigo
             if let Some(old) = inner.entries.remove(&key) {
                 inner.total_bytes = inner.total_bytes.saturating_sub(old.body.len() + 256);
@@ -194,7 +201,9 @@ impl HttpCache {
             while inner.total_bytes + entry_size > self.max_capacity_bytes {
                 if let Some(evicted_key) = inner.order.pop_front() {
                     if let Some(evicted_entry) = inner.entries.remove(&evicted_key) {
-                        inner.total_bytes = inner.total_bytes.saturating_sub(evicted_entry.body.len() + 256);
+                        inner.total_bytes = inner
+                            .total_bytes
+                            .saturating_sub(evicted_entry.body.len() + 256);
                         self.stats.evictions.fetch_add(1, Ordering::Relaxed);
                     }
                 } else {
@@ -206,7 +215,9 @@ impl HttpCache {
             inner.order.push_back(key.clone());
             inner.entries.insert(key.clone(), entry.clone());
 
-            self.stats.current_bytes.store(inner.total_bytes as u64, Ordering::Relaxed);
+            self.stats
+                .current_bytes
+                .store(inner.total_bytes as u64, Ordering::Relaxed);
         }
 
         if let Some(engine) = &self.disk_engine {
@@ -248,7 +259,15 @@ impl HttpCache {
     }
 
     /// Grava uma fatia esparsa no disco L2 contornando a RAM (preserva memória para streams de mídia)
-    pub fn put_range(&self, nik: Option<&NetworkIsolationKey>, url: Url, start: u64, end: u64, total: Option<u64>, bytes: bytes::Bytes) {
+    pub fn put_range(
+        &self,
+        nik: Option<&NetworkIsolationKey>,
+        url: Url,
+        start: u64,
+        end: u64,
+        total: Option<u64>,
+        bytes: bytes::Bytes,
+    ) {
         if let Some(engine) = &self.disk_engine {
             let key = Self::make_key(nik, &url);
             let hash = Self::hash_key(&key);
@@ -260,7 +279,13 @@ impl HttpCache {
     }
 
     /// Recupera uma fatia esparsa diretamente do disco L2
-    pub async fn get_range(&self, nik: Option<&NetworkIsolationKey>, url: &Url, start: u64, end: u64) -> Option<bytes::Bytes> {
+    pub async fn get_range(
+        &self,
+        nik: Option<&NetworkIsolationKey>,
+        url: &Url,
+        start: u64,
+        end: u64,
+    ) -> Option<bytes::Bytes> {
         if let Some(engine) = &self.disk_engine {
             let key = Self::make_key(nik, url);
             let hash = Self::hash_key(&key);
@@ -289,7 +314,7 @@ impl HttpCache {
                 }
             }
         }
-            
+
         // Exclui arquivos físicos do disco para não ressuscitar dados invalidados
         if let Some(engine) = &self.disk_engine {
             let engine = engine.clone();
@@ -307,7 +332,7 @@ impl HttpCache {
         inner.entries.clear();
         inner.order.clear();
         inner.total_bytes = 0;
-        
+
         self.stats.current_bytes.store(0, Ordering::Relaxed);
 
         if let Some(engine) = &self.disk_engine {
@@ -335,9 +360,30 @@ mod tests {
         let url2 = Url::parse("https://example.com/2").unwrap();
         let url3 = Url::parse("https://example.com/3").unwrap();
 
-        let e1 = CacheEntry::new(url1.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data1"), now, now);
-        let e2 = CacheEntry::new(url2.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data2"), now, now);
-        let e3 = CacheEntry::new(url3.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"data3"), now, now);
+        let e1 = CacheEntry::new(
+            url1.clone(),
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"data1"),
+            now,
+            now,
+        );
+        let e2 = CacheEntry::new(
+            url2.clone(),
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"data2"),
+            now,
+            now,
+        );
+        let e3 = CacheEntry::new(
+            url3.clone(),
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"data3"),
+            now,
+            now,
+        );
 
         cache.put(None, url1.clone(), e1);
         cache.put(None, url2.clone(), e2);
@@ -358,7 +404,14 @@ mod tests {
         let cache = HttpCache::new(1024 * 1024);
         let url = Url::parse("https://example.com/form").unwrap();
         let now = SystemTime::now();
-        let entry = CacheEntry::new(url.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"form"), now, now);
+        let entry = CacheEntry::new(
+            url.clone(),
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"form"),
+            now,
+            now,
+        );
 
         cache.put(None, url.clone(), entry);
         assert!(cache.get(None, &url).await.is_some());

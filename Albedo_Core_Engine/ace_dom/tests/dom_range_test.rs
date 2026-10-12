@@ -20,7 +20,9 @@ fn test_dom_range_boundary_comparison() {
     let r2 = Range::from_points(BoundaryPoint::new(c2, 0), BoundaryPoint::new(c2, 3));
 
     // c1 precede c2 na ordem do documento
-    let cmp = r1.compare_boundary_points(&doc, RangeComparison::StartToStart, &r2).unwrap();
+    let cmp = r1
+        .compare_boundary_points(&doc, RangeComparison::StartToStart, &r2)
+        .unwrap();
     assert_eq!(cmp, -1);
 }
 

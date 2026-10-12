@@ -21,19 +21,21 @@
 //! - **Alt-Svc Registry:** Registro de serviços alternativos (RFC 7838) para preparação HTTP/3.
 //! - **Resource Hints:** Suporte a `dns-prefetch`, `preconnect` e lookahead com `PreloadScanner`.
 
-pub mod http;
-pub mod security;
-pub mod engine;
-pub mod telemetry;
-pub mod protocol;
 pub mod cache;
 pub mod cookie;
+pub mod engine;
 pub mod error;
+pub mod http;
+pub mod protocol;
+pub mod security;
+pub mod telemetry;
 pub mod transport;
 
 pub use ace_core::id::RequestId;
 pub use cache::{CacheEntry, CacheStats, HttpCache, NetworkIsolationKey};
-pub use cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, SameSite, MAX_COOKIES_PER_DOMAIN};
+pub use cookie::{
+    is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, SameSite, MAX_COOKIES_PER_DOMAIN,
+};
 pub use engine::cancel::CancellationRegistry;
 pub use engine::contention::RetryAfter;
 pub use engine::download::{
@@ -48,7 +50,9 @@ pub use error::{NetError, NetResult};
 pub use http::auth::{HttpAuthCache, HttpAuthChallenge, HttpAuthCredentials, HttpAuthManager};
 pub use http::compression::{decompress_payload, ContentEncoding};
 pub use http::dictionary::{DictionaryManager, StoredDictionary, UseAsDictionaryDirective};
-pub use http::encoding::{decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding};
+pub use http::encoding::{
+    decode_to_string, extract_charset_from_content_type, sniff_bom, DetectedEncoding,
+};
 pub use http::range::{ByteRangeSpec, ContentRange};
 pub use http::redirect::{handle_redirect, RedirectAction};
 pub use http::request::{
@@ -56,6 +60,10 @@ pub use http::request::{
     RequestBuilder, RequestDestination, RequestMode, TryIntoUrl,
 };
 pub use http::response::{BoxByteStream, Response, ResponseBody, ResponseTiming, StatusCode};
+pub use http::sniffing::{
+    extract_mime_essence, is_nosniff_header_present, is_unknown_mime_type, sniff_mime_type,
+    validate_nosniff_content_type, MIME_SNIFF_BUFFER_LIMIT,
+};
 pub use protocol::alt_svc::{parse_alt_svc, AltSvcRecord, AltSvcRegistry};
 pub use protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
 pub use protocol::webtransport::{validate_webtransport_url, WebTransportSession};
@@ -73,22 +81,19 @@ pub use security::mixed_content::{
     MixedContentDecision,
 };
 pub use security::ohttp::{EncapsulatedRequest, OhttpConfig, OhttpEncapsulator, OhttpKeyConfig};
-pub use http::sniffing::{
-    extract_mime_essence, is_nosniff_header_present, is_unknown_mime_type, sniff_mime_type,
-    validate_nosniff_content_type, MIME_SNIFF_BUFFER_LIMIT,
-};
 pub use telemetry::client_hints::{DEFAULT_SEC_CH_UA, DEFAULT_SEC_CH_UA_PLATFORM};
 pub use telemetry::har::HarExporter;
 pub use telemetry::hints::ResourceHint;
 pub use telemetry::metrics::FetcherMetrics;
-pub use telemetry::net_log::{log_net_error, log_net_event, NetEventType, NetLogCollector, NetLogEntry};
+pub use telemetry::net_log::{
+    log_net_error, log_net_event, NetEventType, NetLogCollector, NetLogEntry,
+};
 pub use telemetry::nqe::{EffectiveConnectionType, NetworkObservation, NetworkQualityEstimator};
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{
-    connect_http_connect_tunnel, connect_socks5_tunnel, establish_connection,
-    DnsCacheEntry, DohHappyEyeballsResolver, NetworkChangeEvent, NetworkChangeNotifier,
-    NetworkConnectionType, PartitionedDnsCache, ProxyAuth, ProxyBypassList, ProxyConfig,
-    TransportClient,
+    connect_http_connect_tunnel, connect_socks5_tunnel, establish_connection, DnsCacheEntry,
+    DohHappyEyeballsResolver, NetworkChangeEvent, NetworkChangeNotifier, NetworkConnectionType,
+    PartitionedDnsCache, ProxyAuth, ProxyBypassList, ProxyConfig, TransportClient,
 };
 pub use url::Url;
 

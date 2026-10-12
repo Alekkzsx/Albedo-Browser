@@ -65,7 +65,10 @@ pub fn check_control_validity(doc: &Document, node_id: NodeId) -> ValidityState 
     }
 
     // 3. Checagem de tipo (e-mail, url, number)
-    let type_attr = el.get_attribute("type").unwrap_or("text").to_ascii_lowercase();
+    let type_attr = el
+        .get_attribute("type")
+        .unwrap_or("text")
+        .to_ascii_lowercase();
     if type_attr == "email" && !val.is_empty() {
         if !val.contains('@') || !val.contains('.') {
             state.type_mismatch = true;
@@ -88,7 +91,10 @@ pub fn check_control_validity(doc: &Document, node_id: NodeId) -> ValidityState 
             }
             if let Some(step_val) = el.get_attribute("step").and_then(|s| s.parse::<f64>().ok()) {
                 if step_val > 0.0 {
-                    let min_base = el.get_attribute("min").and_then(|m| m.parse::<f64>().ok()).unwrap_or(0.0);
+                    let min_base = el
+                        .get_attribute("min")
+                        .and_then(|m| m.parse::<f64>().ok())
+                        .unwrap_or(0.0);
                     let diff = (num - min_base).abs();
                     let remainder = diff % step_val;
                     if remainder > 1e-5 && (step_val - remainder) > 1e-5 {

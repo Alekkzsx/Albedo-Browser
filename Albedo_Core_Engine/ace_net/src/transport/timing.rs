@@ -67,13 +67,14 @@ where
             }
 
             let result = inner.call(req).await;
-            
+
             let duration = start.elapsed();
             if let Ok(timing_arc) = CONNECTION_TIMING.try_with(|t| t.clone()) {
                 let mut guard = timing_arc.lock().await;
                 if is_tls {
                     // tls_duration é a duração total menos a duração de DNS e TCP que aconteceram dentro dela
-                    let tcp_total = guard.tcp_duration.unwrap_or_default() + guard.dns_duration.unwrap_or_default();
+                    let tcp_total = guard.tcp_duration.unwrap_or_default()
+                        + guard.dns_duration.unwrap_or_default();
                     guard.tls_duration = Some(duration.saturating_sub(tcp_total));
                 } else {
                     // tcp_duration é a duração total TCP menos a duração de DNS que aconteceu dentro dela

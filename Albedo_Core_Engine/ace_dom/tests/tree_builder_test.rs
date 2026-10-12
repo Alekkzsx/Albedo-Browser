@@ -61,9 +61,18 @@ fn test_void_elements_do_not_nest() {
 
     // img, input e p devem ser irmãos no mesmo nível dentro de body
     assert_eq!(body_children.len(), 3);
-    assert_eq!(body_children[0].1.as_element().unwrap().tag_name.as_str(), "img");
-    assert_eq!(body_children[1].1.as_element().unwrap().tag_name.as_str(), "input");
-    assert_eq!(body_children[2].1.as_element().unwrap().tag_name.as_str(), "p");
+    assert_eq!(
+        body_children[0].1.as_element().unwrap().tag_name.as_str(),
+        "img"
+    );
+    assert_eq!(
+        body_children[1].1.as_element().unwrap().tag_name.as_str(),
+        "input"
+    );
+    assert_eq!(
+        body_children[2].1.as_element().unwrap().tag_name.as_str(),
+        "p"
+    );
 }
 
 #[test]

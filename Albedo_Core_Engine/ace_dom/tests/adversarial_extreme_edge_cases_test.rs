@@ -76,7 +76,9 @@ fn test_dsd_case_insensitivity() {
     let doc = parse_html(html);
     let host_id = doc.get_element_by_id("case-host").expect("case-host found");
     let el = doc.get_node(host_id).unwrap().as_element().unwrap();
-    let shadow_id = el.shadow_root().expect("shadow root attached via uppercase attribute");
+    let shadow_id = el
+        .shadow_root()
+        .expect("shadow root attached via uppercase attribute");
     let shadow_node = doc.get_node(shadow_id).unwrap();
     if let ace_dom::NodeKind::ShadowRoot(ref s) = shadow_node.kind {
         assert_eq!(s.mode, ShadowMode::Open);
@@ -92,7 +94,12 @@ fn test_complex_entity_prefix_resolutions() {
     let doc = parse_html(html);
 
     let p = doc.query_selector("p").expect("p element found");
-    let text = doc.children(p).next().and_then(|(cid, _)| doc.get_node(cid)).and_then(|n| n.text_content()).unwrap();
+    let text = doc
+        .children(p)
+        .next()
+        .and_then(|(cid, _)| doc.get_node(cid))
+        .and_then(|n| n.text_content())
+        .unwrap();
 
     // Verify entity conversions
     assert!(text.contains('∉') || text.contains("&notin"));
@@ -104,7 +111,8 @@ fn test_complex_entity_prefix_resolutions() {
 #[test]
 fn test_unquoted_attribute_with_slashes_and_urls() {
     // Unquoted attribute values containing slashes and query strings
-    let html = r#"<a href=https://example.com/api/v1?user=albedo&ref=test/foo target=_blank>Link</a>"#;
+    let html =
+        r#"<a href=https://example.com/api/v1?user=albedo&ref=test/foo target=_blank>Link</a>"#;
     let doc = parse_html(html);
 
     let a = doc.query_selector("a").expect("a element");
@@ -133,7 +141,10 @@ fn test_script_tag_with_embedded_quotes_and_html_comments() {
     let script = doc.query_selector("script");
     assert!(script.is_some(), "Script element parsed");
     let after = doc.get_element_by_id("after-script");
-    assert!(after.is_some(), "Element after complex script parsed correctly");
+    assert!(
+        after.is_some(),
+        "Element after complex script parsed correctly"
+    );
 }
 
 #[test]
@@ -144,5 +155,8 @@ fn test_self_closing_slash_without_whitespace() {
     let _doc = parse_html(html);
 
     let imgs = _doc.query_selector_all("img");
-    assert!(!imgs.is_empty(), "img element parsed from condensed slash syntax");
+    assert!(
+        !imgs.is_empty(),
+        "img element parsed from condensed slash syntax"
+    );
 }

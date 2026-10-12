@@ -21,7 +21,8 @@ fn test_unguessable_token_csprng_entropy_and_uniqueness() {
         let hex = token.to_hex();
         assert_eq!(hex.len(), 32, "Hex deve ter exatamente 32 caracteres");
         assert!(
-            hex.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            hex.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
             "Hex deve ser estritamente minúsculo: {}",
             hex
         );
@@ -174,7 +175,10 @@ fn test_origin_port_serialization_rfc_6454() {
     assert_eq!(http_custom.ascii_serialization(), "http://example.com:8080");
 
     let https_custom = Origin::parse("https://example.com:8443/").unwrap();
-    assert_eq!(https_custom.ascii_serialization(), "https://example.com:8443");
+    assert_eq!(
+        https_custom.ascii_serialization(),
+        "https://example.com:8443"
+    );
 }
 
 #[test]
@@ -182,7 +186,10 @@ fn test_matches_domain_pattern_w3c_csp3() {
     // Wildcard casa subdomínios
     assert!(matches_domain_pattern("*.example.com", "sub.example.com"));
     assert!(matches_domain_pattern("*.example.com", "a.b.c.example.com"));
-    assert!(matches_domain_pattern("*.example.com", "api-v2.example.com"));
+    assert!(matches_domain_pattern(
+        "*.example.com",
+        "api-v2.example.com"
+    ));
 
     // W3C CSP3 §6.7.2: *.example.com NUNCA casa com o apex domain
     assert!(!matches_domain_pattern("*.example.com", "example.com"));
@@ -193,7 +200,10 @@ fn test_matches_domain_pattern_w3c_csp3() {
     assert!(!matches_domain_pattern("*.example.com", ".example.com"));
 
     // Não deve casar com domínios prefixados no alvo
-    assert!(!matches_domain_pattern("*.example.com", "example.com.attacker.com"));
+    assert!(!matches_domain_pattern(
+        "*.example.com",
+        "example.com.attacker.com"
+    ));
 
     // Case-insensitivity
     assert!(matches_domain_pattern("*.EXAMPLE.COM", "SUB.example.com"));

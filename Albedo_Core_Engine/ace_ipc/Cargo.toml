@@ -2,5 +2,10 @@
 name = "ace_ipc"
 version = "0.1.0"
 edition = "2021"
+authors = ["Albedo Browser Engineering Team"]
 
 [dependencies]
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+thiserror = "2.0"
+rustc-hash = "2.1"

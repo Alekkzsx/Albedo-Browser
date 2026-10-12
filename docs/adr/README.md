@@ -25,17 +25,17 @@ Para propor uma nova decisão de arquitetura, duplique o [**Template Oficial (00
 | [**0004**](./0004-modelo-memoria-dom-arena.md) | Modelo de Memória do DOM (Arena Geracional EBR) | `ace_dom` | **Aceito** | Arenas com Epoch-Based Reclamation evitando ciclos de referência e vazamentos de memória. |
 | [**0005**](./0005-protocolo-binario-ipc-proprio.md) | Protocolo Binário de IPC Próprio | `ace_ipc` | **Aceito** | Protocolo de serialização zero-copy tipado entre processos do navegador. |
 | [**0006**](./0006-cache-http-rfc9111.md) | Cache HTTP RFC 9111 em Dois Níveis (L1 + L2 WAL) | `ace_net` | **Aceito** | Memória volátil rápida (L1) combinada com WAL atômico em disco (L2). |
-| **0007** | GC Unificado JS ↔ DOM para Ciclos de Referência | `ace_dom`, `ace_js` | **Aceito** | Barramento de rastreamento de GC para manter liveness de nós do DOM referenciados por JS. |
-| **0008** | Happy Eyeballs v2 e DNS-over-HTTPS (DoH) Nativo | `ace_net` | **Aceito** | Conexões paralelas IPv4/IPv6 conforme RFC 8305. |
+| [**0007**](./0007-gc-unificado-js-dom.md) | GC Unificado JS ↔ DOM para Ciclos de Referência | `ace_dom`, `ace_js` | **Aceito** | Barramento de rastreamento de GC para manter liveness de nós do DOM referenciados por JS. |
+| [**0008**](./0008-happy-eyeballs-v2-doh.md) | Happy Eyeballs v2 e DNS-over-HTTPS (DoH) Nativo | `ace_net` | **Aceito** | Conexões paralelas IPv4/IPv6 conforme RFC 8305. |
 | [**0009**](./0009-network-isolation-key.md) | Particionamento Triplo de Estado de Rede (`NetworkIsolationKey`)| `ace_net` | **Aceito** | Defesa contra ataques de timing de cache particionando sockets e armazenamento por site. |
 | **0010** | Compositor Off-Main-Thread e Display Lists | `ace_gfx` | **Proposto** | Separação da thread de composição da thread de layout/JavaScript para rolagem a 60+ FPS. |
 | **0011** | Text Shaping e Font Fallback Multilíngue | `ace_layout` | **Proposto** | Seleção entre HarfRust / rustybuzz e integração de fontes locais via `fontdb`. |
-| **0012** | Localização do CSSOM e Migração para `ace_style` na Fase 6 | `ace_dom`, `ace_style`| **Aceito** | Resolução da dívida DV-05: mover CSSOM temporário de `ace_dom` para `ace_style`. |
+| [**0012**](./0012-migracao-cssom-ace-style.md) | Localização do CSSOM e Migração para `ace_style` na Fase 6 | `ace_dom`, `ace_style`| **Aceito & Implementado** | Resolução da dívida DV-05: migração do CSSOM para `ace_style` concluída na Fase 6. |
 | **0013** | Pilha Tipográfica: HarfRust vs rustybuzz & skrifa vs ttf-parser | `ace_layout` | **Proposto** | Escolha das crates de fundação para layout tipográfico de alto desempenho. |
-| **0014** | Adoção do AccessKit como Fundação de Acessibilidade | `ace_ui` | **Aceito** | Mapeamento da Accessibility Tree própria para as APIs nativas do SO via `accesskit`. |
+| [**0014**](./0014-adocao-accesskit.md) | Adoção do AccessKit como Fundação de Acessibilidade | `ace_ui` | **Aceito** | Mapeamento da Accessibility Tree própria para as APIs nativas do SO via `accesskit`. |
 | [**0015**](./0015-modelo-processos-site-isolation.md) | Modelo de Processos com Isolamento por Site (*Site Isolation*) | Arquitetura | **Aceito** | Cada site (eTLD+1) isolado em um processo de Renderer independente no SO. |
-| **0016** | Política de Tipos de Erro (`thiserror` em libs, `anyhow` em bins) | `ace_core` | **Aceito** | Padronização dos tipos de erro nos crates de biblioteca pública. |
-| **0017** | Tipos Geométricos 2D/3D via `euclid` | `ace_core` | **Aceito** | Uso da crate `euclid` para geometria tipada com unidades de espaço de renderização. |
+| [**0016**](./0016-politica-tipos-erro.md) | Política de Tipos de Erro (`thiserror` em libs, `anyhow` em bins) | `ace_core` | **Aceito** | Padronização dos tipos de erro nos crates de biblioteca pública. |
+| [**0017**](./0017-tipos-geometricos-euclid.md) | Tipos Geométricos 2D/3D via `euclid` | `ace_core` | **Aceito** | Uso da crate `euclid` para geometria tipada com unidades de espaço de renderização. |
 | **0018** | Endurecimento da Denylist e Allowlist no `deny.toml` | Governança | **Proposto** | Proibição de bibliotecas pré-fabricadas concorrentes (Blink, Servo, Boa, etc.). |
 | [**0019**](./0019-motor-js-interpretador-jitless.md) | Motor JS: Interpretador Bytecode no MVP e Modo *Jitless* Permanente | `ace_js` | **Aceito** | Eliminação do JIT no MVP; modo interpretado permanente como mitigação de vulnerabilidades. |
 | **0020** | Rasterizador CPU de Fallback (`tiny-skia` vs `vello_cpu`) | `ace_gfx` | **Proposto** | Fallback seguro para ambientes de renderização sem suporte a GPU ou em CI. |

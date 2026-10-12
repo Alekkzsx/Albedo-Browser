@@ -117,12 +117,19 @@ fn test_adversarial_inline_vec_heavy_retain_drop_audit() {
                 let expected_discarded = initial_count - expected_retained;
 
                 assert_eq!(vec.len(), expected_retained);
-                assert_eq!(dropped.load(Ordering::SeqCst) - dropped_before, expected_discarded);
-                assert_eq!(alive_before - alive.load(Ordering::SeqCst), expected_discarded);
+                assert_eq!(
+                    dropped.load(Ordering::SeqCst) - dropped_before,
+                    expected_discarded
+                );
+                assert_eq!(
+                    alive_before - alive.load(Ordering::SeqCst),
+                    expected_discarded
+                );
 
                 // Verify retained elements are correct
                 let retained_ids: Vec<usize> = vec.iter().map(|s| s.id).collect();
-                let expected_ids: Vec<usize> = (0..initial_count).filter(|i| i % modulo == 0).collect();
+                let expected_ids: Vec<usize> =
+                    (0..initial_count).filter(|i| i % modulo == 0).collect();
                 assert_eq!(retained_ids, expected_ids);
             }
             // Upon scope exit, all remaining elements must be dropped
@@ -229,7 +236,10 @@ fn test_adversarial_triple_buffer_500k_concurrency_torture() {
 
     producer_handle.join().unwrap();
     let consumed = consumer_handle.join().unwrap();
-    assert!(consumed > 0, "Consumer must have observed at least one frame");
+    assert!(
+        consumed > 0,
+        "Consumer must have observed at least one frame"
+    );
 }
 
 #[test]
@@ -256,7 +266,10 @@ fn test_adversarial_triple_buffer_non_copy_heap_allocated_payload() {
             count += 1;
             producer.write_with(|frame| {
                 frame.id = count;
-                frame.payload.iter_mut().for_each(|b| *b = (count & 0xFF) as u8);
+                frame
+                    .payload
+                    .iter_mut()
+                    .for_each(|b| *b = (count & 0xFF) as u8);
                 frame.tag = format!("frame-{}", count);
             });
             producer.publish();
@@ -271,7 +284,10 @@ fn test_adversarial_triple_buffer_non_copy_heap_allocated_payload() {
             assert_eq!(frame.payload.len(), 1024);
             let expected_byte = (frame.id & 0xFF) as u8;
             for &byte in &frame.payload {
-                assert_eq!(byte, expected_byte, "Payload corruption detected in TripleBuffer!");
+                assert_eq!(
+                    byte, expected_byte,
+                    "Payload corruption detected in TripleBuffer!"
+                );
             }
             assert_eq!(frame.tag, format!("frame-{}", frame.id));
             last_id = frame.id;

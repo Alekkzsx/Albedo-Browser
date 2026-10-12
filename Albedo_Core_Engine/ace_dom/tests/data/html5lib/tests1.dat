@@ -1,0 +1,92 @@
+#data
+<!DOCTYPE html><html><head></head><body><p>Hello world</p></body></html>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <p>
+|       "Hello world"
+
+#data
+<!DOCTYPE html><div><p>Paragraph 1<p>Paragraph 2</div>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <div>
+|       <p>
+|         "Paragraph 1"
+|       <p>
+|         "Paragraph 2"
+
+#data
+<!DOCTYPE html><b><i>Bold and Italic</b> Still Italic?</i>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <b>
+|       <i>
+|         "Bold and Italic"
+|     <i>
+|       " Still Italic?"
+
+#data
+<!DOCTYPE html><a href="https://example.com">Link with <b>bold text</b></a>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <a href="https://example.com">
+|       "Link with "
+|       <b>
+|         "bold text"
+
+#data
+<!DOCTYPE html><table><tr><td>Cell 1</td><td>Cell 2</td></tr></table>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "Cell 1"
+|           <td>
+|             "Cell 2"
+
+#data
+<!DOCTYPE html><div id="main" class="container active"><span>Content</span></div>
+#errors
+#document
+| <!DOCTYPE html>
+| <html>
+|   <head>
+|   <body>
+|     <div class="container active" id="main">
+|       <span>
+|         "Content"
+
+#data
+<!DOCTYPE html><!-- Test Comment --><p>After comment</p>
+#errors
+#document
+| <!DOCTYPE html>
+| <!-- Test Comment -->
+| <html>
+|   <head>
+|   <body>
+|     <p>
+|       "After comment"
+

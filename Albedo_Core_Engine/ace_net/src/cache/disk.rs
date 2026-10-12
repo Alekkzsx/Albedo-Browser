@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, RwLock};
 
 /// Operação do Write-Ahead Log (WAL)
@@ -75,7 +75,11 @@ pub struct WalEngine {
 impl WalEngine {
     pub async fn new(base_path: &Path) -> std::io::Result<Self> {
         let wal_path = base_path.join("cache.wal");
-        let file = OpenOptions::new().create(true).append(true).open(&wal_path).await?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&wal_path)
+            .await?;
         Ok(Self {
             wal_path,
             file: Arc::new(Mutex::new(Some(file))),
@@ -116,12 +120,18 @@ impl WalEngine {
         }
         Ok(ops)
     }
-    
+
     pub async fn clear(&self) -> std::io::Result<()> {
         let mut guard = self.file.lock().await;
         *guard = None; // Fecha arquivo atual
         let _ = tokio::fs::remove_file(&self.wal_path).await;
-        *guard = Some(OpenOptions::new().create(true).append(true).open(&self.wal_path).await?);
+        *guard = Some(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.wal_path)
+                .await?,
+        );
         Ok(())
     }
 }
@@ -141,14 +151,17 @@ impl Default for SparseRangeIndex {
 
 impl SparseRangeIndex {
     pub fn new() -> Self {
-        Self { ranges: Vec::new(), total_length: None }
+        Self {
+            ranges: Vec::new(),
+            total_length: None,
+        }
     }
 
     /// Adiciona uma nova faixa e funde faixas sobrepostas/adjacentes.
     pub fn add_range(&mut self, start: u64, end: u64) {
         self.ranges.push((start, end));
         self.ranges.sort_unstable_by_key(|k| k.0);
-        
+
         let mut merged: Vec<(u64, u64)> = Vec::with_capacity(self.ranges.len());
         for current in &self.ranges {
             if let Some(last) = merged.last_mut() {
@@ -166,7 +179,9 @@ impl SparseRangeIndex {
 
     /// Verifica se a faixa requisitada está completamente armazenada no cache.
     pub fn contains_range(&self, req_start: u64, req_end: u64) -> bool {
-        self.ranges.iter().any(|&(s, e)| s <= req_start && req_end <= e)
+        self.ranges
+            .iter()
+            .any(|&(s, e)| s <= req_start && req_end <= e)
     }
 }
 
@@ -190,7 +205,7 @@ pub struct DiskCacheEngine {
 impl DiskCacheEngine {
     pub async fn new(base_path: PathBuf, max_capacity_bytes: u64) -> std::io::Result<Self> {
         tokio::fs::create_dir_all(&base_path).await?;
-        
+
         // Clean up orphan .tmp files
         let mut read_dir = tokio::fs::read_dir(&base_path).await?;
         while let Some(entry) = read_dir.next_entry().await? {
@@ -200,9 +215,9 @@ impl DiskCacheEngine {
                 }
             }
         }
-        
+
         let wal = WalEngine::new(&base_path).await?;
-        
+
         let mut inner = DiskCacheInner {
             entries: FxHashMap::default(),
             order: VecDeque::new(),
@@ -221,8 +236,10 @@ impl DiskCacheEngine {
             for op in ops {
                 match op {
                     WalOperation::Put { hash, size } => {
-                        if !inner.entries.contains_key(&hash) {
-                            inner.entries.insert(hash, size);
+                        if let std::collections::hash_map::Entry::Vacant(e) =
+                            inner.entries.entry(hash)
+                        {
+                            e.insert(size);
                             inner.order.push_back(hash);
                             inner.total_bytes += size;
                         }
@@ -253,7 +270,7 @@ impl DiskCacheEngine {
             inner: RwLock::new(inner),
             sparse_indices: RwLock::new(sparse),
         };
-        
+
         // 3. Ao inicializar, podemos forçar o despejo do índice e zerar o WAL para economizar tempo na próxima inicialização
         let _ = engine.save_index().await;
 
@@ -261,7 +278,9 @@ impl DiskCacheEngine {
     }
 
     /// Carrega o índice binário `cache.idx`
-    async fn load_index(base_path: &Path) -> std::io::Result<(DiskCacheInner, FxHashMap<u64, SparseRangeIndex>)> {
+    async fn load_index(
+        base_path: &Path,
+    ) -> std::io::Result<(DiskCacheInner, FxHashMap<u64, SparseRangeIndex>)> {
         let mut inner = DiskCacheInner {
             entries: FxHashMap::default(),
             order: VecDeque::new(),
@@ -273,28 +292,43 @@ impl DiskCacheEngine {
         let bytes = tokio::fs::read(&idx_path).await?;
         let mut buf = bytes.as_slice();
 
-        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        if buf.remaining() < 8 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+        }
         let magic = buf.get_u64_le();
         if magic != 0xACE1_DF20_C001_CACA {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Bad Magic"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Bad Magic",
+            ));
         }
 
-        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        if buf.remaining() < 8 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+        }
         inner.total_bytes = buf.get_u64_le();
 
-        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        if buf.remaining() < 8 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+        }
         let num_entries = buf.get_u64_le() as usize;
         for _ in 0..num_entries {
-            if buf.remaining() < 16 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+            if buf.remaining() < 16 {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+            }
             let hash = buf.get_u64_le();
             let size = buf.get_u64_le();
             inner.entries.insert(hash, size);
         }
 
-        if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+        if buf.remaining() < 8 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+        }
         let num_order = buf.get_u64_le() as usize;
         for _ in 0..num_order {
-            if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+            if buf.remaining() < 8 {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+            }
             let hash = buf.get_u64_le();
             inner.order.push_back(hash);
         }
@@ -302,25 +336,39 @@ impl DiskCacheEngine {
         if buf.remaining() >= 8 {
             let num_sparse = buf.get_u64_le() as usize;
             for _ in 0..num_sparse {
-                if buf.remaining() < 17 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                if buf.remaining() < 17 {
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+                }
                 let hash = buf.get_u64_le();
                 let has_total = buf.get_u8() == 1;
                 let total_length = if has_total {
-                    if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                    if buf.remaining() < 8 {
+                        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+                    }
                     Some(buf.get_u64_le())
                 } else {
                     None
                 };
-                if buf.remaining() < 8 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                if buf.remaining() < 8 {
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+                }
                 let num_ranges = buf.get_u64_le() as usize;
                 let mut ranges = Vec::with_capacity(num_ranges);
                 for _ in 0..num_ranges {
-                    if buf.remaining() < 16 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF")); }
+                    if buf.remaining() < 16 {
+                        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "EOF"));
+                    }
                     let start = buf.get_u64_le();
                     let end = buf.get_u64_le();
                     ranges.push((start, end));
                 }
-                sparse.insert(hash, SparseRangeIndex { total_length, ranges });
+                sparse.insert(
+                    hash,
+                    SparseRangeIndex {
+                        total_length,
+                        ranges,
+                    },
+                );
             }
         }
 
@@ -331,18 +379,18 @@ impl DiskCacheEngine {
     pub async fn save_index(&self) -> std::io::Result<()> {
         let inner = self.inner.read().await;
         let sparse = self.sparse_indices.read().await;
-        
+
         let mut buf = BytesMut::new();
         // Magic Number
         buf.put_u64_le(0xACE1_DF20_C001_CACA);
         buf.put_u64_le(inner.total_bytes);
-        
+
         buf.put_u64_le(inner.entries.len() as u64);
         for (hash, size) in &inner.entries {
             buf.put_u64_le(*hash);
             buf.put_u64_le(*size);
         }
-        
+
         buf.put_u64_le(inner.order.len() as u64);
         for hash in &inner.order {
             buf.put_u64_le(*hash);
@@ -369,10 +417,10 @@ impl DiskCacheEngine {
         let target_path = self.base_path.join("cache.idx");
         tokio::fs::write(&tmp_path, bytes).await?;
         tokio::fs::rename(tmp_path, target_path).await?;
-        
+
         // Zera o WAL agora que temos o dump perfeito
         self.wal.clear().await?;
-        
+
         Ok(())
     }
 
@@ -405,7 +453,7 @@ impl DiskCacheEngine {
         let mut evictions = Vec::new();
         {
             let mut inner = self.inner.write().await;
-            
+
             if let Some(old_size) = inner.entries.remove(&hash) {
                 inner.total_bytes = inner.total_bytes.saturating_sub(old_size);
                 if let Some(pos) = inner.order.iter().position(|&x| x == hash) {
@@ -431,18 +479,27 @@ impl DiskCacheEngine {
 
         // Processa as evictions fisicamente
         for evicted in evictions {
-            let _ = self.wal.append(&WalOperation::Delete { hash: evicted }).await;
+            let _ = self
+                .wal
+                .append(&WalOperation::Delete { hash: evicted })
+                .await;
             let file_path = self.base_path.join(format!("{:016x}.cache", evicted));
             let _ = tokio::fs::remove_file(file_path).await;
         }
 
         // Grava no WAL
-        let _ = self.wal.append(&WalOperation::Put { hash, size: entry_size }).await;
+        let _ = self
+            .wal
+            .append(&WalOperation::Put {
+                hash,
+                size: entry_size,
+            })
+            .await;
 
         // Gravação Atômica Física
         let tmp_path = self.base_path.join(format!("{:016x}.tmp", hash));
         let cache_path = self.base_path.join(format!("{:016x}.cache", hash));
-        
+
         if tokio::fs::write(&tmp_path, entry_bytes).await.is_ok() {
             let _ = tokio::fs::rename(tmp_path, cache_path).await;
         }
@@ -467,7 +524,7 @@ impl DiskCacheEngine {
         inner.entries.clear();
         inner.order.clear();
         inner.total_bytes = 0;
-        
+
         if let Ok(mut dir_entries) = tokio::fs::read_dir(&self.base_path).await {
             while let Ok(Some(entry)) = dir_entries.next_entry().await {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -479,7 +536,14 @@ impl DiskCacheEngine {
     }
 
     /// Grava uma fatia de bytes parciais (HTTP 206) no arquivo de cache via offset.
-    pub async fn put_range(&self, hash: u64, start: u64, end: u64, total_size: Option<u64>, bytes: Bytes) -> std::io::Result<()> {
+    pub async fn put_range(
+        &self,
+        hash: u64,
+        start: u64,
+        end: u64,
+        total_size: Option<u64>,
+        bytes: Bytes,
+    ) -> std::io::Result<()> {
         let size = bytes.len() as u64;
         let file_path = self.base_path.join(format!("{:016x}.cache", hash));
 
@@ -510,7 +574,7 @@ impl DiskCacheEngine {
         let mut evictions = Vec::new();
         {
             let mut inner = self.inner.write().await;
-            
+
             while inner.total_bytes + size > self.max_capacity_bytes {
                 if let Some(evicted_hash) = inner.order.pop_front() {
                     if let Some(evicted_size) = inner.entries.remove(&evicted_hash) {
@@ -522,20 +586,24 @@ impl DiskCacheEngine {
                 }
             }
 
-            if !inner.entries.contains_key(&hash) {
-                inner.entries.insert(hash, size);
-                inner.order.push_back(hash);
-                inner.total_bytes += size;
-            } else {
-                if let Some(s) = inner.entries.get_mut(&hash) {
-                    *s += size;
+            match inner.entries.entry(hash) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(size);
+                    inner.order.push_back(hash);
+                    inner.total_bytes += size;
+                }
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    *e.get_mut() += size;
                     inner.total_bytes += size;
                 }
             }
         }
-        
+
         for evicted in evictions {
-            let _ = self.wal.append(&WalOperation::Delete { hash: evicted }).await;
+            let _ = self
+                .wal
+                .append(&WalOperation::Delete { hash: evicted })
+                .await;
             let p = self.base_path.join(format!("{:016x}.cache", evicted));
             let _ = tokio::fs::remove_file(p).await;
             let mut sparse_lock = self.sparse_indices.write().await;
@@ -552,11 +620,8 @@ impl DiskCacheEngine {
         // Verifica se a fatia solicitada está coberta pelos registros esparsos
         {
             let sparse_lock = self.sparse_indices.read().await;
-            if let Some(index) = sparse_lock.get(&hash) {
-                if !index.contains_range(start, end) {
-                    return None;
-                }
-            } else {
+            let index = sparse_lock.get(&hash)?;
+            if !index.contains_range(start, end) {
                 return None;
             }
         }
@@ -565,18 +630,20 @@ impl DiskCacheEngine {
         if !inner.entries.contains_key(&hash) {
             return None;
         }
-        
+
         let file_path = self.base_path.join(format!("{:016x}.cache", hash));
-        let mut file = tokio::fs::OpenOptions::new().read(true).open(&file_path).await.ok()?;
-        
+        let mut file = tokio::fs::OpenOptions::new()
+            .read(true)
+            .open(&file_path)
+            .await
+            .ok()?;
+
         let length = (end - start + 1) as usize;
         let mut buf = vec![0u8; length];
-        
+
         file.seek(std::io::SeekFrom::Start(start)).await.ok()?;
         file.read_exact(&mut buf).await.ok()?;
-        
+
         Some(Bytes::from(buf))
     }
 }
-
-

@@ -1,5 +1,5 @@
 use ace_dom::cssom::{
-    ColorScheme, CSSRule, CSSStyleSheet, MediaContext, MediaType, Orientation, StyleResolver,
+    CSSRule, CSSStyleSheet, ColorScheme, MediaContext, MediaType, Orientation, StyleResolver,
 };
 use ace_dom::parse_html;
 
@@ -56,15 +56,23 @@ fn test_media_query_viewport_min_max_width() {
 
     // 1. Viewport 750px (dentro da faixa 600..1000)
     let ctx_match = MediaContext::new().with_viewport(750.0, 600.0);
-    let computed_match =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_match);
+    let computed_match = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_match,
+    );
     assert_eq!(computed_match.get_property_value("color"), Some("green"));
     assert_eq!(computed_match.get_property_value("font-size"), Some("20px"));
 
     // 2. Viewport 500px (abaixo de 600px)
     let ctx_small = MediaContext::new().with_viewport(500.0, 600.0);
-    let computed_small =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_small);
+    let computed_small = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_small,
+    );
     assert_eq!(computed_small.get_property_value("color"), Some("grey"));
     assert_eq!(computed_small.get_property_value("font-size"), Some("14px"));
 
@@ -92,16 +100,26 @@ fn test_media_query_prefers_color_scheme_switching() {
 
     // Modo Claro
     let ctx_light = MediaContext::new().with_color_scheme(ColorScheme::Light);
-    let comp_light =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_light);
-    assert_eq!(comp_light.get_property_value("background-color"), Some("#ffffff"));
+    let comp_light = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_light,
+    );
+    assert_eq!(
+        comp_light.get_property_value("background-color"),
+        Some("#ffffff")
+    );
     assert_eq!(comp_light.get_property_value("color"), Some("#000000"));
 
     // Modo Escuro
     let ctx_dark = MediaContext::new().with_color_scheme(ColorScheme::Dark);
     let comp_dark =
         StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx_dark);
-    assert_eq!(comp_dark.get_property_value("background-color"), Some("#121212"));
+    assert_eq!(
+        comp_dark.get_property_value("background-color"),
+        Some("#121212")
+    );
     assert_eq!(comp_dark.get_property_value("color"), Some("#ffffff"));
 }
 
@@ -128,8 +146,12 @@ fn test_media_query_logical_and_or_not() {
     let ctx_mid = MediaContext::new()
         .with_media_type(MediaType::Screen)
         .with_viewport(800.0, 600.0);
-    let comp_mid =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_mid);
+    let comp_mid = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_mid,
+    );
     assert_eq!(comp_mid.get_property_value("margin"), None);
     assert_eq!(comp_mid.get_property_value("opacity"), None);
 
@@ -137,8 +159,12 @@ fn test_media_query_logical_and_or_not() {
     let ctx_wide = MediaContext::new()
         .with_media_type(MediaType::Screen)
         .with_viewport(1400.0, 900.0);
-    let comp_wide =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_wide);
+    let comp_wide = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_wide,
+    );
     assert_eq!(comp_wide.get_property_value("margin"), Some("50px"));
 
     // Media Type Print com Viewport 800px -> not screen and min-width 600 -> screen é false -> screen and min-width 600 é false -> not inverte para true -> opacity aplica!
@@ -180,8 +206,12 @@ fn test_media_query_orientation() {
     // Landscape: width 1280, height 720 (width >= height)
     let ctx_landscape = MediaContext::new().with_viewport(1280.0, 720.0);
     assert_eq!(ctx_landscape.orientation, Orientation::Landscape);
-    let comp_l =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, &[sheet], &ctx_landscape);
+    let comp_l = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        &[sheet],
+        &ctx_landscape,
+    );
     assert_eq!(comp_l.get_property_value("flex-direction"), Some("row"));
 }
 
@@ -201,8 +231,12 @@ fn test_media_query_length_units_em() {
 
     // Viewport 850px >= 800px -> aplica padding: 30px
     let ctx_high = MediaContext::new().with_viewport(850.0, 600.0);
-    let comp_high =
-        StyleResolver::resolve_element_style_with_context(&doc, target_id, std::slice::from_ref(&sheet), &ctx_high);
+    let comp_high = StyleResolver::resolve_element_style_with_context(
+        &doc,
+        target_id,
+        std::slice::from_ref(&sheet),
+        &ctx_high,
+    );
     assert_eq!(comp_high.get_property_value("padding"), Some("30px"));
 
     // Viewport 750px < 800px -> não aplica

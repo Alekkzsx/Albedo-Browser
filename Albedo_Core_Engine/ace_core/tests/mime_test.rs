@@ -76,4 +76,3 @@ fn test_mime_sniffing() {
         "image/svg+xml"
     );
 }
-

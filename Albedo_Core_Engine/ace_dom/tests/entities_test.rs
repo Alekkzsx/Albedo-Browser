@@ -27,7 +27,7 @@ fn test_resolve_numeric_entities() {
     assert_eq!(resolve_numeric_entity(0x80), Some('€')); // Euro
     assert_eq!(resolve_numeric_entity(0x93), Some('“')); // Left double quote
     assert_eq!(resolve_numeric_entity(0x94), Some('”')); // Right double quote
-    // Inválidos / Nulos
+                                                         // Inválidos / Nulos
     assert_eq!(resolve_numeric_entity(0), Some('\u{FFFD}'));
     assert_eq!(resolve_numeric_entity(0xD800), Some('\u{FFFD}'));
 }

@@ -113,9 +113,8 @@ impl<T> ThinVec<T> {
         let new_ptr = match self.ptr {
             Some(old_ptr) => {
                 let (old_layout, _) = Self::layout_for(current_cap);
-                let raw = unsafe {
-                    realloc(old_ptr.as_ptr() as *mut u8, old_layout, new_layout.size())
-                };
+                let raw =
+                    unsafe { realloc(old_ptr.as_ptr() as *mut u8, old_layout, new_layout.size()) };
                 if raw.is_null() {
                     handle_alloc_error(new_layout);
                 }

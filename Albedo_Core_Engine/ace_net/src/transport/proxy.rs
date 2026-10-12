@@ -141,22 +141,18 @@ pub async fn establish_connection(
 
     match proxy {
         ProxyConfig::Direct => connect_direct(target_host, target_port).await,
-        ProxyConfig::Http { proxy_addr, auth } => {
-            timeout(
-                PROXY_HANDSHAKE_TIMEOUT,
-                connect_http_connect_tunnel(*proxy_addr, auth.as_ref(), target_host, target_port),
-            )
-            .await
-            .map_err(|_| NetError::Timeout)?
-        }
-        ProxyConfig::Socks5 { proxy_addr, auth } => {
-            timeout(
-                PROXY_HANDSHAKE_TIMEOUT,
-                connect_socks5_tunnel(*proxy_addr, auth.as_ref(), target_host, target_port),
-            )
-            .await
-            .map_err(|_| NetError::Timeout)?
-        }
+        ProxyConfig::Http { proxy_addr, auth } => timeout(
+            PROXY_HANDSHAKE_TIMEOUT,
+            connect_http_connect_tunnel(*proxy_addr, auth.as_ref(), target_host, target_port),
+        )
+        .await
+        .map_err(|_| NetError::Timeout)?,
+        ProxyConfig::Socks5 { proxy_addr, auth } => timeout(
+            PROXY_HANDSHAKE_TIMEOUT,
+            connect_socks5_tunnel(*proxy_addr, auth.as_ref(), target_host, target_port),
+        )
+        .await
+        .map_err(|_| NetError::Timeout)?,
     }
 }
 
@@ -184,7 +180,10 @@ pub async fn connect_http_connect_tunnel(
     );
 
     if let Some(creds) = auth {
-        request.push_str(&format!("Proxy-Authorization: {}\r\n", creds.to_basic_auth_header()));
+        request.push_str(&format!(
+            "Proxy-Authorization: {}\r\n",
+            creds.to_basic_auth_header()
+        ));
     }
     request.push_str("\r\n");
 
@@ -214,7 +213,8 @@ pub async fn connect_http_connect_tunnel(
                 return Ok(stream);
             } else if first_line.contains("407") {
                 return Err(NetError::SecurityViolation(
-                    "Autenticação de proxy necessária (HTTP 407 Proxy Authentication Required)".into(),
+                    "Autenticação de proxy necessária (HTTP 407 Proxy Authentication Required)"
+                        .into(),
                 ));
             } else {
                 return Err(NetError::ConnectionFailed(
@@ -225,7 +225,9 @@ pub async fn connect_http_connect_tunnel(
         }
     }
 
-    Err(NetError::HttpProtocolError("Resposta de CONNECT do proxy excedeu o tamanho máximo".into()))
+    Err(NetError::HttpProtocolError(
+        "Resposta de CONNECT do proxy excedeu o tamanho máximo".into(),
+    ))
 }
 
 /// Realiza o handshake SOCKS5 completo (RFC 1928 + RFC 1929) com Zero DNS Leak.
@@ -265,7 +267,9 @@ pub async fn connect_socks5_tunnel(
         0x02 => {
             // Autenticação de Usuário e Senha (RFC 1929)
             let creds = auth.ok_or_else(|| {
-                NetError::SecurityViolation("Proxy exige autenticação, mas nenhuma foi configurada".into())
+                NetError::SecurityViolation(
+                    "Proxy exige autenticação, mas nenhuma foi configurada".into(),
+                )
             })?;
 
             let u_bytes = creds.username.as_bytes();
@@ -331,7 +335,9 @@ pub async fn connect_socks5_tunnel(
         // Zero DNS Leak: ATYP 0x03 com o nome textual do domínio para resolução remota
         let host_bytes = target_host.as_bytes();
         if host_bytes.len() > 255 {
-            return Err(NetError::InvalidUrl("Nome de host muito longo para SOCKS5".into()));
+            return Err(NetError::InvalidUrl(
+                "Nome de host muito longo para SOCKS5".into(),
+            ));
         }
         connect_req.push(0x03); // ATYP: DOMAINNAME
         connect_req.push(host_bytes.len() as u8);

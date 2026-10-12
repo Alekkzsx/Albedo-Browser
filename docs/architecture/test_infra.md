@@ -2,8 +2,8 @@
 
 > **Documento de Arquitetura de Testes e Conformidade**  
 > **Status:** Vigente (Alinhado com o [PLANO.md v7.0](../../PLANO.md) — §9)  
-> **Última Atualização:** 2026-10-07  
-> **Subsistemas Cobertos:** `ace_core`, `ace_dom`, `ace_net`, `ace_test_driver`
+> **Última Atualização:** 2026-10-11  
+> **Subsistemas Cobertos:** `ace_core`, `ace_dom`, `ace_net`, `ace_style`, `ace_test_driver`
 
 ---
 
@@ -11,6 +11,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **2.1.0** | 2026-10-11 | Implementação do `ace_style` (Fase 6) | • Bateria de 6 suítes pesadas de estresse adversário (Fuzzing L3, DoH/DoS, concorrência, Billion Laughs CSS).<br>• Incorporação da cobertura normativa de CSS Syntax e Cascata. | • Inclusão do `ace_style` na matriz de testes com 18 testes e 7 binários.<br>• Verificação estrita de ausência de unsafe (`#![forbid(unsafe_code)]`). |
 | **2.0.0** | 2026-10-07 | Alinhamento com PLANO v7.0 | • Adoção da Estratégia de Conformidade WPT em 4 Estágios (Estágios A, B, C e D).<br>• Incorporação formal da Regra de Evidência (Regra de Ouro 5). | • Expansão do documento para cobrir o motor completo além do `ace_core`.<br>• Registro das métricas ativas do workspace (101 testes em `ace_core`, 22+ em `ace_dom`, 71+ em `ace_net`). |
 | **1.0.0** | 2026-08-16 | Definição Inicial | • Arquitetura de testes opacos 4-Tier para o `ace_core`. | • Especificação dos 219 casos de teste conceituais da fundação. |
 
@@ -30,7 +31,7 @@ Para evitar a ilusão de rodar o consórcio Web Platform Tests (WPT) completo an
 
 | Estágio | Suíte Normativa Alvo | Pré-requisito Técnico | Momento de Ativação | Status Atual |
 | :---: | :--- | :--- | :---: | :---: |
-| **Estágio A** | `html5lib-tests` (arquivos `.dat`) e `css-syntax` | Apenas os Parsers (sem renderização gráfica). Asserções puras sobre tokens e ASTs. | Fase 5 e Fase 6 | 🟡 Pendente vendorização dos arquivos `.dat` em `ace_test_driver` |
+| **Estágio A** | `html5lib-tests` (arquivos `.dat`) e `css-syntax` | Apenas os Parsers (sem renderização gráfica). Asserções puras sobre tokens e ASTs. | Fase 5 e Fase 6 | 🟢 `css-syntax` e cascata L5/L6 cobertos por 18 testes em `ace_style`; pendente vendorização dos arquivos `.dat` em `ace_test_driver` |
 | **Estágio B** | *Layout-dump* e Reftests (sem JavaScript) | Motor de Layout e Pintura gerando coordenadas geométricas e bitmaps a partir de HTML estático. | Fase 7 e Fase 8 | ⏳ Aguardando Fase 7 |
 | **Estágio C** | `testharness.js` embutido localmente | Motor `ace_js` integrado via WebIDL ao `ace_dom`, permitindo executar asserções JS diretamente na engine. | Fase 10 | ⏳ Aguardando Fase 10 |
 | **Estágio D** | `wptrunner` oficial via **WebDriver BiDi** + Test262 | Servidor WebDriver BiDi controlando o navegador end-to-end com WebSockets. | Fase 13 | ⏳ Planejado pós-Fase 12 |
@@ -63,12 +64,13 @@ Para subsistemas fundamentais de infraestrutura e memória, os testes unitários
 ---
 
 ## 4. Bateria Atual de Testes no Workspace
-
-Métricas verificadas em `2026-10-07`:
+ 
+Métricas verificadas em `2026-10-11`:
 
 - **`ace_core`:** 101 testes unitários/integração + 3 doctests — **100% aprovados** (`0.00s` a `0.69s`).
 - **`ace_dom`:** 22 testes de reentrância do tokenizer + dezenas de testes de Tree Builder, Live Ranges, Shadow DOM e Sanitizer — **100% aprovados**.
 - **`ace_net`:** 71 testes unitários + testes de Cache RFC 9111, Cookies CHIPS, DoH, descompressão em streaming e teste de estresse de memória de 93s — **100% aprovados**.
+- **`ace_style`:** 24 testes automatizados aprovados (0 falhas) em 13 binários, incluindo 12 baterias de estresse pesado (`stress_style_structs_memory_bench`, `stress_mpc_hit_rate_scale`, `stress_invalidation_reactive_benchmark`, `stress_pseudo_elements_hierarchical`, `stress_math_functions_deep_fuzz`, `stress_logical_properties_bidi_matrix`, `stress_cascade_layer_matrix`, `stress_concurrent_style_engine`, `stress_parser_fuzz_adversarial`, `stress_rule_matching_scale`, `stress_style_sharing_cache`, `stress_variables_cycle_explosion`, `unit_values_and_parser_test`) — **100% aprovados** e 0 warnings no Clippy com `-D warnings`.
 
 ---
 
@@ -82,7 +84,11 @@ cargo test --workspace
 cargo test -p ace_core
 cargo test -p ace_dom
 cargo test -p ace_net
+cargo test -p ace_style
 
 # Executar com validação de memory safety sob Miri (para módulos com unsafe)
 cargo miri test -p ace_core --test arena_test
+
+# Executar checagem estrita de linters (zero tolerância)
+cargo clippy -p ace_style --all-targets --all-features -- -D warnings
 ```

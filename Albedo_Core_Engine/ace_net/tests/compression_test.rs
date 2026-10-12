@@ -1,6 +1,8 @@
 //! # Testes de Descompressão Transparente de Conteúdo HTTP (RFC 9110, RFC 7932)
 
-use ace_net::http::compression::{compress_brotli, compress_gzip, decompress_payload, ContentEncoding};
+use ace_net::http::compression::{
+    compress_brotli, compress_gzip, decompress_payload, ContentEncoding,
+};
 use ace_net::http::request::Request;
 use ace_net::http::response::StatusCode;
 use ace_net::ResourceFetcher;
@@ -25,7 +27,8 @@ fn test_roundtrip_gzip_payload() {
 
 #[test]
 fn test_roundtrip_brotli_payload() {
-    let payload = b"{\"browser\":\"Albedo\",\"version\":\"0.1.0\",\"status\":\"extreme_performance\"}";
+    let payload =
+        b"{\"browser\":\"Albedo\",\"version\":\"0.1.0\",\"status\":\"extreme_performance\"}";
     let compressed = compress_brotli(payload);
     let raw = Bytes::from(compressed);
 
@@ -79,9 +82,15 @@ async fn test_fetcher_transparent_gzip_decompression_live() {
     let fetcher = ResourceFetcher::new().unwrap();
     let url = format!("http://{}/index.html", local_addr);
 
-    let resp = fetcher.fetch(Request::get(&url).unwrap().build()).await.unwrap();
+    let resp = fetcher
+        .fetch(Request::get(&url).unwrap().build())
+        .await
+        .unwrap();
 
     assert_eq!(resp.status, StatusCode::OK);
     assert_eq!(resp.content_encoding, Some(ContentEncoding::Gzip));
-    assert_eq!(resp.clone().text_async().await.unwrap(), "<!doctype html><h1>Transparent Gzip Decompression Succeeded</h1>");
+    assert_eq!(
+        resp.clone().text_async().await.unwrap(),
+        "<!doctype html><h1>Transparent Gzip Decompression Succeeded</h1>"
+    );
 }

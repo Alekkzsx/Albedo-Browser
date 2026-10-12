@@ -99,7 +99,9 @@ impl NetworkQualityEstimator {
             let current_kbps = (bits / 1000.0) / dur_secs;
 
             guard.downlink_kbps_ewma = match guard.downlink_kbps_ewma {
-                Some(prev) => Some(prev * self.decay_factor + current_kbps * (1.0 - self.decay_factor)),
+                Some(prev) => {
+                    Some(prev * self.decay_factor + current_kbps * (1.0 - self.decay_factor))
+                }
                 None => Some(current_kbps),
             };
         }
@@ -190,11 +192,21 @@ mod tests {
     #[test]
     fn test_nqe_classification_and_hints() {
         let nqe = NetworkQualityEstimator::new();
-        assert_eq!(nqe.effective_connection_type(), EffectiveConnectionType::Unknown);
+        assert_eq!(
+            nqe.effective_connection_type(),
+            EffectiveConnectionType::Unknown
+        );
 
         // Observação de conexão rápida (RTT 50ms, 1 MB em 200ms = 40 Mbps)
-        nqe.record_observation(Duration::from_millis(50), 1_000_000, Duration::from_millis(200));
-        assert_eq!(nqe.effective_connection_type(), EffectiveConnectionType::FourG);
+        nqe.record_observation(
+            Duration::from_millis(50),
+            1_000_000,
+            Duration::from_millis(200),
+        );
+        assert_eq!(
+            nqe.effective_connection_type(),
+            EffectiveConnectionType::FourG
+        );
 
         let mut headers = HeaderMap::new();
         nqe.inject_network_client_hints(&mut headers);
@@ -205,11 +217,13 @@ mod tests {
         // Observação de conexão lenta (RTT 2500ms, 5 KB em 3s = ~13 kbps)
         let slow_nqe = NetworkQualityEstimator::new();
         slow_nqe.record_observation(Duration::from_millis(2500), 5000, Duration::from_secs(3));
-        assert_eq!(slow_nqe.effective_connection_type(), EffectiveConnectionType::Slow2G);
+        assert_eq!(
+            slow_nqe.effective_connection_type(),
+            EffectiveConnectionType::Slow2G
+        );
 
         let mut slow_headers = HeaderMap::new();
         slow_nqe.inject_network_client_hints(&mut slow_headers);
         assert_eq!(slow_headers.get("ect").unwrap(), "slow-2g");
     }
 }
-

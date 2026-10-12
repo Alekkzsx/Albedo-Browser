@@ -6,7 +6,9 @@
 pub mod background;
 pub mod chunk;
 pub mod scheduler;
+pub mod streaming_adapter;
 
 pub use background::{BackgroundHTMLParser, BackgroundParserHandle};
 pub use chunk::{ParsedChunk, DEFAULT_PARSER_CHUNK_SIZE};
 pub use scheduler::{HTMLParserScheduler, DEFAULT_PARSER_BUDGET};
+pub use streaming_adapter::StreamingHtmlParser;

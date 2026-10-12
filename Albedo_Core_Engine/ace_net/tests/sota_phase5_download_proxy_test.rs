@@ -4,11 +4,13 @@
 //! em disco via arquivo `.albedodownload`, telemetria de progresso em tempo real
 //! e conexões seguras por tunelamento HTTP CONNECT e SOCKS5 (RFC 1928 com Zero DNS Leak).
 
-use ace_net::engine::download::{start_download, DownloadOptions, DownloadState, DOWNLOAD_TEMP_EXTENSION};
+use ace_net::create_default_fetcher;
+use ace_net::engine::download::{
+    start_download, DownloadOptions, DownloadState, DOWNLOAD_TEMP_EXTENSION,
+};
 use ace_net::transport::proxy::{
     connect_http_connect_tunnel, connect_socks5_tunnel, ProxyAuth, ProxyBypassList, ProxyConfig,
 };
-use ace_net::create_default_fetcher;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -16,7 +18,13 @@ use url::Url;
 
 #[tokio::test]
 async fn test_resumable_download_complete_and_atomic_rename() {
-    let test_dir = std::env::temp_dir().join(format!("albedo_dl_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "albedo_dl_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     let _ = tokio::fs::create_dir_all(&test_dir).await;
     let final_dest = test_dir.join("test_file.bin");
 
@@ -30,9 +38,7 @@ async fn test_resumable_download_complete_and_atomic_rename() {
         let _ = socket.read(&mut buf).await.unwrap();
 
         let payload = vec![0x42u8; 128];
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: 128\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
-        );
+        let response = "HTTP/1.1 200 OK\r\nContent-Length: 128\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n";
         socket.write_all(response.as_bytes()).await.unwrap();
         socket.write_all(&payload).await.unwrap();
         socket.flush().await.unwrap();
@@ -57,7 +63,10 @@ async fn test_resumable_download_complete_and_atomic_rename() {
 
     // 2. Arquivo temporário .albedodownload deve ter sido renomeado (não existir mais)
     let temp_file = test_dir.join(format!("test_file.bin.{}", DOWNLOAD_TEMP_EXTENSION));
-    assert!(!temp_file.exists(), "Arquivo temporário deve ter sido renomeado");
+    assert!(
+        !temp_file.exists(),
+        "Arquivo temporário deve ter sido renomeado"
+    );
 
     // 3. Telemetria
     let progress = session.progress();
@@ -71,7 +80,13 @@ async fn test_resumable_download_complete_and_atomic_rename() {
 
 #[tokio::test]
 async fn test_resumable_download_partial_resume_206() {
-    let test_dir = std::env::temp_dir().join(format!("albedo_dl_resume_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "albedo_dl_resume_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     let _ = tokio::fs::create_dir_all(&test_dir).await;
     let final_dest = test_dir.join("resume_target.dat");
 
@@ -94,9 +109,7 @@ async fn test_resumable_download_partial_resume_206() {
 
         // Servidor responde com 206 Partial Content entregando os 64 bytes restantes (total 128)
         let remaining_data = vec![0x22u8; 64];
-        let response = format!(
-            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 64-127/128\r\nContent-Length: 64\r\nConnection: close\r\n\r\n"
-        );
+        let response = "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 64-127/128\r\nContent-Length: 64\r\nConnection: close\r\n\r\n";
         socket.write_all(response.as_bytes()).await.unwrap();
         socket.write_all(&remaining_data).await.unwrap();
         socket.flush().await.unwrap();
@@ -218,9 +231,10 @@ async fn test_http_connect_tunnel_with_basic_auth() {
     });
 
     let auth = ProxyAuth::new("admin", "secret123");
-    let mut tunnel = connect_http_connect_tunnel(proxy_addr, Some(&auth), "internal.bank.corp", 443)
-        .await
-        .expect("HTTP CONNECT deve estabelecer túnel com sucesso");
+    let mut tunnel =
+        connect_http_connect_tunnel(proxy_addr, Some(&auth), "internal.bank.corp", 443)
+            .await
+            .expect("HTTP CONNECT deve estabelecer túnel com sucesso");
 
     tunnel.write_all(b"PING").await.unwrap();
     tunnel.flush().await.unwrap();

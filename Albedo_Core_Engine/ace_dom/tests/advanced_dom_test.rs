@@ -29,7 +29,13 @@ fn test_script_and_style_rawtext_parsing() {
 
     // O título deve ter a entidade &amp; resolvida (RCDATA)
     let title_id = doc.query_selector("title").expect("title encontrado");
-    let title_text = doc.children(title_id).next().unwrap().1.text_content().unwrap();
+    let title_text = doc
+        .children(title_id)
+        .next()
+        .unwrap()
+        .1
+        .text_content()
+        .unwrap();
     assert_eq!(title_text, "Meu & Título");
 
     // O style deve conter o CSS bruto sem tags filhas
@@ -66,7 +72,9 @@ fn test_table_parsing_and_foster_parenting() {
     "#;
 
     let doc = parse_html(html);
-    let table_id = doc.get_element_by_id("my-table").expect("tabela encontrada");
+    let table_id = doc
+        .get_element_by_id("my-table")
+        .expect("tabela encontrada");
     let stray_id = doc.get_element_by_id("stray").expect("stray encontrado");
 
     // Foster parenting: o elemento stray deve ter sido inserido antes da tabela
@@ -117,7 +125,9 @@ fn test_shadow_dom_attachment_and_lookup() {
     let mut doc = Document::new(None);
     let host_id = doc.create_element("custom-element", Namespace::Html);
 
-    let shadow_id = doc.attach_shadow(host_id, ShadowMode::Open).expect("shadow anexada");
+    let shadow_id = doc
+        .attach_shadow(host_id, ShadowMode::Open)
+        .expect("shadow anexada");
     assert_eq!(doc.get_shadow_root(host_id), Some(shadow_id));
 
     // Não deve permitir anexar duas shadow roots no mesmo hospedeiro
@@ -161,18 +171,33 @@ fn test_complex_selectors_with_combinators() {
     let doc = parse_html(html);
 
     // Filho direto `>`
-    let desc = doc.query_selector(".card > .desc").expect("desc encontrada via >");
-    assert_eq!(doc.get_node(desc).unwrap().tag_name().unwrap().as_str(), "p");
+    let desc = doc
+        .query_selector(".card > .desc")
+        .expect("desc encontrada via >");
+    assert_eq!(
+        doc.get_node(desc).unwrap().tag_name().unwrap().as_str(),
+        "p"
+    );
 
     // Irmão adjacente `+`
     let desc_adj = doc.query_selector("h1 + p").expect("p encontrado via +");
     assert_eq!(desc, desc_adj);
 
     // Descendente geral (espaço)
-    let badge = doc.query_selector("#container .badge").expect("badge encontrada via espaço");
-    assert_eq!(doc.get_node(badge).unwrap().tag_name().unwrap().as_str(), "span");
+    let badge = doc
+        .query_selector("#container .badge")
+        .expect("badge encontrada via espaço");
+    assert_eq!(
+        doc.get_node(badge).unwrap().tag_name().unwrap().as_str(),
+        "span"
+    );
 
     // Pseudo-classe :first-child
-    let first = doc.query_selector("h1:first-child").expect("h1 é first-child");
-    assert_eq!(doc.get_node(first).unwrap().tag_name().unwrap().as_str(), "h1");
+    let first = doc
+        .query_selector("h1:first-child")
+        .expect("h1 é first-child");
+    assert_eq!(
+        doc.get_node(first).unwrap().tag_name().unwrap().as_str(),
+        "h1"
+    );
 }

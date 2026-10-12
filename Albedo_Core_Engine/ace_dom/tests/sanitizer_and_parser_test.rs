@@ -50,7 +50,15 @@ fn test_dom_parser_multimedia_dispatch() {
         .parse_from_string(svg_xml, SupportedType::ImageSvgXml)
         .expect("SVG parsed");
     let svg_root = svg_doc.document_element.expect("svg root");
-    assert_eq!(svg_doc.get_node(svg_root).unwrap().tag_name().unwrap().as_str(), "svg");
+    assert_eq!(
+        svg_doc
+            .get_node(svg_root)
+            .unwrap()
+            .tag_name()
+            .unwrap()
+            .as_str(),
+        "svg"
+    );
     assert!(svg_doc.query_selector("circle").is_some());
 
     // 3. Parsing via string MIME

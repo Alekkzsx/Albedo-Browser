@@ -14,7 +14,8 @@ use std::sync::Arc;
 use url::Url;
 
 /// Endpoint canônico padrão de validação de conectividade.
-pub const DEFAULT_CAPTIVE_PORTAL_PROBE_URL: &str = "http://connectivitycheck.gstatic.com/generate_204";
+pub const DEFAULT_CAPTIVE_PORTAL_PROBE_URL: &str =
+    "http://connectivitycheck.gstatic.com/generate_204";
 
 /// Status da conectividade em relação a portais cativos.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +46,9 @@ impl Default for CaptivePortalDetector {
 impl CaptivePortalDetector {
     /// Cria uma nova instância de `CaptivePortalDetector` apontando para o probe canônico padrão.
     pub fn new() -> Self {
-        Self::with_probe_url(Url::parse(DEFAULT_CAPTIVE_PORTAL_PROBE_URL).expect("URL canônica válida"))
+        Self::with_probe_url(
+            Url::parse(DEFAULT_CAPTIVE_PORTAL_PROBE_URL).expect("URL canônica válida"),
+        )
     }
 
     /// Cria uma instância apontando para uma URL de probe personalizada.
@@ -62,7 +65,10 @@ impl CaptivePortalDetector {
     }
 
     /// Executa uma verificação ativa de portal cativo através do `TransportClient`.
-    pub async fn check_portal(&self, transport: &TransportClient) -> NetResult<CaptivePortalStatus> {
+    pub async fn check_portal(
+        &self,
+        transport: &TransportClient,
+    ) -> NetResult<CaptivePortalStatus> {
         let req = RequestBuilder::new(self.probe_url.clone(), Method::GET)
             .redirect_policy(RedirectPolicy::Manual)
             .build();
@@ -104,4 +110,3 @@ mod tests {
         assert_eq!(detector.status(), CaptivePortalStatus::Unknown);
     }
 }
-

@@ -7,9 +7,7 @@
 //! 4. Dynamic Timer Nesting Depth Clamping (depth >= 5 -> min 4ms)
 //! 5. Multithreaded concurrent assault with Scope Invalidation
 
-use ace_core::event_loop::{
-    current_timer_nesting, EventLoop, TaskQueue, TaskSource,
-};
+use ace_core::event_loop::{current_timer_nesting, EventLoop, TaskQueue, TaskSource};
 use ace_core::time::{Clock, MockClock};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -122,7 +120,10 @@ fn test_adversarial_starvation_dynamic_flood() {
         ui_steps += 1;
     }
 
-    assert!(net_ran.load(Ordering::SeqCst), "Network task never ran under dynamic flood!");
+    assert!(
+        net_ran.load(Ordering::SeqCst),
+        "Network task never ran under dynamic flood!"
+    );
     assert!(
         ui_steps <= 2,
         "Network task took {} UI steps to execute (starvation limit is 2)",
@@ -150,7 +151,10 @@ fn test_adversarial_starvation_counter_reset_on_empty() {
 
     // Now enqueue Network task: it should start with counter 0, not have accumulated starvation while empty
     let net_counter = el.task_queues.starvation_counter(TaskSource::Networking);
-    assert_eq!(net_counter, 0, "Empty queue accumulated starvation counters!");
+    assert_eq!(
+        net_counter, 0,
+        "Empty queue accumulated starvation counters!"
+    );
 }
 
 // =========================================================================
@@ -348,8 +352,12 @@ fn test_adversarial_interleaved_timer_macrotasks_multi() {
     assert_eq!(
         *execution_order.lock(),
         vec![
-            "timer_1", "micro_1_a", "micro_1_b",
-            "timer_2", "micro_2_a", "micro_2_b"
+            "timer_1",
+            "micro_1_a",
+            "micro_1_b",
+            "timer_2",
+            "micro_2_a",
+            "micro_2_b"
         ]
     );
 
@@ -358,9 +366,15 @@ fn test_adversarial_interleaved_timer_macrotasks_multi() {
     assert_eq!(
         *execution_order.lock(),
         vec![
-            "timer_1", "micro_1_a", "micro_1_b",
-            "timer_2", "micro_2_a", "micro_2_b",
-            "timer_3", "micro_3_a", "micro_3_b"
+            "timer_1",
+            "micro_1_a",
+            "micro_1_b",
+            "timer_2",
+            "micro_2_a",
+            "micro_2_b",
+            "timer_3",
+            "micro_3_a",
+            "micro_3_b"
         ]
     );
 
@@ -399,10 +413,7 @@ fn test_adversarial_timer_spawns_timer_and_microtask() {
 
     // Step 1: Executes Timer A, then its microtask. Timer B is scheduled in min-heap.
     assert!(el.step());
-    assert_eq!(
-        *history.lock(),
-        vec!["timer_a", "micro_from_timer_a"]
-    );
+    assert_eq!(*history.lock(), vec!["timer_a", "micro_from_timer_a"]);
 
     // Step 2: Executes Timer B (delay 0ms, target_ms = 50 <= 50)
     assert!(el.step());
@@ -552,7 +563,7 @@ fn test_adversarial_timer_explicit_large_delay_at_depth_5() {
 fn test_adversarial_multithreaded_stress_with_cancellation_and_scopes() {
     let mock_clock = Arc::new(MockClock::new(0));
     let el = Arc::new(EventLoop::with_clock(
-        Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>,
+        Arc::clone(&mock_clock) as Arc<dyn ace_core::time::Clock>
     ));
     let q = el.handle();
 

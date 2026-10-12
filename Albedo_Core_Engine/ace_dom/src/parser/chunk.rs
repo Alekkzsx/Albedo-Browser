@@ -4,8 +4,8 @@
 //! para despacho lock-free entre a thread de tokenização e a thread do TreeBuilder.
 
 use crate::preload_scanner::PreloadRequest;
-use crate::tokenizer::token::CompactHTMLToken;
 use crate::tokenizer::state::TokenizerState;
+use crate::tokenizer::token::CompactHTMLToken;
 
 /// Tamanho padrão normativo de um lote de tokens para trânsito entre threads.
 pub const DEFAULT_PARSER_CHUNK_SIZE: usize = 256;

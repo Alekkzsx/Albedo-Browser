@@ -395,8 +395,14 @@ fn test_adversarial_iacvt_hierarchy_resetting() {
     // Non-inheritable (display, margin, opacity) -> unset -> initial values ('inline', '0px', '1')
     let parent_computed = StyleResolver::resolve_element_style(&doc, parent_id, &[]);
     assert_eq!(parent_computed.get_property_value("color"), Some("#ff0000"));
-    assert_eq!(parent_computed.get_property_value("font-size"), Some("32px"));
-    assert_eq!(parent_computed.get_property_value("display"), Some("inline"));
+    assert_eq!(
+        parent_computed.get_property_value("font-size"),
+        Some("32px")
+    );
+    assert_eq!(
+        parent_computed.get_property_value("display"),
+        Some("inline")
+    );
     assert_eq!(parent_computed.get_property_value("margin"), Some("0px"));
     assert_eq!(parent_computed.get_property_value("opacity"), Some("1"));
 
@@ -411,9 +417,18 @@ fn test_adversarial_iacvt_hierarchy_resetting() {
     // display: inherit -> parent's computed display is 'inline'
     // margin: unset -> margin is non-inheritable -> resets to initial '0px'
     let grandchild_computed = StyleResolver::resolve_element_style(&doc, grandchild_id, &[]);
-    assert_eq!(grandchild_computed.get_property_value("color"), Some("#ff0000"));
-    assert_eq!(grandchild_computed.get_property_value("display"), Some("inline"));
-    assert_eq!(grandchild_computed.get_property_value("margin"), Some("0px"));
+    assert_eq!(
+        grandchild_computed.get_property_value("color"),
+        Some("#ff0000")
+    );
+    assert_eq!(
+        grandchild_computed.get_property_value("display"),
+        Some("inline")
+    );
+    assert_eq!(
+        grandchild_computed.get_property_value("margin"),
+        Some("0px")
+    );
 }
 
 // =========================================================================

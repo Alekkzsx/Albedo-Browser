@@ -23,7 +23,9 @@ fn test_unified_heap_gc_tracing_reachability() {
     let container_id = doc.get_element_by_id("container").unwrap();
     assert!(tracer.visited_nodes.contains(&container_id));
     assert!(tracer.visited_nodes.contains(&doc.root()));
-    assert!(tracer.visited_nodes.contains(&doc.document_element.unwrap()));
+    assert!(tracer
+        .visited_nodes
+        .contains(&doc.document_element.unwrap()));
     assert!(tracer.visited_nodes.contains(&doc.body.unwrap()));
 }
 

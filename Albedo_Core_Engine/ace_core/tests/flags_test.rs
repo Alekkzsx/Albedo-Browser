@@ -31,7 +31,10 @@ fn test_style_hint_to_node_flags_subtree_recalc() {
     use ace_core::flags::{is_node_dirty, style_hint_to_node_flags};
 
     // NONE
-    assert_eq!(style_hint_to_node_flags(StyleChangeHint::NONE), NodeFlags::empty());
+    assert_eq!(
+        style_hint_to_node_flags(StyleChangeHint::NONE),
+        NodeFlags::empty()
+    );
 
     // REPAINT
     let repaint_flags = style_hint_to_node_flags(StyleChangeHint::REPAINT);
@@ -40,7 +43,10 @@ fn test_style_hint_to_node_flags_subtree_recalc() {
 
     // REFLOW_LAYOUT
     let reflow_flags = style_hint_to_node_flags(StyleChangeHint::REFLOW_LAYOUT);
-    assert_eq!(reflow_flags, NodeFlags::DIRTY_LAYOUT | NodeFlags::DIRTY_PAINT);
+    assert_eq!(
+        reflow_flags,
+        NodeFlags::DIRTY_LAYOUT | NodeFlags::DIRTY_PAINT
+    );
 
     // RECALC_STYLE
     let recalc_flags = style_hint_to_node_flags(StyleChangeHint::RECALC_STYLE);
@@ -60,7 +66,8 @@ fn test_style_hint_to_node_flags_subtree_recalc() {
     assert!(is_node_dirty(subtree_flags));
 
     // Combined SUBTREE_RECALC + REPAINT
-    let combined = style_hint_to_node_flags(StyleChangeHint::SUBTREE_RECALC | StyleChangeHint::REPAINT);
+    let combined =
+        style_hint_to_node_flags(StyleChangeHint::SUBTREE_RECALC | StyleChangeHint::REPAINT);
     assert_eq!(
         combined,
         NodeFlags::SUBTREE_DIRTY | NodeFlags::DIRTY_STYLE | NodeFlags::DIRTY_PAINT

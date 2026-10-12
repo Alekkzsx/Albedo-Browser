@@ -16,7 +16,8 @@ docs/
 │   ├── README.md             # Pipeline visual end-to-end e convenções de arquitetura
 │   ├── ace_core.md           # Arquitetura Fundacional, Arenas EBR, Concorrência & Matemática
 │   ├── ace_net.md            # Arquitetura de Rede, Cache RFC 9111, DoH, HTTP/3 & Segurança
-│   ├── ace_dom.md            # Parser HTML5, Árvore DOM imutável, CSSOM & Algoritmos WHATWG
+│   ├── ace_dom.md            # Parser HTML5, Árvore DOM imutável & Algoritmos WHATWG
+│   ├── ace_style.md          # Motor de Estilo, Cascata 8 origens, CSS Syntax L3 & RenderTree
 │   └── test_infra.md         # Infraestrutura, filosofia e estratégia de testes em 4 estágios
 ├── scope/                    # Escopo normativo do MVP (v1.0 Desktop)
 │   ├── README.md             # Visão geral e governança do escopo do MVP
@@ -28,7 +29,8 @@ docs/
 │   ├── README.md             # Índice e critérios de aprovação de relatórios
 │   ├── fase2_ace_core.md     # Relatório de auditoria e métricas dos testes do ace_core
 │   ├── fase3_ace_net.md      # Relatório de auditoria e testes de estresse do ace_net
-│   └── fase5_ace_dom.md      # Relatório de auditoria e conformidade do ace_dom
+│   ├── fase5_ace_dom.md      # Relatório de auditoria e conformidade do ace_dom
+│   └── fase6_ace_style.md    # Relatório de auditoria técnica e estresse do ace_style
 ├── security/                 # Governança de segurança e mitigação de vulnerabilidades
 │   ├── README.md             # Central de segurança e princípios defensivos
 │   ├── unsafe-registry.md    # Registro central e invariantes das 64 ocorrências de unsafe
@@ -44,6 +46,7 @@ docs/
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas de Governança | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **2.1.0** | 2026-10-11 | Conclusão da Fase 6 (`ace_style`) | • Criação de `docs/architecture/ace_style.md` e `docs/reports/fase6_ace_style.md`.<br>• Formalização do ADR-0012 e criação de ADRs 0007, 0008, 0014, 0016, 0017.<br>• Resolução formal da dívida DV-05 com migração completa do CSSOM.<br>• Sincronização exaustiva de todas as pastas em `docs/`. | • `ace_style` marcado como concluído com 5.675 linhas e 18 testes.<br>• Registro de 0 unsafe e `#![forbid(unsafe_code)]` ativado.<br>• Todos os documentos sincronizados sem contradições. |
 | **2.0.0** | 2026-10-07 | Auditoria e Reestruturação v7.0 | • Criação de `docs/architecture/ace_core.md` e `Albedo_Core_Engine/ace_core/README.md`.<br>• Catálogo unificado dos 21 ADRs em `docs/adr/README.md`.<br>• Alinhamento estrito com a Regra de Evidência e Paradigma Pragmático. | • Todos os 9 documentos sincronizados sem contradições.<br>• Painel de estado real auditado em conformidade com o código.<br>• Rastreabilidade temporal em tabelas padronizadas em todos os docs. |
 | **1.0.0** | 2026-08-16 | Estruturação Inicial da Base de Conhecimento | • Separação de pastas em `architecture/`, `scope/`, `reports/`, `adr/`. | • Criação dos primeiros master plans de `ace_dom` e `ace_net`. |
 
@@ -56,7 +59,7 @@ docs/
 | **`ace_core`** (Fundação) | [`ace_core.md`](./architecture/ace_core.md) / [`Relatório`](./reports/fase2_ace_core.md) | Fase 2 | 🟡 Parcial | 101 testes unitários aprovados. Fase 2 permanece 🟡 até a implementação do IPC in-process em `ace_ipc` (DV-01). |
 | **`ace_net`** (Rede & Cache) | [`ace_net.md`](./architecture/ace_net.md) | Fase 3 | 🚧 Fechamento | HTTP/1.1, H2, H3/QUIC, Cache RFC 9111 L1/L2 e DoH implementados. Suíte de 71+ testes e estresse de 93s passando. Em fechamento de PR para a `main`. |
 | **`ace_dom`** (Parser & DOM) | [`ace_dom.md`](./architecture/ace_dom.md) | Fase 5 | 🟡 Parcial | Tokenizer FSM, Tree Builder (AAA) e Arena operacionais. Refatoração Clean Code do `process_token` ativa. Pendente vendorizar suíte oficial `html5lib-tests` (DV-11). |
-| **`ace_style`** (Estilo & Cascata) | [`css_properties.md`](./scope/css_properties.md) | Fase 6 | ⏳ Planejado | Código inicial de CSSOM reside temporariamente em `ace_dom/src/cssom`. A Fase 6 migrará o CSSOM para `ace_style` e implementará CSS Syntax L3 (ADR-0012). |
+| **`ace_style`** (Estilo & Cascata) | [`ace_style.md`](./architecture/ace_style.md) / [`Relatório`](./reports/fase6_ace_style.md) | Fase 6 | ✅ Concluída | **7.366 linhas em 35 módulos** (9.225 totais com testes). **24 testes automatizados aprovados (0 falhas) em 13 binários**, incluindo 12 suítes pesadas de estresse. Style Structs em Arc, MPC, Invalidation Sets, matemática clamp/min/max, Writing Modes e pseudo-elementos. 0 unsafe (`#![forbid(unsafe_code)]`), 0 erros e 0 warnings no Clippy com `-D warnings`. |
 | **`ace_js`** (Motor JavaScript) | [`web_api.md`](./scope/web_api.md) | Fase 10 | ⏳ Planejado | MVP planejado estritamente com interpretador de bytecode próprio (**sem JIT**, modo *jitless* permanente conforme ADR-0019). |
 | **`ace_ipc`** (Comunicação) | [`adr/README.md`](./adr/README.md) (ADR-0005) | Fase 2 / 12 | 🟡 Stub | Atualmente contém apenas 1 linha (`pub fn init() {}`). Alvo imediato de implementação para fechar a Fase 2. |
 | **Infra de Testes** | [`test_infra.md`](./architecture/test_infra.md) | Transversal | 🟡 Em Evolução | Estratégia de conformidade em 4 estágios aprovada (Estágio A: html5lib `.dat`; Estágio B: Reftests; Estágio C: testharness.js; Estágio D: WebDriver BiDi). |
@@ -87,6 +90,14 @@ docs/
   - Modelo de memória baseado em Arena SlotMap geracional (`Arena<NodeData>`, zero vazamentos cíclicos).
   - Suporte a Declarative Shadow DOM (DSD), MutationObserver, Live Ranges e Sanitizer API.
 
+- [**`ace_style.md`**](./architecture/ace_style.md):
+  - Motor de estilo e cascata modularizado em 6 frentes autônomas com 100% Safe Rust (`#![forbid(unsafe_code)]`).
+  - Tokenizer streaming SIMD em conformidade com W3C CSS Syntax Level 3 e parser resiliente a falhas.
+  - Indexação em `RuleBucketMap` (ID, Class, Tag e Universal) integrado ao Bloom Filter de ancestrais.
+  - Matriz de cascata das 8 origens normativas da W3C e ordenação de camadas `@layer` (CSS Cascade 5/6).
+  - `VariableResolver` acíclico (DAG) com mitigação linear contra ataques de recursão (*Billion Laughs CSS*).
+  - `StyleSharingCache` para reaproveitamento em nós irmãos e geração da `RenderTree` imutável.
+
 - [**`test_infra.md`**](./architecture/test_infra.md):
   - Arquitetura de testes opacos em 4 camadas (*Tier 1: Feature Coverage*, *Tier 2: Boundaries*, *Tier 3: Pairwise*, *Tier 4: Workloads Reais*).
   - Matriz dos 4 Estágios de Conformidade WPT/Test262 (Estágios A, B, C e D).
@@ -110,6 +121,7 @@ Para manter o foco na sobrevivência e estabilidade da v1.0, o projeto adota lim
 - [**`fase2_ace_core.md`**](./reports/fase2_ace_core.md): Relatório de auditoria técnica do `ace_core`, comprovando a aprovação de 101 testes e detalhando a dívida do `ace_ipc`.
 - [**`fase3_ace_net.md`**](./reports/fase3_ace_net.md): Relatório de auditoria técnica do `ace_net`, comprovando 128 testes passando, cache RFC 9111, DoH, H3 e estresse de memória de 93s.
 - [**`fase5_ace_dom.md`**](./reports/fase5_ace_dom.md): Relatório de auditoria técnica do `ace_dom`, comprovando 22 testes de reentrância do tokenizer, Tree Builder AAA e a pendência do WPT `.dat`.
+- [**`fase6_ace_style.md`**](./reports/fase6_ace_style.md): Relatório de auditoria técnica do `ace_style`, comprovando 18 testes automatizados, 6 suítes pesadas de estresse, 0 unsafe e 0 warnings no Clippy.
 
 ---
 
@@ -125,4 +137,5 @@ Para manter o foco na sobrevivência e estabilidade da v1.0, o projeto adota lim
 Conforme a **Regra 3** do projeto: *Toda decisão arquitetural relevante vira um ADR*.
 
 - [**Catálogo de ADRs (`docs/adr/README.md`)**](./adr/README.md): Lista indexada de todos os 21 registros de decisões arquiteturais do projeto (ADR-0000 a ADR-0021).
+- [**ADR-0012: Migração do CSSOM para `ace_style`**](./adr/0012-migracao-cssom-ace-style.md): Resolução da dívida DV-05 executada na Fase 6.
 - Novos registros devem ser criados na pasta `docs/adr/` numerados sequencialmente, utilizando o [**Template de ADR (0000-template.md)**](./adr/0000-template.md).

@@ -10,4 +10,3 @@ pub fn is_safe_url_scheme(scheme: &str) -> bool {
         "http" | "https" | "data" | "blob" | "about" | "file"
     )
 }
-

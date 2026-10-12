@@ -123,7 +123,9 @@ fn decode_base64_char(c: u8) -> Option<u8> {
 /// Analisa uma `data:` URI mantendo compatibilidade com a assinatura antiga,
 /// mas utilizando a engine WHATWG internamente.
 pub fn parse_data_uri(data_uri: &str) -> Option<(MimeType, Vec<u8>)> {
-    parse_data_url(data_uri).ok().map(|record| (record.mime_type, record.body))
+    parse_data_url(data_uri)
+        .ok()
+        .map(|record| (record.mime_type, record.body))
 }
 
 /// Decodifica sequências percent-encoded (`%XX`).
@@ -173,7 +175,7 @@ mod tests {
         let record = parse_data_url("data:,Hello%20World").unwrap();
         assert_eq!(record.mime_type.essence(), "text/plain");
         assert_eq!(record.body, b"Hello World");
-        assert_eq!(record.is_base64, false);
+        assert!(!record.is_base64);
     }
 
     #[test]
@@ -181,7 +183,7 @@ mod tests {
         let record = parse_data_url("data:text/plain;base64,SGVsbG8gV29ybGQ=").unwrap();
         assert_eq!(record.mime_type.essence(), "text/plain");
         assert_eq!(record.body, b"Hello World");
-        assert_eq!(record.is_base64, true);
+        assert!(record.is_base64);
     }
 
     #[test]

@@ -39,7 +39,12 @@ impl NetworkIsolationKey {
 
     /// Serializa a NIK para inclusão determinística em chaves compostas de cache.
     pub fn serialize(&self) -> String {
-        format!("{}^{}^{}", self.top_frame_origin.ascii_serialization(), self.frame_origin.ascii_serialization(), self.is_cross_site)
+        format!(
+            "{}^{}^{}",
+            self.top_frame_origin.ascii_serialization(),
+            self.frame_origin.ascii_serialization(),
+            self.is_cross_site
+        )
     }
 }
 
@@ -65,6 +70,9 @@ mod tests {
 
         assert_ne!(nik1, nik2);
         assert_ne!(nik1, nik3);
-        assert_eq!(nik1.serialize(), "https://example.com^https://cdn.example.com^true");
+        assert_eq!(
+            nik1.serialize(),
+            "https://example.com^https://cdn.example.com^true"
+        );
     }
 }

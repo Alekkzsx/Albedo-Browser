@@ -82,8 +82,21 @@ fn test_percent_decode_randomized_stress_oracle() {
     }
 
     let test_patterns = [
-        "%", "%%", "%%%", "%2", "%20", "%20%", "%20%2", "%20%20",
-        "%ZZ", "%!@", "%_a", "%%20", "%%%20", "%20%%%", "%A%B%C",
+        "%",
+        "%%",
+        "%%%",
+        "%2",
+        "%20",
+        "%20%",
+        "%20%2",
+        "%20%20",
+        "%ZZ",
+        "%!@",
+        "%_a",
+        "%%20",
+        "%%%20",
+        "%20%%%",
+        "%A%B%C",
         "100%_concluido_%20_finalizado%99%AA%FF",
     ];
 
@@ -116,7 +129,10 @@ fn test_sniff_mime_type_utf8_split_2byte_char() {
     data.extend_from_slice(b"</title></head><body>Hello</body></html>");
 
     let mime = sniff_mime_type(&data);
-    assert_eq!(mime, "text/html", "2-byte UTF-8 split across 512B must resolve to text/html");
+    assert_eq!(
+        mime, "text/html",
+        "2-byte UTF-8 split across 512B must resolve to text/html"
+    );
 }
 
 #[test]
@@ -136,7 +152,10 @@ fn test_sniff_mime_type_utf8_split_3byte_cjk_char() {
         data.extend_from_slice(b"</body></html>");
 
         let mime = sniff_mime_type(&data);
-        assert_eq!(mime, "text/html", "3-byte UTF-8 split (1 byte in) must resolve to text/html");
+        assert_eq!(
+            mime, "text/html",
+            "3-byte UTF-8 split (1 byte in) must resolve to text/html"
+        );
     }
 
     // Subcase 2: Split after 2 bytes (0xE4 at 510, 0xB8 at 511, 0x96 at 512)
@@ -153,7 +172,10 @@ fn test_sniff_mime_type_utf8_split_3byte_cjk_char() {
         data.extend_from_slice(b"</body></html>");
 
         let mime = sniff_mime_type(&data);
-        assert_eq!(mime, "text/html", "3-byte UTF-8 split (2 bytes in) must resolve to text/html");
+        assert_eq!(
+            mime, "text/html",
+            "3-byte UTF-8 split (2 bytes in) must resolve to text/html"
+        );
     }
 }
 
@@ -173,7 +195,10 @@ fn test_sniff_mime_type_utf8_split_4byte_emoji() {
         data.extend_from_slice(b"</text></svg>");
 
         let mime = sniff_mime_type(&data);
-        assert_eq!(mime, "image/svg+xml", "4-byte UTF-8 split (1 byte in) must resolve to image/svg+xml");
+        assert_eq!(
+            mime, "image/svg+xml",
+            "4-byte UTF-8 split (1 byte in) must resolve to image/svg+xml"
+        );
     }
 
     // Subcase 2: 2 bytes inside (bytes 510, 511)
@@ -188,7 +213,10 @@ fn test_sniff_mime_type_utf8_split_4byte_emoji() {
         data.extend_from_slice(b"</text></svg>");
 
         let mime = sniff_mime_type(&data);
-        assert_eq!(mime, "image/svg+xml", "4-byte UTF-8 split (2 bytes in) must resolve to image/svg+xml");
+        assert_eq!(
+            mime, "image/svg+xml",
+            "4-byte UTF-8 split (2 bytes in) must resolve to image/svg+xml"
+        );
     }
 
     // Subcase 3: 3 bytes inside (bytes 509, 510, 511)
@@ -203,7 +231,10 @@ fn test_sniff_mime_type_utf8_split_4byte_emoji() {
         data.extend_from_slice(b"</root>");
 
         let mime = sniff_mime_type(&data);
-        assert_eq!(mime, "application/xml", "4-byte UTF-8 split (3 bytes in) must resolve to application/xml");
+        assert_eq!(
+            mime, "application/xml",
+            "4-byte UTF-8 split (3 bytes in) must resolve to application/xml"
+        );
     }
 }
 
@@ -218,7 +249,10 @@ fn test_sniff_mime_type_plain_text_utf8_split_fallback() {
     data.extend_from_slice(b" remaining plain text");
 
     let mime = sniff_mime_type(&data);
-    assert_eq!(mime, "text/plain", "Plain text with split UTF-8 must fall back to text/plain");
+    assert_eq!(
+        mime, "text/plain",
+        "Plain text with split UTF-8 must fall back to text/plain"
+    );
 }
 
 #[test]
@@ -232,7 +266,10 @@ fn test_sniff_mime_type_edge_boundaries_and_empty() {
     assert_eq!(sniff_mime_type(&[0xF0]), "application/octet-stream");
 
     // Invalid UTF-8 continuation byte at start
-    assert_eq!(sniff_mime_type(&[0x80, 0x81, 0x82]), "application/octet-stream");
+    assert_eq!(
+        sniff_mime_type(&[0x80, 0x81, 0x82]),
+        "application/octet-stream"
+    );
 
     // Exact 512 bytes HTML
     let mut exact_512 = Vec::new();
@@ -275,8 +312,12 @@ fn test_origin_rfc6454_file_scheme() {
     let file_tuple = Origin::tuple(Scheme::File, Host::Opaque, None);
     assert_eq!(file_tuple.ascii_serialization(), "file://");
 
-    let file_tuple_named_host = Origin::tuple(Scheme::File, Host::Domain("remote-host".into()), None);
-    assert_eq!(file_tuple_named_host.ascii_serialization(), "file://remote-host");
+    let file_tuple_named_host =
+        Origin::tuple(Scheme::File, Host::Domain("remote-host".into()), None);
+    assert_eq!(
+        file_tuple_named_host.ascii_serialization(),
+        "file://remote-host"
+    );
     assert!(!file_tuple_named_host.ascii_serialization().contains(":0"));
 
     let file_tuple_zero = Origin::tuple(Scheme::File, Host::Opaque, Some(0));
@@ -320,7 +361,10 @@ fn test_origin_rfc6454_custom_schemes() {
     assert!(!custom2.ascii_serialization().contains(":0"));
 
     let custom3 = Origin::parse("chrome-extension://abcdefghijklmnop").unwrap();
-    assert_eq!(custom3.ascii_serialization(), "chrome-extension://abcdefghijklmnop");
+    assert_eq!(
+        custom3.ascii_serialization(),
+        "chrome-extension://abcdefghijklmnop"
+    );
     assert!(!custom3.ascii_serialization().contains(":0"));
 
     // Custom scheme with explicit non-zero port
@@ -431,17 +475,26 @@ fn test_sniff_mime_type_invalid_bytes_midstream_resilience() {
     // The valid UTF-8 portion before byte 21 is "<!DOCTYPE html><html>"
     // sniff_mime_type should recover the valid slice (valid_up_to == 21) and sniff "text/html"!
     let mime = sniff_mime_type(&payload);
-    assert_eq!(mime, "text/html", "Must identify HTML even when invalid UTF-8 occurs mid-stream after valid HTML tags");
+    assert_eq!(
+        mime, "text/html",
+        "Must identify HTML even when invalid UTF-8 occurs mid-stream after valid HTML tags"
+    );
 }
 
 #[test]
 fn test_sniff_mime_type_all_magic_number_signatures() {
     // Verify all binary format signatures remain uncompromised
-    assert_eq!(sniff_mime_type(b"\x89PNG\r\n\x1a\n...payload..."), "image/png");
+    assert_eq!(
+        sniff_mime_type(b"\x89PNG\r\n\x1a\n...payload..."),
+        "image/png"
+    );
     assert_eq!(sniff_mime_type(b"\xFF\xD8\xFF\xE0...jpeg..."), "image/jpeg");
     assert_eq!(sniff_mime_type(b"GIF87a...data..."), "image/gif");
     assert_eq!(sniff_mime_type(b"GIF89a...data..."), "image/gif");
-    assert_eq!(sniff_mime_type(b"RIFF\x00\x00\x00\x00WEBP..."), "image/webp");
+    assert_eq!(
+        sniff_mime_type(b"RIFF\x00\x00\x00\x00WEBP..."),
+        "image/webp"
+    );
     assert_eq!(sniff_mime_type(b"....ftypavif...."), "image/avif");
     assert_eq!(sniff_mime_type(b"....ftypavis...."), "image/avif");
     assert_eq!(sniff_mime_type(b"\x00\x00\x01\x00ico"), "image/x-icon");
@@ -481,4 +534,3 @@ fn test_origin_same_origin_equivalence_relations() {
     assert!(!op1.same_origin(&op2));
     assert!(!op2.same_origin(&op1));
 }
-

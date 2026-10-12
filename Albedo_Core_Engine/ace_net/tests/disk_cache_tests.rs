@@ -5,7 +5,7 @@ use tempfile::tempdir;
 #[test]
 fn test_sparse_range_coalescence() {
     let mut index = SparseRangeIndex::new();
-    
+
     // 1. Inserir faixas fora de ordem
     index.add_range(100, 199);
     index.add_range(0, 99);
@@ -30,19 +30,29 @@ async fn test_binary_index_recovery() {
     let path = dir.path().to_path_buf();
 
     // Inicializa o motor
-    let engine = DiskCacheEngine::new(path.clone(), 1024 * 1024).await.unwrap();
+    let engine = DiskCacheEngine::new(path.clone(), 1024 * 1024)
+        .await
+        .unwrap();
 
     // 1. Grava dados esparsos e totais no engine
-    engine.put_range(0x1234, 0, 99, Some(200), Bytes::from_static(&[1u8; 100])).await.unwrap();
-    
+    engine
+        .put_range(0x1234, 0, 99, Some(200), Bytes::from_static(&[1u8; 100]))
+        .await
+        .unwrap();
+
     // 2. Grava um item completo no WAL via put_range (simulando cacheamento)
-    engine.put_range(0x5678, 0, 49, None, Bytes::from_static(&[2u8; 50])).await.unwrap();
+    engine
+        .put_range(0x5678, 0, 49, None, Bytes::from_static(&[2u8; 50]))
+        .await
+        .unwrap();
 
     // 3. Força o dump do índice e limpa WAL
     engine.save_index().await.unwrap();
 
     // Simula a reinicialização lendo do cache.idx
-    let engine_recovered = DiskCacheEngine::new(path.clone(), 1024 * 1024).await.unwrap();
+    let engine_recovered = DiskCacheEngine::new(path.clone(), 1024 * 1024)
+        .await
+        .unwrap();
 
     // Verifica se os ranges e metadados persistem via índice binário
     let bytes1 = engine_recovered.get_range(0x1234, 0, 99).await.unwrap();

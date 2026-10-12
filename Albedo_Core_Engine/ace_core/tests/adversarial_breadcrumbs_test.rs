@@ -15,7 +15,11 @@ fn test_adversarial_breadcrumbs_capacity_zero_stress() {
         let b = Arc::clone(&buffer);
         handles.push(thread::spawn(move || {
             for i in 0..5_000 {
-                b.record("TestCat", format!("Thread {} Msg {}", thread_idx, i), i as u64);
+                b.record(
+                    "TestCat",
+                    format!("Thread {} Msg {}", thread_idx, i),
+                    i as u64,
+                );
                 b.push(BreadcrumbEntry {
                     category: "PushCat",
                     message: format!("Payload {}", i),
@@ -85,7 +89,12 @@ fn test_adversarial_breadcrumbs_multithreaded_high_contention() {
             let mut read_iterations = 0usize;
             while !stop.load(Ordering::Relaxed) {
                 let len = b.len();
-                assert!(len <= CAPACITY, "Buffer len {} exceeded capacity {}", len, CAPACITY);
+                assert!(
+                    len <= CAPACITY,
+                    "Buffer len {} exceeded capacity {}",
+                    len,
+                    CAPACITY
+                );
 
                 let snap = b.snapshot();
                 assert!(snap.len() <= CAPACITY);
@@ -131,7 +140,10 @@ fn test_adversarial_breadcrumbs_multithreaded_high_contention() {
         handle.join().unwrap();
     }
 
-    assert_eq!(total_written.load(Ordering::SeqCst), NUM_WRITERS * WRITES_PER_THREAD);
+    assert_eq!(
+        total_written.load(Ordering::SeqCst),
+        NUM_WRITERS * WRITES_PER_THREAD
+    );
     assert_eq!(buffer.len(), CAPACITY);
 
     let snap = buffer.snapshot();
@@ -201,7 +213,11 @@ fn test_global_breadcrumb_buffer_concurrency() {
     for thread_idx in 0..8 {
         handles.push(thread::spawn(move || {
             for i in 0..1_000 {
-                BreadcrumbBuffer::<32>::add("GlobalCat", format!("T_{thread_idx}_{i}"), (thread_idx * 10_000 + i) as u64);
+                BreadcrumbBuffer::<32>::add(
+                    "GlobalCat",
+                    format!("T_{thread_idx}_{i}"),
+                    (thread_idx * 10_000 + i) as u64,
+                );
             }
         }));
     }

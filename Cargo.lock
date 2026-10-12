@@ -5,6 +5,18 @@ version = 4
 [[package]]
 name = "ace_browser"
 version = "0.1.0"
+dependencies = [
+ "ace_core",
+ "ace_dom",
+ "ace_ipc",
+ "ace_net",
+ "ace_style",
+ "base64 0.22.1",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "url",
+]
 
 [[package]]
 name = "ace_core"
@@ -54,6 +66,12 @@ dependencies = [
 [[package]]
 name = "ace_ipc"
 version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "parking_lot",
+ "rustc-hash",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "ace_js"
@@ -126,6 +144,19 @@ version = "0.1.0"
 [[package]]
 name = "ace_style"
 version = "0.1.0"
+dependencies = [
+ "ace_core",
+ "ace_dom",
+ "bitflags",
+ "euclid",
+ "memchr",
+ "parking_lot",
+ "rayon",
+ "rustc-hash",
+ "smol_str",
+ "thiserror 2.0.20",
+ "tracing",
+]
 
 [[package]]
 name = "ace_test_driver"

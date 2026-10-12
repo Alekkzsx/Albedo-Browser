@@ -80,8 +80,14 @@ fn test_dom_split_text_and_normalize() {
 
     // Divide "Hello World" em "Hello " e "World" no offset 6
     let right_text_id = doc.split_text(text_id, 6).expect("split text");
-    assert_eq!(doc.get_node(text_id).unwrap().text_content().unwrap(), "Hello ");
-    assert_eq!(doc.get_node(right_text_id).unwrap().text_content().unwrap(), "World");
+    assert_eq!(
+        doc.get_node(text_id).unwrap().text_content().unwrap(),
+        "Hello "
+    );
+    assert_eq!(
+        doc.get_node(right_text_id).unwrap().text_content().unwrap(),
+        "World"
+    );
 
     // Ambos são filhos de <p>
     let p_children: Vec<_> = doc.children(p).collect();
@@ -92,7 +98,10 @@ fn test_dom_split_text_and_normalize() {
     let norm_children: Vec<_> = doc.children(p).collect();
     assert_eq!(norm_children.len(), 1);
     assert_eq!(
-        doc.get_node(norm_children[0].0).unwrap().text_content().unwrap(),
+        doc.get_node(norm_children[0].0)
+            .unwrap()
+            .text_content()
+            .unwrap(),
         "Hello World"
     );
 }

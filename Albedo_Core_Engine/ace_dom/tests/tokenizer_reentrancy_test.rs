@@ -7,9 +7,7 @@
 
 use ace_core::intern::Atom;
 use ace_core::text::SegmentedString;
-use ace_dom::tokenizer::{
-    HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState,
-};
+use ace_dom::tokenizer::{HTMLTokenizer, Token, TokenSink, TokenizerAction, TokenizerState};
 use smol_str::SmolStr;
 
 /// Sink de teste que grava todos os tokens emitidos em ordem linear.
@@ -46,7 +44,11 @@ impl ScriptReentrantSink {
 impl TokenSink for ScriptReentrantSink {
     fn process_token(&mut self, token: Token) -> TokenizerAction {
         let action = if let Token::StartTag(ref tag) = token {
-            if let Some(pos) = self.script_injections.iter().position(|(t, _)| t == &tag.name) {
+            if let Some(pos) = self
+                .script_injections
+                .iter()
+                .position(|(t, _)| t == &tag.name)
+            {
                 let (_, markup) = self.script_injections.remove(pos);
                 TokenizerAction::InsertMarkup(markup)
             } else {
@@ -131,10 +133,7 @@ fn test_dynamic_insertion_nested_writes() {
         .collect();
 
     // Ordem LIFO/FIFO aninhada WHATWG: "nav" (nested_1), "nav" (nested_2), "header" (outer_start), "footer" (outer_end), "main" (original)
-    assert_eq!(
-        start_tags,
-        vec!["nav", "nav", "header", "footer", "main"]
-    );
+    assert_eq!(start_tags, vec!["nav", "nav", "header", "footer", "main"]);
 }
 
 #[test]
@@ -158,7 +157,10 @@ fn test_mid_token_split_tag_name() {
     let has_span = sink.tokens.iter().any(|t| match t {
         Token::StartTag(tag) => {
             tag.name.as_str() == "span"
-                && tag.attributes.iter().any(|a| a.name.as_str() == "class" && a.value.as_str() == "highlight")
+                && tag
+                    .attributes
+                    .iter()
+                    .any(|a| a.name.as_str() == "class" && a.value.as_str() == "highlight")
         }
         _ => false,
     });
@@ -338,7 +340,10 @@ fn test_mid_token_split_cdata_chunked_feed() {
 #[test]
 fn test_token_sink_reentrant_action_insertion() {
     let mut tokenizer = HTMLTokenizer::new();
-    let mut sink = ScriptReentrantSink::new(vec![("script", "<div class=\"injected\">From Script</div>")]);
+    let mut sink = ScriptReentrantSink::new(vec![(
+        "script",
+        "<div class=\"injected\">From Script</div>",
+    )]);
     let mut input = SegmentedString::from("<script></script><p>After</p>");
 
     tokenizer.tokenize(&mut input, &mut sink);
@@ -665,4 +670,3 @@ fn test_empty_writes_and_whitespace_preservation() {
     assert!(text.contains("Hello"));
     assert!(text.starts_with("   "));
 }
-

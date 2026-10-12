@@ -23,8 +23,8 @@ fn test_csp_policy_parsing_and_inline_script_verification() {
 
 #[test]
 fn test_trusted_types_policy_creation_and_enforcement() {
-    let policy = TrustedTypePolicy::new("default")
-        .with_create_html(|s| format!("[Sanitized: {s}]").into());
+    let policy =
+        TrustedTypePolicy::new("default").with_create_html(|s| format!("[Sanitized: {s}]").into());
 
     let trusted = policy.create_html("<b>Safe markup</b>");
     assert_eq!(trusted.as_str(), "[Sanitized: <b>Safe markup</b>]");

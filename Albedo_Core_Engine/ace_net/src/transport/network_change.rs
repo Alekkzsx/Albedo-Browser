@@ -139,4 +139,3 @@ mod tests {
         assert_eq!(notifier.connection_type(), NetworkConnectionType::Ethernet);
     }
 }
-

@@ -88,7 +88,6 @@ fn test_sniff_mime_type_binary_fallback() {
     assert_eq!(sniff_mime_type(&binary_data), "application/octet-stream");
 }
 
-
 #[test]
 fn test_data_uri_and_safe_schemes() {
     let data_uri = "data:text/plain;charset=utf-8;base64,QWxiZWRv";
@@ -100,7 +99,10 @@ fn test_data_uri_and_safe_schemes() {
     let percent_data_uri = "data:text/html,<h1>100%_concluido</h1>";
     let (mime2, bytes2) = parse_data_uri(percent_data_uri).unwrap();
     assert_eq!(mime2.essence(), "text/html");
-    assert_eq!(String::from_utf8(bytes2).unwrap(), "<h1>100%_concluido</h1>");
+    assert_eq!(
+        String::from_utf8(bytes2).unwrap(),
+        "<h1>100%_concluido</h1>"
+    );
 
     assert!(is_safe_url_scheme("https"));
     assert!(is_safe_url_scheme("http"));

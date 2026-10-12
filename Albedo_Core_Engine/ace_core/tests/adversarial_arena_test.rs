@@ -78,7 +78,11 @@ fn test_generational_invalidation_aba_stress() {
 
         // Verify that ALL previous generation IDs are completely invalid
         for (prev_gen, &prev_id) in old_ids.iter().enumerate() {
-            assert_eq!(arena.get(prev_id), None, "Old gen {prev_gen} must not resolve");
+            assert_eq!(
+                arena.get(prev_id),
+                None,
+                "Old gen {prev_gen} must not resolve"
+            );
             assert_eq!(arena.get_mut(prev_id), None);
             assert!(!arena.contains(prev_id));
         }
@@ -100,7 +104,11 @@ fn test_pseudo_random_alloc_free_permutation_oracle() {
             self.0
         }
         fn next_range(&mut self, max: usize) -> usize {
-            if max == 0 { 0 } else { (self.next() % (max as u64)) as usize }
+            if max == 0 {
+                0
+            } else {
+                (self.next() % (max as u64)) as usize
+            }
         }
     }
 

@@ -10,7 +10,9 @@ use crate::error::{NetError, NetResult};
 use crate::http::request::Request;
 use ace_core::security::origin::Origin;
 use bytes::Bytes;
-use http::header::{HeaderMap, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION};
+use http::header::{
+    HeaderMap, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION,
+};
 use http::{Method, StatusCode};
 use std::collections::HashSet;
 use url::Url;
@@ -105,7 +107,8 @@ pub fn handle_redirect(
         new_headers.remove(CONTENT_ENCODING);
     }
 
-    let current_origin = Origin::parse(current_req.url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
+    let current_origin =
+        Origin::parse(current_req.url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
     let target_origin = Origin::parse(new_url.as_str()).unwrap_or_else(|_| Origin::new_opaque());
 
     // Se for redirecionamento cross-origin, remove cabeçalhos sensíveis
@@ -130,19 +133,15 @@ mod tests {
 
     #[test]
     fn test_relative_redirect_resolution() {
-        let req = Request::get("https://example.com/blog/post1").unwrap().build();
+        let req = Request::get("https://example.com/blog/post1")
+            .unwrap()
+            .build();
         let mut visited = HashSet::new();
         let mut resp_headers = HeaderMap::new();
         resp_headers.insert(LOCATION, HeaderValue::from_static("/about"));
 
-        let action = handle_redirect(
-            &req,
-            StatusCode::FOUND,
-            &resp_headers,
-            &mut visited,
-            20,
-        )
-        .unwrap();
+        let action =
+            handle_redirect(&req, StatusCode::FOUND, &resp_headers, &mut visited, 20).unwrap();
 
         match action {
             RedirectAction::Follow(follow) => {
@@ -156,22 +155,22 @@ mod tests {
     #[test]
     fn test_cross_origin_redirect_strips_authorization() {
         let mut req_builder = Request::post("https://auth.example.com/login").unwrap();
-        req_builder = req_builder.header(AUTHORIZATION, HeaderValue::from_static("Bearer token_secret"));
+        req_builder = req_builder.header(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer token_secret"),
+        );
         req_builder = req_builder.header(COOKIE, HeaderValue::from_static("session=abc"));
         let req = req_builder.build();
 
         let mut resp_headers = HeaderMap::new();
-        resp_headers.insert(LOCATION, HeaderValue::from_static("https://otherdomain.com/landing"));
+        resp_headers.insert(
+            LOCATION,
+            HeaderValue::from_static("https://otherdomain.com/landing"),
+        );
 
         let mut visited = HashSet::new();
-        let action = handle_redirect(
-            &req,
-            StatusCode::SEE_OTHER,
-            &resp_headers,
-            &mut visited,
-            20,
-        )
-        .unwrap();
+        let action =
+            handle_redirect(&req, StatusCode::SEE_OTHER, &resp_headers, &mut visited, 20).unwrap();
 
         match action {
             RedirectAction::Follow(follow) => {
@@ -191,15 +190,12 @@ mod tests {
         visited.insert(req.url.to_string());
 
         let mut resp_headers = HeaderMap::new();
-        resp_headers.insert(LOCATION, HeaderValue::from_static("https://example.com/loop"));
-
-        let result = handle_redirect(
-            &req,
-            StatusCode::FOUND,
-            &resp_headers,
-            &mut visited,
-            20,
+        resp_headers.insert(
+            LOCATION,
+            HeaderValue::from_static("https://example.com/loop"),
         );
+
+        let result = handle_redirect(&req, StatusCode::FOUND, &resp_headers, &mut visited, 20);
 
         assert!(matches!(result, Err(NetError::TooManyRedirects(_))));
     }
@@ -207,9 +203,12 @@ mod tests {
     #[test]
     fn test_post_to_get_redirect_strips_body_headers() {
         let mut req = Request::post("https://example.com/submit").unwrap().build();
-        req.headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        req.headers.insert(CONTENT_LENGTH, HeaderValue::from_static("42"));
-        req.headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        req.headers
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        req.headers
+            .insert(CONTENT_LENGTH, HeaderValue::from_static("42"));
+        req.headers
+            .insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
 
         let mut resp_headers = HeaderMap::new();
         resp_headers.insert(LOCATION, HeaderValue::from_static("/thank-you"));

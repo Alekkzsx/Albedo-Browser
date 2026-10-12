@@ -70,10 +70,7 @@ impl TrustedTypePolicy {
         }
     }
 
-    pub fn with_create_html(
-        mut self,
-        f: impl Fn(&str) -> SmolStr + Send + Sync + 'static,
-    ) -> Self {
+    pub fn with_create_html(mut self, f: impl Fn(&str) -> SmolStr + Send + Sync + 'static) -> Self {
         self.create_html_fn = Some(Box::new(f));
         self
     }

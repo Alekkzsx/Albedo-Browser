@@ -40,10 +40,12 @@ impl DnsCacheEntry {
     }
 }
 
+type DnsEntriesMap = FxHashMap<(Option<NetworkIsolationKey>, SmolStr), DnsCacheEntry>;
+
 /// Cache de DNS particionado por tupla dupla `(Option<NetworkIsolationKey>, Hostname)`.
 #[derive(Debug, Clone)]
 pub struct PartitionedDnsCache {
-    entries: Arc<RwLock<FxHashMap<(Option<NetworkIsolationKey>, SmolStr), DnsCacheEntry>>>,
+    entries: Arc<RwLock<DnsEntriesMap>>,
     max_capacity: usize,
 }
 
@@ -157,15 +159,16 @@ mod tests {
         let cache = PartitionedDnsCache::new(100);
         let now = Instant::now();
 
-        let nik_a = NetworkIsolationKey::for_top_level(
-            Origin::parse("https://bank.example.com").unwrap(),
-        );
+        let nik_a =
+            NetworkIsolationKey::for_top_level(Origin::parse("https://bank.example.com").unwrap());
 
-        let nik_b = NetworkIsolationKey::for_top_level(
-            Origin::parse("https://attacker.com").unwrap(),
-        );
+        let nik_b =
+            NetworkIsolationKey::for_top_level(Origin::parse("https://attacker.com").unwrap());
 
-        let addrs = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)), 443)];
+        let addrs = vec![SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)),
+            443,
+        )];
 
         // Insere sob NIK_A
         cache.insert(
@@ -188,7 +191,11 @@ mod tests {
 
         // Após expirar TTL: get normal retorna None, mas stale_fallback funciona até a janela de 30s
         let after_ttl = now + Duration::from_secs(70);
-        assert!(cache.get(Some(&nik_a), "api.example.com", after_ttl).is_none());
-        assert!(cache.get_stale_fallback(Some(&nik_a), "api.example.com", after_ttl).is_some());
+        assert!(cache
+            .get(Some(&nik_a), "api.example.com", after_ttl)
+            .is_none());
+        assert!(cache
+            .get_stale_fallback(Some(&nik_a), "api.example.com", after_ttl)
+            .is_some());
     }
 }

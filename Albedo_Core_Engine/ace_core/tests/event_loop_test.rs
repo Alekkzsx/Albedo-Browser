@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-
 #[test]
 fn test_event_loop_order_and_microtask_checkpoint() {
     let el = EventLoop::new();
@@ -400,12 +399,7 @@ fn test_dynamic_recursive_timer_nesting_clamping() {
             records_clone.lock().push((current_depth, active_nesting));
 
             if current_depth < max_depth {
-                schedule_recursive_level(
-                    q_clone,
-                    current_depth + 1,
-                    max_depth,
-                    records_clone,
-                );
+                schedule_recursive_level(q_clone, current_depth + 1, max_depth, records_clone);
             }
         });
     }
@@ -491,7 +485,11 @@ fn test_fair_queuing_all_task_sources() {
     assert_eq!(recorded.len(), 7);
     // Todas as 7 fontes executaram sem perdas
     for &src in &TaskSource::ALL_SOURCES {
-        assert!(recorded.contains(&src), "Fonte {:?} não foi executada!", src);
+        assert!(
+            recorded.contains(&src),
+            "Fonte {:?} não foi executada!",
+            src
+        );
     }
 }
 
@@ -659,4 +657,3 @@ fn test_concurrent_multithreaded_task_queuing() {
     // 8 threads * 100 tarefas = 800 tarefas executadas
     assert_eq!(counter.load(Ordering::SeqCst), 800);
 }
-

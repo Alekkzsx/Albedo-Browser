@@ -74,8 +74,8 @@ pub fn log_net_error(event_type: NetEventType, url: &str, error: &dyn std::error
     );
 }
 
-use serde::Serialize;
 use parking_lot::RwLock;
+use serde::Serialize;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -143,4 +143,3 @@ impl NetLogCollector {
         serde_json::to_string_pretty(&payload).unwrap_or_default()
     }
 }
-

@@ -85,4 +85,3 @@ fn test_preload_scanner_unclosed_comment_safety() {
     assert_eq!(requests[0].url.as_str(), "/style1.css");
     assert_eq!(requests[0].kind, PreloadKind::Stylesheet);
 }
-

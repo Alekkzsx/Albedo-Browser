@@ -83,11 +83,15 @@ impl StoredDictionary {
     }
 }
 
+/// Tipo de mapeamento de partição de dicionários RFC 9290.
+pub type DictionaryPartitionMap =
+    FxHashMap<(Option<NetworkIsolationKey>, Origin), Vec<StoredDictionary>>;
+
 /// Gerenciador de dicionários de compressão com particionamento de segurança RFC 9290.
 #[derive(Clone, Default)]
 pub struct DictionaryManager {
     // Chave: (Option<NetworkIsolationKey>, Origin) -> Lista de dicionários ativos
-    partitions: Arc<RwLock<FxHashMap<(Option<NetworkIsolationKey>, Origin), Vec<StoredDictionary>>>>,
+    partitions: Arc<RwLock<DictionaryPartitionMap>>,
 }
 
 impl DictionaryManager {
@@ -212,22 +216,35 @@ pub fn decompress_with_dictionary(
     match encoding_name.to_ascii_lowercase().as_str() {
         "dcz" => {
             let mut decoder = zstd::stream::read::Decoder::with_dictionary(compressed, dictionary)
-                .map_err(|e| NetError::HttpProtocolError(format!("Erro ao inicializar decodificador Zstandard com dicionário: {}", e)))?;
+                .map_err(|e| {
+                    NetError::HttpProtocolError(format!(
+                        "Erro ao inicializar decodificador Zstandard com dicionário: {}",
+                        e
+                    ))
+                })?;
             let mut decompressed = Vec::new();
             use std::io::Read;
-            decoder.read_to_end(&mut decompressed)
-                .map_err(|e| NetError::HttpProtocolError(format!("Erro descomprimindo Zstandard com dicionário: {}", e)))?;
+            decoder.read_to_end(&mut decompressed).map_err(|e| {
+                NetError::HttpProtocolError(format!(
+                    "Erro descomprimindo Zstandard com dicionário: {}",
+                    e
+                ))
+            })?;
             Ok(Bytes::from(decompressed))
         }
         "dcb" => {
             let mut output = Vec::new();
             use std::io::Read;
             let mut reader = brotli::Decompressor::new(compressed, 4096);
-            reader.read_to_end(&mut output)
-                .map_err(|e| NetError::HttpProtocolError(format!("Erro descomprimindo Brotli: {:?}", e)))?;
+            reader.read_to_end(&mut output).map_err(|e| {
+                NetError::HttpProtocolError(format!("Erro descomprimindo Brotli: {:?}", e))
+            })?;
             Ok(Bytes::from(output))
         }
-        other => Err(NetError::HttpProtocolError(format!("Algoritmo de compressão de dicionário não suportado: {}", other))),
+        other => Err(NetError::HttpProtocolError(format!(
+            "Algoritmo de compressão de dicionário não suportado: {}",
+            other
+        ))),
     }
 }
 
@@ -275,12 +292,18 @@ mod tests {
 
         // URL em caminho não correspondente
         let mismatch_url = Url::parse("https://example.com/api/user").unwrap();
-        assert!(mgr.find_dictionary_for_url(&mismatch_url, None, now).is_none());
+        assert!(mgr
+            .find_dictionary_for_url(&mismatch_url, None, now)
+            .is_none());
 
         // URL em outra origem (não pode vazar o dicionário!)
         let other_origin_url = Url::parse("https://another.com/assets/app.js").unwrap();
-        assert!(mgr.find_dictionary_for_url(&other_origin_url, None, now).is_none());
-        assert!(mgr.find_dictionary_by_hash(&hash, None, &origin2, now).is_none());
+        assert!(mgr
+            .find_dictionary_for_url(&other_origin_url, None, now)
+            .is_none());
+        assert!(mgr
+            .find_dictionary_by_hash(&hash, None, &origin2, now)
+            .is_none());
     }
 
     #[test]

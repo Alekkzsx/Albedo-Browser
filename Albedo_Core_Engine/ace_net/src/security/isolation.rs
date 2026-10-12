@@ -176,8 +176,9 @@ pub fn validate_corp(
         ));
     }
 
-    let target_origin = Origin::parse(resource_url.as_str())
-        .map_err(|e| NetError::SecurityViolation(format!("Origem inválida na URL de destino: {}", e)))?;
+    let target_origin = Origin::parse(resource_url.as_str()).map_err(|e| {
+        NetError::SecurityViolation(format!("Origem inválida na URL de destino: {}", e))
+    })?;
 
     match policy {
         CorpPolicy::SameOrigin => {
@@ -210,20 +211,32 @@ mod tests {
 
     #[test]
     fn test_corp_policy_parsing() {
-        assert_eq!(CorpPolicy::parse("same-origin"), Some(CorpPolicy::SameOrigin));
+        assert_eq!(
+            CorpPolicy::parse("same-origin"),
+            Some(CorpPolicy::SameOrigin)
+        );
         assert_eq!(CorpPolicy::parse(" SAME-SITE "), Some(CorpPolicy::SameSite));
-        assert_eq!(CorpPolicy::parse("cross-origin"), Some(CorpPolicy::CrossOrigin));
+        assert_eq!(
+            CorpPolicy::parse("cross-origin"),
+            Some(CorpPolicy::CrossOrigin)
+        );
         assert_eq!(CorpPolicy::parse("invalid-policy"), None);
     }
 
     #[test]
     fn test_coop_coep_parsing() {
         assert_eq!(CoopPolicy::parse("same-origin"), CoopPolicy::SameOrigin);
-        assert_eq!(CoopPolicy::parse("same-origin-allow-popups"), CoopPolicy::SameOriginAllowPopups);
+        assert_eq!(
+            CoopPolicy::parse("same-origin-allow-popups"),
+            CoopPolicy::SameOriginAllowPopups
+        );
         assert_eq!(CoopPolicy::parse("unknown"), CoopPolicy::UnsafeNone);
 
         assert_eq!(CoepPolicy::parse("require-corp"), CoepPolicy::RequireCorp);
-        assert_eq!(CoepPolicy::parse("credentialless"), CoepPolicy::Credentialless);
+        assert_eq!(
+            CoepPolicy::parse("credentialless"),
+            CoepPolicy::Credentialless
+        );
         assert_eq!(CoepPolicy::parse("none"), CoepPolicy::UnsafeNone);
     }
 
@@ -232,7 +245,8 @@ mod tests {
         let isolated = IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::RequireCorp);
         assert!(isolated.is_cross_origin_isolated());
 
-        let credentialless = IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::Credentialless);
+        let credentialless =
+            IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::Credentialless);
         assert!(credentialless.is_cross_origin_isolated());
 
         let non_isolated = IsolationContext::new(CoopPolicy::UnsafeNone, CoepPolicy::RequireCorp);
@@ -248,18 +262,35 @@ mod tests {
         let resource_url = Url::parse("https://app.albedo.dev/profile.json").unwrap();
 
         // 1. Same-Origin permitido para origin_a
-        assert!(validate_corp(Some(&origin_a), &resource_url, Some(CorpPolicy::SameOrigin)).is_ok());
+        assert!(
+            validate_corp(Some(&origin_a), &resource_url, Some(CorpPolicy::SameOrigin)).is_ok()
+        );
 
         // 2. Same-Origin bloqueado para subdomínio (origin_sub_a)
-        assert!(validate_corp(Some(&origin_sub_a), &resource_url, Some(CorpPolicy::SameOrigin)).is_err());
+        assert!(validate_corp(
+            Some(&origin_sub_a),
+            &resource_url,
+            Some(CorpPolicy::SameOrigin)
+        )
+        .is_err());
 
         // 3. Same-Site permitido para subdomínio (origin_sub_a)
-        assert!(validate_corp(Some(&origin_sub_a), &resource_url, Some(CorpPolicy::SameSite)).is_ok());
+        assert!(validate_corp(
+            Some(&origin_sub_a),
+            &resource_url,
+            Some(CorpPolicy::SameSite)
+        )
+        .is_ok());
 
         // 4. Same-Site bloqueado para domínio diferente (origin_b)
         assert!(validate_corp(Some(&origin_b), &resource_url, Some(CorpPolicy::SameSite)).is_err());
 
         // 5. Cross-Origin permitido para todos
-        assert!(validate_corp(Some(&origin_b), &resource_url, Some(CorpPolicy::CrossOrigin)).is_ok());
+        assert!(validate_corp(
+            Some(&origin_b),
+            &resource_url,
+            Some(CorpPolicy::CrossOrigin)
+        )
+        .is_ok());
     }
 }

@@ -13,13 +13,15 @@
 //! 10. Handshake e ciclo de vida de WebSocket (RFC 6455).
 
 use ace_net::cache::{CacheEntry, HttpCache};
-use ace_net::cookie::{is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, MAX_COOKIES_PER_DOMAIN};
+use ace_net::cookie::{
+    is_public_suffix, is_valid_cookie_domain, Cookie, CookieJar, MAX_COOKIES_PER_DOMAIN,
+};
 use ace_net::engine::fetcher::ResourceFetcher;
+use ace_net::engine::service_worker_hook::ServiceWorkerHook;
 use ace_net::http::request::{CredentialsMode, Request};
 use ace_net::http::response::{ResponseBody, ResponseTiming};
-use ace_net::engine::service_worker_hook::ServiceWorkerHook;
-use ace_net::transport::DohHappyEyeballsResolver;
 use ace_net::protocol::websocket::{WebSocketMessage, WebSocketSession, WebSocketUpgrade};
+use ace_net::transport::DohHappyEyeballsResolver;
 use bytes::Bytes;
 use http::header::{ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_TYPE, VARY};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
@@ -74,8 +76,15 @@ async fn test_streaming_response_body_with_backpressure() {
 #[test]
 fn test_cache_control_private_allowed_for_browser() {
     let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=1800"));
-    assert!(CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=1800"),
+    );
+    assert!(CacheEntry::is_cacheable(
+        &Method::GET,
+        StatusCode::OK,
+        &headers
+    ));
 }
 
 // 3. Cache RFC 9111: Validação de Vary
@@ -95,7 +104,8 @@ fn test_cache_vary_secondary_key_matching() {
         Bytes::from_static(b"console.log('test')"),
         now,
         now,
-    ).with_request_headers(original_req_headers);
+    )
+    .with_request_headers(original_req_headers);
 
     // Requisição com mesmo cabeçalho deve dar match
     let mut matching_req = HeaderMap::new();
@@ -110,14 +120,21 @@ fn test_cache_vary_secondary_key_matching() {
     // Vary: * nunca pode ser cacheado
     let mut asterisk_headers = HeaderMap::new();
     asterisk_headers.insert(VARY, HeaderValue::from_static("*"));
-    assert!(!CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &asterisk_headers));
+    assert!(!CacheEntry::is_cacheable(
+        &Method::GET,
+        StatusCode::OK,
+        &asterisk_headers
+    ));
 }
 
 // 4. RFC 5861: Stale-While-Revalidate
 #[test]
 fn test_stale_while_revalidate_spec() {
     let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("max-age=100, stale-while-revalidate=500"));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("max-age=100, stale-while-revalidate=500"),
+    );
 
     let now = SystemTime::now();
     let entry = CacheEntry::new(
@@ -130,7 +147,10 @@ fn test_stale_while_revalidate_spec() {
     );
 
     assert_eq!(entry.freshness_lifetime(), Duration::from_secs(100));
-    assert_eq!(entry.stale_while_revalidate_lifetime(), Duration::from_secs(500));
+    assert_eq!(
+        entry.stale_while_revalidate_lifetime(),
+        Duration::from_secs(500)
+    );
 
     // Em t=50s: fresco
     assert!(entry.is_fresh(now + Duration::from_secs(50)));
@@ -153,7 +173,10 @@ fn test_cache_l2_deterministic_hash() {
     let key = "https://example.com/asset.png";
     let hash1 = HttpCache::hash_key(key);
     let hash2 = HttpCache::hash_key(key);
-    assert_eq!(hash1, hash2, "O hash deve ser 100% determinístico e estável");
+    assert_eq!(
+        hash1, hash2,
+        "O hash deve ser 100% determinístico e estável"
+    );
     assert_ne!(hash1, 0);
 }
 
@@ -179,7 +202,10 @@ fn test_public_suffix_super_cookie_defense() {
     let valid_cookie = Cookie::parse("session=legit; Domain=example.co.uk", &url, None, now);
     assert!(valid_cookie.is_some());
     assert_eq!(valid_cookie.unwrap().domain, "example.co.uk");
-    assert!(is_valid_cookie_domain("example.co.uk", "bank.example.co.uk"));
+    assert!(is_valid_cookie_domain(
+        "example.co.uk",
+        "bank.example.co.uk"
+    ));
     assert!(!is_valid_cookie_domain("co.uk", "bank.example.co.uk"));
 }
 
@@ -197,7 +223,9 @@ fn test_cookie_jar_lru_quota_eviction() {
 
     assert_eq!(jar.len(), MAX_COOKIES_PER_DOMAIN);
 
-    let hdr = jar.build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now).unwrap();
+    let hdr = jar
+        .build_cookie_header(&url, None, CredentialsMode::SameOrigin, true, true, now)
+        .unwrap();
     let s = hdr.to_str().unwrap();
     // O cookie k_0 deve ter sido evictado (LRU)
     assert!(!s.contains("k_0="));
@@ -209,7 +237,9 @@ fn test_cookie_jar_lru_quota_eviction() {
 fn test_happy_eyeballs_interleaving_rfc8305() {
     let ips = vec![
         IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)),
-        IpAddr::V6(Ipv6Addr::new(0x2606, 0x2800, 0x220, 0x1, 0x248, 0x1893, 0x25c8, 0x1946)),
+        IpAddr::V6(Ipv6Addr::new(
+            0x2606, 0x2800, 0x220, 0x1, 0x248, 0x1893, 0x25c8, 0x1946,
+        )),
     ];
 
     let addrs = DohHappyEyeballsResolver::interleave_happy_eyeballs(ips);
@@ -227,7 +257,16 @@ async fn test_service_worker_fetch_hook_integration() {
         fn on_fetch(
             &self,
             req: &Request,
-        ) -> Pin<Box<dyn std::future::Future<Output = ace_net::error::NetResult<Option<ace_net::http::response::Response>>> + Send + '_>> {
+        ) -> Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = ace_net::error::NetResult<
+                            Option<ace_net::http::response::Response>,
+                        >,
+                    > + Send
+                    + '_,
+            >,
+        > {
             let url = req.url.clone();
             Box::pin(async move {
                 if url.as_str() == "https://sw.test/cached" {
@@ -275,10 +314,17 @@ async fn test_websocket_upgrade_and_session() {
 
     let (tx, _rx) = mpsc::channel(5);
     let (srv_tx, client_rx) = mpsc::channel(5);
-    let session = WebSocketSession::new(Url::parse("ws://chat.example.com").unwrap(), tx, client_rx);
+    let session =
+        WebSocketSession::new(Url::parse("ws://chat.example.com").unwrap(), tx, client_rx);
 
-    session.send(WebSocketMessage::Text("hello".into())).await.unwrap();
-    srv_tx.send(WebSocketMessage::Text("world".into())).await.unwrap();
+    session
+        .send(WebSocketMessage::Text("hello".into()))
+        .await
+        .unwrap();
+    srv_tx
+        .send(WebSocketMessage::Text("world".into()))
+        .await
+        .unwrap();
 
     let rec = session.recv().await.unwrap();
     assert_eq!(rec, WebSocketMessage::Text("world".into()));

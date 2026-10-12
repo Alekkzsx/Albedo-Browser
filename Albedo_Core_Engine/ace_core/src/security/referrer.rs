@@ -90,7 +90,9 @@ pub fn compute_referrer(
         other => crate::security::origin::Scheme::Custom(smol_str::SmolStr::new(other)),
     };
     let target_host = match parsed_target.host() {
-        Some(url::Host::Domain(d)) => crate::security::origin::Host::Domain(smol_str::SmolStr::new(d)),
+        Some(url::Host::Domain(d)) => {
+            crate::security::origin::Host::Domain(smol_str::SmolStr::new(d))
+        }
         Some(url::Host::Ipv4(ip)) => crate::security::origin::Host::Ip(std::net::IpAddr::V4(ip)),
         Some(url::Host::Ipv6(ip)) => crate::security::origin::Host::Ip(std::net::IpAddr::V6(ip)),
         None => crate::security::origin::Host::Opaque,
@@ -152,4 +154,3 @@ pub fn compute_referrer(
         ReferrerPolicy::UnsafeUrl => Some(get_sanitized_url()),
     }
 }
-

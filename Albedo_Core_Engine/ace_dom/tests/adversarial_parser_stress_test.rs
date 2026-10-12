@@ -17,7 +17,8 @@ use ace_dom::tokenizer::tokenize_to_compact_tokens;
 #[test]
 fn test_aaa_deeply_nested_misplaced_formatting() {
     // b, i, u interleaved with p
-    let html = "<b><i><u><p>Adoption Agency Deep Nesting</b> Middle</i> Still Under U</u> Outer</p>";
+    let html =
+        "<b><i><u><p>Adoption Agency Deep Nesting</b> Middle</i> Still Under U</u> Outer</p>";
     let doc = parse_html(html);
 
     assert!(doc.body.is_some(), "Document body should exist");
@@ -174,14 +175,19 @@ fn test_tokenizer_ambiguous_and_named_entities() {
             .filter_map(|(cid, _)| doc.get_node(cid))
             .filter_map(|n| n.text_content())
             .collect();
-        assert!(!text_nodes.is_empty(), "Must have decoded text for raw: {}", raw);
+        assert!(
+            !text_nodes.is_empty(),
+            "Must have decoded text for raw: {}",
+            raw
+        );
     }
 }
 
 #[test]
 fn test_tokenizer_script_data_and_escaping() {
     // Script tag with comments, nested fake script tags, CDATA
-    let html = r#"<script><!-- <script> alert("nested"); </script> --> var x = 1;</script><p>After</p>"#;
+    let html =
+        r#"<script><!-- <script> alert("nested"); </script> --> var x = 1;</script><p>After</p>"#;
     let doc = parse_html(html);
 
     let script = doc.query_selector("script");
@@ -207,7 +213,12 @@ fn test_tokenizer_multibyte_utf8_streams() {
     assert!(attr_val.contains("🚀"));
 
     let span = doc.query_selector("span").expect("span element");
-    let text = doc.children(span).next().and_then(|(cid, _)| doc.get_node(cid)).and_then(|n| n.text_content()).unwrap();
+    let text = doc
+        .children(span)
+        .next()
+        .and_then(|(cid, _)| doc.get_node(cid))
+        .and_then(|n| n.text_content())
+        .unwrap();
     assert!(text.contains("äöüß"));
     assert!(text.contains("漢字"));
     assert!(text.contains("𝄞"));
@@ -221,7 +232,10 @@ fn test_tokenizer_null_bytes_handling() {
 
     let div = doc.query_selector_all("div\u{FFFD}");
     let any_div = doc.query_selector_all("div");
-    assert!(!div.is_empty() || !any_div.is_empty(), "Must handle null byte in tag name without crashing");
+    assert!(
+        !div.is_empty() || !any_div.is_empty(),
+        "Must handle null byte in tag name without crashing"
+    );
 }
 
 // =========================================================================
@@ -248,7 +262,9 @@ fn test_dsd_open_and_closed_modes() {
     // Host Open
     let host_open_id = doc.get_element_by_id("host-open").expect("host-open");
     let host_open_el = doc.get_node(host_open_id).unwrap().as_element().unwrap();
-    let shadow_open_id = host_open_el.shadow_root().expect("open shadow root attached");
+    let shadow_open_id = host_open_el
+        .shadow_root()
+        .expect("open shadow root attached");
     let shadow_open_node = doc.get_node(shadow_open_id).unwrap();
     if let NodeKind::ShadowRoot(ref s) = shadow_open_node.kind {
         assert_eq!(s.mode, ShadowMode::Open);
@@ -259,7 +275,9 @@ fn test_dsd_open_and_closed_modes() {
     // Host Closed
     let host_closed_id = doc.get_element_by_id("host-closed").expect("host-closed");
     let host_closed_el = doc.get_node(host_closed_id).unwrap().as_element().unwrap();
-    let shadow_closed_id = host_closed_el.shadow_root().expect("closed shadow root attached");
+    let shadow_closed_id = host_closed_el
+        .shadow_root()
+        .expect("closed shadow root attached");
     let shadow_closed_node = doc.get_node(shadow_closed_id).unwrap();
     if let NodeKind::ShadowRoot(ref s) = shadow_closed_node.kind {
         assert_eq!(s.mode, ShadowMode::Closed);
@@ -287,7 +305,10 @@ fn test_dsd_nested_shadow_roots() {
     let doc = parse_html(html);
     let outer_host_id = doc.get_element_by_id("outer-host").expect("outer-host");
     let outer_el = doc.get_node(outer_host_id).unwrap().as_element().unwrap();
-    assert!(outer_el.shadow_root().is_some(), "Outer shadow root attached");
+    assert!(
+        outer_el.shadow_root().is_some(),
+        "Outer shadow root attached"
+    );
 }
 
 #[test]
@@ -313,7 +334,10 @@ fn test_dsd_inside_foreign_content() {
     assert!(host.is_some(), "foreign-host div exists");
     if let Some(h_id) = host {
         let el = doc.get_node(h_id).unwrap().as_element().unwrap();
-        assert!(el.shadow_root().is_some(), "DSD attached inside foreignObject HTML integration point");
+        assert!(
+            el.shadow_root().is_some(),
+            "DSD attached inside foreignObject HTML integration point"
+        );
     }
 }
 
@@ -331,7 +355,10 @@ fn test_dsd_invalid_mode_fallback() {
     let doc = parse_html(html);
     let host_id = doc.get_element_by_id("invalid-host").expect("invalid-host");
     let el = doc.get_node(host_id).unwrap().as_element().unwrap();
-    assert!(el.shadow_root().is_none(), "Invalid shadowrootmode must not attach shadow root");
+    assert!(
+        el.shadow_root().is_none(),
+        "Invalid shadowrootmode must not attach shadow root"
+    );
 }
 
 // =========================================================================
@@ -349,5 +376,8 @@ fn test_foster_parenting_misplaced_elements() {
 
     // Children of table's parent should contain the foster parented nodes before or around the table
     let parent_children: Vec<_> = doc.children(table_parent).collect();
-    assert!(parent_children.len() > 1, "Foster parented nodes moved to table parent");
+    assert!(
+        parent_children.len() > 1,
+        "Foster parented nodes moved to table parent"
+    );
 }

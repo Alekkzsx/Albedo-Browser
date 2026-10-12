@@ -41,7 +41,11 @@ fn test_background_parser_correctness_and_parity() {
     let async_main = async_doc.get_element_by_id("main").unwrap();
 
     let sync_el = sync_doc.get_node(sync_main).unwrap().as_element().unwrap();
-    let async_el = async_doc.get_node(async_main).unwrap().as_element().unwrap();
+    let async_el = async_doc
+        .get_node(async_main)
+        .unwrap()
+        .as_element()
+        .unwrap();
 
     assert_eq!(sync_el.tag_name, async_el.tag_name);
     assert_eq!(sync_el.classes, async_el.classes);

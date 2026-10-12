@@ -14,7 +14,10 @@ use url::Url;
 #[test]
 fn test_cache_entry_max_age_freshness() {
     let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("public, max-age=7200"));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=7200"),
+    );
     headers.insert(ETAG, HeaderValue::from_static("\"v1.0.0\""));
 
     let now = SystemTime::now();
@@ -39,31 +42,55 @@ fn test_cache_entry_no_store_is_not_cacheable() {
     let mut headers = HeaderMap::new();
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
-    assert!(!CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    assert!(!CacheEntry::is_cacheable(
+        &Method::GET,
+        StatusCode::OK,
+        &headers
+    ));
 }
 
 #[test]
 fn test_cache_entry_private_is_cacheable_in_browser() {
     let mut headers = HeaderMap::new();
-    headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=3600"),
+    );
 
     // Conforme RFC 9111 §5.2.2.4, navegadores são caches privados e DEVEM armazenar respostas private
-    assert!(CacheEntry::is_cacheable(&Method::GET, StatusCode::OK, &headers));
+    assert!(CacheEntry::is_cacheable(
+        &Method::GET,
+        StatusCode::OK,
+        &headers
+    ));
 }
 
 #[test]
 fn test_cache_conditional_revalidation_generation() {
     let mut headers = HeaderMap::new();
     headers.insert(ETAG, HeaderValue::from_static("\"etag-abc-123\""));
-    headers.insert(LAST_MODIFIED, HeaderValue::from_static("Wed, 01 Jan 2026 00:00:00 GMT"));
+    headers.insert(
+        LAST_MODIFIED,
+        HeaderValue::from_static("Wed, 01 Jan 2026 00:00:00 GMT"),
+    );
 
     let now = SystemTime::now();
     let url = Url::parse("https://example.com/api/data").unwrap();
-    let entry = CacheEntry::new(url, StatusCode::OK, headers, Bytes::from_static(b"{\"ok\":true}"), now, now);
+    let entry = CacheEntry::new(
+        url,
+        StatusCode::OK,
+        headers,
+        Bytes::from_static(b"{\"ok\":true}"),
+        now,
+        now,
+    );
 
     let cond_headers = entry.conditional_headers();
     assert_eq!(cond_headers.get(IF_NONE_MATCH).unwrap(), "\"etag-abc-123\"");
-    assert_eq!(cond_headers.get(IF_MODIFIED_SINCE).unwrap(), "Wed, 01 Jan 2026 00:00:00 GMT");
+    assert_eq!(
+        cond_headers.get(IF_MODIFIED_SINCE).unwrap(),
+        "Wed, 01 Jan 2026 00:00:00 GMT"
+    );
 }
 
 #[test]
@@ -74,7 +101,14 @@ fn test_cache_update_from_304() {
 
     let now = SystemTime::now();
     let url = Url::parse("https://example.com/asset.js").unwrap();
-    let mut entry = CacheEntry::new(url, StatusCode::OK, headers, Bytes::from_static(b"console.log('hi');"), now, now);
+    let mut entry = CacheEntry::new(
+        url,
+        StatusCode::OK,
+        headers,
+        Bytes::from_static(b"console.log('hi');"),
+        now,
+        now,
+    );
 
     let mut response_304_headers = HeaderMap::new();
     response_304_headers.insert(CACHE_CONTROL, HeaderValue::from_static("max-age=3600"));
@@ -101,7 +135,14 @@ fn test_cache_partitioning_via_nik() {
     let nik1 = NetworkIsolationKey::new(top1, frame.clone(), true);
     let nik2 = NetworkIsolationKey::new(top2, frame, true);
 
-    let entry1 = CacheEntry::new(url.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from_static(b"code_for_a"), now, now);
+    let entry1 = CacheEntry::new(
+        url.clone(),
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from_static(b"code_for_a"),
+        now,
+        now,
+    );
 
     cache.put(Some(&nik1), url.clone(), entry1);
 
@@ -125,20 +166,53 @@ fn test_cache_lru_capacity_and_stats() {
 
     // 100 bytes payload: 100 + 256 = 356 bytes cada. 2 x 356 = 712 bytes <= 1000 bytes
     let payload = vec![0xAA; 100];
-    let e1 = CacheEntry::new(url1.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from(payload.clone()), now, now);
-    let e2 = CacheEntry::new(url2.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from(payload), now, now);
+    let e1 = CacheEntry::new(
+        url1.clone(),
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(payload.clone()),
+        now,
+        now,
+    );
+    let e2 = CacheEntry::new(
+        url2.clone(),
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(payload),
+        now,
+        now,
+    );
 
     cache.put(None, url1.clone(), e1);
     cache.put(None, url2.clone(), e2);
 
-    assert_eq!(cache.stats.evictions.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(
+        cache
+            .stats
+            .evictions
+            .load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
 
     // Inserir um terceiro item força o despejo de url1 (712 + 356 = 1068 > 1000)
     let url3 = Url::parse("https://example.com/3").unwrap();
-    let e3 = CacheEntry::new(url3.clone(), StatusCode::OK, HeaderMap::new(), Bytes::from(vec![0xBB; 100]), now, now);
+    let e3 = CacheEntry::new(
+        url3.clone(),
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(vec![0xBB; 100]),
+        now,
+        now,
+    );
     cache.put(None, url3.clone(), e3);
 
-    assert_eq!(cache.stats.evictions.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(
+        cache
+            .stats
+            .evictions
+            .load(std::sync::atomic::Ordering::Relaxed),
+        1
+    );
     assert!(cache.get_memory(None, &url1).is_none());
     assert!(cache.get_memory(None, &url3).is_some());
 }

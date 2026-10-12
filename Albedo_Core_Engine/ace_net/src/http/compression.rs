@@ -119,11 +119,12 @@ pub fn decompress_payload(encoding: ContentEncoding, raw: &Bytes) -> NetResult<B
 }
 
 /// Applica descompressão em pipeline contínuo (zero-copy) sobre uma `BoxByteStream`.
-pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response::BoxByteStream) -> crate::http::response::BoxByteStream {
-    
-    
-    use tokio_util::io::{ReaderStream, StreamReader};
+pub fn decompress_stream(
+    encoding: ContentEncoding,
+    input: crate::http::response::BoxByteStream,
+) -> crate::http::response::BoxByteStream {
     use futures_util::StreamExt;
+    use tokio_util::io::{ReaderStream, StreamReader};
 
     if encoding == ContentEncoding::Identity {
         return input;
@@ -131,16 +132,24 @@ pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response
 
     // Adapta BoxByteStream para um Stream de Result<Bytes, std::io::Error>
     let io_stream = input.map(|res| res.map_err(|e| std::io::Error::other(e.to_string())));
-    
+
     // Converte o Stream para AsyncRead
     let reader = StreamReader::new(io_stream);
 
     // Encapsula no decoder apropriado (que também implementa AsyncRead)
     let decoded_reader: Box<dyn tokio::io::AsyncRead + Unpin + Send> = match encoding {
-        ContentEncoding::Gzip => Box::new(async_compression::tokio::bufread::GzipDecoder::new(reader)),
-        ContentEncoding::Deflate => Box::new(async_compression::tokio::bufread::DeflateDecoder::new(reader)),
-        ContentEncoding::Brotli => Box::new(async_compression::tokio::bufread::BrotliDecoder::new(reader)),
-        ContentEncoding::Zstandard => Box::new(async_compression::tokio::bufread::ZstdDecoder::new(reader)),
+        ContentEncoding::Gzip => {
+            Box::new(async_compression::tokio::bufread::GzipDecoder::new(reader))
+        }
+        ContentEncoding::Deflate => Box::new(
+            async_compression::tokio::bufread::DeflateDecoder::new(reader),
+        ),
+        ContentEncoding::Brotli => Box::new(async_compression::tokio::bufread::BrotliDecoder::new(
+            reader,
+        )),
+        ContentEncoding::Zstandard => {
+            Box::new(async_compression::tokio::bufread::ZstdDecoder::new(reader))
+        }
         ContentEncoding::Identity => unreachable!(),
     };
 
@@ -148,7 +157,8 @@ pub fn decompress_stream(encoding: ContentEncoding, input: crate::http::response
     let out_stream = ReaderStream::new(decoded_reader);
 
     // Mapeia std::io::Error de volta para NetError
-    let net_stream = out_stream.map(|res| res.map_err(|e| NetError::HttpProtocolError(e.to_string())));
+    let net_stream =
+        out_stream.map(|res| res.map_err(|e| NetError::HttpProtocolError(e.to_string())));
 
     Box::pin(net_stream)
 }
@@ -177,7 +187,8 @@ mod tests {
 
     #[test]
     fn test_gzip_decompression() {
-        let original = b"<!DOCTYPE html><html><body><h1>Albedo Decompression Test</h1></body></html>";
+        let original =
+            b"<!DOCTYPE html><html><body><h1>Albedo Decompression Test</h1></body></html>";
         let compressed = compress_gzip(original);
         let raw = Bytes::from(compressed);
 
@@ -199,8 +210,14 @@ mod tests {
     fn test_content_encoding_header_parsing() {
         assert_eq!(ContentEncoding::parse("gzip"), Some(ContentEncoding::Gzip));
         assert_eq!(ContentEncoding::parse("br"), Some(ContentEncoding::Brotli));
-        assert_eq!(ContentEncoding::parse("deflate"), Some(ContentEncoding::Deflate));
-        assert_eq!(ContentEncoding::parse("gzip, br"), Some(ContentEncoding::Brotli));
+        assert_eq!(
+            ContentEncoding::parse("deflate"),
+            Some(ContentEncoding::Deflate)
+        );
+        assert_eq!(
+            ContentEncoding::parse("gzip, br"),
+            Some(ContentEncoding::Brotli)
+        );
         assert_eq!(ContentEncoding::parse("unknown-codec"), None);
     }
 }

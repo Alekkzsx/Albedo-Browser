@@ -2,5 +2,17 @@
 name = "ace_browser"
 version = "0.1.0"
 edition = "2021"
+authors = ["Albedo Browser Engineering Team"]
 
 [dependencies]
+ace_core = { path = "../ace_core" }
+ace_ipc = { path = "../ace_ipc" }
+ace_net = { path = "../ace_net" }
+ace_dom = { path = "../ace_dom" }
+ace_style = { path = "../ace_style" }
+
+tokio = { version = "1.37", features = ["full"] }
+tracing = "0.1"
+thiserror = "2.0"
+url = "2.5"
+base64 = "0.22"

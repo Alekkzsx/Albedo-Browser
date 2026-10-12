@@ -139,7 +139,10 @@ fn test_rapid_mutations_interleaved_on_large_dom() {
     let mut visited = std::collections::HashSet::new();
     let mut curr = doc.first_child(container);
     while let Some(c_id) = curr {
-        assert!(visited.insert(c_id), "Ciclo detectado nos ponteiros de irmãos!");
+        assert!(
+            visited.insert(c_id),
+            "Ciclo detectado nos ponteiros de irmãos!"
+        );
         let node = doc.get_node(c_id).unwrap();
         curr = node.next_sibling;
     }
@@ -173,7 +176,10 @@ fn test_deep_descendant_chain_500_levels() {
 
     // 1. Seletor descendente simples
     let sel1 = ComplexSelector::parse("div.level-0 div.level-250 span.level-499").unwrap();
-    assert!(sel1.matches(&doc, leaf_id), "RTL matcher deve casar em árvore com 500 níveis");
+    assert!(
+        sel1.matches(&doc, leaf_id),
+        "RTL matcher deve casar em árvore com 500 níveis"
+    );
 
     // 2. Seletor com combinador de filho direto no final
     let sel2 = ComplexSelector::parse("div.level-498 > span.level-499").unwrap();
@@ -181,7 +187,10 @@ fn test_deep_descendant_chain_500_levels() {
 
     // 3. Seletor descendente que NÃO existe (deve falhar sem estouro de pilha)
     let sel_neg = ComplexSelector::parse("div.level-0 div.nonexistent span.level-499").unwrap();
-    assert!(!sel_neg.matches(&doc, leaf_id), "Seletor inexistente deve retornar false");
+    assert!(
+        !sel_neg.matches(&doc, leaf_id),
+        "Seletor inexistente deve retornar false"
+    );
 }
 
 #[test]
@@ -199,7 +208,10 @@ fn test_ancestor_bloom_filter_saturation_and_collision_soundness() {
     }
 
     let compound = CompoundSelector::parse("div#container.alpha").unwrap();
-    assert!(!filter.fast_reject(&compound), "Elemento presente não deve ser rejeitado");
+    assert!(
+        !filter.fast_reject(&compound),
+        "Elemento presente não deve ser rejeitado"
+    );
 
     // Pop 255 vezes (ou 300 vezes)
     for _ in 0..255 {
@@ -211,12 +223,21 @@ fn test_ancestor_bloom_filter_saturation_and_collision_soundness() {
     // (Nota: se os buckets chegaram a 0 após 255 pops de 300 pushes, verificamos a matemática do filtro).
     let div_selector = CompoundSelector::parse("div").unwrap();
     let is_rejected_after_255_pops = filter.fast_reject(&div_selector);
-    println!("Saturating bloom filter: is_rejected after 255 pops of 300 pushes = {}", is_rejected_after_255_pops);
-    assert!(!is_rejected_after_255_pops, "Filtro saturado não deve dar falso negativo após 255 pops quando ainda restam 45 pushes");
+    println!(
+        "Saturating bloom filter: is_rejected after 255 pops of 300 pushes = {}",
+        is_rejected_after_255_pops
+    );
+    assert!(
+        !is_rejected_after_255_pops,
+        "Filtro saturado não deve dar falso negativo após 255 pops quando ainda restam 45 pushes"
+    );
 
     // Limpa filtro
     filter.clear();
-    assert!(filter.fast_reject(&compound), "Filtro limpo deve rejeitar qualquer seletor");
+    assert!(
+        filter.fast_reject(&compound),
+        "Filtro limpo deve rejeitar qualquer seletor"
+    );
 }
 
 // =========================================================================
@@ -377,10 +398,26 @@ fn test_html_sanitizer_xss_bypass_attempts() {
         let doc = HTMLSanitizer::parse_html_safe(html, Some(config.clone()));
 
         // Nenhum elemento script, iframe, object ou embed deve existir
-        assert!(doc.query_selector("script").is_none(), "{}: <script> não foi removido!", desc);
-        assert!(doc.query_selector("iframe").is_none(), "{}: <iframe> não foi removido!", desc);
-        assert!(doc.query_selector("object").is_none(), "{}: <object> não foi removido!", desc);
-        assert!(doc.query_selector("embed").is_none(), "{}: <embed> não foi removido!", desc);
+        assert!(
+            doc.query_selector("script").is_none(),
+            "{}: <script> não foi removido!",
+            desc
+        );
+        assert!(
+            doc.query_selector("iframe").is_none(),
+            "{}: <iframe> não foi removido!",
+            desc
+        );
+        assert!(
+            doc.query_selector("object").is_none(),
+            "{}: <object> não foi removido!",
+            desc
+        );
+        assert!(
+            doc.query_selector("embed").is_none(),
+            "{}: <embed> não foi removido!",
+            desc
+        );
     }
 }
 
@@ -406,7 +443,10 @@ fn test_dom_ancestor_cycle_attempt() {
     let res = doc.append_child(node_c, node_a);
     println!("Resultado de append_child(grandchild, ancestor): {:?}", res);
 
-    assert!(res.is_err(), "append_child de ancestral sob descendente deve falhar com HierarchyRequestError");
+    assert!(
+        res.is_err(),
+        "append_child de ancestral sob descendente deve falhar com HierarchyRequestError"
+    );
     match res {
         Err(ace_dom::error::DomError::HierarchyRequestError(_)) => {}
         other => panic!("Esperado HierarchyRequestError, obtido: {:?}", other),
@@ -414,7 +454,10 @@ fn test_dom_ancestor_cycle_attempt() {
 
     // Tenta também com insert_before
     let res_insert = doc.insert_before(node_c, node_a, None);
-    assert!(res_insert.is_err(), "insert_before de ancestral sob descendente deve falhar com HierarchyRequestError");
+    assert!(
+        res_insert.is_err(),
+        "insert_before de ancestral sob descendente deve falhar com HierarchyRequestError"
+    );
 }
 
 #[test]
@@ -429,8 +472,14 @@ fn test_sanitizer_case_sensitivity_on_blocked_attributes_and_tags() {
 
     HTMLSanitizer::sanitize_subtree(&mut doc, root, &config);
     let script_survived = doc.contains(root, script_upper);
-    println!("Tag <SCRIPT> maiúscula sobreviveu ao sanitizador: {}", script_survived);
-    assert!(!script_survived, "Tag <SCRIPT> em maiúsculas deve ser removida pelo sanitizador");
+    println!(
+        "Tag <SCRIPT> maiúscula sobreviveu ao sanitizador: {}",
+        script_survived
+    );
+    assert!(
+        !script_survived,
+        "Tag <SCRIPT> em maiúsculas deve ser removida pelo sanitizador"
+    );
 
     // 2. Atributo bloqueado em maiúsculas (ex: FORMACTION)
     let mut doc2 = Document::new(None);
@@ -442,12 +491,19 @@ fn test_sanitizer_case_sensitivity_on_blocked_attributes_and_tags() {
     doc2.append_child(root2, btn).unwrap();
 
     HTMLSanitizer::sanitize_subtree(&mut doc2, root2, &config);
-    let formaction_survived = doc2.get_node(btn)
+    let formaction_survived = doc2
+        .get_node(btn)
         .and_then(|n| n.as_element())
         .map(|el| el.has_attribute("formaction"))
         .unwrap_or(false);
-    println!("Atributo FORMACTION sobreviveu ao sanitizador: {}", formaction_survived);
-    assert!(!formaction_survived, "Atributo FORMACTION em maiúsculas deve ser removido pelo sanitizador");
+    println!(
+        "Atributo FORMACTION sobreviveu ao sanitizador: {}",
+        formaction_survived
+    );
+    assert!(
+        !formaction_survived,
+        "Atributo FORMACTION em maiúsculas deve ser removido pelo sanitizador"
+    );
 }
 
 #[test]
@@ -479,10 +535,15 @@ fn test_live_range_descendant_node_removal_adjustment() {
         r_after.start.node, container
     );
     let updated_to_parent = r_after.start.node == container;
-    println!("LiveRange atualizou nó descendente para o pai: {}", updated_to_parent);
-    assert!(updated_to_parent, "LiveRange deve atualizar nó descendente para o pai container");
+    println!(
+        "LiveRange atualizou nó descendente para o pai: {}",
+        updated_to_parent
+    );
+    assert!(
+        updated_to_parent,
+        "LiveRange deve atualizar nó descendente para o pai container"
+    );
     assert_eq!(r_after.start.offset, 0);
     assert_eq!(r_after.end.node, container);
     assert_eq!(r_after.end.offset, 0);
 }
-

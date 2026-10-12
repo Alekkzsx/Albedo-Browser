@@ -46,7 +46,10 @@ fn test_redirect_307_308_preserves_post_body() {
         .build();
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(LOCATION, HeaderValue::from_static("https://example.com/api/v2/update"));
+    resp_headers.insert(
+        LOCATION,
+        HeaderValue::from_static("https://example.com/api/v2/update"),
+    );
 
     let mut visited = HashSet::new();
     let action = handle_redirect(
@@ -62,7 +65,10 @@ fn test_redirect_307_308_preserves_post_body() {
         RedirectAction::Follow(follow) => {
             assert_eq!(follow.new_url.as_str(), "https://example.com/api/v2/update");
             assert_eq!(follow.new_method, Method::POST);
-            assert_eq!(follow.new_body.unwrap().as_ref(), b"{\"status\":\"active\"}");
+            assert_eq!(
+                follow.new_body.unwrap().as_ref(),
+                b"{\"status\":\"active\"}"
+            );
         }
         _ => panic!("Esperado Follow redirect"),
     }
@@ -71,23 +77,25 @@ fn test_redirect_307_308_preserves_post_body() {
 #[test]
 fn test_cross_origin_redirect_stripping() {
     let mut req_builder = Request::get("https://private.corp.com/internal").unwrap();
-    req_builder = req_builder.header(AUTHORIZATION, HeaderValue::from_static("Bearer token_secret"));
+    req_builder = req_builder.header(
+        AUTHORIZATION,
+        HeaderValue::from_static("Bearer token_secret"),
+    );
     req_builder = req_builder.header(COOKIE, HeaderValue::from_static("session_id=12345"));
-    req_builder = req_builder.header(HeaderName::from_static("x-custom-header"), HeaderValue::from_static("allowed"));
+    req_builder = req_builder.header(
+        HeaderName::from_static("x-custom-header"),
+        HeaderValue::from_static("allowed"),
+    );
     let req = req_builder.build();
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(LOCATION, HeaderValue::from_static("https://public-cdn.com/file"));
+    resp_headers.insert(
+        LOCATION,
+        HeaderValue::from_static("https://public-cdn.com/file"),
+    );
 
     let mut visited = HashSet::new();
-    let action = handle_redirect(
-        &req,
-        StatusCode::FOUND,
-        &resp_headers,
-        &mut visited,
-        20,
-    )
-    .unwrap();
+    let action = handle_redirect(&req, StatusCode::FOUND, &resp_headers, &mut visited, 20).unwrap();
 
     match action {
         RedirectAction::Follow(follow) => {
@@ -111,13 +119,7 @@ fn test_redirect_loop_exhaustion() {
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(LOCATION, HeaderValue::from_static("/hop21"));
 
-    let result = handle_redirect(
-        &req,
-        StatusCode::FOUND,
-        &resp_headers,
-        &mut visited,
-        20,
-    );
+    let result = handle_redirect(&req, StatusCode::FOUND, &resp_headers, &mut visited, 20);
 
     assert!(matches!(result, Err(NetError::TooManyRedirects(20))));
 }

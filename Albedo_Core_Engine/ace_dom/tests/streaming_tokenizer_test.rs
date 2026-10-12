@@ -23,17 +23,27 @@ fn test_background_compact_token_streaming() {
     assert!(!tokens.is_empty());
 
     // Verifica presença de DOCTYPE
-    let has_doctype = tokens.iter().any(|t| matches!(t, CompactHTMLToken::Doctype { .. }));
+    let has_doctype = tokens
+        .iter()
+        .any(|t| matches!(t, CompactHTMLToken::Doctype { .. }));
     assert!(has_doctype);
 
     // Verifica presença de comentários
-    let has_comment = tokens.iter().any(|t| matches!(t, CompactHTMLToken::Comment(c) if c.contains("Comentário")));
+    let has_comment = tokens
+        .iter()
+        .any(|t| matches!(t, CompactHTMLToken::Comment(c) if c.contains("Comentário")));
     assert!(has_comment);
 
     // Verifica presença da tag <div class="content">
     let has_div = tokens.iter().any(|t| {
-        if let CompactHTMLToken::StartTag { name, attributes, .. } = t {
-            name == "div" && attributes.iter().any(|a| a.name == "class" && a.value == "content")
+        if let CompactHTMLToken::StartTag {
+            name, attributes, ..
+        } = t
+        {
+            name == "div"
+                && attributes
+                    .iter()
+                    .any(|a| a.name == "class" && a.value == "content")
         } else {
             false
         }
@@ -42,8 +52,17 @@ fn test_background_compact_token_streaming() {
 
     // Verifica tag auto-fechável <img>
     let has_img = tokens.iter().any(|t| {
-        if let CompactHTMLToken::StartTag { name, self_closing, attributes } = t {
-            name == "img" && *self_closing && attributes.iter().any(|a| a.name == "src" && a.value == "banner.png")
+        if let CompactHTMLToken::StartTag {
+            name,
+            self_closing,
+            attributes,
+        } = t
+        {
+            name == "img"
+                && *self_closing
+                && attributes
+                    .iter()
+                    .any(|a| a.name == "src" && a.value == "banner.png")
         } else {
             false
         }

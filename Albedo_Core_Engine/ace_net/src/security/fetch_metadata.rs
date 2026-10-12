@@ -179,10 +179,22 @@ mod tests {
         let target_same_site = Url::parse("https://cdn.example.com/style.css").unwrap();
         let target_cross_site = Url::parse("https://malicious.org/tracker.js").unwrap();
 
-        assert_eq!(SecFetchSite::compute(Some(&origin_a), &target_same_origin), SecFetchSite::SameOrigin);
-        assert_eq!(SecFetchSite::compute(Some(&origin_a), &target_same_site), SecFetchSite::SameSite);
-        assert_eq!(SecFetchSite::compute(Some(&origin_a), &target_cross_site), SecFetchSite::CrossSite);
-        assert_eq!(SecFetchSite::compute(None, &target_same_origin), SecFetchSite::None);
+        assert_eq!(
+            SecFetchSite::compute(Some(&origin_a), &target_same_origin),
+            SecFetchSite::SameOrigin
+        );
+        assert_eq!(
+            SecFetchSite::compute(Some(&origin_a), &target_same_site),
+            SecFetchSite::SameSite
+        );
+        assert_eq!(
+            SecFetchSite::compute(Some(&origin_a), &target_cross_site),
+            SecFetchSite::CrossSite
+        );
+        assert_eq!(
+            SecFetchSite::compute(None, &target_same_origin),
+            SecFetchSite::None
+        );
     }
 
     #[test]

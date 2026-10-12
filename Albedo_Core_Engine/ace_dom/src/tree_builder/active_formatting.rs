@@ -45,7 +45,8 @@ impl ActiveFormattingElements {
                                 if let Some(existing_el) = existing_node.as_element() {
                                     if existing_el.tag_name == target_el.tag_name
                                         && existing_el.namespace == target_el.namespace
-                                        && existing_el.attributes.as_slice() == target_el.attributes.as_slice()
+                                        && existing_el.attributes.as_slice()
+                                            == target_el.attributes.as_slice()
                                     {
                                         match_count += 1;
                                         earliest_idx = Some(idx);
@@ -107,7 +108,11 @@ impl ActiveFormattingElements {
 
     /// Remove um elemento específico da lista.
     pub fn remove(&mut self, id: NodeId) -> bool {
-        if let Some(pos) = self.entries.iter().position(|e| *e == FormattingEntry::Element(id)) {
+        if let Some(pos) = self
+            .entries
+            .iter()
+            .position(|e| *e == FormattingEntry::Element(id))
+        {
             self.entries.remove(pos);
             true
         } else {
@@ -136,7 +141,9 @@ impl ActiveFormattingElements {
 
     /// Retorna o índice de um elemento na lista de formatação.
     pub fn position_of(&self, id: NodeId) -> Option<usize> {
-        self.entries.iter().position(|e| *e == FormattingEntry::Element(id))
+        self.entries
+            .iter()
+            .position(|e| *e == FormattingEntry::Element(id))
     }
 
     /// Substitui um elemento por outro mantendo a mesma posição na lista.

@@ -1,7 +1,7 @@
 //! # Testes de HSTS (RFC 6797) e Preload List com Auto-Upgrade
 
-use ace_net::security::hsts::HstsStore;
 use ace_net::http::request::Request;
+use ace_net::security::hsts::HstsStore;
 use ace_net::ResourceFetcher;
 use http::HeaderValue;
 use std::time::SystemTime;
@@ -52,6 +52,9 @@ async fn test_fetcher_hsts_auto_upgrade_intercept() {
 
     // O fetcher deve detectar e reescrever a URL para https antes de qualquer tentativa de rede
     // (A requisição falhará no TLS/DNS mock, mas validamos a checagem no store)
-    let upgraded = fetcher.hsts_store().upgrade_url(&req.url, SystemTime::now()).unwrap();
+    let upgraded = fetcher
+        .hsts_store()
+        .upgrade_url(&req.url, SystemTime::now())
+        .unwrap();
     assert_eq!(upgraded.scheme(), "https");
 }

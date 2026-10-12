@@ -142,12 +142,18 @@ pub fn append_child(
     let c_aid = to_arena_id(child_id)?;
 
     // Desconecta o nó de qualquer pai anterior
-    let prev_parent = arena.get(c_aid).ok_or(DomError::InvalidNodeId(child_id))?.parent;
+    let prev_parent = arena
+        .get(c_aid)
+        .ok_or(DomError::InvalidNodeId(child_id))?
+        .parent;
     if let Some(pp_id) = prev_parent {
         remove_child(arena, pp_id, child_id)?;
     }
 
-    let parent_last_child = arena.get(p_aid).ok_or(DomError::InvalidNodeId(parent_id))?.last_child;
+    let parent_last_child = arena
+        .get(p_aid)
+        .ok_or(DomError::InvalidNodeId(parent_id))?
+        .last_child;
 
     if let Some(last_id) = parent_last_child {
         let last_aid = to_arena_id(last_id)?;
@@ -220,7 +226,10 @@ pub fn insert_before(
     let ref_aid = to_arena_id(ref_id)?;
 
     // Desconecta o novo nó se já tiver pai
-    let prev_parent = arena.get(new_aid).ok_or(DomError::InvalidNodeId(new_child_id))?.parent;
+    let prev_parent = arena
+        .get(new_aid)
+        .ok_or(DomError::InvalidNodeId(new_child_id))?
+        .parent;
     if let Some(pp_id) = prev_parent {
         remove_child(arena, pp_id, new_child_id)?;
     }
@@ -394,7 +403,10 @@ pub fn prepend_child(
     child_id: NodeId,
 ) -> Result<(), DomError> {
     let p_aid = to_arena_id(parent_id)?;
-    let first_child = arena.get(p_aid).ok_or(DomError::InvalidNodeId(parent_id))?.first_child;
+    let first_child = arena
+        .get(p_aid)
+        .ok_or(DomError::InvalidNodeId(parent_id))?
+        .first_child;
     insert_before(arena, parent_id, child_id, first_child)
 }
 
@@ -406,7 +418,10 @@ pub fn prepend_child_with_reactions(
     reactions: &mut CustomElementReactionsStack,
 ) -> Result<(), DomError> {
     let p_aid = to_arena_id(parent_id)?;
-    let first_child = arena.get(p_aid).ok_or(DomError::InvalidNodeId(parent_id))?.first_child;
+    let first_child = arena
+        .get(p_aid)
+        .ok_or(DomError::InvalidNodeId(parent_id))?
+        .first_child;
     insert_before_with_reactions(arena, parent_id, child_id, first_child, reactions)
 }
 
@@ -418,7 +433,10 @@ pub fn insert_after(
     ref_child_id: NodeId,
 ) -> Result<(), DomError> {
     let ref_aid = to_arena_id(ref_child_id)?;
-    let next_sibling = arena.get(ref_aid).ok_or(DomError::InvalidNodeId(ref_child_id))?.next_sibling;
+    let next_sibling = arena
+        .get(ref_aid)
+        .ok_or(DomError::InvalidNodeId(ref_child_id))?
+        .next_sibling;
     insert_before(arena, parent_id, new_child_id, next_sibling)
 }
 
@@ -431,6 +449,9 @@ pub fn insert_after_with_reactions(
     reactions: &mut CustomElementReactionsStack,
 ) -> Result<(), DomError> {
     let ref_aid = to_arena_id(ref_child_id)?;
-    let next_sibling = arena.get(ref_aid).ok_or(DomError::InvalidNodeId(ref_child_id))?.next_sibling;
+    let next_sibling = arena
+        .get(ref_aid)
+        .ok_or(DomError::InvalidNodeId(ref_child_id))?
+        .next_sibling;
     insert_before_with_reactions(arena, parent_id, new_child_id, next_sibling, reactions)
 }

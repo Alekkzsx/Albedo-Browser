@@ -48,3 +48,32 @@ fn test_atom_equality_and_static_atoms() {
     assert_eq!(empty_atom.len(), 0);
     assert_eq!(empty_atom.as_bytes(), b"");
 }
+
+#[test]
+fn test_atom_pool_concurrency() {
+    use ace_core::intern::AtomPool;
+    use std::sync::Arc;
+    use std::thread;
+
+    let pool = Arc::new(AtomPool::new());
+    let mut handles = Vec::new();
+
+    for thread_idx in 0..8 {
+        let pool_clone = pool.clone();
+        let handle = thread::spawn(move || {
+            for i in 0..1000 {
+                let dynamic_key = format!("custom-css-var-thread-{}-{}", thread_idx % 2, i % 50);
+                let atom = pool_clone.intern(&dynamic_key);
+                assert_eq!(atom.as_str(), dynamic_key);
+            }
+        });
+        handles.push(handle);
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // Apenas 100 chaves dinâmicas únicas devem ter sido inseridas no pool
+    assert_eq!(pool.len(), 100);
+}

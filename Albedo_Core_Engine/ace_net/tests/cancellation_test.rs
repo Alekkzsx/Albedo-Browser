@@ -15,7 +15,9 @@ use tokio::net::TcpListener;
 #[tokio::test]
 async fn test_immediate_request_cancellation() {
     let fetcher = ResourceFetcher::new().unwrap();
-    let req = Request::get("https://example.com/slow-endpoint").unwrap().build();
+    let req = Request::get("https://example.com/slow-endpoint")
+        .unwrap()
+        .build();
 
     // Sinaliza cancelamento antes de executar
     req.cancellation_token.cancel();

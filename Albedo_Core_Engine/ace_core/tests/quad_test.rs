@@ -65,4 +65,3 @@ fn test_quad_winding_number_and_concave() {
     // Ponto no recuo (fora da flecha)
     assert!(!arrow_quad.contains_point(&point2(15.0, 50.0)));
 }
-

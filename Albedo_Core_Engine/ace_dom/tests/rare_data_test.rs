@@ -1,5 +1,5 @@
-use ace_dom::{parse_html, ElementData, Namespace};
 use ace_core::intern::Atom;
+use ace_dom::{parse_html, ElementData, Namespace};
 
 #[test]
 fn test_element_data_memory_density_and_rare_data() {
@@ -24,7 +24,12 @@ fn test_element_data_memory_density_and_rare_data() {
     rare.inline_style = Some("color: red; display: flex;".into());
 
     assert_eq!(
-        el_with_rare.rare_data().unwrap().custom_element_definition.as_ref().map(|a| a.as_str()),
+        el_with_rare
+            .rare_data()
+            .unwrap()
+            .custom_element_definition
+            .as_ref()
+            .map(|a| a.as_str()),
         Some("my-custom-element")
     );
     assert_eq!(

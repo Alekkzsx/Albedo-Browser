@@ -5,11 +5,13 @@
 //! chaves de isolamento e prioridades de escalonamento.
 
 use crate::cache::partition::NetworkIsolationKey;
-use crate::telemetry::client_hints::inject_default_client_hints;
-use crate::error::{NetError, NetResult};
-use crate::security::fetch_metadata::{inject_fetch_metadata, SecFetchDest, SecFetchMode, SecFetchSite};
 use crate::engine::priority::PriorityLevel;
+use crate::error::{NetError, NetResult};
 use crate::http::range::ByteRangeSpec;
+use crate::security::fetch_metadata::{
+    inject_fetch_metadata, SecFetchDest, SecFetchMode, SecFetchSite,
+};
+use crate::telemetry::client_hints::inject_default_client_hints;
 use ace_core::id::RequestId;
 use ace_core::security::origin::Origin;
 use ace_core::security::referrer::ReferrerPolicy;
@@ -322,14 +324,19 @@ impl RequestBuilder {
     }
 
     /// Anexa um dispatcher de Early Hints.
-    pub fn early_hints_dispatcher(mut self, dispatcher: crate::http::hints::EarlyHintsDispatcher) -> Self {
+    pub fn early_hints_dispatcher(
+        mut self,
+        dispatcher: crate::http::hints::EarlyHintsDispatcher,
+    ) -> Self {
         self.early_hints_dispatcher = Some(dispatcher);
         self
     }
 
     /// Finaliza e constrói a instância de `Request`.
     pub fn build(mut self) -> Request {
-        let priority = self.priority.unwrap_or_else(|| self.destination.default_priority());
+        let priority = self
+            .priority
+            .unwrap_or_else(|| self.destination.default_priority());
 
         // Injeção automática de Accept-Encoding se ausente
         if !self.headers.contains_key(ACCEPT_ENCODING) {
@@ -350,7 +357,8 @@ impl RequestBuilder {
         // Injeção de cabeçalho Range se especificado
         if let Some(r) = self.range {
             if !self.headers.contains_key(http::header::RANGE) {
-                self.headers.insert(http::header::RANGE, r.to_header_value());
+                self.headers
+                    .insert(http::header::RANGE, r.to_header_value());
             }
         }
 
@@ -358,10 +366,18 @@ impl RequestBuilder {
         let site = SecFetchSite::compute(self.initiator.as_ref(), &self.url);
         let sec_mode = SecFetchMode::from_request_mode(self.mode);
         let sec_dest = SecFetchDest::from_destination(self.destination);
-        inject_fetch_metadata(&mut self.headers, site, sec_mode, sec_dest, self.is_user_activated);
+        inject_fetch_metadata(
+            &mut self.headers,
+            site,
+            sec_mode,
+            sec_dest,
+            self.is_user_activated,
+        );
 
         // Injeção de Upgrade-Insecure-Requests para navegação de documentos
-        if self.destination == RequestDestination::Document && !self.headers.contains_key("upgrade-insecure-requests") {
+        if self.destination == RequestDestination::Document
+            && !self.headers.contains_key("upgrade-insecure-requests")
+        {
             self.headers.insert(
                 HeaderName::from_static("upgrade-insecure-requests"),
                 HeaderValue::from_static("1"),

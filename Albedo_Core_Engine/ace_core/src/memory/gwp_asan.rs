@@ -114,7 +114,9 @@ mod tests {
         let pool = GwpAsanPool::new();
         let layout = Layout::from_size_align(64, 8).unwrap();
 
-        let ptr = pool.allocate(layout, true).expect("Falha ao alocar slot no GWP-ASan");
+        let ptr = pool
+            .allocate(layout, true)
+            .expect("Falha ao alocar slot no GWP-ASan");
         assert!(!ptr.is_null());
 
         assert!(pool.deallocate(ptr));

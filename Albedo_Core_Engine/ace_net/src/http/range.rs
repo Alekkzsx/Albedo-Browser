@@ -79,9 +79,27 @@ mod tests {
 
     #[test]
     fn test_byte_range_formatting() {
-        assert_eq!(ByteRangeSpec::From(1024).to_header_value().to_str().unwrap(), "bytes=1024-");
-        assert_eq!(ByteRangeSpec::Range(0, 499).to_header_value().to_str().unwrap(), "bytes=0-499");
-        assert_eq!(ByteRangeSpec::Suffix(500).to_header_value().to_str().unwrap(), "bytes=-500");
+        assert_eq!(
+            ByteRangeSpec::From(1024)
+                .to_header_value()
+                .to_str()
+                .unwrap(),
+            "bytes=1024-"
+        );
+        assert_eq!(
+            ByteRangeSpec::Range(0, 499)
+                .to_header_value()
+                .to_str()
+                .unwrap(),
+            "bytes=0-499"
+        );
+        assert_eq!(
+            ByteRangeSpec::Suffix(500)
+                .to_header_value()
+                .to_str()
+                .unwrap(),
+            "bytes=-500"
+        );
     }
 
     #[test]

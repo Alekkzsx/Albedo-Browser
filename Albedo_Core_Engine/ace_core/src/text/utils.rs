@@ -4,7 +4,10 @@
 
 /// Escapa caracteres especiais para inserção segura em nós de texto ou atributos HTML (`&`, `<`, `>`, `"`, `'`).
 pub fn escape_html(raw: &str) -> String {
-    if !raw.bytes().any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\'')) {
+    if !raw
+        .bytes()
+        .any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''))
+    {
         return raw.to_string();
     }
     let mut out = String::with_capacity(raw.len() + 16);

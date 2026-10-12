@@ -58,11 +58,7 @@ impl MutationRecord {
     }
 
     /// Cria um novo registro de mutação de atributos.
-    pub fn attribute(
-        target: NodeId,
-        name: Atom,
-        old_value: Option<SmolStr>,
-    ) -> Self {
+    pub fn attribute(target: NodeId, name: Atom, old_value: Option<SmolStr>) -> Self {
         Self {
             record_type: MutationType::Attributes,
             target,
@@ -76,10 +72,7 @@ impl MutationRecord {
     }
 
     /// Cria um novo registro de mutação de texto (`characterData`).
-    pub fn character_data(
-        target: NodeId,
-        old_value: Option<SmolStr>,
-    ) -> Self {
+    pub fn character_data(target: NodeId, old_value: Option<SmolStr>) -> Self {
         Self {
             record_type: MutationType::CharacterData,
             target,

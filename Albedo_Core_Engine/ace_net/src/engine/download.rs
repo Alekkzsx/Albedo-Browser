@@ -239,7 +239,15 @@ pub fn start_parallel_download(
     };
 
     let worker_handle = tokio::spawn(async move {
-        execute_parallel_download_worker(fetcher, options, num_chunks, cancel_token, is_paused, progress_tx).await
+        execute_parallel_download_worker(
+            fetcher,
+            options,
+            num_chunks,
+            cancel_token,
+            is_paused,
+            progress_tx,
+        )
+        .await
     });
 
     (session, worker_handle)
@@ -269,7 +277,8 @@ async fn execute_parallel_download_worker(
     let head_resp = match fetcher.fetch(head_req).await {
         Ok(r) => r,
         Err(_) => {
-            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx).await;
+            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx)
+                .await;
         }
     };
 
@@ -294,7 +303,8 @@ async fn execute_parallel_download_worker(
     let total_size = match total_bytes {
         Some(size) if accepts_ranges && size > 1024 * 1024 => size,
         _ => {
-            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx).await;
+            return execute_download_worker(fetcher, options, cancel_token, is_paused, progress_tx)
+                .await;
         }
     };
 
@@ -309,7 +319,8 @@ async fn execute_parallel_download_worker(
     drop(file);
 
     let chunks = DownloadChunk::plan_chunks(total_size, num_chunks);
-    let downloaded_per_chunk: Arc<parking_lot::Mutex<Vec<u64>>> = Arc::new(parking_lot::Mutex::new(vec![0; chunks.len()]));
+    let downloaded_per_chunk: Arc<parking_lot::Mutex<Vec<u64>>> =
+        Arc::new(parking_lot::Mutex::new(vec![0; chunks.len()]));
     let mut join_set = tokio::task::JoinSet::new();
 
     for chunk in chunks {
@@ -327,8 +338,11 @@ async fn execute_parallel_download_worker(
                 .streaming(true)
                 .cancellation_token(cancel_c.clone());
 
-            let range_val = http::HeaderValue::from_str(&format!("bytes={}-{}", chunk.start_byte, chunk.end_byte))
-                .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
+            let range_val = http::HeaderValue::from_str(&format!(
+                "bytes={}-{}",
+                chunk.start_byte, chunk.end_byte
+            ))
+            .map_err(|e| NetError::HttpProtocolError(e.to_string()))?;
             req_builder = req_builder.header(RANGE, range_val);
 
             if let Some(ref e) = etag_c {
@@ -345,10 +359,7 @@ async fn execute_parallel_download_worker(
                 )));
             }
 
-            let mut chunk_file = OpenOptions::new()
-                .write(true)
-                .open(&temp_path_c)
-                .await?;
+            let mut chunk_file = OpenOptions::new().write(true).open(&temp_path_c).await?;
 
             chunk_file.seek(SeekFrom::Start(chunk.start_byte)).await?;
 
@@ -477,54 +488,53 @@ async fn execute_download_worker(
         .and_then(|v| v.to_str().ok())
         .map(SmolStr::new);
 
-    let (mut file, mut bytes_downloaded, total_expected, is_resumable) = if status == StatusCode::PARTIAL_CONTENT && current_offset > 0 {
-        // Servidor aceitou a retomada (206 Partial Content)
-        let total = parse_total_from_content_range(response.headers.get(CONTENT_RANGE));
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&temp_path)
-            .await?;
-        (file, current_offset, total, true)
-    } else if status.is_success() {
-        // Download do zero (200 OK) ou servidor rejeitou range
-        let total = response
-            .headers
-            .get(CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
+    let (mut file, mut bytes_downloaded, total_expected, is_resumable) =
+        if status == StatusCode::PARTIAL_CONTENT && current_offset > 0 {
+            // Servidor aceitou a retomada (206 Partial Content)
+            let total = parse_total_from_content_range(response.headers.get(CONTENT_RANGE));
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&temp_path)
+                .await?;
+            (file, current_offset, total, true)
+        } else if status.is_success() {
+            // Download do zero (200 OK) ou servidor rejeitou range
+            let total = response
+                .headers
+                .get(CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
 
-        let accepts_ranges = response
-            .headers
-            .get(ACCEPT_RANGES)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.eq_ignore_ascii_case("bytes"))
-            .unwrap_or(false);
+            let accepts_ranges = response
+                .headers
+                .get(ACCEPT_RANGES)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.eq_ignore_ascii_case("bytes"))
+                .unwrap_or(false);
 
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&temp_path)
-            .await?;
-        (file, 0u64, total, accepts_ranges)
-    } else {
-        let _ = progress_tx.send(DownloadProgress {
-            bytes_downloaded: current_offset,
-            state: DownloadState::Failed,
-            ..Default::default()
-        });
-        return Err(NetError::HttpProtocolError(format!(
-            "Download rejeitado com status HTTP {}",
-            status
-        )));
-    };
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&temp_path)
+                .await?;
+            (file, 0u64, total, accepts_ranges)
+        } else {
+            let _ = progress_tx.send(DownloadProgress {
+                bytes_downloaded: current_offset,
+                state: DownloadState::Failed,
+                ..Default::default()
+            });
+            return Err(NetError::HttpProtocolError(format!(
+                "Download rejeitado com status HTTP {}",
+                status
+            )));
+        };
 
-    let mut stream = response
-        .body
-        .take_stream()
-        .await
-        .ok_or_else(|| NetError::HttpProtocolError("Corpo de resposta indisponível para streaming".into()))?;
+    let mut stream = response.body.take_stream().await.ok_or_else(|| {
+        NetError::HttpProtocolError("Corpo de resposta indisponível para streaming".into())
+    })?;
 
     let mut last_sample_time = Instant::now();
     let mut bytes_since_sample: u64 = 0;
@@ -657,7 +667,10 @@ mod tests {
     #[test]
     fn test_download_options_temp_path() {
         let dest = PathBuf::from("downloads/archive.tar.gz");
-        let opts = DownloadOptions::new(Url::parse("https://example.com/archive.tar.gz").unwrap(), dest);
+        let opts = DownloadOptions::new(
+            Url::parse("https://example.com/archive.tar.gz").unwrap(),
+            dest,
+        );
         assert_eq!(
             opts.temp_path(),
             PathBuf::from("downloads/archive.tar.gz.albedodownload")

@@ -97,22 +97,14 @@ impl NodeBindings {
     }
 
     /// WebIDL: `Node appendChild(Node node);`
-    pub fn append_child(
-        doc: &mut Document,
-        parent: NodeId,
-        child: NodeId,
-    ) -> WebIDLResult<NodeId> {
+    pub fn append_child(doc: &mut Document, parent: NodeId, child: NodeId) -> WebIDLResult<NodeId> {
         doc.append_child(parent, child)
             .map(|()| child)
             .map_err(WebIDLException::from)
     }
 
     /// WebIDL: `Node removeChild(Node child);`
-    pub fn remove_child(
-        doc: &mut Document,
-        parent: NodeId,
-        child: NodeId,
-    ) -> WebIDLResult<NodeId> {
+    pub fn remove_child(doc: &mut Document, parent: NodeId, child: NodeId) -> WebIDLResult<NodeId> {
         doc.remove_child(parent, child)
             .map(|()| child)
             .map_err(WebIDLException::from)
@@ -164,9 +156,9 @@ impl ElementBindings {
         let node = doc.get_node_mut(id).ok_or_else(|| {
             WebIDLException::NotFoundError(format!("Elemento #{:?} não encontrado", id.raw()))
         })?;
-        let el = node.as_element_mut().ok_or_else(|| {
-            WebIDLException::TypeError("Nó alvo não é um Elemento".to_string())
-        })?;
+        let el = node
+            .as_element_mut()
+            .ok_or_else(|| WebIDLException::TypeError("Nó alvo não é um Elemento".to_string()))?;
         if value.is_empty() {
             el.id_attr = None;
             el.remove_attribute("id");
@@ -195,12 +187,16 @@ impl ElementBindings {
         let node = doc.get_node_mut(id).ok_or_else(|| {
             WebIDLException::NotFoundError(format!("Elemento #{:?} não encontrado", id.raw()))
         })?;
-        let el = node.as_element_mut().ok_or_else(|| {
-            WebIDLException::TypeError("Nó alvo não é um Elemento".to_string())
-        })?;
+        let el = node
+            .as_element_mut()
+            .ok_or_else(|| WebIDLException::TypeError("Nó alvo não é um Elemento".to_string()))?;
         el.set_attribute(name, value);
         if name.eq_ignore_ascii_case("id") {
-            el.id_attr = if value.is_empty() { None } else { Some(Atom::new(value)) };
+            el.id_attr = if value.is_empty() {
+                None
+            } else {
+                Some(Atom::new(value))
+            };
         }
         Ok(())
     }
@@ -210,9 +206,9 @@ impl ElementBindings {
         let node = doc.get_node_mut(id).ok_or_else(|| {
             WebIDLException::NotFoundError(format!("Elemento #{:?} não encontrado", id.raw()))
         })?;
-        let el = node.as_element_mut().ok_or_else(|| {
-            WebIDLException::TypeError("Nó alvo não é um Elemento".to_string())
-        })?;
+        let el = node
+            .as_element_mut()
+            .ok_or_else(|| WebIDLException::TypeError("Nó alvo não é um Elemento".to_string()))?;
         el.remove_attribute(name);
         if name.eq_ignore_ascii_case("id") {
             el.id_attr = None;
@@ -281,7 +277,9 @@ impl ElementBindings {
             None => return Vec::new(),
         };
         doc.descendants(id)
-            .filter(|&(desc_id, desc_node)| desc_node.is_element() && selector.matches(doc, desc_id))
+            .filter(|&(desc_id, desc_node)| {
+                desc_node.is_element() && selector.matches(doc, desc_id)
+            })
             .map(|(desc_id, _)| desc_id)
             .collect()
     }

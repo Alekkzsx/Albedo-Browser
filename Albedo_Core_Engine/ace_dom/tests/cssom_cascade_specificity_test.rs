@@ -56,8 +56,14 @@ fn test_element_matches_and_closest() {
 
     // Testes de closest
     assert_eq!(doc.element_closest(link_id, "a"), Some(link_id));
-    assert_eq!(doc.element_closest(link_id, "nav"), doc.query_selector("nav"));
-    assert_eq!(doc.element_closest(link_id, ".header"), doc.query_selector(".header"));
+    assert_eq!(
+        doc.element_closest(link_id, "nav"),
+        doc.query_selector("nav")
+    );
+    assert_eq!(
+        doc.element_closest(link_id, ".header"),
+        doc.query_selector(".header")
+    );
     assert_eq!(doc.element_closest(link_id, "#wrapper"), Some(wrapper_id));
     assert_eq!(doc.element_closest(link_id, "footer"), None);
 

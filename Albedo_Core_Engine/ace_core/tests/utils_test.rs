@@ -147,7 +147,6 @@ fn test_security_utils() {
     assert!(sec_utils::matches_domain_pattern("*", "anything.io"));
 }
 
-
 #[test]
 fn test_text_utils() {
     assert_eq!(

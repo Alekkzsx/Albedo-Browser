@@ -93,7 +93,10 @@ impl<const CAPACITY: usize> BreadcrumbBuffer<CAPACITY> {
     }
 
     /// Executa uma closure com as fatias contíguas do `VecDeque` subjacente.
-    pub fn with_slices<R>(&self, f: impl FnOnce((&[BreadcrumbEntry], &[BreadcrumbEntry])) -> R) -> R {
+    pub fn with_slices<R>(
+        &self,
+        f: impl FnOnce((&[BreadcrumbEntry], &[BreadcrumbEntry])) -> R,
+    ) -> R {
         let guard = self.entries.lock();
         f(guard.as_slices())
     }

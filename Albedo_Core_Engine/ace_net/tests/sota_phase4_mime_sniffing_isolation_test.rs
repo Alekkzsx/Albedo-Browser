@@ -52,7 +52,10 @@ fn test_whatwg_mime_sniffing_matrix() {
 
     // 7. WebAssembly
     let wasm_magic = [0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
-    assert_eq!(sniff_mime_type(None, &wasm_magic, false), "application/wasm");
+    assert_eq!(
+        sniff_mime_type(None, &wasm_magic, false),
+        "application/wasm"
+    );
 
     // 8. PDF
     let pdf_magic = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n";
@@ -78,15 +81,36 @@ fn test_nosniff_header_and_validation() {
 
     // Validação estrita de destinos de execução sob nosniff
     // Script com image/png ou text/plain deve ser bloqueado
-    assert!(!validate_nosniff_content_type(RequestDestination::Script, "image/png"));
-    assert!(!validate_nosniff_content_type(RequestDestination::Script, "text/plain"));
-    assert!(!validate_nosniff_content_type(RequestDestination::Script, "text/html"));
-    assert!(validate_nosniff_content_type(RequestDestination::Script, "application/javascript"));
-    assert!(validate_nosniff_content_type(RequestDestination::Script, "text/javascript"));
+    assert!(!validate_nosniff_content_type(
+        RequestDestination::Script,
+        "image/png"
+    ));
+    assert!(!validate_nosniff_content_type(
+        RequestDestination::Script,
+        "text/plain"
+    ));
+    assert!(!validate_nosniff_content_type(
+        RequestDestination::Script,
+        "text/html"
+    ));
+    assert!(validate_nosniff_content_type(
+        RequestDestination::Script,
+        "application/javascript"
+    ));
+    assert!(validate_nosniff_content_type(
+        RequestDestination::Script,
+        "text/javascript"
+    ));
 
     // Style com text/html deve ser bloqueado
-    assert!(!validate_nosniff_content_type(RequestDestination::Style, "text/html"));
-    assert!(validate_nosniff_content_type(RequestDestination::Style, "text/css"));
+    assert!(!validate_nosniff_content_type(
+        RequestDestination::Style,
+        "text/html"
+    ));
+    assert!(validate_nosniff_content_type(
+        RequestDestination::Style,
+        "text/css"
+    ));
 }
 
 #[test]
@@ -98,21 +122,44 @@ fn test_corp_cross_origin_isolation_policies() {
     let target_url = Url::parse("https://albedo.org/api/data.json").unwrap();
 
     // 1. Same-Origin
-    assert!(validate_corp(Some(&origin_main), &target_url, Some(CorpPolicy::SameOrigin)).is_ok());
+    assert!(validate_corp(
+        Some(&origin_main),
+        &target_url,
+        Some(CorpPolicy::SameOrigin)
+    )
+    .is_ok());
     assert!(validate_corp(Some(&origin_sub), &target_url, Some(CorpPolicy::SameOrigin)).is_err());
-    assert!(validate_corp(Some(&origin_attacker), &target_url, Some(CorpPolicy::SameOrigin)).is_err());
+    assert!(validate_corp(
+        Some(&origin_attacker),
+        &target_url,
+        Some(CorpPolicy::SameOrigin)
+    )
+    .is_err());
 
     // 2. Same-Site
     assert!(validate_corp(Some(&origin_main), &target_url, Some(CorpPolicy::SameSite)).is_ok());
     assert!(validate_corp(Some(&origin_sub), &target_url, Some(CorpPolicy::SameSite)).is_ok());
-    assert!(validate_corp(Some(&origin_attacker), &target_url, Some(CorpPolicy::SameSite)).is_err());
+    assert!(validate_corp(
+        Some(&origin_attacker),
+        &target_url,
+        Some(CorpPolicy::SameSite)
+    )
+    .is_err());
 
     // 3. Cross-Origin
-    assert!(validate_corp(Some(&origin_attacker), &target_url, Some(CorpPolicy::CrossOrigin)).is_ok());
+    assert!(validate_corp(
+        Some(&origin_attacker),
+        &target_url,
+        Some(CorpPolicy::CrossOrigin)
+    )
+    .is_ok());
 
     // 4. Header extraction
     let mut headers = HeaderMap::new();
-    headers.insert("cross-origin-resource-policy", "same-origin".parse().unwrap());
+    headers.insert(
+        "cross-origin-resource-policy",
+        "same-origin".parse().unwrap(),
+    );
     assert_eq!(extract_corp_policy(&headers), Some(CorpPolicy::SameOrigin));
 }
 
@@ -121,7 +168,8 @@ fn test_coop_coep_and_cross_origin_isolated_status() {
     let context_secure = IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::RequireCorp);
     assert!(context_secure.is_cross_origin_isolated());
 
-    let context_credentialless = IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::Credentialless);
+    let context_credentialless =
+        IsolationContext::new(CoopPolicy::SameOrigin, CoepPolicy::Credentialless);
     assert!(context_credentialless.is_cross_origin_isolated());
 
     let context_unsafe = IsolationContext::new(CoopPolicy::UnsafeNone, CoepPolicy::RequireCorp);
@@ -135,7 +183,12 @@ fn test_mixed_content_level_2_matrix() {
 
     // 1. Sub-recurso passivo (imagem) em página segura -> Auto-Upgrade silencioso para HTTPS
     let img_target = Url::parse("http://cdn.bank.com/logo.png").unwrap();
-    let decision = evaluate_mixed_content(Some(&secure_parent), &img_target, RequestDestination::Image, false);
+    let decision = evaluate_mixed_content(
+        Some(&secure_parent),
+        &img_target,
+        RequestDestination::Image,
+        false,
+    );
     match decision {
         MixedContentDecision::Upgraded(upgraded) => {
             assert_eq!(upgraded.scheme(), "https");
@@ -146,7 +199,12 @@ fn test_mixed_content_level_2_matrix() {
 
     // 2. Sub-recurso ativo (script) em página segura sem CSP upgrade -> Bloqueio estrito
     let script_target = Url::parse("http://cdn.bank.com/wallet.js").unwrap();
-    let decision_active = evaluate_mixed_content(Some(&secure_parent), &script_target, RequestDestination::Script, false);
+    let decision_active = evaluate_mixed_content(
+        Some(&secure_parent),
+        &script_target,
+        RequestDestination::Script,
+        false,
+    );
     match decision_active {
         MixedContentDecision::Blocked(reason) => {
             assert!(reason.contains("Conteúdo Misto Ativo"));
@@ -155,7 +213,12 @@ fn test_mixed_content_level_2_matrix() {
     }
 
     // 3. Sub-recurso ativo com CSP upgrade-insecure-requests ativo -> Auto-Upgrade para HTTPS
-    let decision_active_csp = evaluate_mixed_content(Some(&secure_parent), &script_target, RequestDestination::Script, true);
+    let decision_active_csp = evaluate_mixed_content(
+        Some(&secure_parent),
+        &script_target,
+        RequestDestination::Script,
+        true,
+    );
     match decision_active_csp {
         MixedContentDecision::Upgraded(upgraded) => {
             assert_eq!(upgraded.scheme(), "https");
@@ -165,7 +228,12 @@ fn test_mixed_content_level_2_matrix() {
     }
 
     // 4. Página insegura carregando recurso HTTP -> Permitido
-    let decision_insecure = evaluate_mixed_content(Some(&insecure_parent), &script_target, RequestDestination::Script, false);
+    let decision_insecure = evaluate_mixed_content(
+        Some(&insecure_parent),
+        &script_target,
+        RequestDestination::Script,
+        false,
+    );
     assert_eq!(decision_insecure, MixedContentDecision::Allowed);
 }
 
@@ -189,7 +257,10 @@ async fn test_fetcher_mixed_content_pipeline_interception() {
         NetError::SecurityViolation(msg) => {
             assert!(msg.contains("Conteúdo Misto Ativo bloqueado"));
         }
-        other => panic!("Esperado SecurityViolation de Mixed Content, obtido {:?}", other),
+        other => panic!(
+            "Esperado SecurityViolation de Mixed Content, obtido {:?}",
+            other
+        ),
     }
 
     // Requisição passiva de Imagem em HTTP -> É promovida silenciosamente para HTTPS antes de chamar a rede
@@ -203,4 +274,3 @@ async fn test_fetcher_mixed_content_pipeline_interception() {
     assert!(applied.is_ok());
     assert_eq!(img_url.as_str(), "https://example.com/banner.png");
 }
-

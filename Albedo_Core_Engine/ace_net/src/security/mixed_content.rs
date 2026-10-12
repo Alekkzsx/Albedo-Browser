@@ -137,7 +137,8 @@ mod tests {
         let parent = Origin::parse("http://insecure.site").unwrap();
         let target = Url::parse("http://insecure.site/api.js").unwrap();
 
-        let decision = evaluate_mixed_content(Some(&parent), &target, RequestDestination::Script, false);
+        let decision =
+            evaluate_mixed_content(Some(&parent), &target, RequestDestination::Script, false);
         assert_eq!(decision, MixedContentDecision::Allowed);
     }
 
@@ -146,7 +147,8 @@ mod tests {
         let parent = Origin::parse("https://secure.site").unwrap();
         let target = Url::parse("http://cdn.site/photo.png").unwrap();
 
-        let decision = evaluate_mixed_content(Some(&parent), &target, RequestDestination::Image, false);
+        let decision =
+            evaluate_mixed_content(Some(&parent), &target, RequestDestination::Image, false);
         match decision {
             MixedContentDecision::Upgraded(url) => {
                 assert_eq!(url.scheme(), "https");
@@ -161,7 +163,12 @@ mod tests {
         let parent = Origin::parse("https://secure.site").unwrap();
         let script_target = Url::parse("http://insecure.site/tracking.js").unwrap();
 
-        let decision = evaluate_mixed_content(Some(&parent), &script_target, RequestDestination::Script, false);
+        let decision = evaluate_mixed_content(
+            Some(&parent),
+            &script_target,
+            RequestDestination::Script,
+            false,
+        );
         match decision {
             MixedContentDecision::Blocked(msg) => {
                 assert!(msg.contains("Conteúdo Misto Ativo"));
@@ -175,7 +182,12 @@ mod tests {
         let parent = Origin::parse("https://secure.site").unwrap();
         let script_target = Url::parse("http://cdn.site/script.js").unwrap();
 
-        let decision = evaluate_mixed_content(Some(&parent), &script_target, RequestDestination::Script, true);
+        let decision = evaluate_mixed_content(
+            Some(&parent),
+            &script_target,
+            RequestDestination::Script,
+            true,
+        );
         match decision {
             MixedContentDecision::Upgraded(url) => {
                 assert_eq!(url.scheme(), "https");
@@ -190,9 +202,13 @@ mod tests {
         let parent = Origin::parse("https://secure.site").unwrap();
         let mut target = Url::parse("http://cdn.site/img.jpg").unwrap();
 
-        let res = check_and_apply_mixed_content(Some(&parent), &mut target, RequestDestination::Image, false);
+        let res = check_and_apply_mixed_content(
+            Some(&parent),
+            &mut target,
+            RequestDestination::Image,
+            false,
+        );
         assert!(res.is_ok());
         assert_eq!(target.as_str(), "https://cdn.site/img.jpg");
     }
 }
-
