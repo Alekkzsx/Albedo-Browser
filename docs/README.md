@@ -18,6 +18,9 @@ docs/
 │   ├── ace_net.md            # Arquitetura de Rede, Cache RFC 9111, DoH, HTTP/3 & Segurança
 │   ├── ace_dom.md            # Parser HTML5, Árvore DOM imutável & Algoritmos WHATWG
 │   ├── ace_style.md          # Motor de Estilo, Cascata 8 origens, CSS Syntax L3 & RenderTree
+│   ├── ace_ipc.md            # Protocolo binário, canais lock-free, IpcRouter pub/sub (>1.5M msg/s)
+│   ├── ace_browser.md        # Pipeline de orquestração unificado (BrowserPipeline) E2E
+│   ├── ace_layout.md         # Especificação preliminar Fase 7: Box vs Fragment Tree, BFC/IFC/Flex/Grid
 │   └── test_infra.md         # Infraestrutura, filosofia e estratégia de testes em 4 estágios
 ├── scope/                    # Escopo normativo do MVP (v1.0 Desktop)
 │   ├── README.md             # Visão geral e governança do escopo do MVP
@@ -30,10 +33,11 @@ docs/
 │   ├── fase2_ace_core.md     # Relatório de auditoria e métricas dos testes do ace_core
 │   ├── fase3_ace_net.md      # Relatório de auditoria e testes de estresse do ace_net
 │   ├── fase5_ace_dom.md      # Relatório de auditoria e conformidade do ace_dom
-│   └── fase6_ace_style.md    # Relatório de auditoria técnica e estresse do ace_style
+│   ├── fase6_ace_style.md    # Relatório de auditoria técnica e estresse do ace_style
+│   └── cross_subsystem_integration.md # Integração cruzada E2E, quitação de dívidas e 1.024 testes verdes
 ├── security/                 # Governança de segurança e mitigação de vulnerabilidades
 │   ├── README.md             # Central de segurança e princípios defensivos
-│   ├── unsafe-registry.md    # Registro central e invariantes das 64 ocorrências de unsafe
+│   ├── unsafe-registry.md    # Registro central e invariantes das 66 ocorrências de unsafe
 │   └── threat-model.md       # Modelo formal de ameaças STRIDE e isolamento por processo
 └── adr/                      # Architecture Decision Records (Registros de Decisões)
     ├── README.md             # Catálogo de todos os 21 ADRs do projeto
@@ -46,6 +50,7 @@ docs/
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas de Governança | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **2.2.0** | 2026-10-12 | Sincronização Ground Truth & Fase 7 | • Auditoria global do workspace: **1.024 testes aprovados (100% verdes)** em 181 suítes e 0 warnings no Clippy.<br>• Resolução formal de 100% das dívidas técnicas: DV-01 (`ace_ipc`), DV-05 (`ace_style`), DV-09 (`tempfile`) e DV-11 (`html5lib-tests` tests1.dat).<br>• Criação de `ace_ipc.md`, `ace_browser.md` e especificação preliminar da Fase 7 em `ace_layout.md`.<br>• Sincronização do registro de `unsafe` para exatamente 66 ocorrências em 11 arquivos de `ace_core`. | • Promoção de `ace_core`, `ace_net`, `ace_dom`, `ace_style`, `ace_ipc` e `ace_browser` para Concluído & Integrado.<br>• Inclusão de `ace_layout` como especificação técnica preliminar aprovada (Fase 7 Ativa).<br>• Remoção total de declarações de stubs e alinhamento de 100% dos links e diagramas Mermaid. |
 | **2.1.0** | 2026-10-11 | Conclusão da Fase 6 (`ace_style`) | • Criação de `docs/architecture/ace_style.md` e `docs/reports/fase6_ace_style.md`.<br>• Formalização do ADR-0012 e criação de ADRs 0007, 0008, 0014, 0016, 0017.<br>• Resolução formal da dívida DV-05 com migração completa do CSSOM.<br>• Sincronização exaustiva de todas as pastas em `docs/`. | • `ace_style` marcado como concluído com 5.675 linhas e 18 testes.<br>• Registro de 0 unsafe e `#![forbid(unsafe_code)]` ativado.<br>• Todos os documentos sincronizados sem contradições. |
 | **2.0.0** | 2026-10-07 | Auditoria e Reestruturação v7.0 | • Criação de `docs/architecture/ace_core.md` e `Albedo_Core_Engine/ace_core/README.md`.<br>• Catálogo unificado dos 21 ADRs em `docs/adr/README.md`.<br>• Alinhamento estrito com a Regra de Evidência e Paradigma Pragmático. | • Todos os 9 documentos sincronizados sem contradições.<br>• Painel de estado real auditado em conformidade com o código.<br>• Rastreabilidade temporal em tabelas padronizadas em todos os docs. |
 | **1.0.0** | 2026-08-16 | Estruturação Inicial da Base de Conhecimento | • Separação de pastas em `architecture/`, `scope/`, `reports/`, `adr/`. | • Criação dos primeiros master plans de `ace_dom` e `ace_net`. |
@@ -56,13 +61,15 @@ docs/
 
 | Subsistema / Crate | Documento Vinculado | Fase no PLANO | Status Real | Evidência & Próximos Passos |
 | :--- | :--- | :---: | :---: | :--- |
-| **`ace_core`** (Fundação) | [`ace_core.md`](./architecture/ace_core.md) / [`Relatório`](./reports/fase2_ace_core.md) | Fase 2 | 🟡 Parcial | 101 testes unitários aprovados. Fase 2 permanece 🟡 até a implementação do IPC in-process em `ace_ipc` (DV-01). |
-| **`ace_net`** (Rede & Cache) | [`ace_net.md`](./architecture/ace_net.md) | Fase 3 | 🚧 Fechamento | HTTP/1.1, H2, H3/QUIC, Cache RFC 9111 L1/L2 e DoH implementados. Suíte de 71+ testes e estresse de 93s passando. Em fechamento de PR para a `main`. |
-| **`ace_dom`** (Parser & DOM) | [`ace_dom.md`](./architecture/ace_dom.md) | Fase 5 | 🟡 Parcial | Tokenizer FSM, Tree Builder (AAA) e Arena operacionais. Refatoração Clean Code do `process_token` ativa. Pendente vendorizar suíte oficial `html5lib-tests` (DV-11). |
-| **`ace_style`** (Estilo & Cascata) | [`ace_style.md`](./architecture/ace_style.md) / [`Relatório`](./reports/fase6_ace_style.md) | Fase 6 | ✅ Concluída | **7.366 linhas em 35 módulos** (9.225 totais com testes). **24 testes automatizados aprovados (0 falhas) em 13 binários**, incluindo 12 suítes pesadas de estresse. Style Structs em Arc, MPC, Invalidation Sets, matemática clamp/min/max, Writing Modes e pseudo-elementos. 0 unsafe (`#![forbid(unsafe_code)]`), 0 erros e 0 warnings no Clippy com `-D warnings`. |
+| **`ace_core`** (Fundação) | [`ace_core.md`](./architecture/ace_core.md) / [`Relatório`](./reports/fase2_ace_core.md) | Fase 2 | ✅ Concluído | **530 testes aprovados (+ 3 doctests)**. Arenas geracionais com EBR, `LayoutUnit` base 60, `TripleBuffer`, `euclid` e isolamento de origens RFC 6454. Dívida DV-01 quitada com a integração de `ace_ipc`. Exatamente 66 ocorrências de `unsafe` em 11 arquivos auditadas. |
+| **`ace_net`** (Rede & Cache) | [`ace_net.md`](./architecture/ace_net.md) / [`Relatório`](./reports/fase3_ace_net.md) | Fase 3 | ✅ Concluído | **213 testes em 28 suítes + unitários**. HTTP/1.1, H2, H3/QUIC, Cache RFC 9111 L1/L2, DoH com Happy Eyeballs v2, prioridades RFC 9218 e `NetworkIsolationKey`. Dívida DV-09 quitada (`tempfile = "3.10"`). 0 unsafe. |
+| **`ace_dom`** (Parser & DOM) | [`ace_dom.md`](./architecture/ace_dom.md) / [`Relatório`](./reports/fase5_ace_dom.md) | Fase 5 | ✅ Concluído | **252 testes em 47 suítes**. Tokenizer streaming SIMD WHATWG §12, Tree Builder 16-AAA, seletores RTL com Ancestor Bloom Filter 64-bit. Dívida DV-11 quitada com aprovação de 7/7 cenários oficiais em `tests1.dat`. 0 unsafe. |
+| **`ace_style`** (Estilo & Cascata) | [`ace_style.md`](./architecture/ace_style.md) / [`Relatório`](./reports/fase6_ace_style.md) | Fase 6 | ✅ Concluído | **25 testes em 14 binários (13 suítes de estresse)**. Cascata 8 origens, ordenação `@layer`, Invalidation Sets, MPC (99.95% hit rate), Style Structs em Arc e RenderTree imutável. Dívida DV-05 quitada (CSSOM migrado). 0 unsafe (`#![forbid(unsafe_code)]`). |
+| **`ace_ipc`** (Comunicação) | [`ace_ipc.md`](./architecture/ace_ipc.md) / [`ADR-0005`](./adr/0005-protocolo-binario-ipc-proprio.md) | Fase 2 / 12 | ✅ Concluído & Integrado | **2 testes de estresse e integração**. Protocolo binário zero-copy, ring-buffer lock-free, `IpcRouter` pub/sub multi-tópico com vazão medida de **2.22M msg/s** (> 1.5M msg/s). Dívida DV-01 quitada. 0 unsafe (`#![forbid(unsafe_code)]`). |
+| **`ace_browser`** (Orquestração E2E) | [`ace_browser.md`](./architecture/ace_browser.md) / [`Relatório`](./reports/cross_subsystem_integration.md) | Integração Mestra | ✅ Concluído & Integrado | **2 testes E2E aprovados**. Pipeline unificado `BrowserPipeline` orquestrando URL -> Stream -> DOM -> Style -> RenderTree. Benchmark E2E processando 1.000 nós em 173ms. 0 unsafe (`#![forbid(unsafe_code)]`). |
+| **`ace_layout`** (Geometria & Fragmentos) | [`ace_layout.md`](./architecture/ace_layout.md) | Fase 7 | 🎯 Especificação Aprovada (Fase 7 Ativa) | Especificação técnica preliminar aprovada. Box Tree vs Fragment Tree imutável, contextos de formatação (BFC, IFC, Flexbox, Grid), aritmética `LayoutUnit` base 60 e tipos geométricos `euclid`. |
 | **`ace_js`** (Motor JavaScript) | [`web_api.md`](./scope/web_api.md) | Fase 10 | ⏳ Planejado | MVP planejado estritamente com interpretador de bytecode próprio (**sem JIT**, modo *jitless* permanente conforme ADR-0019). |
-| **`ace_ipc`** (Comunicação) | [`adr/README.md`](./adr/README.md) (ADR-0005) | Fase 2 / 12 | 🟡 Stub | Atualmente contém apenas 1 linha (`pub fn init() {}`). Alvo imediato de implementação para fechar a Fase 2. |
-| **Infra de Testes** | [`test_infra.md`](./architecture/test_infra.md) | Transversal | 🟡 Em Evolução | Estratégia de conformidade em 4 estágios aprovada (Estágio A: html5lib `.dat`; Estágio B: Reftests; Estágio C: testharness.js; Estágio D: WebDriver BiDi). |
+| **Infra de Testes** | [`test_infra.md`](./architecture/test_infra.md) | Transversal | ✅ Operacional (1.024 Testes) | **1.024 testes verdes (100% de sucesso) em 181 suítes** no workspace, zero warnings no Clippy (`-D warnings`). Conformidade em 4 estágios (Estágio A: html5lib `.dat`; Estágio B: Reftests; Estágio C: testharness.js; Estágio D: WebDriver BiDi). |
 
 ---
 
@@ -98,10 +105,28 @@ docs/
   - `VariableResolver` acíclico (DAG) com mitigação linear contra ataques de recursão (*Billion Laughs CSS*).
   - `StyleSharingCache` para reaproveitamento em nós irmãos e geração da `RenderTree` imutável.
 
+- [**`ace_ipc.md`**](./architecture/ace_ipc.md):
+  - Protocolo binário leve e determinístico de mensagens `IpcMessage` zero-copy.
+  - Barramento de comunicação lock-free in-process utilizando ring-buffers e canais Crossbeam.
+  - `IpcRouter` Pub/Sub multi-tópico (`DomMutations`, `NetworkStream`, `StyleInvalidations`, `RenderFrames`).
+  - Taxa de transferência comprovada em testes de estresse de 2.22M msg/s (> 1.5M msg/s) com 0 unsafe (`#![forbid(unsafe_code)]`).
+
+- [**`ace_browser.md`**](./architecture/ace_browser.md):
+  - Orquestrador unificado `BrowserPipeline` coordenando o ciclo de vida completo URL -> Stream -> DOM -> Style -> RenderTree.
+  - Integração assíncrona entre streaming de rede (`ace_net`), parser HTML5 incremental (`ace_dom`) e cascata CSS (`ace_style`).
+  - RestyleDriver reativo com invalidação cirúrgica frente a mutações de nós e atributos.
+  - Benchmark E2E demonstrando processamento de 1.000 nós estruturais em 173ms.
+
+- [**`ace_layout.md`**](./architecture/ace_layout.md):
+  - Especificação técnica preliminar aprovada para a Fase 7 de engenharia do motor.
+  - Arquitetura de duas árvores: Box Tree gerada a partir da RenderTree e Fragment Tree imutável para pintura.
+  - Contextos de formatação estruturados: Block Formatting Context (BFC), Inline Formatting Context (IFC), Flexbox e Grid.
+  - Coordenadas sub-pixel via `LayoutUnit` (ponto fixo base 60) e tipos geométricos bidimensionais `euclid`.
+
 - [**`test_infra.md`**](./architecture/test_infra.md):
   - Arquitetura de testes opacos em 4 camadas (*Tier 1: Feature Coverage*, *Tier 2: Boundaries*, *Tier 3: Pairwise*, *Tier 4: Workloads Reais*).
   - Matriz dos 4 Estágios de Conformidade WPT/Test262 (Estágios A, B, C e D).
-  - Inventário verificado das baterias de testes em execução no workspace.
+  - Inventário consolidado de **1.024 testes verdes em 181 suítes** no workspace.
 
 ---
 
@@ -118,17 +143,18 @@ Para manter o foco na sobrevivência e estabilidade da v1.0, o projeto adota lim
 
 ## 📊 3. Relatórios e Auditorias (`docs/reports/`)
 
-- [**`fase2_ace_core.md`**](./reports/fase2_ace_core.md): Relatório de auditoria técnica do `ace_core`, comprovando a aprovação de 101 testes e detalhando a dívida do `ace_ipc`.
-- [**`fase3_ace_net.md`**](./reports/fase3_ace_net.md): Relatório de auditoria técnica do `ace_net`, comprovando 128 testes passando, cache RFC 9111, DoH, H3 e estresse de memória de 93s.
-- [**`fase5_ace_dom.md`**](./reports/fase5_ace_dom.md): Relatório de auditoria técnica do `ace_dom`, comprovando 22 testes de reentrância do tokenizer, Tree Builder AAA e a pendência do WPT `.dat`.
-- [**`fase6_ace_style.md`**](./reports/fase6_ace_style.md): Relatório de auditoria técnica do `ace_style`, comprovando 18 testes automatizados, 6 suítes pesadas de estresse, 0 unsafe e 0 warnings no Clippy.
+- [**`fase2_ace_core.md`**](./reports/fase2_ace_core.md): Relatório de auditoria técnica do `ace_core`, comprovando a aprovação de **530 testes verdes** (+ 3 doctests), Arenas EBR, tipos `LayoutUnit` e `euclid`, e quitação da dívida DV-01 com `ace_ipc`.
+- [**`fase3_ace_net.md`**](./reports/fase3_ace_net.md): Relatório de auditoria técnica do `ace_net`, comprovando **213 testes verdes** (108 unitários + 105 em 28 suítes), cache RFC 9111 L1/L2, DoH (Happy Eyeballs v2), agendador RFC 9218 e quitação da dívida DV-09 (`tempfile`).
+- [**`fase5_ace_dom.md`**](./reports/fase5_ace_dom.md): Relatório de auditoria técnica do `ace_dom`, comprovando **252 testes em 47 suítes**, Tokenizer streaming SIMD, Tree Builder 16-AAA, e quitação da dívida DV-11 com conformidade plena em `tests1.dat` (7/7 cenários oficiais WPT).
+- [**`fase6_ace_style.md`**](./reports/fase6_ace_style.md): Relatório de auditoria técnica do `ace_style`, comprovando **25 testes automatizados em 14 binários (13 suítes de estresse)**, cascata de 8 origens, MPC (99.95% hit rate), quitação da dívida DV-05 com CSSOM migrado, 0 unsafe (`#![forbid(unsafe_code)]`) e 0 warnings no Clippy.
+- [**`cross_subsystem_integration.md`**](./reports/cross_subsystem_integration.md): Relatório de integração cruzada de subsistemas e validação mestre, comprovando o pipeline E2E (`ace_browser`), vazão de 2.22M msg/s no IPC (`ace_ipc`), e a consolidação de **1.024 testes verdes (100% de sucesso)** no workspace.
 
 ---
 
 ## 🛡️ 4. Segurança e Integridade (`docs/security/`)
 
-- [**`unsafe-registry.md`**](./security/unsafe-registry.md): Inventário central de cada bloco `unsafe` no workspace, invariantes de memória e plano de teste sob Miri/Loom.
-- [**`threat-model.md`**](./security/threat-model.md): Modelo formal de ameaças STRIDE e topologia de isolamento multi-processo (*Site Isolation*).
+- [**`unsafe-registry.md`**](./security/unsafe-registry.md): Inventário central das 66 ocorrências de código `unsafe` no workspace (confinadas a 11 arquivos de `ace_core`), invariantes de memória e plano de validação sob Miri/Loom (todos os outros crates possuem 0 ocorrências de unsafe e ativam Safe Rust ou `#![forbid(unsafe_code)]`).
+- [**`threat-model.md`**](./security/threat-model.md): Modelo formal de ameaças STRIDE, validação e integridade de mensagens IPC, proteção contra side-channels e topologia de isolamento multi-processo (*Site Isolation* e particionamento de rede RFC 9111/9218).
 
 ---
 

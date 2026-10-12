@@ -38,7 +38,7 @@ flowchart TD
         Matcher[Rule Matcher + Ancestor Bloom Filter 64-bit]
         MPC[Matched Properties Cache: Assinatura Global de Regras]
         Cascade[Cascade Sorter: 8 Origens + @layer + Especificidade]
-        VarResolver[VariableResolver: DAG Anti-Cycle var()]
+        VarResolver["VariableResolver: DAG Anti-Cycle var()"]
         SharingCache[StyleSharingCache: Cache de Irmãos]
         StyleStructs[Style Structs em Arc: Inherited vs. Reset]
     end
