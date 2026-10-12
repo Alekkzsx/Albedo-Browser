@@ -1,9 +1,9 @@
 # 🗺️ PLANO MESTRE DEFINITIVO: SUBSISTEMA `ace_net` (Albedo Browser)
 
-> **Versão:** 1.1.0 — *Definitive Engineering Master Plan (Auditado)*  
+> **Versão:** 1.2.0 — *Definitive Engineering Master Plan (Concluído)*  
 > **Classificação:** Arquitetura Central de Rede, Conectividade, Cache & Segurança de Transporte (Core Network Subsystem)  
 > **Subsistema:** `Albedo_Core_Engine/ace_net` (Fase 3 do [PLANO.md](../../PLANO.md))  
-> **Status Atual:** 🚧 **Em Fechamento** (Implementado: HTTP/1.1, HTTP/2, HTTP/3/QUIC, Cache RFC 9111 L1/L2 WAL, DoH Happy Eyeballs v2, Early Hints 103, Cookies CHIPS, Threshold de 1MB para buffer de resposta e streaming reativo. Testes de estresse de 93s e suítes unitárias 100% aprovados; pendente merge na `main` e fechamento formal da fase)  
+> **Status Atual:** ✅ **Concluído** (Implementado: HTTP/1.1, HTTP/2, HTTP/3/QUIC, Cache RFC 9111 L1/L2 WAL, DoH Happy Eyeballs v2, Early Hints 103, Cookies CHIPS, Threshold de 1MB para buffer de resposta e streaming reativo, escalonador RFC 9218 `CriticalResourceScheduler` e `CssLoaderService` integrados; 213 testes verdes [108 unitários + 105 em 28 suítes de integração]; merge concluído e fase formalmente encerrada)  
 > **Padrões Normativos:** RFC 9110 (HTTP Semantics), RFC 9111 (HTTP Caching), RFC 9112 (HTTP/1.1), RFC 9113 (HTTP/2), RFC 9000 & RFC 9114 (QUIC & HTTP/3), RFC 8446 (TLS 1.3), RFC 8305 (Happy Eyeballs v2), RFC 6265bis (Cookies & CHIPS), RFC 6797 (HSTS), RFC 8879 (Clear-Site-Data), RFC 9218 (Extensible Prioritization Scheme), RFC 9460 (SVCB and HTTPS RRs for ECH), W3C Fetch Living Standard, W3C Fetch Metadata Request Headers, W3C Client Hints (RFC 8942).
 
 ---
@@ -12,6 +12,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.2.0** | 2026-10-12 | Conclusão da Fase 3 & Integração E2E | • Escalonador de prioridades RFC 9218 (`CriticalResourceScheduler`) e serviço de CSS assíncrono (`CssLoaderService`) plenamente integrados ao pipeline mestre `ace_browser`.<br>• Resolução de dependência `tempfile` no workspace (Dívida DV-09 quitada).<br>• Promoção de status para Concluído conforme Regra de Evidência (ADR-0021). | • Status elevado para ✅ Concluído.<br>• Suíte consolidada com 213 testes verdes (108 unitários + 105 de integração em 28 suítes).<br>• 0 warnings no Clippy com `-D warnings`. |
 | **1.1.0** | 2026-10-07 | Fechamento da Fase 3 & Otimização de Memória | • Limite de 1MB para bufferização de respostas pequenas para Cache RFC 9111.<br>• Respostas >1MB forçadas para streaming assíncrono para blindagem contra OOM.<br>• Fatoração do pipeline procedural em `fetcher.rs`. | • Aprovação de 71+ testes unitários e de integração.<br>• Aprovação do teste de estresse de memória de 93 segundos (`stress_memory_test.rs`).<br>• Status alterado para 🚧 (fechamento de PR). |
 | **1.0.0** | 2026-08-16 | Plano Diretor de Rede | • Adoção de `hyper`, `quinn` e `tokio` como Fundações.<br>• Cache L1 RAM e L2 WAL transacional em disco.<br>• Happy Eyeballs v2 e DoH nativo com `hickory-resolver`. | • Especificação formal da arquitetura de conectividade do ACE. |
 
