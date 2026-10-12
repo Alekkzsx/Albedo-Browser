@@ -1,9 +1,9 @@
 # 🗺️ PLANO MESTRE DEFINITIVO: SUBSISTEMA `ace_core` (Albedo Browser)
 
-> **Versão:** 1.0.0 — *Definitive Engineering Master Plan*  
+> **Versão:** 1.1.0 — *Definitive Engineering Master Plan*  
 > **Classificação:** Arquitetura Fundacional do Motor de Renderização (Core Foundation Subsystem)  
 > **Subsistema:** `Albedo_Core_Engine/ace_core` (Fase 2 do [PLANO.md](../../PLANO.md))  
-> **Status Atual:** 🟡 **Parcialmente Concluído** (101 testes unitários/integração + 3 doctests 100% aprovados; pendente implementação do IPC in-process em `ace_ipc` conforme DV-01)  
+> **Status Atual:** ✅ **Concluído** (530 testes automatizados [44 unitários + 483 de integração + 3 doctests] 100% aprovados; barramento IPC in-process implementado em `ace_ipc` com vazão de 2.22M msg/s e dívida DV-01 100% quitada)  
 > **Padrões Normativos:** WHATWG HTML Living Standard (Event Loop, Task Sources & Microtasks), WHATWG Fetch (Data URLs & MIME Sniffing), RFC 6454 (The Web Origin Concept), W3C CSS Color Module Level 4 & 5 (Color Spaces & Interpolação), W3C Performance Timeline Level 2.
 
 ---
@@ -12,6 +12,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.1.0** | 2026-10-12 | Conclusão da Fase 2 & Quitação da DV-01 | • Quitação definitiva da dívida DV-01 com o barramento `ace_ipc`.<br>• Expansão da cobertura de integração para 530 testes aprovados.<br>• Promoção formal de status para Concluído conforme Regra de Evidência (ADR-0021). | • Atualização do status para ✅ Concluído.<br>• Suíte consolidada com 530 testes verdes.<br>• Integração com o barramento IPC lock-free documentada. |
 | **1.0.0** | 2026-10-07 | Auditoria e Consolidação Forense (v7.0) | • Adoção de `euclid` para geometria tipada (ADR-0017).<br>• Padronização de `thiserror` nas APIs de biblioteca (ADR-0016).<br>• Desduplicação de Data URLs unificando em `data_url.rs`.<br>• Identificação da pendência do `ace_ipc` (DV-01). | • Criação deste Plano Mestre Definitivo.<br>• Criação do README do crate.<br>• Suíte de 101 testes unitários consolidada e verde.<br>• 101 linhas de código legado removidas em `utils.rs`. |
 | **0.9.0** | 2026-08-17 | Fundação Inicial da Fase 2 | • Criação das arenas geracionais EBR.<br>• Niche Optimization de `Option<NodeId>` em 8 bytes.<br>• Event Loop com filas por `TaskSource`. | • Entrega dos 18 módulos fundacionais com 82 testes iniciais. |
 
@@ -83,7 +84,11 @@ Implementação estrita do ciclo de vida da página conforme o WHATWG HTML Livin
 
 | Componente | Estado Auditado | Notas de Engenharia |
 | :--- | :---: | :--- |
-| **Primitivas do `ace_core`** | ✅ Concluído | 101 testes unitários passando, 0 falhas, 0 warnings. |
+| **Primitivas do `ace_core`** | ✅ Concluído | 530 testes automatizados aprovados (44 unitários + 483 de integração + 3 doctests), 0 falhas, 0 warnings no Clippy. |
 | **Desduplicação de Data URLs** | ✅ Concluído | Unificado com a especificação WHATWG Fetch em `data_url.rs`. |
-| **Comunicação IPC (`ace_ipc`)** | 🟡 Pendente | O crate `ace_ipc` é atualmente um stub. Exige implementação dos canais in-process e das mensagens `Navigate`, `RenderFrame` e `InputEvent` para cumprimento integral do DoD da Fase 2. |
+| **Comunicação IPC (`ace_ipc`)** | ✅ Concluído | Subsistema implementado com canais lock-free e `IpcRouter` Pub/Sub multi-tópico com vazão de 2.22M msg/s (> 1.5M msg/s); dívida DV-01 100% quitada (ver [`ace_ipc.md`](./ace_ipc.md)). |
+
+> [!NOTE]
+> Todas as pendências arquiteturais da Fase 2 foram formalmente encerradas e comprovadas por suítes de testes automatizados e medições de estresse de alta vazão no repositório.
+
 

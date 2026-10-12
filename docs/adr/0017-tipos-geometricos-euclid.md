@@ -1,7 +1,7 @@
 # ADR-0017: Tipos Geométricos 2D/3D via `euclid`
 
-- **Status:** Aceito
-- **Data:** 2026-08-16
+- **Status:** Aceito & Implementado
+- **Data:** 2026-08-16 (Implementado na Fase 2 e 6)
 - **Decisores:** Engenharia Central do Albedo
 - **Subsistemas Afetados:** `ace_core`, `ace_layout`, `ace_gfx`, `ace_style`
 
@@ -34,4 +34,18 @@ Adotamos a crate de geometria fortemente tipada [`euclid`](https://docs.rs/eucli
   - Zero custo de abstração em runtime (as tags de unidade são tipos fantasma de tamanho zero).
 - **Negativas / Riscos:**
   - Assinaturas de funções geométricas mais verbosas exigindo a parametrização do espaço de unidades.
+
+## 4. Notas de Implementação
+
+> [!NOTE]
+> **Status de Materialização:** Implementado e validado em `ace_core` e `ace_style`, fornecendo a fundação matemática tipada para o motor de layout e gráficos.
+
+- **`ace_core` (`Albedo_Core_Engine/ace_core/Cargo.toml` e `src/math/`):**
+  - Dependência: `euclid = "0.22"`.
+  - Módulo `src/math/geometry.rs`: Estruturas geométricas `Point2D`, `Size2D`, `Rect`, `SideOffsets2D`, parametrizadas pelas unidades fantasma `CssPixel`, `DevicePixel` e `LayoutPixel`.
+  - Módulo `src/math/layout_unit.rs`: Ponto fixo `LayoutUnit(i32)` em base 60 (1 px CSS = 60 unidades) com aritmética saturada para prevenção de bugs de ponto flutuante IEEE 754.
+  - Módulo `src/math/logical.rs`: Tipos de modo de escrita lógico W3C (`LogicalPoint`, `LogicalSize`, `LogicalRect`, `LogicalSides`) com métodos `to_physical(...)` suportando direções LTR/RTL e eixos verticais/horizontais.
+- **Adoção nos Crates Conectados:**
+  - `ace_style`: Dependência ativa de `euclid` em `Cargo.toml`, utilizada nos cálculos de dimensões e caixas.
+  - `ace_layout`: Base tipada direta para os fragmentos da Fragment Tree e cálculo de restrições (`ConstraintSpace`).
 

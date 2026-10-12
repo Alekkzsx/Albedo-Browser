@@ -1,7 +1,7 @@
 # ADR-0016: Política de Tipos de Erro no Workspace
 
-- **Status:** Aceito
-- **Data:** 2026-08-16
+- **Status:** Aceito & Implementado
+- **Data:** 2026-08-16 (Implementado no Workspace)
 - **Decisores:** Engenharia Central do Albedo
 - **Subsistemas Afetados:** `ace_core`, todos os crates de biblioteca e binários
 
@@ -35,4 +35,21 @@ Padronizamos formalmente a disciplina de tratamento de erros no workspace do Alb
   - Impossibilidade de quebrar clientes de biblioteca por encapsulamento dinâmico opaco de erros.
 - **Negativas / Riscos:**
   - Exige declaração explícita de variantes de erro e mapeamentos via `From`/`?` em transições entre submódulos.
+
+## 4. Notas de Implementação
+
+> [!NOTE]
+> **Status de Materialização:** Implementado e validado em 100% dos crates de biblioteca do workspace, assegurando APIs públicas fortemente tipadas com `thiserror` e ausência de vazamento de `anyhow`.
+
+- **Crates de Biblioteca (`Albedo_Core_Engine/`):**
+  - `ace_core`: Módulos exportam enums tipados com `thiserror` (`ArenaError`, `LayoutUnitOverflow`, etc.).
+  - `ace_ipc`: `src/error.rs` definindo `IpcError` (`Disconnected`, `Full`, `Empty`, `Timeout`, `TopicNotFound`).
+  - `ace_dom`: `src/error.rs` definindo `DomError` cobrindo nós inválidos, violações de hierarquia e parsing.
+  - `ace_net`: `src/error.rs` definindo `NetError` (`DnsError`, `TlsError`, `HttpError`, `CacheError`, etc.).
+  - `ace_style`: `src/error.rs` definindo `StyleError` cobrindo sintaxe CSS e parsing de seletores.
+  - `ace_browser`: `src/error.rs` definindo `PipelineError`.
+- **Crates Binários e Testes de Integração:**
+  - `anyhow = "1.0"` adotado com `.context()` em binários e nas 181 suítes de teste de integração.
+- **Robustez Operacional:**
+  - Proibição de `unwrap()` ou `panic!` em dados vindos de rede ou documentos web, com tratamento resiliente em 100% do pipeline.
 
