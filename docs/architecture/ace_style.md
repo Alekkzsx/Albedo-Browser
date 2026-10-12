@@ -140,13 +140,14 @@ O módulo [`invalidation.rs`](../../Albedo_Core_Engine/ace_style/src/engine/inva
 
 ## 4. Bateria de Testes Industriais
 
-O `ace_style` conta com **24 testes automatizados aprovados (0 falhas)** distribuídos em **13 binários dedicados**, incluindo **12 suítes pesadas de estresse adversário**:
+O `ace_style` conta com **25 testes automatizados aprovados (0 falhas)** distribuídos em **14 binários dedicados**, incluindo **13 suítes pesadas de estresse adversário**:
 
 | Binário de Teste | Tipo | Cenário e Carga Exercitada |
 | :--- | :---: | :--- |
 | `stress_style_structs_memory_bench` | Memória | **50.000 nós no DOM**: comprova economia de mais de 60% de heap via `Arc` de structs resetadas. |
 | `stress_mpc_hit_rate_scale` | Cache / Escala | **30.000 nós**: afere taxa de acerto superior a 80% no Matched Properties Cache e aceleração de cascata em mais de 4x. |
 | `stress_invalidation_reactive_benchmark` | Reatividade | **100.000 mutações de classe**: valida recálculo cirúrgico em menos de 1% da árvore por ciclo. |
+| `stress_live_dom_reactive_restyling` | Reatividade / Layout | Validação de reestilização reativa incremental disparada por mutação em nós DOM reais e categorização de caixas para layout (`BoxGenerationKind`). |
 | `stress_pseudo_elements_hierarchical` | RenderTree | Injeção hierárquica de `::before` e `::after` com herança e propriedade `content`. |
 | `stress_math_functions_deep_fuzz` | Fuzzing | **10.000 expressões aninhadas**: `clamp`, `min`, `max`, `round`, `abs`, `sign` com unidades relativas. |
 | `stress_logical_properties_bidi_matrix` | Padrões W3C | Matriz combinatória completa de Writing Modes (`horizontal-tb`, `vertical-rl`, `vertical-lr`) e direções (`ltr`, `rtl`). |
@@ -163,7 +164,7 @@ O `ace_style` conta com **24 testes automatizados aprovados (0 falhas)** distrib
 ## 5. Como Executar e Validar
 
 ```bash
-# Executar toda a suíte de testes (24 testes em 13 binários)
+# Executar toda a suíte de testes (25 testes em 14 binários)
 cargo test -p ace_style
 
 # Executar a verificação estrita do Clippy (zero warnings)
