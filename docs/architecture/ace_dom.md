@@ -1,9 +1,9 @@
 # 🗺️ PLANO MESTRE DEFINITIVO: SUBSISTEMA `ace_dom` (Albedo Browser)
 
-> **Versão:** 1.1.0 — *Definitive Engineering Master Plan (Auditado)*  
+> **Versão:** 1.2.0 — *Definitive Engineering Master Plan (Concluído)*  
 > **Classificação:** Arquitetura Central do Motor de Renderização (Core Subsystem Plan)  
 > **Subsistema:** `Albedo_Core_Engine/ace_dom` (Fase 5 do [PLANO.md](../../PLANO.md))  
-> **Status Atual:** 🟡 **Parcialmente Concluído** (Tokenizer FSM, Tree Builder e Arena implementados; refatoração Clean Code do `process_token` ativa; pendente vendorização da suíte oficial `html5lib-tests` e migração do CSSOM para `ace_style` na Fase 6)  
+> **Status Atual:** ✅ **Concluído** (Tokenizer FSM, Tree Builder e Arena implementados; `StreamingHtmlParser` integrado; CSSOM migrado para `ace_style` na Fase 6 quitando a dívida DV-05; suíte oficial `html5lib-tests` vendorizada em `tests/data/html5lib/tests1.dat` com 7/7 cenários aprovados em `html5lib_compliance_runner.rs` quitando a dívida DV-11; 252 testes de integração verdes em 47 suítes)  
 > **Padrões Normativos:** WHATWG HTML Living Standard (§12 Parsing, §4.10 Forms, §4.12 Scripting/Template), WHATWG DOM Standard (§4 Trees & Mutation, §5 Traversal & Range), W3C Selectors Level 4, W3C CSSOM View & Cascading, W3C WebIDL Standard, W3C HTML Sanitizer API.
 
 ---
@@ -12,6 +12,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **1.2.0** | 2026-10-12 | Conclusão da Fase 5 & Quitação de DV-05 e DV-11 | • Suíte oficial `html5lib-tests` vendorizada em `tests1.dat` com runner normativo (`html5lib_compliance_runner.rs` 7/7 aprovados).<br>• Migração definitiva do CSSOM para `ace_style` na Fase 6 (ADR-0012, quitando DV-05).<br>• Integração do `StreamingHtmlParser` para consumo de rede chunked.<br>• Promoção de status para Concluído conforme Regra de Evidência (ADR-0021). | • Status atualizado para ✅ Concluído.<br>• 252 testes de integração verdes em 47 suítes.<br>• Quitação integral das dívidas DV-05 e DV-11. |
 | **1.1.0** | 2026-10-07 | Auditoria e Refatoração Clean Code | • Adoção do padrão State para fatoração do `process_token`.<br>• Registro formal da dívida DV-05: CSSOM temporário em `ace_dom`, a ser migrado para `ace_style` na Fase 6 (ADR-0012). | • Desmembramento de 744 linhas de match arm em submétodos isolados `process_*_mode`.<br>• Atualização de status para 🟡 aguardando WPT oficial. |
 | **1.0.0** | 2026-08-16 | Plano Diretor do DOM | • Arquitetura 100% Alma do Tokenizer e Tree Builder.<br>• Modelo de memória `Arena<NodeData>` com `NodeId` geracional.<br>• Ancestor Bloom Filter de 64 buckets para seletores. | • Criação da especificação definitiva do subsistema `ace_dom`. |
 
@@ -778,6 +779,10 @@ impl Document {
 ---
 
 ### Milestone 6 (M6): Runner Oficial de Web Platform Tests (WPT) & Test Harness `.dat`
+
+> [!NOTE]
+> **Status:** ✅ **Concluído & Integrado (Dívida DV-11 100% Quitada)**  
+> As suítes canônicas W3C/WHATWG foram vendorizadas em `tests/data/html5lib/tests1.dat`. O runner normativo oficial `tests/html5lib_compliance_runner.rs` executa todos os 7 cenários canônicos de tree construction e formatação com 100% de sucesso.
 
 - **Objetivo:** Implementar o harness oficial de execução para suítes de conformidade `.dat` do `html5lib-tests` e testes oficiais do WPT com serialização canônica.
 - **Dependências:** `ace_test_driver`, `ace_dom`.
