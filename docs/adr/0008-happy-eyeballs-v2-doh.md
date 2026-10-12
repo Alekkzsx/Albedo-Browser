@@ -1,7 +1,7 @@
 # ADR-0008: Happy Eyeballs v2 e DNS-over-HTTPS (DoH) Nativo
 
-- **Status:** Aceito
-- **Data:** 2026-08-16
+- **Status:** Aceito & Implementado
+- **Data:** 2026-08-16 (Implementado na Fase 3)
 - **Decisores:** Engenharia Central do Albedo
 - **Subsistemas Afetados:** `ace_net`, `ace_core`
 
@@ -35,4 +35,15 @@ Adotamos a implementação nativa em `ace_net::dns` de dois padrões normativos 
 - **Negativas / Riscos:**
   - Maior complexidade na gestão de timers assíncronos e cancelamento de sockets parciais.
   - Consumo ligeiramente superior de sockets temporários durante handshakes em redes com alta latência.
+
+## 4. Notas de Implementação
+
+> [!NOTE]
+> **Status de Materialização:** Implementado e validado em produção no crate `ace_net` com suporte assíncrono integral a Happy Eyeballs v2 e DoH.
+
+- **`ace_net` (`Albedo_Core_Engine/ace_net/src/transport/dns.rs`):**
+  - Struct `DohHappyEyeballsResolver`: Orquestrador de resolução e conexão com suporte a Hickory Resolver (`hickory-resolver = "0.24"`).
+  - RFC 8305 (Happy Eyeballs v2): Consultas concorrentes de registros A e AAAA, intercalação de listas de IPs (IPv6 prioritário), temporizador de tentativa de conexão de 250ms (*Connection Attempt Delay*), e cancelamento imediato de tentativas secundárias assim que o primeiro socket completa o handshake TCP.
+  - RFC 8484 (DNS-over-HTTPS): Resolução via wire format binário `application/dns-message` sob transporte TLS 1.3 gerenciado por `rustls`.
+  - Cache de resolução DNS: Tabela interna com respeito a TTL para minimizar tráfego redundante.
 
