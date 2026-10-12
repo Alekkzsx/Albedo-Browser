@@ -1,8 +1,8 @@
 # 🎯 Escopo Normativo do MVP (v1.0) — Albedo Browser & Engine
 
 > **Documento Normativo de Escopo**  
-> **Status:** Vigente (Alinhado com o [PLANO.md v7.0](../../PLANO.md) — §1.4)  
-> **Última Atualização:** 2026-10-07  
+> **Status:** Vigente (Alinhado com o [PLANO.md v7.1](../../PLANO.md) — §1.4 e Fases 1–6 Concluídas)  
+> **Última Atualização:** 2026-10-12  
 > **Propósito:** Delimitar taxativamente a fronteira de entrega da versão 1.0 desktop (Windows, Linux, macOS), eliminando ambiguidades e evitando expansão descontrolada de escopo (*scope creep*).
 
 ---
@@ -11,6 +11,7 @@
 
 | Versão | Data | Contexto / Marco | Decisões & Escolhas Arquiteturais | Progresso & Mudanças |
 | :---: | :---: | :--- | :--- | :--- |
+| **2.1.0** | 2026-10-12 | Alinhamento Pós-Fase 6 & Rumo à Fase 7 | • Conclusão integral das Fases 1 a 6 (1.024 testes verdes no workspace).<br>• Integração do pipeline mestre unificado (`BrowserPipeline`) em `ace_browser`.<br>• Formalização da fronteira da **Fase 7 (`ace_layout`)**: arquitetura Box Tree vs Fragment Tree imutável com aritmética `LayoutUnit` (base 60). | • Escopo estritamente alinhado ao código real.<br>• Resolução de DV-01, DV-05, DV-09 e DV-11 consolidada.<br>• Modo *jitless* permanente ratificado. |
 | **2.0.0** | 2026-10-07 | Auditoria Forense v7.0 | • Adoção irrestrita do Paradigma Pragmático (Fundações vs Alma).<br>• Confirmação do motor JS interpretador sem JIT (ADR-0019).<br>• Inclusão formal de HTTP/2 e HTTP/3 no MVP (implementados em `ace_net`).<br>• Isolamento de processos por site (ADR-0015). | • Reescrita completa eliminando afirmações de "Zero-Dependency" e "DNS próprio em sockets".<br>• Inclusão de APIs essenciais de SPA (Workers, History API). |
 | **1.0.0** | 2026-08-16 | Definição Inicial | • Definição preliminar do MVP "Abismo Restrito". | • Documentação das primeiras restrições da versão 1.0. |
 
@@ -20,7 +21,7 @@
 
 O Albedo Browser estabelece uma fronteira clara e inegociável entre o que **orquestramos** e o que **forjamos**:
 - **Fundações (Ecossistema Rust Auditado):** Transporte e rede assíncrona (`tokio`, `hyper`, `quinn`), TLS e criptografia (`rustls`), resolução DNS (`hickory-resolver`), tipos geométricos (`euclid`), janelas e contexto gráfico (`winit`, `wgpu`), dados Unicode (`icu4x`).
-- **Alma (100% Forjado pelo ACE):** Tokenizador e construtor de árvore HTML5, modelo de memória do DOM, motor de cascata e especificidade de CSS, cálculo de layout (Box Model, Flexbox, Grid), display list, compositor, motor JavaScript próprio (`ace_js`), protocolo IPC e isolamento de processos por site.
+- **Alma (100% Forjado pelo ACE):** Tokenizador e construtor de árvore HTML5 em streaming, modelo de memória do DOM em Arena geracional, motor de cascata e especificidade de CSS com MPC (`ace_style`), cálculo de layout Box Tree / Fragment Tree imutável (`ace_layout`), display list, compositor GPU, motor JavaScript interpretado próprio (`ace_js`), protocolo binário IPC lock-free (`ace_ipc`) e o orquestrador ponta a ponta `BrowserPipeline` (`ace_browser`).
 
 ---
 
@@ -29,9 +30,10 @@ O Albedo Browser estabelece uma fronteira clara e inegociável entre o que **orq
 Para que a versão 1.0 seja considerada concluída (DoD Geral cumprido), o navegador deve renderizar corretamente e permitir navegação fluida em páginas de documentos reais (Wikipedia, documentações técnicas, portais de notícias, blogs e SPAs institucionais):
 
 ### 2.1 Rede, Conectividade e Segurança de Transporte
-- **Protocolos:** Conexões seguras HTTPS sobre HTTP/1.1, HTTP/2 e HTTP/3 (QUIC) via `ace_net`.
+- **Protocolos:** Conexões seguras HTTPS sobre HTTP/1.1, HTTP/2 e HTTP/3 (QUIC) via `ace_net` (213 testes verdes).
 - **Resolução DNS:** Suporte a DNS-over-HTTPS (DoH) com algoritmo Happy Eyeballs v2 (RFC 8305).
-- **Cache HTTP RFC 9111:** Cache em memória (L1 RAM) e persistência transacional em disco com WAL (L2), com suporte a validação condicional (`304 Not Modified`, `ETag`, `If-Modified-Since`).
+- **Agendador Crítico RFC 9218:** Priorização determinística de caminho crítico (HTML > CSS Bloqueante > Fontes > Imagens > Telemetria) com `CriticalResourceScheduler`.
+- **Cache HTTP RFC 9111:** Cache em memória (L1 RAM) e persistência transacional em disco com WAL (L2), com suporte a validação condicional (`304 Not Modified`, `ETag`, `If-Modified-Since`) e `CssLoaderService`.
 - **Segurança Web:**
   - Same-Origin Policy (SOP), isolamento de origem RFC 6454.
   - Cross-Origin Resource Sharing (CORS) e Content Security Policy Level 3 (CSP).
@@ -40,18 +42,24 @@ Para que a versão 1.0 seja considerada concluída (DoD Geral cumprido), o naveg
   - Particionamento triplo de estado de rede via `NetworkIsolationKey`.
 
 ### 2.2 Parsing Web e Árvore DOM
-- **HTML5 Parser:** Tokenizer streaming aderente ao WHATWG HTML Living Standard §12 com otimizações SIMD e recuperação resiliente de erros.
-- **Tree Builder:** Construção da árvore DOM com o Adoption Agency Algorithm (AAA) de 16 passos.
-- **Estrutura DOM:** Modelo de nós imutável/geracional (`Arena<NodeData>`), suporte a nós de elemento, texto e comentários.
+- **HTML5 Parser:** Tokenizer streaming aderente ao WHATWG HTML Living Standard §12 com otimizações de delimitador via `memchr` e recuperação resiliente de erros.
+- **Streaming Parser:** `StreamingHtmlParser` integrado para consumo direto de fluxos de rede sem bufferização intermediária redundante.
+- **Tree Builder:** Construção da árvore DOM com o Adoption Agency Algorithm (AAA) de 16 passos e conformidade validada contra as fixtures canônicas do W3C/WHATWG (`tests1.dat` no `html5lib_compliance_runner.rs`, 7/7 cenários aprovados).
+- **Estrutura DOM:** Modelo de nós imutável/geracional (`Arena<NodeData>`), suporte a nós de elemento, texto e comentários (252 testes verdes).
 - **Componentes Modernos:** Declarative Shadow DOM (DSD), elementos `<template>`, `MutationObserver` e `Live Ranges`.
 - **Sanitização:** Defesa anti-XSS integrada via W3C HTML Sanitizer API.
 
-### 2.3 Estilo e Layout (Acelerado e Paralelo)
+### 2.3 Estilo, Cascata e Preparação para Layout (Fases 6 e 7)
 - **Subconjunto CSS MVP:** Conforme definido taxativamente em [`css_properties.md`](./css_properties.md):
-  - Modelos de formatação: Bloco (BFC), Linha (IFC), Flexbox e CSS Grid básico.
+  - Modelos de formatação: Bloco (BFC), Linha (IFC), Flexbox e CSS Grid estrutural básico com `minmax()` e `fr`.
   - Box Model completo: margin, padding, border, dimensionamento (`box-sizing`).
   - Posicionamento: `static`, `relative`, `absolute`, `fixed`, `sticky`.
-  - Cascata: Especificidade, herança, variáveis CSS (`var()`) e suporte a `@layer` (CSS Cascade 5).
+  - Cascata: 8 origens normativas W3C, especificidade, herança, variáveis CSS (`var()`) acíclicas com mitigação *Billion Laughs*, e suporte a `@layer` (CSS Cascade 5).
+  - Desempenho: Matched Properties Cache (MPC com 99.95% hit rate) e `RestyleDriver` incremental (21.8 µs por mutação).
+- **Contrato Estruturado com a Fase 7 (`ace_layout`):**
+  - Geração de caixas conceituais via `BoxGenerationKind` (`Block`, `Inline`, `InlineBlock`, `Flex`, `Grid`, `Anonymous`, `TextRun`).
+  - Arquitetura de duas árvores: **Box Tree** mutável/estratificada vs. **Fragment Tree** imutável com fragmentação limpa pós-layout.
+  - Aritmética de ponto fixo `LayoutUnit` (base 60: 1 px CSS = 60 au) e geometria tipada bidimensional via `euclid` (`ace_core`).
 - **Tipografia e Texto:** Shaping de texto completo (incluindo scripts bidirecionais RTL e CJK) orquestrando `harfrust`/`rustybuzz` e descoberta de fontes do sistema via `fontdb`.
 - **Imagens:** Decodificação de PNG, JPEG, GIF e WebP em streaming.
 
@@ -66,14 +74,16 @@ Para que a versão 1.0 seja considerada concluída (DoD Geral cumprido), o naveg
   - History API (`pushState`, `replaceState`, evento `popstate`).
   - `ResizeObserver`, `structuredClone`, `MessageChannel`.
 
-### 2.5 Interface do Usuário e Plataforma (Desktop)
+### 2.5 Orquestração E2E e Barramento IPC
+- **Orquestrador Mestre (`ace_browser`):** Struct `BrowserPipeline` unindo rede assíncrona, streaming parser DOM, carregamento de CSS, resolução de cascata paralela e geração de `RenderTree` imutável.
+- **Barramento Lock-Free (`ace_ipc`):** Comunicação entre threads e subsistemas via canais tipados com vazão auditada de **2.221.596 msg/s** e roteador Pub/Sub multi-tópicos (`Navigation`, `Network`, `Dom`, `Render`, `Input`).
+
+### 2.6 Interface do Usuário e Plataforma (Desktop)
 - **Shell do Navegador:** Janela nativa via `winit` com renderização GPU via `wgpu`.
 - **Componentes do Chrome:** Abas navegáveis, omnibox com barra de endereços/busca, histórico básico e botões de navegação (voltar/avançar/recarregar).
 - **Acessibilidade (a11y):** Árvore de acessibilidade própria mapeando ARIA e integrada ao `AccessKit` (expondo para MSAA/UIA no Windows, NSAccessibility no macOS, AT-SPI no Linux).
 - **DevTools Mínimo:** Console de execução e inspetor DOM básico para depuração.
-
-### 2.6 Arquitetura de Processos
-- Conteúdo web executado em processos de **Renderer isolados por site** (*Site Isolation*), separados do processo do Browser (Fase 12).
+- **Arquitetura de Processos:** Conteúdo web executado em processos de **Renderer isolados por site** (*Site Isolation*), separados do processo do Browser (Fase 12).
 
 ---
 
@@ -90,3 +100,4 @@ Os seguintes recursos são explicitamente excluídos da versão 1.0 para manter 
 7. **Ecossistema de Extensões:** Compatibilidade com WebExtensions (Chrome/Firefox extensions).
 8. **Plataformas Mobile:** Versões Android/iOS.
 9. **Impressão Nativa:** Pipeline de paginação para PDF/impressora física.
+
