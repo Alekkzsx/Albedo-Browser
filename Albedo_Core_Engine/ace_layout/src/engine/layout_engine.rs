@@ -42,6 +42,8 @@ pub struct LayoutEngine {
     pub text_measurer: Arc<dyn TextMeasurer>,
     /// Flag controlling Rayon parallel processing for independent subtrees.
     pub enable_rayon: bool,
+    /// Cached fragment tree reused when the root fragment is identical.
+    cached_fragment_tree: Option<Arc<FragmentTree>>,
 }
 
 impl Default for LayoutEngine {
@@ -57,6 +59,7 @@ impl LayoutEngine {
             cache: LayoutCache::new(),
             text_measurer: Arc::new(FixedTextMeasurer::default()),
             enable_rayon: true,
+            cached_fragment_tree: None,
         }
     }
 
@@ -66,6 +69,7 @@ impl LayoutEngine {
             cache: LayoutCache::new(),
             text_measurer,
             enable_rayon: true,
+            cached_fragment_tree: None,
         }
     }
 
@@ -107,7 +111,18 @@ impl LayoutEngine {
             true,
         )?;
 
-        let tree = Arc::new(FragmentTree::new(Some(root_fragment), viewport));
+        if let Some(ref prev_tree) = self.cached_fragment_tree {
+            if prev_tree.viewport == viewport {
+                if let Some(ref prev_root) = prev_tree.root {
+                    if Arc::ptr_eq(prev_root, &root_fragment) {
+                        return Ok(Arc::clone(prev_tree));
+                    }
+                }
+            }
+        }
+
+        let tree = Arc::new(FragmentTree::new(Some(Arc::clone(&root_fragment)), viewport));
+        self.cached_fragment_tree = Some(Arc::clone(&tree));
         Ok(tree)
     }
 

@@ -22,7 +22,7 @@ use ace_style::values::enums::{Display, OverflowWrap, TextAlign, WhiteSpace, Wor
 use ace_layout::inline::{
     FixedTextMeasurer, InlineFormattingContext, LineBoxFragment, LineBreaker, VerticalAlign,
 };
-use ace_layout::tree::{ConstraintSpace, LayoutBox, LayoutBoxKind};
+use ace_layout::tree::{ConstraintSpace, LayoutBox};
 use common::{BenchmarkTimer, StyleBuilder};
 
 #[test]
