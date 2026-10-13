@@ -2,5 +2,26 @@
 name = "ace_layout"
 version = "0.1.0"
 edition = "2021"
+authors = ["Albedo Browser Engineering Team"]
 
 [dependencies]
+# Internal workspace dependencies
+ace_core = { path = "../ace_core" }
+ace_dom = { path = "../ace_dom" }
+ace_style = { path = "../ace_style" }
+
+# Typed geometry and math
+euclid = "0.22"
+
+# Data structures and text
+rustc-hash = "2.1"
+smol_str = "0.3"
+bitflags = "2.6"
+
+# Concurrency and synchronization
+rayon = "1.10"
+parking_lot = "0.12"
+
+# Telemetry and errors
+tracing = "0.1"
+thiserror = "2.0"
