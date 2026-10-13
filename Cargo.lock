@@ -9,6 +9,7 @@ dependencies = [
  "ace_core",
  "ace_dom",
  "ace_ipc",
+ "ace_layout",
  "ace_net",
  "ace_style",
  "base64 0.22.1",
