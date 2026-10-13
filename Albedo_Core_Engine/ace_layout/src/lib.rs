@@ -14,7 +14,7 @@ pub mod flex;
 pub mod grid;
 pub mod table;
 pub mod positioning;
-pub mod fragment {}
+pub mod fragment;
 pub mod engine {}
 
 // Re-exports
