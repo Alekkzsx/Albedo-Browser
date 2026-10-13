@@ -10,6 +10,7 @@ ace_ipc = { path = "../ace_ipc" }
 ace_net = { path = "../ace_net" }
 ace_dom = { path = "../ace_dom" }
 ace_style = { path = "../ace_style" }
+ace_layout = { path = "../ace_layout" }
 
 tokio = { version = "1.37", features = ["full"] }
 tracing = "0.1"

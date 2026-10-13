@@ -16,6 +16,10 @@ use ace_style::engine::invalidation::DOMMutation;
 use ace_style::engine::restyle_driver::RestyleDriver;
 use ace_style::engine::style_engine::{RenderTree, StyleEngine};
 use ace_style::model::stylesheet::StyleSheet;
+use ace_core::math::layout_unit::LayoutUnit;
+use ace_core::math::logical::LogicalSize;
+use ace_layout::engine::LayoutEngine;
+use ace_layout::fragment::FragmentTree;
 use std::sync::Arc;
 use thiserror::Error;
 use url::Url;
@@ -52,6 +56,10 @@ pub struct BrowserPipeline {
     pub document: Option<Document>,
     /// Driver de reestilização reativa incremental.
     pub driver: Option<RestyleDriver>,
+    /// Motor de layout geométrico (LayoutEngine).
+    pub layout_engine: LayoutEngine,
+    /// Árvore de fragmentos física e imutável ativa.
+    pub fragment_tree: Option<Arc<FragmentTree>>,
 }
 
 impl BrowserPipeline {
@@ -62,6 +70,7 @@ impl BrowserPipeline {
             ResourceFetcher::new().map_err(|e| PipelineError::NetworkError(e.to_string()))?,
         );
         let css_loader = CssLoaderService::new(fetcher.clone());
+        let layout_engine = LayoutEngine::new();
 
         Ok(Self {
             router,
@@ -69,6 +78,8 @@ impl BrowserPipeline {
             css_loader,
             document: None,
             driver: None,
+            layout_engine,
+            fragment_tree: None,
         })
     }
 
@@ -156,8 +167,19 @@ impl BrowserPipeline {
         let restyle_driver = RestyleDriver::new(style_engine, &doc);
         let render_tree = restyle_driver.render_tree().clone();
 
-        // 6. Publica evento de RenderFrame no barramento IPC
-        let nodes_count = render_tree.node_styles.len();
+        // 6. Executa layout produzindo a FragmentTree
+        let viewport = LogicalSize::new(LayoutUnit::from_px(1024), LayoutUnit::from_px(768));
+        let fragment_tree = self
+            .layout_engine
+            .layout_tree(&render_tree, &doc, viewport)
+            .ok();
+        self.fragment_tree = fragment_tree.clone();
+
+        // 7. Publica evento de RenderFrame no barramento IPC
+        let nodes_count = fragment_tree
+            .as_ref()
+            .map(|t| t.total_fragments())
+            .unwrap_or_else(|| render_tree.node_styles.len());
         let _ = self.router.publish(
             Topic::Render,
             IpcMessage::RenderFrame(RenderFramePayload {
@@ -240,5 +262,10 @@ impl BrowserPipeline {
     /// Retorna a RenderTree atualmente ativa no pipeline.
     pub fn render_tree(&self) -> Option<&RenderTree> {
         self.driver.as_ref().map(|d| d.render_tree())
+    }
+
+    /// Retorna a FragmentTree atualmente ativa no pipeline, se disponível.
+    pub fn fragment_tree(&self) -> Option<Arc<FragmentTree>> {
+        self.fragment_tree.clone()
     }
 }
