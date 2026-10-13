@@ -219,49 +219,11 @@ impl LineBoxFragment {
             return;
         }
 
-        // Mapeia Start/End para Left/Right dependendo de direction
-        let effective_align = match text_align {
-            TextAlign::Start => {
-                if direction == Direction::Ltr {
-                    TextAlign::Left
-                } else {
-                    TextAlign::Right
-                }
-            }
-            TextAlign::End => {
-                if direction == Direction::Ltr {
-                    TextAlign::Right
-                } else {
-                    TextAlign::Left
-                }
-            }
-            other => other,
-        };
-
-        match effective_align {
-            TextAlign::Left => {
-                let mut curr_x = LayoutUnit::ZERO;
-                for frag in &mut self.fragments {
-                    frag.bounds_mut().inline_start = curr_x;
-                    curr_x = curr_x.saturating_add(frag.bounds().inline_size);
-                }
-            }
-            TextAlign::Right => {
-                let mut curr_x = free_space;
-                for frag in &mut self.fragments {
-                    frag.bounds_mut().inline_start = curr_x;
-                    curr_x = curr_x.saturating_add(frag.bounds().inline_size);
-                }
-            }
-            TextAlign::Center => {
-                let mut curr_x = free_space.saturating_div(2);
-                for frag in &mut self.fragments {
-                    frag.bounds_mut().inline_start = curr_x;
-                    curr_x = curr_x.saturating_add(frag.bounds().inline_size);
-                }
-            }
+        let base_offset = match text_align {
+            TextAlign::Left | TextAlign::Start => LayoutUnit::ZERO,
+            TextAlign::Right | TextAlign::End => free_space,
+            TextAlign::Center => free_space.saturating_div(2),
             TextAlign::Justify => {
-                // Justify distribui o espaço livre entre fragmentos exceto na última linha
                 if !is_last_line && self.fragments.len() > 1 {
                     let gaps_count = (self.fragments.len() - 1) as i32;
                     let gap_addition = LayoutUnit::from_raw(free_space.raw() / gaps_count);
@@ -282,33 +244,26 @@ impl LineBoxFragment {
                             .saturating_add(extra);
                     }
                     self.bounds.inline_size = container_width;
-                } else {
-                    // Última linha recai para alinhamento inicial (Left em LTR, Right em RTL)
-                    let start_offset = if direction == Direction::Rtl {
-                        free_space
-                    } else {
-                        LayoutUnit::ZERO
-                    };
-                    let mut curr_x = start_offset;
-                    for frag in &mut self.fragments {
-                        frag.bounds_mut().inline_start = curr_x;
-                        curr_x = curr_x.saturating_add(frag.bounds().inline_size);
+                    if direction == Direction::Rtl {
+                        self.invert_rtl_offsets(container_width);
                     }
+                    return;
+                } else if direction == Direction::Rtl {
+                    // Última linha em RTL inicia à direita
+                    LayoutUnit::ZERO
+                } else {
+                    LayoutUnit::ZERO
                 }
             }
-            _ => {
-                let mut curr_x = LayoutUnit::ZERO;
-                for frag in &mut self.fragments {
-                    frag.bounds_mut().inline_start = curr_x;
-                    curr_x = curr_x.saturating_add(frag.bounds().inline_size);
-                }
-            }
+        };
+
+        let mut curr_x = base_offset;
+        for frag in &mut self.fragments {
+            frag.bounds_mut().inline_start = curr_x;
+            curr_x = curr_x.saturating_add(frag.bounds().inline_size);
         }
 
-        // Se a direção for RTL e alinhamento for Left, inverte para o lado direito
-        if direction == Direction::Rtl
-            && effective_align == TextAlign::Left
-        {
+        if direction == Direction::Rtl {
             self.invert_rtl_offsets(container_width);
         }
     }
@@ -340,7 +295,7 @@ mod tests {
     ) -> InlineFragment {
         InlineFragment::Text {
             text: SmolStr::new(text),
-            font: (*StyleFont::initial()).clone(),
+            font: StyleFont::initial(),
             bounds: LogicalRect::new(
                 LayoutUnit::ZERO,
                 LayoutUnit::ZERO,
@@ -432,5 +387,35 @@ mod tests {
         // Em LTR Left: inline_start = 0. Ao inverter para RTL: 100 - 0 - 30 = 70px
         line.apply_horizontal_alignment(container_w, TextAlign::Left, Direction::Rtl, false);
         assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(70));
+    }
+
+    #[test]
+    fn test_middle_alignment() {
+        let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
+        line.add_fragment(mock_text_fragment("base", 40, 24, 16, 8, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment("mid", 30, 10, 8, 2, VerticalAlign::Middle));
+        line.apply_baseline_alignment();
+
+        // Baseline = 16px, line_height = 24px.
+        // mid_line = baseline - baseline / 4 = 16 - 4 = 12px
+        // y = mid_line - 10 / 2 = 12 - 5 = 7px
+        assert_eq!(line.fragments[1].bounds().block_start, LayoutUnit::from_px(7));
+    }
+
+    #[test]
+    fn test_text_align_start_end_rtl() {
+        let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
+        line.add_fragment(mock_text_fragment("text", 40, 16, 12, 4, VerticalAlign::Baseline));
+        line.apply_baseline_alignment();
+
+        let container_w = LayoutUnit::from_px(100);
+
+        // Em RTL, TextAlign::Start alinha à direita: 100 - 40 = 60px
+        line.apply_horizontal_alignment(container_w, TextAlign::Start, Direction::Rtl, false);
+        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(60));
+
+        // Em RTL, TextAlign::End alinha à esquerda: 0px
+        line.apply_horizontal_alignment(container_w, TextAlign::End, Direction::Rtl, false);
+        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(0));
     }
 }

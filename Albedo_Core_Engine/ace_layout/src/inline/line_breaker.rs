@@ -202,7 +202,7 @@ impl LineBreaker {
         };
 
         for i in 0..chars.len() {
-            let (byte_idx, ch, class) = chars[i];
+            let (_byte_idx, _ch, class) = chars[i];
             let next_byte_idx = if i + 1 < chars.len() {
                 chars[i + 1].0
             } else {
@@ -343,48 +343,37 @@ impl LineBreaker {
         let mut curr_char_pos = 0;
 
         while curr_char_pos < chars_indices.len() {
+            let curr_char_byte = chars_indices[curr_char_pos];
+            let curr_char = prepared[curr_char_byte..].chars().next().unwrap();
             let curr_byte_end = if curr_char_pos + 1 < chars_indices.len() {
                 chars_indices[curr_char_pos + 1]
             } else {
                 prepared.len()
             };
 
-            // Verifica se passamos por oportunidades de quebra
-            while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= curr_byte_end {
-                let opp = &opportunities[opp_idx];
-                if opp.is_mandatory {
-                    // Quebra forçada mandatória imediata
-                    let segment_text = &prepared[line_start..opp.byte_offset];
-                    // Remove trailing newline chars
-                    let trimmed = segment_text.trim_end_matches(['\r', '\n']);
-                    let m = measurer.measure_text(trimmed, font);
-                    lines.push(LineSegment {
-                        text: trimmed.to_string(),
-                        width: m.width,
-                        is_mandatory_break: true,
-                    });
-                    line_start = opp.byte_offset;
-                    last_valid_break = None;
-                    opp_idx += 1;
-                    curr_char_pos = chars_indices
-                        .iter()
-                        .position(|&b| b >= line_start)
-                        .unwrap_or(chars_indices.len());
-                    continue;
-                } else {
-                    last_valid_break = Some((opp.byte_offset, false));
+            // 1. Quebra mandatória (\n, \r)
+            if curr_char == '\n' || curr_char == '\r' {
+                let segment_text = &prepared[line_start..curr_char_byte];
+                let trimmed = segment_text.trim_end_matches(['\r', '\n']);
+                let m = measurer.measure_text(trimmed, font);
+                lines.push(LineSegment {
+                    text: trimmed.to_string(),
+                    width: m.width,
+                    is_mandatory_break: true,
+                });
+                line_start = curr_byte_end;
+                last_valid_break = None;
+                curr_char_pos += 1;
+                while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
                     opp_idx += 1;
                 }
-            }
-
-            if curr_char_pos >= chars_indices.len() {
-                break;
+                continue;
             }
 
             let candidate_text = &prepared[line_start..curr_byte_end];
             let measured = measurer.measure_text(candidate_text, font);
 
-            // Se excedeu a largura disponível no contêiner
+            // 2. Se excedeu a largura disponível no contêiner
             if available_width > LayoutUnit::ZERO && measured.width > available_width {
                 // Caso 1: Temos uma quebra suave prévia nesta linha
                 if let Some((break_pos, _)) = last_valid_break {
@@ -409,15 +398,17 @@ impl LineBreaker {
                             .iter()
                             .position(|&b| b >= line_start)
                             .unwrap_or(chars_indices.len());
+                        while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
+                            opp_idx += 1;
+                        }
                         continue;
                     }
                 }
 
                 // Caso 2: Não há quebra suave anterior, palavra monolítica!
                 if overflow_wrap == OverflowWrap::BreakWord || overflow_wrap == OverflowWrap::Anywhere {
-                    // Particiona forçadamente no caractere anterior se tivermos ao menos 1 caractere
-                    let break_at = if chars_indices[curr_char_pos] > line_start {
-                        chars_indices[curr_char_pos]
+                    let break_at = if curr_char_byte > line_start {
+                        curr_char_byte
                     } else {
                         curr_byte_end
                     };
@@ -436,8 +427,20 @@ impl LineBreaker {
                         .iter()
                         .position(|&b| b >= line_start)
                         .unwrap_or(chars_indices.len());
+                    while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
+                        opp_idx += 1;
+                    }
                     continue;
                 }
+            }
+
+            // O candidato coube! Agora registramos oportunidades de quebra válidas até curr_byte_end
+            while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= curr_byte_end {
+                let opp = &opportunities[opp_idx];
+                if !opp.is_mandatory {
+                    last_valid_break = Some((opp.byte_offset, false));
+                }
+                opp_idx += 1;
             }
 
             curr_char_pos += 1;
@@ -581,5 +584,51 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].text, "abc");
         assert_eq!(lines[1].text, "def");
+    }
+
+    #[test]
+    fn test_break_after_hyphen() {
+        let measurer = FixedTextMeasurer::new(); // 8px por caractere
+        let font = StyleFont::initial();
+
+        // "super-fast" -> "super-" (6 chars = 48px), "fast" (4 chars = 32px)
+        // Disponível = 50px
+        let text = "super-fast";
+        let lines = LineBreaker::break_lines(
+            text,
+            &font,
+            &measurer,
+            LayoutUnit::from_px(50),
+            WhiteSpace::Normal,
+            WordBreak::Normal,
+            OverflowWrap::Normal,
+        );
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "super-");
+        assert_eq!(lines[1].text, "fast");
+    }
+
+    #[test]
+    fn test_cjk_line_breaking_multilingual() {
+        let measurer = FixedTextMeasurer::new();
+        let font = StyleFont::initial();
+
+        // 4 ideogramas CJK: "你好世界" (4 chars = 32px)
+        // Disponível = 16px (cabe 2 ideogramas por linha)
+        let text = "你好世界";
+        let lines = LineBreaker::break_lines(
+            text,
+            &font,
+            &measurer,
+            LayoutUnit::from_px(16),
+            WhiteSpace::Normal,
+            WordBreak::Normal,
+            OverflowWrap::Normal,
+        );
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "你好");
+        assert_eq!(lines[1].text, "世界");
     }
 }

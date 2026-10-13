@@ -8,10 +8,9 @@ use std::sync::Arc;
 
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::LayoutUnit;
-use ace_core::math::logical::{Direction, LogicalRect, LogicalSize};
+use ace_core::math::logical::{LogicalRect, LogicalSize};
 use ace_style::computed::structs::StyleFont;
 use ace_style::computed::ComputedStyle;
-use ace_style::values::enums::{TextAlign, VerticalAlign as StyleVerticalAlign, WhiteSpace, WordBreak};
 use smol_str::SmolStr;
 
 use crate::inline::line_box::{InlineFragment, LineBoxFragment, VerticalAlign};
@@ -35,6 +34,7 @@ enum UnpackedInlineItem {
     TextWord {
         text: SmolStr,
         width: LayoutUnit,
+        height: LayoutUnit,
         font: StyleFont,
         ascent: LayoutUnit,
         descent: LayoutUnit,
@@ -117,6 +117,7 @@ impl InlineFormattingContext {
                 UnpackedInlineItem::TextWord {
                     text,
                     width,
+                    height,
                     font,
                     ascent,
                     descent,
@@ -138,7 +139,6 @@ impl InlineFormattingContext {
                     // Se não couber na linha atual e a linha atual já possuir itens
                     if current_line_width.saturating_add(width) > available_width
                         && !current_line.fragments.is_empty()
-                        && !is_space
                     {
                         current_line.bounds.inline_size = current_line_width;
                         line_boxes.push(current_line);
@@ -150,10 +150,6 @@ impl InlineFormattingContext {
                     if is_space && current_line.fragments.is_empty() {
                         continue;
                     }
-
-                    let height = font
-                        .line_height
-                        .unwrap_or_else(|| ascent.saturating_add(descent));
 
                     let frag = InlineFragment::Text {
                         text,
@@ -257,7 +253,7 @@ impl InlineFormattingContext {
                 let word_break = node.style.word_break();
                 let font = (*node.style.font).clone();
                 let metrics = measurer.measure_text("M", &font);
-                let vertical_align = Self::map_vertical_align(node.style.box_style.vertical_align);
+                let vertical_align = VerticalAlign::Baseline;
 
                 // Usa o LineBreaker para quebrar o texto em tokens/palavras normativos
                 let prepared = LineBreaker::prepare_text(text_str, white_space);
@@ -269,18 +265,48 @@ impl InlineFormattingContext {
                         continue;
                     }
                     let chunk = &prepared[last_idx..opp.byte_offset];
-                    let chunk_metrics = measurer.measure_text(chunk, &font);
-
-                    out.push(UnpackedInlineItem::TextWord {
-                        text: SmolStr::new(chunk),
-                        width: chunk_metrics.width,
-                        font: font.clone(),
-                        ascent: metrics.ascent,
-                        descent: metrics.descent,
-                        vertical_align,
-                        is_space: opp.is_space,
-                        is_mandatory_break: opp.is_mandatory,
-                    });
+                    let trimmed = chunk.trim_end_matches([' ', '\t']);
+                    if !trimmed.is_empty() {
+                        let word_metrics = measurer.measure_text(trimmed, &font);
+                        out.push(UnpackedInlineItem::TextWord {
+                            text: SmolStr::new(trimmed),
+                            width: word_metrics.width,
+                            height: word_metrics.height,
+                            font: font.clone(),
+                            ascent: metrics.ascent,
+                            descent: metrics.descent,
+                            vertical_align,
+                            is_space: false,
+                            is_mandatory_break: false,
+                        });
+                    }
+                    let spaces = &chunk[trimmed.len()..];
+                    if !spaces.is_empty() {
+                        let space_metrics = measurer.measure_text(spaces, &font);
+                        out.push(UnpackedInlineItem::TextWord {
+                            text: SmolStr::new(spaces),
+                            width: space_metrics.width,
+                            height: space_metrics.height,
+                            font: font.clone(),
+                            ascent: metrics.ascent,
+                            descent: metrics.descent,
+                            vertical_align,
+                            is_space: true,
+                            is_mandatory_break: opp.is_mandatory,
+                        });
+                    } else if opp.is_mandatory {
+                        out.push(UnpackedInlineItem::TextWord {
+                            text: SmolStr::default(),
+                            width: LayoutUnit::ZERO,
+                            height: metrics.height,
+                            font: font.clone(),
+                            ascent: metrics.ascent,
+                            descent: metrics.descent,
+                            vertical_align,
+                            is_space: false,
+                            is_mandatory_break: true,
+                        });
+                    }
 
                     last_idx = opp.byte_offset;
                 }
@@ -288,18 +314,36 @@ impl InlineFormattingContext {
                 // Chunk final
                 if last_idx < prepared.len() {
                     let chunk = &prepared[last_idx..];
-                    let chunk_metrics = measurer.measure_text(chunk, &font);
-
-                    out.push(UnpackedInlineItem::TextWord {
-                        text: SmolStr::new(chunk),
-                        width: chunk_metrics.width,
-                        font: font.clone(),
-                        ascent: metrics.ascent,
-                        descent: metrics.descent,
-                        vertical_align,
-                        is_space: false,
-                        is_mandatory_break: false,
-                    });
+                    let trimmed = chunk.trim_end_matches([' ', '\t']);
+                    if !trimmed.is_empty() {
+                        let word_metrics = measurer.measure_text(trimmed, &font);
+                        out.push(UnpackedInlineItem::TextWord {
+                            text: SmolStr::new(trimmed),
+                            width: word_metrics.width,
+                            height: word_metrics.height,
+                            font: font.clone(),
+                            ascent: metrics.ascent,
+                            descent: metrics.descent,
+                            vertical_align,
+                            is_space: false,
+                            is_mandatory_break: false,
+                        });
+                    }
+                    let spaces = &chunk[trimmed.len()..];
+                    if !spaces.is_empty() {
+                        let space_metrics = measurer.measure_text(spaces, &font);
+                        out.push(UnpackedInlineItem::TextWord {
+                            text: SmolStr::new(spaces),
+                            width: space_metrics.width,
+                            height: space_metrics.height,
+                            font: font.clone(),
+                            ascent: metrics.ascent,
+                            descent: metrics.descent,
+                            vertical_align,
+                            is_space: true,
+                            is_mandatory_break: false,
+                        });
+                    }
                 }
             }
             LayoutBoxKind::Inline => {
@@ -313,7 +357,7 @@ impl InlineFormattingContext {
                     node.compute_min_max_sizes().min_content
                 });
                 let h = node.style.height().unwrap_or(LayoutUnit::from_px(20));
-                let vertical_align = Self::map_vertical_align(node.style.box_style.vertical_align);
+                let vertical_align = VerticalAlign::Baseline;
 
                 out.push(UnpackedInlineItem::AtomicBox {
                     id: node.id,
@@ -328,17 +372,6 @@ impl InlineFormattingContext {
                     Self::collect_items(child, measurer, out);
                 }
             }
-        }
-    }
-
-    /// Mapeia o alinhamento de estilo para a representação local de linha.
-    fn map_vertical_align(align: StyleVerticalAlign) -> VerticalAlign {
-        match align {
-            StyleVerticalAlign::Baseline => VerticalAlign::Baseline,
-            StyleVerticalAlign::Top => VerticalAlign::Top,
-            StyleVerticalAlign::Middle => VerticalAlign::Middle,
-            StyleVerticalAlign::Bottom => VerticalAlign::Bottom,
-            _ => VerticalAlign::Baseline,
         }
     }
 }

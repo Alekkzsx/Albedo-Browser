@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_fixed_text_measurer_explicit_line_height() {
         let measurer = FixedTextMeasurer::new();
-        let mut font = (*StyleFont::initial()).clone();
+        let mut font = StyleFont::initial();
         font.line_height = Some(LayoutUnit::from_px(24));
 
         let metrics = measurer.measure_text("world", &font);
