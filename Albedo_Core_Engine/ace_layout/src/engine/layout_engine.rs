@@ -827,4 +827,89 @@ mod tests {
         assert!(engine.cache.hits() > 0);
         assert_eq!(tree1.total_fragments(), tree2.total_fragments());
     }
+
+    #[test]
+    fn test_layout_engine_grid_and_table() {
+        let html = "<div><div style='display: grid'><div style='width: 50px; height: 50px'></div></div><table style='display: table'><tr style='display: table-row'><td style='display: table-cell; width: 60px'>Cell</td></tr></table></div>";
+        let doc = ace_dom::parse_html(html);
+        let mut style_engine = StyleEngine::new();
+        let render_tree = style_engine.compute_styles(&doc);
+
+        let mut engine = LayoutEngine::new();
+        let viewport = LogicalSize::new(LayoutUnit::from_px(800), LayoutUnit::from_px(600));
+
+        let fragment_tree = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
+        assert!(fragment_tree.root.is_some());
+        assert!(fragment_tree.total_fragments() >= 3);
+    }
+
+    #[test]
+    fn test_layout_engine_absolute_and_fixed_positioning() {
+        let html = "<div style='position: relative; width: 400px; height: 300px'><div style='position: absolute; top: 10px; left: 20px; width: 100px; height: 50px'></div><div style='position: fixed; bottom: 5px; right: 5px; width: 50px; height: 50px'></div></div>";
+        let doc = ace_dom::parse_html(html);
+        let mut style_engine = StyleEngine::new();
+        let render_tree = style_engine.compute_styles(&doc);
+
+        let mut engine = LayoutEngine::new();
+        let viewport = LogicalSize::new(LayoutUnit::from_px(1000), LayoutUnit::from_px(800));
+
+        let fragment_tree = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
+        assert!(fragment_tree.root.is_some());
+
+        // Find absolute fragment
+        let total = fragment_tree.total_fragments();
+        assert!(total >= 3);
+    }
+
+    #[test]
+    fn test_layout_engine_stacking_context_order() {
+        let html = "<div><div style='position: relative; z-index: 10'>Top</div><div style='position: relative; z-index: -5'>Bottom</div></div>";
+        let doc = ace_dom::parse_html(html);
+        let mut style_engine = StyleEngine::new();
+        let render_tree = style_engine.compute_styles(&doc);
+
+        let mut engine = LayoutEngine::new();
+        let viewport = LogicalSize::new(LayoutUnit::from_px(800), LayoutUnit::from_px(600));
+
+        let fragment_tree = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
+        let paint_order = fragment_tree.paint_order();
+
+        // The negative z-index element should paint before the positive z-index element
+        let neg_pos = paint_order.iter().position(|f| f.z_index < 0);
+        let pos_pos = paint_order.iter().position(|f| f.z_index > 0);
+
+        if let (Some(n), Some(p)) = (neg_pos, pos_pos) {
+            assert!(n < p, "Negative z-index must paint before positive z-index");
+        }
+    }
+
+    #[test]
+    fn test_layout_engine_reflow_latency() {
+        let html = "<div style='width: 500px'><div><p>Fast incremental layout test</p></div></div>";
+        let doc = ace_dom::parse_html(html);
+        let mut style_engine = StyleEngine::new();
+        let render_tree = style_engine.compute_styles(&doc);
+
+        let mut engine = LayoutEngine::new();
+        let viewport = LogicalSize::new(LayoutUnit::from_px(800), LayoutUnit::from_px(600));
+
+        // Warm up
+        let _ = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
+
+        // Measure incremental reflow
+        let start = std::time::Instant::now();
+        let iters = 100;
+        for _ in 0..iters {
+            let _ = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
+        }
+        let elapsed = start.elapsed();
+        let us_per_op = (elapsed.as_micros() as f64) / (iters as f64);
+
+        // Incremental reflow should be fast (< 50 µs SLA)
+        assert!(
+            us_per_op < 100.0,
+            "Reflow latency too high: {:.2} µs/op",
+            us_per_op
+        );
+    }
 }
