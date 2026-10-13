@@ -31,15 +31,31 @@ fn test_stress_50k_words_multilingual_corpus_packing() {
 
     // 1. Gera corpus sintético de 50.000 palavras cobrindo múltiplos idiomas
     let latin_vocab = [
-        "browser", "layout", "engine", "albedo", "performance", "subpixel", "snapping",
-        "typography", "pipeline", "fragment", "cascading", "stylesheets", "document",
+        "browser",
+        "layout",
+        "engine",
+        "albedo",
+        "performance",
+        "subpixel",
+        "snapping",
+        "typography",
+        "pipeline",
+        "fragment",
+        "cascading",
+        "stylesheets",
+        "document",
     ];
     let cjk_vocab = [
-        "瀏覽器", "排版", "引擎", "性能", "分詞", "佈局", "字體", "渲染",
+        "瀏覽器",
+        "排版",
+        "引擎",
+        "性能",
+        "分詞",
+        "佈局",
+        "字體",
+        "渲染",
     ];
-    let rtl_vocab = [
-        "متصفح", "محرك", "تصميم", "أداء", "نصوص", "عالمي", "خطوط",
-    ];
+    let rtl_vocab = ["متصفح", "محرك", "تصميم", "أداء", "نصوص", "عالمي", "خطوط"];
 
     let total_words = 50_000;
     let mut text_corpus = String::with_capacity(total_words * 12);
@@ -70,26 +86,21 @@ fn test_stress_50k_words_multilingual_corpus_packing() {
         .width_px(800)
         .build();
 
-    let text_style = StyleBuilder::new()
-        .font_size_px(16, Some(24))
-        .build();
+    let text_style = StyleBuilder::new().font_size_px(16, Some(24)).build();
 
-    let text_box = LayoutBox::new_text(
-        NodeId::new(),
-        text_style,
-        SmolStr::new(&text_corpus),
-    );
+    let text_box = LayoutBox::new_text(NodeId::new(), text_style, SmolStr::new(&text_corpus));
 
-    let space = ConstraintSpace::for_container(LogicalSize::new(
-        LayoutUnit::from_px(800),
-        LayoutUnit::MAX,
-    ));
+    let space =
+        ConstraintSpace::for_container(LogicalSize::new(LayoutUnit::from_px(800), LayoutUnit::MAX));
 
     let ifc = InlineFormattingContext::new();
     let result = ifc.layout_children(&[text_box], &container_style, &space, &measurer);
 
     // Validações
-    assert!(!result.line_boxes.is_empty(), "Line boxes must not be empty");
+    assert!(
+        !result.line_boxes.is_empty(),
+        "Line boxes must not be empty"
+    );
 
     let mut total_packed_fragments = 0;
     for line in &result.line_boxes {
@@ -230,7 +241,10 @@ fn test_stress_rtl_bidi_offset_reversal() {
 
     assert_eq!(pos0, LayoutUnit::from_px(420));
     assert_eq!(pos1, LayoutUnit::from_px(360));
-    assert!(pos1 < pos0, "In RTL, subsequent items must be placed to the left");
+    assert!(
+        pos1 < pos0,
+        "In RTL, subsequent items must be placed to the left"
+    );
 }
 
 #[test]

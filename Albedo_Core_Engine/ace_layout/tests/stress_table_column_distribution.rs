@@ -21,9 +21,7 @@ use ace_core::math::logical::LogicalSize;
 use ace_style::values::enums::Display;
 
 use ace_layout::inline::FixedTextMeasurer;
-use ace_layout::table::distribution::{
-    distribute_column_widths, ColumnConstraints,
-};
+use ace_layout::table::distribution::{distribute_column_widths, ColumnConstraints};
 use ace_layout::table::tfc::TableFormattingContext;
 use ace_layout::tree::{ConstraintSpace, LayoutBox, LayoutBoxKind};
 use common::{BenchmarkTimer, StyleBuilder};
@@ -84,8 +82,16 @@ fn test_stress_100x20_table_formatting_and_column_alignment() {
     let first_row = &result.rows[0];
     assert_eq!(first_row.cells.len(), cols_count);
 
-    let expected_x: Vec<LayoutUnit> = first_row.cells.iter().map(|c| c.border_box.inline_start).collect();
-    let expected_w: Vec<LayoutUnit> = first_row.cells.iter().map(|c| c.border_box.inline_size).collect();
+    let expected_x: Vec<LayoutUnit> = first_row
+        .cells
+        .iter()
+        .map(|c| c.border_box.inline_start)
+        .collect();
+    let expected_w: Vec<LayoutUnit> = first_row
+        .cells
+        .iter()
+        .map(|c| c.border_box.inline_size)
+        .collect();
 
     // Invariante de alinhamento: todas as células na coluna j em todas as 100 linhas
     // devem possuir IDÊNTICA posição x e IDÊNTICA largura
@@ -150,12 +156,16 @@ fn test_stress_table_column_distribution_3_regimes() {
         assert!(
             w >= columns[i].min_size,
             "Column {} width {:?} fell below min_size {:?}",
-            i, w, columns[i].min_size
+            i,
+            w,
+            columns[i].min_size
         );
         assert!(
             w <= columns[i].max_size,
             "Column {} width {:?} exceeded max_size {:?}",
-            i, w, columns[i].max_size
+            i,
+            w,
+            columns[i].max_size
         );
     }
 
@@ -172,7 +182,9 @@ fn test_stress_table_column_distribution_3_regimes() {
         assert!(
             w >= columns[i].max_size,
             "In total excess, column {} width {:?} must be at least max_size {:?}",
-            i, w, columns[i].max_size
+            i,
+            w,
+            columns[i].max_size
         );
     }
 }

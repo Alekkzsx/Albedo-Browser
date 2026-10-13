@@ -210,7 +210,10 @@ impl LineBreaker {
             };
 
             // Quebras mandatórias (LB4, LB5)
-            if class == LineBreakClass::LF || class == LineBreakClass::BK || class == LineBreakClass::NL {
+            if class == LineBreakClass::LF
+                || class == LineBreakClass::BK
+                || class == LineBreakClass::NL
+            {
                 opportunities.push(BreakOpportunity {
                     byte_offset: next_byte_idx,
                     is_mandatory: true,
@@ -273,7 +276,9 @@ impl LineBreaker {
             // word-break: break-all permite quebra suave entre quaisquer letras
             if word_break == WordBreak::BreakAll && i + 1 < chars.len() {
                 let next_class = chars[i + 1].2;
-                if class == LineBreakClass::AL && (next_class == LineBreakClass::AL || next_class == LineBreakClass::NU) {
+                if class == LineBreakClass::AL
+                    && (next_class == LineBreakClass::AL || next_class == LineBreakClass::NU)
+                {
                     opportunities.push(BreakOpportunity {
                         byte_offset: next_byte_idx,
                         is_mandatory: false,
@@ -364,7 +369,9 @@ impl LineBreaker {
                 line_start = curr_byte_end;
                 last_valid_break = None;
                 curr_char_pos += 1;
-                while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
+                while opp_idx < opportunities.len()
+                    && opportunities[opp_idx].byte_offset <= line_start
+                {
                     opp_idx += 1;
                 }
                 continue;
@@ -389,7 +396,9 @@ impl LineBreaker {
                         line_start = break_pos;
                         // Pula espaços iniciais na nova linha se não for pre
                         if white_space != WhiteSpace::Pre && white_space != WhiteSpace::PreWrap {
-                            while line_start < prepared.len() && prepared[line_start..].starts_with(' ') {
+                            while line_start < prepared.len()
+                                && prepared[line_start..].starts_with(' ')
+                            {
                                 line_start += 1;
                             }
                         }
@@ -398,7 +407,9 @@ impl LineBreaker {
                             .iter()
                             .position(|&b| b >= line_start)
                             .unwrap_or(chars_indices.len());
-                        while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
+                        while opp_idx < opportunities.len()
+                            && opportunities[opp_idx].byte_offset <= line_start
+                        {
                             opp_idx += 1;
                         }
                         continue;
@@ -406,7 +417,9 @@ impl LineBreaker {
                 }
 
                 // Caso 2: Não há quebra suave anterior, palavra monolítica!
-                if overflow_wrap == OverflowWrap::BreakWord || overflow_wrap == OverflowWrap::Anywhere {
+                if overflow_wrap == OverflowWrap::BreakWord
+                    || overflow_wrap == OverflowWrap::Anywhere
+                {
                     let break_at = if curr_char_byte > line_start {
                         curr_char_byte
                     } else {
@@ -427,7 +440,9 @@ impl LineBreaker {
                         .iter()
                         .position(|&b| b >= line_start)
                         .unwrap_or(chars_indices.len());
-                    while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= line_start {
+                    while opp_idx < opportunities.len()
+                        && opportunities[opp_idx].byte_offset <= line_start
+                    {
                         opp_idx += 1;
                     }
                     continue;
@@ -435,7 +450,9 @@ impl LineBreaker {
             }
 
             // O candidato coube! Agora registramos oportunidades de quebra válidas até curr_byte_end
-            while opp_idx < opportunities.len() && opportunities[opp_idx].byte_offset <= curr_byte_end {
+            while opp_idx < opportunities.len()
+                && opportunities[opp_idx].byte_offset <= curr_byte_end
+            {
                 let opp = &opportunities[opp_idx];
                 if !opp.is_mandatory {
                     last_valid_break = Some((opp.byte_offset, false));
@@ -491,7 +508,8 @@ mod tests {
     #[test]
     fn test_line_breaking_opportunities_spaces_and_cjk() {
         let text = "hello world 你好世界";
-        let opps = LineBreaker::find_break_opportunities(text, WhiteSpace::Normal, WordBreak::Normal);
+        let opps =
+            LineBreaker::find_break_opportunities(text, WhiteSpace::Normal, WordBreak::Normal);
         // Deve conter oportunidade após "hello ", e entre ideogramas CJK
         assert!(!opps.is_empty());
         assert!(opps.iter().any(|o| o.is_space));

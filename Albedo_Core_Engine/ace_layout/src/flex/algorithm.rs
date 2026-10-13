@@ -224,10 +224,9 @@ pub fn layout_flex_lines(
             c_main
         } else {
             // Se indefinido, a linha ajusta ao tamanho hipotético dos itens + gaps
-            let sum_hyp: LayoutUnit = line
-                .items
-                .iter()
-                .fold(LayoutUnit::ZERO, |acc, it| acc.saturating_add(it.flex_basis));
+            let sum_hyp: LayoutUnit = line.items.iter().fold(LayoutUnit::ZERO, |acc, it| {
+                acc.saturating_add(it.flex_basis)
+            });
             sum_hyp.saturating_add(total_gap)
         };
 
@@ -256,12 +255,18 @@ pub fn layout_flex_lines(
         }
 
         // 2. Alinha os itens no eixo principal da linha (`justify-content`)
-        align_items_main_axis(line, config.justify_content, config.main_gap, config.axis.is_reversed());
+        align_items_main_axis(
+            line,
+            config.justify_content,
+            config.main_gap,
+            config.axis.is_reversed(),
+        );
 
         // 3. Determina a dimensão transversal inicial da linha
-        let max_cross: LayoutUnit = line.items.iter().fold(LayoutUnit::ZERO, |acc, it| {
-            acc.max(it.outer_cross_size())
-        });
+        let max_cross: LayoutUnit = line
+            .items
+            .iter()
+            .fold(LayoutUnit::ZERO, |acc, it| acc.max(it.outer_cross_size()));
         line.line_cross_size = max_cross;
     }
 
@@ -273,13 +278,13 @@ pub fn layout_flex_lines(
         LayoutUnit::ZERO
     };
 
-    let sum_lines_cross: LayoutUnit = lines
-        .iter()
-        .fold(LayoutUnit::ZERO, |acc, l| acc.saturating_add(l.line_cross_size));
-
-    let available_cross = config.container_cross_size.unwrap_or_else(|| {
-        sum_lines_cross.saturating_add(total_cross_gaps)
+    let sum_lines_cross: LayoutUnit = lines.iter().fold(LayoutUnit::ZERO, |acc, l| {
+        acc.saturating_add(l.line_cross_size)
     });
+
+    let available_cross = config
+        .container_cross_size
+        .unwrap_or_else(|| sum_lines_cross.saturating_add(total_cross_gaps));
 
     // Posiciona as linhas no eixo transversal
     position_lines_cross_axis(
@@ -318,12 +323,19 @@ pub fn layout_flex_lines(
             }
 
             let item_outer_cross = item.outer_cross_size();
-            let cross_free = line_cross.saturating_sub(item_outer_cross).max(LayoutUnit::ZERO);
+            let cross_free = line_cross
+                .saturating_sub(item_outer_cross)
+                .max(LayoutUnit::ZERO);
 
             item.cross_offset = match alignment {
                 AlignSelf::FlexStart | AlignSelf::Baseline => item.margins_cross.0,
-                AlignSelf::FlexEnd => line_cross.saturating_sub(item.margins_cross.1).saturating_sub(item.target_cross_size),
-                AlignSelf::Center => item.margins_cross.0.saturating_add(cross_free.saturating_div(2)),
+                AlignSelf::FlexEnd => line_cross
+                    .saturating_sub(item.margins_cross.1)
+                    .saturating_sub(item.target_cross_size),
+                AlignSelf::Center => item
+                    .margins_cross
+                    .0
+                    .saturating_add(cross_free.saturating_div(2)),
                 AlignSelf::Stretch | AlignSelf::Auto => item.margins_cross.0,
             };
         }
@@ -355,10 +367,9 @@ fn align_items_main_axis(
         return;
     }
 
-    let sum_outer_items: LayoutUnit = line
-        .items
-        .iter()
-        .fold(LayoutUnit::ZERO, |acc, it| acc.saturating_add(it.outer_main_size()));
+    let sum_outer_items: LayoutUnit = line.items.iter().fold(LayoutUnit::ZERO, |acc, it| {
+        acc.saturating_add(it.outer_main_size())
+    });
 
     let total_gaps = if count > 1 {
         gap.saturating_mul((count - 1) as i32)
@@ -449,7 +460,10 @@ fn position_lines_cross_axis(
         }
         AlignContent::SpaceAround => {
             let per_line = free_cross.saturating_div(count as i32);
-            (per_line.saturating_div(2), cross_gap.saturating_add(per_line))
+            (
+                per_line.saturating_div(2),
+                cross_gap.saturating_add(per_line),
+            )
         }
         AlignContent::Stretch => {
             // Se stretch e houver espaço livre, distribui equitativamente entre as linhas
@@ -510,12 +524,7 @@ pub fn map_to_logical_rect(
 mod tests {
     use super::*;
 
-    fn create_dummy_item(
-        id: u64,
-        grow: f32,
-        basis_px: i32,
-        cross_px: i32,
-    ) -> FlexItem {
+    fn create_dummy_item(id: u64, grow: f32, basis_px: i32, cross_px: i32) -> FlexItem {
         FlexItem {
             node_id: NodeId::from_raw(id).unwrap_or_default(),
             flex_grow: grow,

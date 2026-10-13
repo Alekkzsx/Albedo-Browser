@@ -18,12 +18,10 @@ mod common;
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::LayoutUnit;
 use ace_core::math::logical::LogicalSize;
-use ace_style::values::enums::{
-    AlignItems, Display, FlexDirection, FlexWrap, JustifyContent,
-};
+use ace_style::values::enums::{AlignItems, Display, FlexDirection, FlexWrap, JustifyContent};
 
-use ace_layout::flex::freeze_loop::{resolve_flexible_lengths, FlexFreezeItem};
 use ace_layout::flex::ffc::FlexFormattingContext;
+use ace_layout::flex::freeze_loop::{resolve_flexible_lengths, FlexFreezeItem};
 use ace_layout::inline::FixedTextMeasurer;
 use ace_layout::tree::{ConstraintSpace, LayoutBox, LayoutBoxKind};
 use common::{BenchmarkTimer, StyleBuilder};
@@ -143,8 +141,8 @@ fn test_stress_freeze_loop_extreme_factors_conservation() {
     let iterations = 500;
 
     for i in 0..iterations {
-        let container_main = LayoutUnit::from_px(800 + (i % 200) as i32);
-        let gap = LayoutUnit::from_px((i % 10) as i32);
+        let container_main = LayoutUnit::from_px(800 + (i % 200));
+        let gap = LayoutUnit::from_px(i % 10);
 
         let mut items = vec![
             FlexFreezeItem::new(
@@ -202,7 +200,9 @@ fn test_stress_freeze_loop_extreme_factors_conservation() {
 
         // Invariante 3: Conservação de espaço em caso de distribuição completa
         let sum_targets: LayoutUnit = items.iter().map(|it| it.target_size).sum();
-        let total_consumed = sum_targets.saturating_add(total_gap).saturating_add(free_space);
+        let total_consumed = sum_targets
+            .saturating_add(total_gap)
+            .saturating_add(free_space);
 
         // Se nenhum item foi clampado em max impedindo crescimento,
         // o total consumido coincide exatamente com o tamanho do contêiner

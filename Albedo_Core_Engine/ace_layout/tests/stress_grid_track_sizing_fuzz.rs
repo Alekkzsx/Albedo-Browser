@@ -17,9 +17,7 @@ use ace_core::math::layout_unit::LayoutUnit;
 use ace_style::values::enums::GridAutoFlow;
 
 use ace_layout::grid::placement::{place_grid_items, ItemPlacementSpec};
-use ace_layout::grid::track::{
-    resolve_track_sizes, GridTrackBreadth, GridTrackSize,
-};
+use ace_layout::grid::track::{resolve_track_sizes, GridTrackBreadth, GridTrackSize};
 use common::BenchmarkTimer;
 
 /// Gerador linear congruente simples e determinístico para fuzzing com seed fixa.
@@ -100,17 +98,27 @@ fn test_stress_50x50_tracks_sizing_fuzz() {
 
     // Invariantes para as colunas:
     for (i, &size) in col_sizes.iter().enumerate() {
-        assert!(size >= LayoutUnit::ZERO, "Track size must be non-negative: {:?}", size);
-        if let GridTrackSize::MinMax(GridTrackBreadth::Px(min), GridTrackBreadth::Px(max)) = col_specs[i] {
+        assert!(
+            size >= LayoutUnit::ZERO,
+            "Track size must be non-negative: {:?}",
+            size
+        );
+        if let GridTrackSize::MinMax(GridTrackBreadth::Px(min), GridTrackBreadth::Px(max)) =
+            col_specs[i]
+        {
             assert!(
                 size >= min,
                 "Track {} size {:?} violated min constraint {:?}",
-                i, size, min
+                i,
+                size,
+                min
             );
             assert!(
                 size <= max,
                 "Track {} size {:?} violated max constraint {:?}",
-                i, size, max
+                i,
+                size,
+                max
             );
         }
     }

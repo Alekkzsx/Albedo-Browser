@@ -103,13 +103,8 @@ impl LayoutEngine {
         );
 
         let initial_cb = ContainingBlock::from_viewport(viewport);
-        let root_fragment = self.layout_box_recursive(
-            root_box,
-            &root_space,
-            &initial_cb,
-            viewport,
-            true,
-        )?;
+        let root_fragment =
+            self.layout_box_recursive(root_box, &root_space, &initial_cb, viewport, true)?;
 
         if let Some(ref prev_tree) = self.cached_fragment_tree {
             if prev_tree.viewport == viewport {
@@ -121,7 +116,10 @@ impl LayoutEngine {
             }
         }
 
-        let tree = Arc::new(FragmentTree::new(Some(Arc::clone(&root_fragment)), viewport));
+        let tree = Arc::new(FragmentTree::new(
+            Some(Arc::clone(&root_fragment)),
+            viewport,
+        ));
         self.cached_fragment_tree = Some(Arc::clone(&tree));
         Ok(tree)
     }
@@ -169,20 +167,33 @@ impl LayoutEngine {
         let is_fixed = node.style.position() == Position::Fixed;
 
         let fragment = if is_fixed {
-            let intrinsic_w = node.min_max_cache.get().map(|m| m.max_content).unwrap_or(LayoutUnit::ZERO);
+            let intrinsic_w = node
+                .min_max_cache
+                .get()
+                .map(|m| m.max_content)
+                .unwrap_or(LayoutUnit::ZERO);
             let intrinsic_h = LayoutUnit::ZERO;
             let pos_res = resolve_fixed_position(&node.style, viewport, intrinsic_w, intrinsic_h);
 
             let inner_space = ConstraintSpace::new(
                 AvailableSize::Definite(pos_res.content_box.inline_size),
                 AvailableSize::Definite(pos_res.content_box.block_size),
-                LogicalSize::new(pos_res.content_box.inline_size, pos_res.content_box.block_size),
+                LogicalSize::new(
+                    pos_res.content_box.inline_size,
+                    pos_res.content_box.block_size,
+                ),
             );
 
             let inner_cb = ContainingBlock::new(pos_res.padding_box, false);
             let mut children = Vec::new();
             for child in &node.children {
-                children.push(self.layout_box_recursive(child, &inner_space, &inner_cb, viewport, false)?);
+                children.push(self.layout_box_recursive(
+                    child,
+                    &inner_space,
+                    &inner_cb,
+                    viewport,
+                    false,
+                )?);
             }
 
             let mut overflow = LayoutOverflow::new(pos_res.border_box);
@@ -209,20 +220,33 @@ impl LayoutEngine {
                 None,
             ))
         } else if is_absolute {
-            let intrinsic_w = node.min_max_cache.get().map(|m| m.max_content).unwrap_or(LayoutUnit::ZERO);
+            let intrinsic_w = node
+                .min_max_cache
+                .get()
+                .map(|m| m.max_content)
+                .unwrap_or(LayoutUnit::ZERO);
             let intrinsic_h = LayoutUnit::ZERO;
             let pos_res = resolve_absolute_position(&node.style, cb, intrinsic_w, intrinsic_h);
 
             let inner_space = ConstraintSpace::new(
                 AvailableSize::Definite(pos_res.content_box.inline_size),
                 AvailableSize::Definite(pos_res.content_box.block_size),
-                LogicalSize::new(pos_res.content_box.inline_size, pos_res.content_box.block_size),
+                LogicalSize::new(
+                    pos_res.content_box.inline_size,
+                    pos_res.content_box.block_size,
+                ),
             );
 
             let inner_cb = ContainingBlock::new(pos_res.padding_box, false);
             let mut children = Vec::new();
             for child in &node.children {
-                children.push(self.layout_box_recursive(child, &inner_space, &inner_cb, viewport, false)?);
+                children.push(self.layout_box_recursive(
+                    child,
+                    &inner_space,
+                    &inner_cb,
+                    viewport,
+                    false,
+                )?);
             }
 
             let mut overflow = LayoutOverflow::new(pos_res.border_box);
@@ -378,7 +402,12 @@ impl LayoutEngine {
                         ));
                         line_children.push(text_frag);
                     }
-                    InlineFragment::Box { id, bounds, baseline, .. } => {
+                    InlineFragment::Box {
+                        id,
+                        bounds,
+                        baseline,
+                        ..
+                    } => {
                         let atomic_frag = Arc::new(LayoutFragment::new_box(
                             *id,
                             LayoutBoxKind::InlineBlock,
@@ -459,7 +488,12 @@ impl LayoutEngine {
                             Some(line_box.baseline),
                         )));
                     }
-                    InlineFragment::Box { id, bounds, baseline, .. } => {
+                    InlineFragment::Box {
+                        id,
+                        bounds,
+                        baseline,
+                        ..
+                    } => {
                         line_children.push(Arc::new(LayoutFragment::new_box(
                             *id,
                             LayoutBoxKind::InlineBlock,
@@ -545,13 +579,8 @@ impl LayoutEngine {
                     AvailableSize::Definite(item.content_box.block_size),
                     LogicalSize::new(item.content_box.inline_size, item.content_box.block_size),
                 );
-                let mut child_frag = self.layout_box_recursive(
-                    child_box,
-                    &child_space,
-                    &new_cb,
-                    viewport,
-                    false,
-                )?;
+                let mut child_frag =
+                    self.layout_box_recursive(child_box, &child_space, &new_cb, viewport, false)?;
 
                 // Position child fragment according to item border box coordinates
                 if let Some(child_mut) = Arc::get_mut(&mut child_frag) {
@@ -626,13 +655,8 @@ impl LayoutEngine {
                     AvailableSize::Definite(item.content_box.block_size),
                     LogicalSize::new(item.content_box.inline_size, item.content_box.block_size),
                 );
-                let mut child_frag = self.layout_box_recursive(
-                    child_box,
-                    &child_space,
-                    &new_cb,
-                    viewport,
-                    false,
-                )?;
+                let mut child_frag =
+                    self.layout_box_recursive(child_box, &child_space, &new_cb, viewport, false)?;
 
                 if let Some(child_mut) = Arc::get_mut(&mut child_frag) {
                     child_mut.bounds = item.border_box;
@@ -809,7 +833,9 @@ mod tests {
 
     #[test]
     fn test_layout_engine_block_and_flex_tree() {
-        let doc = ace_dom::parse_html("<div style='display: flex'><div style='width: 100px; height: 50px'></div></div>");
+        let doc = ace_dom::parse_html(
+            "<div style='display: flex'><div style='width: 100px; height: 50px'></div></div>",
+        );
         let mut style_engine = StyleEngine::new();
         let render_tree = style_engine.compute_styles(&doc);
 

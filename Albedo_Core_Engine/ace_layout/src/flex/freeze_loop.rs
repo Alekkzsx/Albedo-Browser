@@ -72,13 +72,15 @@ pub fn resolve_flexible_lengths(
     total_gap: LayoutUnit,
 ) -> LayoutUnit {
     if items.is_empty() {
-        return line_main_size.saturating_sub(total_gap).max(LayoutUnit::ZERO);
+        return line_main_size
+            .saturating_sub(total_gap)
+            .max(LayoutUnit::ZERO);
     }
 
     // 1. Determina a soma das bases flexíveis e o espaço livre inicial
-    let sum_flex_basis: LayoutUnit = items
-        .iter()
-        .fold(LayoutUnit::ZERO, |acc, item| acc.saturating_add(item.flex_basis));
+    let sum_flex_basis: LayoutUnit = items.iter().fold(LayoutUnit::ZERO, |acc, item| {
+        acc.saturating_add(item.flex_basis)
+    });
 
     let available_for_items = line_main_size.saturating_sub(total_gap);
     let initial_free_space = available_for_items.saturating_sub(sum_flex_basis);
@@ -162,7 +164,9 @@ pub fn resolve_flexible_lengths(
 
                 let ratio = (item.flex_grow / factor_scale) as f64;
                 let delta_raw = (remaining_free_space.raw() as f64 * ratio).round() as i32;
-                let candidate = item.flex_basis.saturating_add(LayoutUnit::from_raw(delta_raw));
+                let candidate = item
+                    .flex_basis
+                    .saturating_add(LayoutUnit::from_raw(delta_raw));
 
                 let (viol, clamped) = check_violation(candidate, item.min_size, item.max_size);
                 candidate_sizes[i] = clamped;
@@ -206,7 +210,9 @@ pub fn resolve_flexible_lengths(
                 };
 
                 let delta_raw = (remaining_free_space.raw() as f64 * ratio).round() as i32;
-                let candidate = item.flex_basis.saturating_add(LayoutUnit::from_raw(delta_raw));
+                let candidate = item
+                    .flex_basis
+                    .saturating_add(LayoutUnit::from_raw(delta_raw));
 
                 let (viol, clamped) = check_violation(candidate, item.min_size, item.max_size);
                 candidate_sizes[i] = clamped;
@@ -277,9 +283,9 @@ fn enforce_exact_conservation(
     total_gap: LayoutUnit,
 ) {
     let available = line_main_size.saturating_sub(total_gap);
-    let current_sum: LayoutUnit = items
-        .iter()
-        .fold(LayoutUnit::ZERO, |acc, it| acc.saturating_add(it.target_size));
+    let current_sum: LayoutUnit = items.iter().fold(LayoutUnit::ZERO, |acc, it| {
+        acc.saturating_add(it.target_size)
+    });
 
     let diff = available.raw().saturating_sub(current_sum.raw());
     // Se a diferença for minúscula (resíduo de arredondamento de alguns subpixels, |diff| <= 5 au)
@@ -306,9 +312,9 @@ fn compute_remaining_space(
     line_main_size: LayoutUnit,
     total_gap: LayoutUnit,
 ) -> LayoutUnit {
-    let sum_items: LayoutUnit = items
-        .iter()
-        .fold(LayoutUnit::ZERO, |acc, it| acc.saturating_add(it.target_size));
+    let sum_items: LayoutUnit = items.iter().fold(LayoutUnit::ZERO, |acc, it| {
+        acc.saturating_add(it.target_size)
+    });
 
     let used = sum_items.saturating_add(total_gap);
     line_main_size.saturating_sub(used)

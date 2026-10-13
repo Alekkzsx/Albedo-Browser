@@ -211,11 +211,7 @@ impl ConstraintSpace {
     }
 
     /// Retorna uma nova instância com os tamanhos disponíveis reduzidos por margens/bordas/padding.
-    pub fn shrink_by_insets(
-        &self,
-        inline_insets: LayoutUnit,
-        block_insets: LayoutUnit,
-    ) -> Self {
+    pub fn shrink_by_insets(&self, inline_insets: LayoutUnit, block_insets: LayoutUnit) -> Self {
         let new_inline = match self.available_inline_size {
             AvailableSize::Definite(size) => {
                 let remaining = size.saturating_sub(inline_insets);

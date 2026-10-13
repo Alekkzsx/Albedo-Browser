@@ -257,7 +257,8 @@ impl InlineFormattingContext {
 
                 // Usa o LineBreaker para quebrar o texto em tokens/palavras normativos
                 let prepared = LineBreaker::prepare_text(text_str, white_space);
-                let opps = LineBreaker::find_break_opportunities(&prepared, white_space, word_break);
+                let opps =
+                    LineBreaker::find_break_opportunities(&prepared, white_space, word_break);
 
                 let mut last_idx = 0;
                 for opp in opps {
@@ -353,9 +354,10 @@ impl InlineFormattingContext {
             }
             LayoutBoxKind::InlineBlock => {
                 // Caixa atômica inline-block
-                let w = node.style.width().unwrap_or_else(|| {
-                    node.compute_min_max_sizes().min_content
-                });
+                let w = node
+                    .style
+                    .width()
+                    .unwrap_or_else(|| node.compute_min_max_sizes().min_content);
                 let h = node.style.height().unwrap_or(LayoutUnit::from_px(20));
                 let vertical_align = VerticalAlign::Baseline;
 
@@ -398,7 +400,12 @@ mod tests {
             LayoutUnit::from_px(100),
         ));
 
-        let result = ifc.layout_children(&[node], &Arc::new(ComputedStyle::initial()), &space, &measurer);
+        let result = ifc.layout_children(
+            &[node],
+            &Arc::new(ComputedStyle::initial()),
+            &space,
+            &measurer,
+        );
 
         assert_eq!(result.line_boxes.len(), 1);
         assert_eq!(result.size.block_size, LayoutUnit::from_px(18));
@@ -419,7 +426,12 @@ mod tests {
             LayoutUnit::from_px(200),
         ));
 
-        let result = ifc.layout_children(&[node], &Arc::new(ComputedStyle::initial()), &space, &measurer);
+        let result = ifc.layout_children(
+            &[node],
+            &Arc::new(ComputedStyle::initial()),
+            &space,
+            &measurer,
+        );
 
         assert_eq!(result.line_boxes.len(), 3);
         assert_eq!(result.size.block_size, LayoutUnit::from_px(54)); // 3 * 18px = 54px
@@ -430,7 +442,11 @@ mod tests {
         let measurer = FixedTextMeasurer::new();
         let ifc = InlineFormattingContext::new();
 
-        let mut inline_block = LayoutBox::new(NodeId::new(), LayoutBoxKind::InlineBlock, Arc::new(ComputedStyle::initial()));
+        let mut inline_block = LayoutBox::new(
+            NodeId::new(),
+            LayoutBoxKind::InlineBlock,
+            Arc::new(ComputedStyle::initial()),
+        );
         let mut b = (*inline_block.style.box_style).clone();
         b.display = Display::InlineBlock;
         b.width = Some(LayoutUnit::from_px(30));
@@ -447,7 +463,12 @@ mod tests {
             LayoutUnit::from_px(100),
         ));
 
-        let result = ifc.layout_children(&[text, inline_block], &Arc::new(ComputedStyle::initial()), &space, &measurer);
+        let result = ifc.layout_children(
+            &[text, inline_block],
+            &Arc::new(ComputedStyle::initial()),
+            &space,
+            &measurer,
+        );
 
         assert_eq!(result.line_boxes.len(), 1);
         assert_eq!(result.line_boxes[0].fragments.len(), 2);

@@ -131,15 +131,33 @@ pub fn resolve_track_sizes(
     // Passo 1: Inicializa base size e growth limit para cada trilha
     for (i, def) in track_definitions.iter().enumerate() {
         let mut track = GridTrack::new();
-        let content_min = content_min_sizes.get(i).copied().unwrap_or(LayoutUnit::ZERO);
-        let content_max = content_max_sizes.get(i).copied().unwrap_or(LayoutUnit::ZERO);
+        let content_min = content_min_sizes
+            .get(i)
+            .copied()
+            .unwrap_or(LayoutUnit::ZERO);
+        let content_max = content_max_sizes
+            .get(i)
+            .copied()
+            .unwrap_or(LayoutUnit::ZERO);
 
         match def {
             GridTrackSize::Length(breadth) => {
-                apply_breadth(&mut track, *breadth, available_space, content_min, content_max);
+                apply_breadth(
+                    &mut track,
+                    *breadth,
+                    available_space,
+                    content_min,
+                    content_max,
+                );
             }
             GridTrackSize::MinMax(min_breadth, max_breadth) => {
-                apply_breadth(&mut track, *min_breadth, available_space, content_min, content_max);
+                apply_breadth(
+                    &mut track,
+                    *min_breadth,
+                    available_space,
+                    content_min,
+                    content_max,
+                );
                 // O limite superior ajusta o growth_limit
                 match max_breadth {
                     GridTrackBreadth::Px(px) => track.growth_limit = Some(*px),
@@ -201,7 +219,8 @@ pub fn resolve_track_sizes(
             let mut allocated_sum = 0i32;
 
             for track in tracks.iter_mut().filter(|t| t.is_flexible) {
-                let share_raw = (flex_space_raw as f64 * (track.fr_factor as f64 / divisor)).round() as i32;
+                let share_raw =
+                    (flex_space_raw as f64 * (track.fr_factor as f64 / divisor)).round() as i32;
                 let track_size = LayoutUnit::from_raw(share_raw);
 
                 track.base_size = track.base_size.max(track_size);
@@ -214,10 +233,15 @@ pub fn resolve_track_sizes(
             // Conservação exata: se sobrou resíduo pequeno (<= 5 au) e sum_fr >= 1.0, ajusta a maior trilha
             let leftover = flex_space_raw - allocated_sum;
             if leftover != 0 && leftover.abs() <= 5 && sum_fr >= 1.0 {
-                if let Some(largest_track) = tracks.iter_mut().filter(|t| t.is_flexible).max_by(|a, b| {
-                    a.fr_factor.partial_cmp(&b.fr_factor).unwrap_or(std::cmp::Ordering::Equal)
-                }) {
-                    largest_track.base_size = LayoutUnit::from_raw(largest_track.base_size.raw() + leftover);
+                if let Some(largest_track) =
+                    tracks.iter_mut().filter(|t| t.is_flexible).max_by(|a, b| {
+                        a.fr_factor
+                            .partial_cmp(&b.fr_factor)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                {
+                    largest_track.base_size =
+                        LayoutUnit::from_raw(largest_track.base_size.raw() + leftover);
                 }
             }
         }

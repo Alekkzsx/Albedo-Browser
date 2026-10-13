@@ -199,9 +199,7 @@ impl GridFormattingContext {
         let auto_flow = node.style.grid.grid_auto_flow;
 
         // Pelo menos 1 coluna implícita por padrão
-        let explicit_cols = 1.max(
-            (active_children.len() as f64).sqrt().ceil() as usize,
-        );
+        let explicit_cols = 1.max((active_children.len() as f64).sqrt().ceil() as usize);
         let explicit_rows = 1;
 
         // 4. Posiciona itens na matriz 2D
@@ -209,29 +207,23 @@ impl GridFormattingContext {
             place_grid_items(&placement_specs, explicit_cols, explicit_rows, auto_flow);
 
         // 5. Dimensiona trilhas de coluna
-        let col_defs: Vec<GridTrackSize> = (0..cols_count)
-            .map(|_| GridTrackSize::fr(1.0))
-            .collect();
+        let col_defs: Vec<GridTrackSize> =
+            (0..cols_count).map(|_| GridTrackSize::fr(1.0)).collect();
 
-        let column_sizes = resolve_track_sizes(
-            &col_defs,
-            Some(container_w),
-            col_gap,
-            &[],
-            &[],
-        );
+        let column_sizes = resolve_track_sizes(&col_defs, Some(container_w), col_gap, &[], &[]);
 
         // 6. Dimensiona trilhas de linha
-        let row_defs: Vec<GridTrackSize> = (0..rows_count)
-            .map(|_| GridTrackSize::auto())
-            .collect();
+        let row_defs: Vec<GridTrackSize> = (0..rows_count).map(|_| GridTrackSize::auto()).collect();
 
         let row_content_min: Vec<LayoutUnit> = (0..rows_count)
             .map(|r| {
                 let mut max_cell_min = LayoutUnit::ZERO;
                 for (i, p) in placements.iter().enumerate() {
                     if p.row_start <= r && r < p.row_end {
-                        let child_h = active_children[i].style.height().unwrap_or(LayoutUnit::from_px(20));
+                        let child_h = active_children[i]
+                            .style
+                            .height()
+                            .unwrap_or(LayoutUnit::from_px(20));
                         max_cell_min = max_cell_min.max(child_h);
                     }
                 }
@@ -269,12 +261,19 @@ impl GridFormattingContext {
         for (i, &child) in active_children.iter().enumerate() {
             let p = placements[i];
 
-            let cell_x = col_offsets.get(p.col_start).copied().unwrap_or(LayoutUnit::ZERO);
-            let cell_y = row_offsets.get(p.row_start).copied().unwrap_or(LayoutUnit::ZERO);
+            let cell_x = col_offsets
+                .get(p.col_start)
+                .copied()
+                .unwrap_or(LayoutUnit::ZERO);
+            let cell_y = row_offsets
+                .get(p.row_start)
+                .copied()
+                .unwrap_or(LayoutUnit::ZERO);
 
             let mut cell_w = LayoutUnit::ZERO;
             for c in p.col_start..p.col_end.min(cols_count) {
-                cell_w = cell_w.saturating_add(column_sizes.get(c).copied().unwrap_or(LayoutUnit::ZERO));
+                cell_w =
+                    cell_w.saturating_add(column_sizes.get(c).copied().unwrap_or(LayoutUnit::ZERO));
             }
             if p.col_span() > 1 {
                 cell_w = cell_w.saturating_add(col_gap.saturating_mul((p.col_span() - 1) as i32));
@@ -282,7 +281,8 @@ impl GridFormattingContext {
 
             let mut cell_h = LayoutUnit::ZERO;
             for r in p.row_start..p.row_end.min(rows_count) {
-                cell_h = cell_h.saturating_add(row_sizes.get(r).copied().unwrap_or(LayoutUnit::ZERO));
+                cell_h =
+                    cell_h.saturating_add(row_sizes.get(r).copied().unwrap_or(LayoutUnit::ZERO));
             }
             if p.row_span() > 1 {
                 cell_h = cell_h.saturating_add(row_gap.saturating_mul((p.row_span() - 1) as i32));
@@ -332,8 +332,12 @@ impl GridFormattingContext {
             };
 
             let padding_box = LogicalRect {
-                inline_start: border_box.inline_start.saturating_add(item_borders.inline_start),
-                block_start: border_box.block_start.saturating_add(item_borders.block_start),
+                inline_start: border_box
+                    .inline_start
+                    .saturating_add(item_borders.inline_start),
+                block_start: border_box
+                    .block_start
+                    .saturating_add(item_borders.block_start),
                 inline_size: border_box
                     .inline_size
                     .saturating_sub(inline_sum(&item_borders))
@@ -345,8 +349,12 @@ impl GridFormattingContext {
             };
 
             let content_box = LogicalRect {
-                inline_start: padding_box.inline_start.saturating_add(item_paddings.inline_start),
-                block_start: padding_box.block_start.saturating_add(item_paddings.block_start),
+                inline_start: padding_box
+                    .inline_start
+                    .saturating_add(item_paddings.inline_start),
+                block_start: padding_box
+                    .block_start
+                    .saturating_add(item_paddings.block_start),
                 inline_size: padding_box
                     .inline_size
                     .saturating_sub(inline_sum(&item_paddings))
@@ -360,8 +368,12 @@ impl GridFormattingContext {
             let margin_box = LogicalRect {
                 inline_start: cell_x,
                 block_start: cell_y,
-                inline_size: border_box.inline_size.saturating_add(inline_sum(&item_margins)),
-                block_size: border_box.block_size.saturating_add(block_sum(&item_margins)),
+                inline_size: border_box
+                    .inline_size
+                    .saturating_add(inline_sum(&item_margins)),
+                block_size: border_box
+                    .block_size
+                    .saturating_add(block_sum(&item_margins)),
             };
 
             let bfc_result = if !child.children.is_empty() {
@@ -391,7 +403,10 @@ impl GridFormattingContext {
 
         // 9. Monta caixas finais do contêiner de grade
         let content_w = if cols_count > 0 {
-            let sum_cols: LayoutUnit = column_sizes.iter().copied().fold(LayoutUnit::ZERO, |acc, x| acc.saturating_add(x));
+            let sum_cols: LayoutUnit = column_sizes
+                .iter()
+                .copied()
+                .fold(LayoutUnit::ZERO, |acc, x| acc.saturating_add(x));
             let gaps = if cols_count > 1 {
                 col_gap.saturating_mul((cols_count - 1) as i32)
             } else {
@@ -403,7 +418,10 @@ impl GridFormattingContext {
         };
 
         let content_h = if rows_count > 0 {
-            let sum_rows: LayoutUnit = row_sizes.iter().copied().fold(LayoutUnit::ZERO, |acc, x| acc.saturating_add(x));
+            let sum_rows: LayoutUnit = row_sizes
+                .iter()
+                .copied()
+                .fold(LayoutUnit::ZERO, |acc, x| acc.saturating_add(x));
             let gaps = if rows_count > 1 {
                 row_gap.saturating_mul((rows_count - 1) as i32)
             } else {
@@ -519,6 +537,9 @@ mod tests {
         assert_eq!(res.column_sizes[0], LayoutUnit::from_px(200));
         assert_eq!(res.column_sizes[1], LayoutUnit::from_px(200));
         assert_eq!(res.items[0].border_box.inline_start, LayoutUnit::from_px(0));
-        assert_eq!(res.items[1].border_box.inline_start, LayoutUnit::from_px(200));
+        assert_eq!(
+            res.items[1].border_box.inline_start,
+            LayoutUnit::from_px(200)
+        );
     }
 }

@@ -176,8 +176,12 @@ impl LineBoxFragment {
                 VerticalAlign::Bottom => line_height.saturating_sub(h),
                 VerticalAlign::Middle => {
                     // Centro alinhado com a baseline menos metade do x-height estimado (ascent / 4)
-                    let mid_line = self.baseline.saturating_sub(self.baseline.saturating_div(4));
-                    mid_line.saturating_sub(h.saturating_div(2)).max(LayoutUnit::ZERO)
+                    let mid_line = self
+                        .baseline
+                        .saturating_sub(self.baseline.saturating_div(4));
+                    mid_line
+                        .saturating_sub(h.saturating_div(2))
+                        .max(LayoutUnit::ZERO)
                 }
             };
 
@@ -198,10 +202,9 @@ impl LineBoxFragment {
         }
 
         // Calcula a largura total ocupada pelos fragmentos
-        let total_content_width = self
-            .fragments
-            .iter()
-            .fold(LayoutUnit::ZERO, |acc, f| acc.saturating_add(f.bounds().inline_size));
+        let total_content_width = self.fragments.iter().fold(LayoutUnit::ZERO, |acc, f| {
+            acc.saturating_add(f.bounds().inline_size)
+        });
 
         self.bounds.inline_size = total_content_width;
         let free_space = container_width.saturating_sub(total_content_width);
@@ -276,7 +279,8 @@ impl LineBoxFragment {
         for frag in &mut self.fragments {
             let orig_x = frag.bounds().inline_start;
             let w = frag.bounds().inline_size;
-            frag.bounds_mut().inline_start = container_width.saturating_sub(orig_x).saturating_sub(w);
+            frag.bounds_mut().inline_start =
+                container_width.saturating_sub(orig_x).saturating_sub(w);
         }
     }
 }
@@ -312,9 +316,23 @@ mod tests {
     fn test_line_box_baseline_alignment() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
         // Fragment 1: 12px ascent, 4px descent (16px total)
-        line.add_fragment(mock_text_fragment("hello", 40, 16, 12, 4, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "hello",
+            40,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
         // Fragment 2: maior fonte: 18px ascent, 6px descent (24px total)
-        line.add_fragment(mock_text_fragment("WORLD", 60, 24, 18, 6, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "WORLD",
+            60,
+            24,
+            18,
+            6,
+            VerticalAlign::Baseline,
+        ));
 
         line.apply_baseline_alignment();
 
@@ -323,7 +341,10 @@ mod tests {
         assert_eq!(line.bounds.block_size, LayoutUnit::from_px(24));
 
         // Fragment 1 deve ter block_start = 18 - 12 = 6px
-        assert_eq!(line.fragments[0].bounds().block_start, LayoutUnit::from_px(6));
+        assert_eq!(
+            line.fragments[0].bounds().block_start,
+            LayoutUnit::from_px(6)
+        );
         // Fragment 2 deve ter block_start = 18 - 18 = 0px
         assert_eq!(line.fragments[1].bounds().block_start, LayoutUnit::ZERO);
     }
@@ -331,91 +352,191 @@ mod tests {
     #[test]
     fn test_line_box_top_and_bottom_alignment() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("base", 30, 20, 15, 5, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "base",
+            30,
+            20,
+            15,
+            5,
+            VerticalAlign::Baseline,
+        ));
         line.add_fragment(mock_text_fragment("top", 20, 10, 8, 2, VerticalAlign::Top));
-        line.add_fragment(mock_text_fragment("bottom", 20, 8, 6, 2, VerticalAlign::Bottom));
+        line.add_fragment(mock_text_fragment(
+            "bottom",
+            20,
+            8,
+            6,
+            2,
+            VerticalAlign::Bottom,
+        ));
 
         line.apply_baseline_alignment();
 
         // Top fragmento deve estar em y = 0
         assert_eq!(line.fragments[1].bounds().block_start, LayoutUnit::ZERO);
         // Bottom fragmento deve estar em y = line_height - 8 = 20 - 8 = 12px
-        assert_eq!(line.fragments[2].bounds().block_start, LayoutUnit::from_px(12));
+        assert_eq!(
+            line.fragments[2].bounds().block_start,
+            LayoutUnit::from_px(12)
+        );
     }
 
     #[test]
     fn test_horizontal_alignment_center_and_right() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("abc", 40, 16, 12, 4, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "abc",
+            40,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
         line.apply_baseline_alignment();
 
         let container_w = LayoutUnit::from_px(100);
 
         // Center: 100 - 40 = 60 free space -> 30px offset
         line.apply_horizontal_alignment(container_w, TextAlign::Center, Direction::Ltr, false);
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(30));
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(30)
+        );
 
         // Right: 60px offset
         line.apply_horizontal_alignment(container_w, TextAlign::Right, Direction::Ltr, false);
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(60));
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(60)
+        );
     }
 
     #[test]
     fn test_horizontal_alignment_justify() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("one", 20, 16, 12, 4, VerticalAlign::Baseline));
-        line.add_fragment(mock_text_fragment("two", 20, 16, 12, 4, VerticalAlign::Baseline));
-        line.add_fragment(mock_text_fragment("three", 20, 16, 12, 4, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "one",
+            20,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
+        line.add_fragment(mock_text_fragment(
+            "two",
+            20,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
+        line.add_fragment(mock_text_fragment(
+            "three",
+            20,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
         line.apply_baseline_alignment();
 
         // Total content = 60px. Container = 100px. Free = 40px. 2 gaps -> 20px por gap
         let container_w = LayoutUnit::from_px(100);
         line.apply_horizontal_alignment(container_w, TextAlign::Justify, Direction::Ltr, false);
 
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(0));
-        assert_eq!(line.fragments[1].bounds().inline_start, LayoutUnit::from_px(40)); // 20 + 20
-        assert_eq!(line.fragments[2].bounds().inline_start, LayoutUnit::from_px(80)); // 40 + 20 + 20
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(0)
+        );
+        assert_eq!(
+            line.fragments[1].bounds().inline_start,
+            LayoutUnit::from_px(40)
+        ); // 20 + 20
+        assert_eq!(
+            line.fragments[2].bounds().inline_start,
+            LayoutUnit::from_px(80)
+        ); // 40 + 20 + 20
     }
 
     #[test]
     fn test_rtl_offset_inversion() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("rtl", 30, 16, 12, 4, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "rtl",
+            30,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
         line.apply_baseline_alignment();
 
         let container_w = LayoutUnit::from_px(100);
         // Em LTR Left: inline_start = 0. Ao inverter para RTL: 100 - 0 - 30 = 70px
         line.apply_horizontal_alignment(container_w, TextAlign::Left, Direction::Rtl, false);
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(70));
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(70)
+        );
     }
 
     #[test]
     fn test_middle_alignment() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("base", 40, 24, 16, 8, VerticalAlign::Baseline));
-        line.add_fragment(mock_text_fragment("mid", 30, 10, 8, 2, VerticalAlign::Middle));
+        line.add_fragment(mock_text_fragment(
+            "base",
+            40,
+            24,
+            16,
+            8,
+            VerticalAlign::Baseline,
+        ));
+        line.add_fragment(mock_text_fragment(
+            "mid",
+            30,
+            10,
+            8,
+            2,
+            VerticalAlign::Middle,
+        ));
         line.apply_baseline_alignment();
 
         // Baseline = 16px, line_height = 24px.
         // mid_line = baseline - baseline / 4 = 16 - 4 = 12px
         // y = mid_line - 10 / 2 = 12 - 5 = 7px
-        assert_eq!(line.fragments[1].bounds().block_start, LayoutUnit::from_px(7));
+        assert_eq!(
+            line.fragments[1].bounds().block_start,
+            LayoutUnit::from_px(7)
+        );
     }
 
     #[test]
     fn test_text_align_start_end_rtl() {
         let mut line = LineBoxFragment::new(LayoutUnit::ZERO);
-        line.add_fragment(mock_text_fragment("text", 40, 16, 12, 4, VerticalAlign::Baseline));
+        line.add_fragment(mock_text_fragment(
+            "text",
+            40,
+            16,
+            12,
+            4,
+            VerticalAlign::Baseline,
+        ));
         line.apply_baseline_alignment();
 
         let container_w = LayoutUnit::from_px(100);
 
         // Em RTL, TextAlign::Start alinha à direita: 100 - 40 = 60px
         line.apply_horizontal_alignment(container_w, TextAlign::Start, Direction::Rtl, false);
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(60));
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(60)
+        );
 
         // Em RTL, TextAlign::End alinha à esquerda: 0px
         line.apply_horizontal_alignment(container_w, TextAlign::End, Direction::Rtl, false);
-        assert_eq!(line.fragments[0].bounds().inline_start, LayoutUnit::from_px(0));
+        assert_eq!(
+            line.fragments[0].bounds().inline_start,
+            LayoutUnit::from_px(0)
+        );
     }
 }

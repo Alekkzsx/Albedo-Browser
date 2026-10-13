@@ -10,20 +10,20 @@ pub mod tree;
 pub mod block;
 pub mod inline;
 
-pub mod flex;
-pub mod grid;
-pub mod table;
-pub mod positioning;
-pub mod fragment;
 pub mod engine;
+pub mod flex;
+pub mod fragment;
+pub mod grid;
+pub mod positioning;
+pub mod table;
 
 // Re-exports
 pub use block::{BfcLayoutResult, BlockFormattingContext, MarginStrut};
 pub use engine::{LayoutCache, LayoutCacheKey, LayoutDump, LayoutEngine};
 pub use error::LayoutError;
 pub use flex::{
-    FlexAxis, FlexContainerConfig, FlexFormattingContext, FlexFreezeItem, FlexItem,
-    FlexItemResult, FlexLayoutResult, FlexLine,
+    FlexAxis, FlexContainerConfig, FlexFormattingContext, FlexFreezeItem, FlexItem, FlexItemResult,
+    FlexLayoutResult, FlexLine,
 };
 pub use fragment::{
     snap_box_1d, snap_logical_rect, verify_zero_pixel_cracking, FragmentTree, LayoutFragment,
@@ -41,9 +41,9 @@ pub use inline::{
 };
 pub use positioning::{
     classify_stacking_layer, establishes_containing_block_for_absolute,
-    establishes_containing_block_for_fixed, establishes_stacking_context, resolve_absolute_position,
-    resolve_fixed_position, sort_paint_items, AbsoluteLayoutResult, ContainingBlock, PaintItem,
-    ResolvedInsets, StackingLayer,
+    establishes_containing_block_for_fixed, establishes_stacking_context,
+    resolve_absolute_position, resolve_fixed_position, sort_paint_items, AbsoluteLayoutResult,
+    ContainingBlock, PaintItem, ResolvedInsets, StackingLayer,
 };
 pub use table::{
     aggregate_column_constraints, distribute_column_widths, CellConstraints, ColumnConstraints,
@@ -53,5 +53,3 @@ pub use tree::{
     AvailableSize, BoxTree, BoxTreeBuilder, ConstraintSpace, LayoutBox, LayoutBoxKind,
     MinMaxDependencyFlags, MinMaxSizes, MinMaxSizesCache,
 };
-
-

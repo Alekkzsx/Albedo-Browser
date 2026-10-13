@@ -43,7 +43,9 @@ impl TextMetrics {
     /// Retorna a altura natural da linha baseada nas métricas verticais (`ascent + descent + line_gap`).
     #[inline]
     pub fn natural_line_height(&self) -> LayoutUnit {
-        self.ascent.saturating_add(self.descent).saturating_add(self.line_gap)
+        self.ascent
+            .saturating_add(self.descent)
+            .saturating_add(self.line_gap)
     }
 }
 
@@ -117,7 +119,10 @@ impl TextMeasurer for FixedTextMeasurer {
     fn measure_text(&self, text: &str, font: &StyleFont) -> TextMetrics {
         let count = text.chars().count() as i32;
         let width = LayoutUnit::from_raw(self.glyph_advance.raw().saturating_mul(count));
-        let natural_height = self.ascent.saturating_add(self.descent).saturating_add(self.line_gap);
+        let natural_height = self
+            .ascent
+            .saturating_add(self.descent)
+            .saturating_add(self.line_gap);
         let height = font.line_height.unwrap_or(natural_height);
 
         TextMetrics {

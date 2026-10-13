@@ -138,7 +138,13 @@ impl BlockFormattingContext {
 
         // 2. Resolve dimensionamento inline e auto-margens horizontais (CSS 2.2 §10.3.3)
         let (inline_content_size, margin_inline_start, margin_inline_end) =
-            Self::compute_inline_sizing(node, containing_width, &paddings, &borders, space.direction);
+            Self::compute_inline_sizing(
+                node,
+                containing_width,
+                &paddings,
+                &borders,
+                space.direction,
+            );
 
         let border_box_inline_size = inline_content_size
             .saturating_add(paddings.inline_start)
@@ -232,7 +238,8 @@ impl BlockFormattingContext {
                     child_res.border_box.block_start = current_block_offset;
                     child_res.margins.block_start = collapsed_top;
 
-                    current_block_offset = current_block_offset.saturating_add(child_res.border_box.block_size);
+                    current_block_offset =
+                        current_block_offset.saturating_add(child_res.border_box.block_size);
                     running_strut.append(child_margin_bottom);
 
                     children_results.push(child_res);
@@ -264,7 +271,8 @@ impl BlockFormattingContext {
                     child_res.border_box.block_start = current_block_offset;
                     child_res.margins.block_start = collapsed_top;
 
-                    current_block_offset = current_block_offset.saturating_add(child_res.border_box.block_size);
+                    current_block_offset =
+                        current_block_offset.saturating_add(child_res.border_box.block_size);
 
                     running_strut.append(child_margin_bottom);
                     running_strut.append_strut(&child_res.end_margin_strut);
@@ -349,7 +357,9 @@ impl BlockFormattingContext {
         );
 
         let content_box = LogicalRect::new(
-            padding_box.inline_start.saturating_add(paddings.inline_start),
+            padding_box
+                .inline_start
+                .saturating_add(paddings.inline_start),
             padding_box.block_start.saturating_add(paddings.block_start),
             inline_content_size,
             final_content_block_size,
@@ -538,10 +548,10 @@ impl BlockFormattingContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use ace_style::computed::ComputedStyle;
     use crate::inline::text_measurer::FixedTextMeasurer;
     use crate::tree::layout_box::LayoutBoxKind;
+    use ace_style::computed::ComputedStyle;
+    use std::sync::Arc;
 
     fn create_block_box(w: Option<i32>, h: Option<i32>) -> LayoutBox {
         let style = Arc::new(ComputedStyle::initial());
@@ -657,14 +667,20 @@ mod tests {
         let mut child1 = create_block_box(Some(200), Some(50));
         let mut s1 = (*child1.style.surrounding).clone();
         s1.margin.bottom = Some(LayoutUnit::from_px(30));
-        child1.style = Arc::new(ComputedStyle { surrounding: Arc::new(s1), ..(*child1.style).clone() });
+        child1.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s1),
+            ..(*child1.style).clone()
+        });
 
         // Filho 2: 50px de altura, margin-top = 20px (menor), margin-bottom = 10px
         let mut child2 = create_block_box(Some(200), Some(50));
         let mut s2 = (*child2.style.surrounding).clone();
         s2.margin.top = Some(LayoutUnit::from_px(20));
         s2.margin.bottom = Some(LayoutUnit::from_px(10));
-        child2.style = Arc::new(ComputedStyle { surrounding: Arc::new(s2), ..(*child2.style).clone() });
+        child2.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s2),
+            ..(*child2.style).clone()
+        });
 
         parent.add_child(child1);
         parent.add_child(child2);
@@ -682,7 +698,10 @@ mod tests {
         assert_eq!(res.children[0].height(), LayoutUnit::from_px(50));
 
         // Filho 2 deve começar em 50px + max(30, 20) = 50 + 30 = 80px!
-        assert_eq!(res.children[1].border_box.block_start, LayoutUnit::from_px(80));
+        assert_eq!(
+            res.children[1].border_box.block_start,
+            LayoutUnit::from_px(80)
+        );
     }
 
     #[test]
@@ -696,20 +715,29 @@ mod tests {
         let mut child1 = create_block_box(Some(200), Some(50));
         let mut s1 = (*child1.style.surrounding).clone();
         s1.margin.bottom = Some(LayoutUnit::from_px(20));
-        child1.style = Arc::new(ComputedStyle { surrounding: Arc::new(s1), ..(*child1.style).clone() });
+        child1.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s1),
+            ..(*child1.style).clone()
+        });
 
         // Filho 2 (vazio): height = auto, sem filhos, margin-top = 30px, margin-bottom = 40px
         let mut child2 = create_block_box(None, None);
         let mut s2 = (*child2.style.surrounding).clone();
         s2.margin.top = Some(LayoutUnit::from_px(30));
         s2.margin.bottom = Some(LayoutUnit::from_px(40));
-        child2.style = Arc::new(ComputedStyle { surrounding: Arc::new(s2), ..(*child2.style).clone() });
+        child2.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s2),
+            ..(*child2.style).clone()
+        });
 
         // Filho 3: 50px altura, margin-top = 10px
         let mut child3 = create_block_box(Some(200), Some(50));
         let mut s3 = (*child3.style.surrounding).clone();
         s3.margin.top = Some(LayoutUnit::from_px(10));
-        child3.style = Arc::new(ComputedStyle { surrounding: Arc::new(s3), ..(*child3.style).clone() });
+        child3.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s3),
+            ..(*child3.style).clone()
+        });
 
         parent.add_child(child1);
         parent.add_child(child2);
@@ -724,7 +752,10 @@ mod tests {
 
         // O colapso entre filho 1 (mb=20), filho 2 (mt=30, mb=40) e filho 3 (mt=10) é max(20, 30, 40, 10) = 40px
         // Logo, filho 3 deve começar em 50 + 40 = 90px!
-        assert_eq!(res.children[2].border_box.block_start, LayoutUnit::from_px(90));
+        assert_eq!(
+            res.children[2].border_box.block_start,
+            LayoutUnit::from_px(90)
+        );
     }
 
     #[test]
@@ -737,13 +768,19 @@ mod tests {
         let mut b = (*parent.style.box_style).clone();
         b.overflow_x = Overflow::Hidden;
         b.overflow_y = Overflow::Hidden;
-        parent.style = Arc::new(ComputedStyle { box_style: Arc::new(b), ..(*parent.style).clone() });
+        parent.style = Arc::new(ComputedStyle {
+            box_style: Arc::new(b),
+            ..(*parent.style).clone()
+        });
 
         // Primeiro filho com margin-top = 30px
         let mut child = create_block_box(Some(200), Some(50));
         let mut s = (*child.style.surrounding).clone();
         s.margin.top = Some(LayoutUnit::from_px(30));
-        child.style = Arc::new(ComputedStyle { surrounding: Arc::new(s), ..(*child.style).clone() });
+        child.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s),
+            ..(*child.style).clone()
+        });
         parent.add_child(child);
 
         let space = ConstraintSpace::for_container(LogicalSize::new(
@@ -755,7 +792,10 @@ mod tests {
 
         // Como o pai é um BFC independente, a margem do primeiro filho NÃO vaza para o pai!
         // O primeiro filho começa em y = 30px
-        assert_eq!(res.children[0].border_box.block_start, LayoutUnit::from_px(30));
+        assert_eq!(
+            res.children[0].border_box.block_start,
+            LayoutUnit::from_px(30)
+        );
     }
 
     #[test]
@@ -770,7 +810,10 @@ mod tests {
         let mut child = create_block_box(Some(200), Some(50));
         let mut s = (*child.style.surrounding).clone();
         s.margin.top = Some(LayoutUnit::from_px(30));
-        child.style = Arc::new(ComputedStyle { surrounding: Arc::new(s), ..(*child.style).clone() });
+        child.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s),
+            ..(*child.style).clone()
+        });
         parent.add_child(child);
 
         let space = ConstraintSpace::for_container(LogicalSize::new(
@@ -796,7 +839,10 @@ mod tests {
         let mut child = create_block_box(Some(200), Some(50));
         let mut s = (*child.style.surrounding).clone();
         s.margin.bottom = Some(LayoutUnit::from_px(45));
-        child.style = Arc::new(ComputedStyle { surrounding: Arc::new(s), ..(*child.style).clone() });
+        child.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s),
+            ..(*child.style).clone()
+        });
         parent.add_child(child);
 
         let space = ConstraintSpace::for_container(LogicalSize::new(
@@ -823,13 +869,19 @@ mod tests {
         let mut child1 = create_block_box(Some(200), Some(50));
         let mut s1 = (*child1.style.surrounding).clone();
         s1.margin.bottom = Some(LayoutUnit::from_px(30));
-        child1.style = Arc::new(ComputedStyle { surrounding: Arc::new(s1), ..(*child1.style).clone() });
+        child1.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s1),
+            ..(*child1.style).clone()
+        });
 
         // Sibling 2: 50px altura, margin-top = -10px
         let mut child2 = create_block_box(Some(200), Some(50));
         let mut s2 = (*child2.style.surrounding).clone();
         s2.margin.top = Some(LayoutUnit::from_px(-10));
-        child2.style = Arc::new(ComputedStyle { surrounding: Arc::new(s2), ..(*child2.style).clone() });
+        child2.style = Arc::new(ComputedStyle {
+            surrounding: Arc::new(s2),
+            ..(*child2.style).clone()
+        });
 
         parent.add_child(child1);
         parent.add_child(child2);
@@ -843,7 +895,10 @@ mod tests {
 
         // Colapso misto: 30 + (-10) = 20px
         // Sibling 2 começa em 50 + 20 = 70px
-        assert_eq!(res.children[1].border_box.block_start, LayoutUnit::from_px(70));
+        assert_eq!(
+            res.children[1].border_box.block_start,
+            LayoutUnit::from_px(70)
+        );
     }
 
     #[test]
@@ -855,7 +910,10 @@ mod tests {
         let mut node = create_block_box(None, Some(100));
         let mut b = (*node.style.box_style).clone();
         b.max_width = Some(LayoutUnit::from_px(300));
-        node.style = Arc::new(ComputedStyle { box_style: Arc::new(b), ..(*node.style).clone() });
+        node.style = Arc::new(ComputedStyle {
+            box_style: Arc::new(b),
+            ..(*node.style).clone()
+        });
 
         let space = ConstraintSpace::for_container(LogicalSize::new(
             LayoutUnit::from_px(500),

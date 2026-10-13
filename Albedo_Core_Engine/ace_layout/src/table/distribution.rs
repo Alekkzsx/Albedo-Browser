@@ -88,28 +88,34 @@ pub fn aggregate_column_constraints(
                     }
 
                     // Verifica min_content
-                    let current_min_sum: LayoutUnit = cols[c..end_col]
-                        .iter()
-                        .fold(LayoutUnit::ZERO, |acc, col| acc.saturating_add(col.min_size));
+                    let current_min_sum: LayoutUnit =
+                        cols[c..end_col].iter().fold(LayoutUnit::ZERO, |acc, col| {
+                            acc.saturating_add(col.min_size)
+                        });
 
                     if cell.min_content > current_min_sum {
                         let deficit = cell.min_content.saturating_sub(current_min_sum);
                         let per_col_raw = deficit.raw() / (span_len as i32);
                         for col in &mut cols[c..end_col] {
-                            col.min_size = col.min_size.saturating_add(LayoutUnit::from_raw(per_col_raw));
+                            col.min_size = col
+                                .min_size
+                                .saturating_add(LayoutUnit::from_raw(per_col_raw));
                         }
                     }
 
                     // Verifica max_content
-                    let current_max_sum: LayoutUnit = cols[c..end_col]
-                        .iter()
-                        .fold(LayoutUnit::ZERO, |acc, col| acc.saturating_add(col.max_size));
+                    let current_max_sum: LayoutUnit =
+                        cols[c..end_col].iter().fold(LayoutUnit::ZERO, |acc, col| {
+                            acc.saturating_add(col.max_size)
+                        });
 
                     if cell.max_content > current_max_sum {
                         let deficit = cell.max_content.saturating_sub(current_max_sum);
                         let per_col_raw = deficit.raw() / (span_len as i32);
                         for col in &mut cols[c..end_col] {
-                            col.max_size = col.max_size.saturating_add(LayoutUnit::from_raw(per_col_raw));
+                            col.max_size = col
+                                .max_size
+                                .saturating_add(LayoutUnit::from_raw(per_col_raw));
                         }
                     }
                 }
@@ -144,7 +150,9 @@ pub fn distribute_column_widths(
         LayoutUnit::ZERO
     };
 
-    let net_available = available_width.saturating_sub(total_gaps).max(LayoutUnit::ZERO);
+    let net_available = available_width
+        .saturating_sub(total_gaps)
+        .max(LayoutUnit::ZERO);
 
     let sum_min: LayoutUnit = columns
         .iter()
@@ -188,7 +196,11 @@ pub fn distribute_column_widths(
         // Ajuste de conservação exata
         let leftover = excess_raw - allocated_excess;
         if leftover != 0 && leftover.abs() <= 5 {
-            if let Some((idx, _)) = columns.iter().enumerate().max_by_key(|(_, c)| c.max_size.raw() - c.min_size.raw()) {
+            if let Some((idx, _)) = columns
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, c)| c.max_size.raw() - c.min_size.raw())
+            {
                 result[idx] = LayoutUnit::from_raw(result[idx].raw() + leftover);
             }
         }
@@ -213,7 +225,11 @@ pub fn distribute_column_widths(
         // Ajuste de conservação exata
         let leftover = excess_raw - allocated_excess;
         if leftover != 0 && leftover.abs() <= 5 {
-            if let Some((idx, _)) = columns.iter().enumerate().max_by_key(|(_, c)| c.max_size.raw()) {
+            if let Some((idx, _)) = columns
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, c)| c.max_size.raw())
+            {
                 result[idx] = LayoutUnit::from_raw(result[idx].raw() + leftover);
             }
         }
@@ -278,12 +294,24 @@ mod tests {
     fn test_column_aggregation_with_colspan() {
         let cells = vec![
             vec![
-                Some(CellConstraints::new(LayoutUnit::from_px(40), LayoutUnit::from_px(80), 1)),
-                Some(CellConstraints::new(LayoutUnit::from_px(60), LayoutUnit::from_px(120), 1)),
+                Some(CellConstraints::new(
+                    LayoutUnit::from_px(40),
+                    LayoutUnit::from_px(80),
+                    1,
+                )),
+                Some(CellConstraints::new(
+                    LayoutUnit::from_px(60),
+                    LayoutUnit::from_px(120),
+                    1,
+                )),
             ],
             vec![
                 // colspan 2 across both cols: min 150px, max 250px
-                Some(CellConstraints::new(LayoutUnit::from_px(150), LayoutUnit::from_px(250), 2)),
+                Some(CellConstraints::new(
+                    LayoutUnit::from_px(150),
+                    LayoutUnit::from_px(250),
+                    2,
+                )),
                 None,
             ],
         ];

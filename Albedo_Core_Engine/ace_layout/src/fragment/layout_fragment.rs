@@ -208,7 +208,10 @@ mod tests {
 
         assert_eq!(root.total_fragments(), 2);
         assert_eq!(root.find_by_node_id(root_id).unwrap().node_id, root_id);
-        assert_eq!(root.find_by_node_id(child.node_id).unwrap().node_id, child.node_id);
+        assert_eq!(
+            root.find_by_node_id(child.node_id).unwrap().node_id,
+            child.node_id
+        );
 
         let hit = root.hit_test(LogicalPoint {
             inline: LayoutUnit::from_px(15),

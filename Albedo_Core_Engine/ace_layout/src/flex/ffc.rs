@@ -13,8 +13,8 @@ use ace_style::values::enums::{BoxSizing, Display};
 
 use crate::block::bfc::{BfcLayoutResult, BlockFormattingContext};
 use crate::flex::algorithm::{
-    layout_flex_lines, map_to_logical_rect, split_into_flex_lines, FlexAxis,
-    FlexContainerConfig, FlexItem,
+    layout_flex_lines, map_to_logical_rect, split_into_flex_lines, FlexAxis, FlexContainerConfig,
+    FlexItem,
 };
 use crate::inline::text_measurer::TextMeasurer;
 use crate::tree::constraint_space::{AvailableSize, ConstraintSpace};
@@ -257,7 +257,10 @@ impl FlexFormattingContext {
                         BoxSizing::ContentBox => w.saturating_add(bp_main),
                     }
                 } else {
-                    child.compute_min_max_sizes().max_content.saturating_add(bp_main)
+                    child
+                        .compute_min_max_sizes()
+                        .max_content
+                        .saturating_add(bp_main)
                 }
             } else if let Some(h) = child.style.height() {
                 match child.style.box_sizing() {
@@ -265,7 +268,10 @@ impl FlexFormattingContext {
                     BoxSizing::ContentBox => h.saturating_add(bp_main),
                 }
             } else {
-                child.compute_min_max_sizes().max_content.saturating_add(bp_main)
+                child
+                    .compute_min_max_sizes()
+                    .max_content
+                    .saturating_add(bp_main)
             };
 
             let min_main = if axis.is_row() {
@@ -295,7 +301,10 @@ impl FlexFormattingContext {
                     BoxSizing::ContentBox => w.saturating_add(bp_cross),
                 }
             } else {
-                child.compute_min_max_sizes().max_content.saturating_add(bp_cross)
+                child
+                    .compute_min_max_sizes()
+                    .max_content
+                    .saturating_add(bp_cross)
             };
 
             flex_items.push(FlexItem {
@@ -362,8 +371,12 @@ impl FlexFormattingContext {
                 );
 
                 let padding_box = LogicalRect {
-                    inline_start: border_box.inline_start.saturating_add(item.borders.inline_start),
-                    block_start: border_box.block_start.saturating_add(item.borders.block_start),
+                    inline_start: border_box
+                        .inline_start
+                        .saturating_add(item.borders.inline_start),
+                    block_start: border_box
+                        .block_start
+                        .saturating_add(item.borders.block_start),
                     inline_size: border_box
                         .inline_size
                         .saturating_sub(inline_sum(&item.borders))
@@ -375,8 +388,12 @@ impl FlexFormattingContext {
                 };
 
                 let content_box = LogicalRect {
-                    inline_start: padding_box.inline_start.saturating_add(item.paddings.inline_start),
-                    block_start: padding_box.block_start.saturating_add(item.paddings.block_start),
+                    inline_start: padding_box
+                        .inline_start
+                        .saturating_add(item.paddings.inline_start),
+                    block_start: padding_box
+                        .block_start
+                        .saturating_add(item.paddings.block_start),
                     inline_size: padding_box
                         .inline_size
                         .saturating_sub(inline_sum(&item.paddings))
@@ -388,10 +405,18 @@ impl FlexFormattingContext {
                 };
 
                 let margin_box = LogicalRect {
-                    inline_start: border_box.inline_start.saturating_sub(item.margins.inline_start),
-                    block_start: border_box.block_start.saturating_sub(item.margins.block_start),
-                    inline_size: border_box.inline_size.saturating_add(inline_sum(&item.margins)),
-                    block_size: border_box.block_size.saturating_add(block_sum(&item.margins)),
+                    inline_start: border_box
+                        .inline_start
+                        .saturating_sub(item.margins.inline_start),
+                    block_start: border_box
+                        .block_start
+                        .saturating_sub(item.margins.block_start),
+                    inline_size: border_box
+                        .inline_size
+                        .saturating_add(inline_sum(&item.margins)),
+                    block_size: border_box
+                        .block_size
+                        .saturating_add(block_sum(&item.margins)),
                 };
 
                 // Formata os filhos do item se for nó de bloco participante
@@ -514,7 +539,12 @@ mod tests {
         container
     }
 
-    fn make_flex_child(grow: f32, shrink: f32, width_px: Option<i32>, height_px: Option<i32>) -> LayoutBox {
+    fn make_flex_child(
+        grow: f32,
+        shrink: f32,
+        width_px: Option<i32>,
+        height_px: Option<i32>,
+    ) -> LayoutBox {
         let mut style = ComputedStyle::initial();
         let mut b = (*style.box_style).clone();
         b.display = Display::Block;
@@ -560,7 +590,10 @@ mod tests {
         assert_eq!(res.items[1].width(), LayoutUnit::from_px(300));
         // Item 0 at x=0, Item 1 at x=200
         assert_eq!(res.items[0].border_box.inline_start, LayoutUnit::from_px(0));
-        assert_eq!(res.items[1].border_box.inline_start, LayoutUnit::from_px(200));
+        assert_eq!(
+            res.items[1].border_box.inline_start,
+            LayoutUnit::from_px(200)
+        );
     }
 
     #[test]
@@ -594,6 +627,9 @@ mod tests {
         assert_eq!(res.items[0].height(), LayoutUnit::from_px(150));
         assert_eq!(res.items[1].height(), LayoutUnit::from_px(150));
         assert_eq!(res.items[0].border_box.block_start, LayoutUnit::from_px(0));
-        assert_eq!(res.items[1].border_box.block_start, LayoutUnit::from_px(150));
+        assert_eq!(
+            res.items[1].border_box.block_start,
+            LayoutUnit::from_px(150)
+        );
     }
 }

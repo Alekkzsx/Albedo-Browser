@@ -271,70 +271,75 @@ impl TableFormattingContext {
                 let cell_x = col_offsets.get(c).copied().unwrap_or(LayoutUnit::ZERO);
                 let mut cell_w = LayoutUnit::ZERO;
                 for col_idx in c..end_c {
-                    cell_w = cell_w.saturating_add(column_widths.get(col_idx).copied().unwrap_or(LayoutUnit::ZERO));
+                    cell_w = cell_w.saturating_add(
+                        column_widths
+                            .get(col_idx)
+                            .copied()
+                            .unwrap_or(LayoutUnit::ZERO),
+                    );
                 }
 
-                    let cell_paddings = LogicalSides::new(
-                        cell_box.style.padding_left(),
-                        cell_box.style.padding_right(),
-                        cell_box.style.padding_top(),
-                        cell_box.style.padding_bottom(),
-                    );
-                    let cell_borders = LogicalSides::new(
-                        cell_box.style.border_width().left,
-                        cell_box.style.border_width().right,
-                        cell_box.style.border_width().top,
-                        cell_box.style.border_width().bottom,
-                    );
-                    let cell_margins = LogicalSides::new(
-                        cell_box.style.margin_left().unwrap_or(LayoutUnit::ZERO),
-                        cell_box.style.margin_right().unwrap_or(LayoutUnit::ZERO),
-                        cell_box.style.margin_top().unwrap_or(LayoutUnit::ZERO),
-                        cell_box.style.margin_bottom().unwrap_or(LayoutUnit::ZERO),
-                    );
+                let cell_paddings = LogicalSides::new(
+                    cell_box.style.padding_left(),
+                    cell_box.style.padding_right(),
+                    cell_box.style.padding_top(),
+                    cell_box.style.padding_bottom(),
+                );
+                let cell_borders = LogicalSides::new(
+                    cell_box.style.border_width().left,
+                    cell_box.style.border_width().right,
+                    cell_box.style.border_width().top,
+                    cell_box.style.border_width().bottom,
+                );
+                let cell_margins = LogicalSides::new(
+                    cell_box.style.margin_left().unwrap_or(LayoutUnit::ZERO),
+                    cell_box.style.margin_right().unwrap_or(LayoutUnit::ZERO),
+                    cell_box.style.margin_top().unwrap_or(LayoutUnit::ZERO),
+                    cell_box.style.margin_bottom().unwrap_or(LayoutUnit::ZERO),
+                );
 
-                    let cell_inner_w = cell_w
-                        .saturating_sub(inline_sum(&cell_borders))
-                        .saturating_sub(inline_sum(&cell_paddings))
-                        .max(LayoutUnit::ZERO);
+                let cell_inner_w = cell_w
+                    .saturating_sub(inline_sum(&cell_borders))
+                    .saturating_sub(inline_sum(&cell_paddings))
+                    .max(LayoutUnit::ZERO);
 
-                    // Formata conteúdo interno da célula
-                    let cell_space = ConstraintSpace::new(
-                        AvailableSize::Definite(cell_inner_w),
-                        AvailableSize::Indefinite,
-                        LogicalSize::new(cell_inner_w, LayoutUnit::ZERO),
-                    );
+                // Formata conteúdo interno da célula
+                let cell_space = ConstraintSpace::new(
+                    AvailableSize::Definite(cell_inner_w),
+                    AvailableSize::Indefinite,
+                    LogicalSize::new(cell_inner_w, LayoutUnit::ZERO),
+                );
 
-                    let bfc_res = bfc_engine.layout(cell_box, &cell_space, measurer);
-                    let content_h = bfc_res.height();
+                let bfc_res = bfc_engine.layout(cell_box, &cell_space, measurer);
+                let content_h = bfc_res.height();
 
-                    let total_cell_h = if let Some(h) = cell_box.style.height() {
-                        h
-                    } else {
-                        content_h
-                            .saturating_add(block_sum(&cell_borders))
-                            .saturating_add(block_sum(&cell_paddings))
-                    };
+                let total_cell_h = if let Some(h) = cell_box.style.height() {
+                    h
+                } else {
+                    content_h
+                        .saturating_add(block_sum(&cell_borders))
+                        .saturating_add(block_sum(&cell_paddings))
+                };
 
-                    max_cell_h = max_cell_h.max(total_cell_h);
+                max_cell_h = max_cell_h.max(total_cell_h);
 
-                    let temp_res = TableCellResult {
-                        box_id: cell_box.id,
-                        col_index: c,
-                        colspan,
-                        border_box: LogicalRect::new(cell_x, LayoutUnit::ZERO, cell_w, total_cell_h),
-                        margin_box: LogicalRect::default(),
-                        padding_box: LogicalRect::default(),
-                        content_box: LogicalRect::default(),
-                        margins: cell_margins,
-                        borders: cell_borders,
-                        paddings: cell_paddings,
-                        vertical_align: VerticalAlign::Middle,
-                        bfc_result: Some(bfc_res),
-                    };
+                let temp_res = TableCellResult {
+                    box_id: cell_box.id,
+                    col_index: c,
+                    colspan,
+                    border_box: LogicalRect::new(cell_x, LayoutUnit::ZERO, cell_w, total_cell_h),
+                    margin_box: LogicalRect::default(),
+                    padding_box: LogicalRect::default(),
+                    content_box: LogicalRect::default(),
+                    margins: cell_margins,
+                    borders: cell_borders,
+                    paddings: cell_paddings,
+                    vertical_align: VerticalAlign::Middle,
+                    bfc_result: Some(bfc_res),
+                };
 
-                    cell_meas.push((temp_res, content_h));
-                    curr_c += colspan;
+                cell_meas.push((temp_res, content_h));
+                curr_c += colspan;
             }
 
             let final_row_h = max_cell_h.max(LayoutUnit::from_px(20));
@@ -363,16 +368,32 @@ impl TableFormattingContext {
                 };
 
                 cell_res.padding_box = LogicalRect {
-                    inline_start: cell_res.border_box.inline_start.saturating_add(cell_res.borders.inline_start),
+                    inline_start: cell_res
+                        .border_box
+                        .inline_start
+                        .saturating_add(cell_res.borders.inline_start),
                     block_start: curr_y.saturating_add(border_top),
-                    inline_size: cell_res.border_box.inline_size.saturating_sub(inline_sum(&cell_res.borders)),
+                    inline_size: cell_res
+                        .border_box
+                        .inline_size
+                        .saturating_sub(inline_sum(&cell_res.borders)),
                     block_size: final_row_h.saturating_sub(block_sum(&cell_res.borders)),
                 };
 
                 cell_res.content_box = LogicalRect {
-                    inline_start: cell_res.padding_box.inline_start.saturating_add(cell_res.paddings.inline_start),
-                    block_start: cell_res.padding_box.block_start.saturating_add(padding_top).saturating_add(v_offset),
-                    inline_size: cell_res.padding_box.inline_size.saturating_sub(inline_sum(&cell_res.paddings)),
+                    inline_start: cell_res
+                        .padding_box
+                        .inline_start
+                        .saturating_add(cell_res.paddings.inline_start),
+                    block_start: cell_res
+                        .padding_box
+                        .block_start
+                        .saturating_add(padding_top)
+                        .saturating_add(v_offset),
+                    inline_size: cell_res
+                        .padding_box
+                        .inline_size
+                        .saturating_sub(inline_sum(&cell_res.paddings)),
                     block_size: content_h,
                 };
 
@@ -456,13 +477,17 @@ fn compute_cell_constraints(cell: &LayoutBox) -> CellConstraints {
     let min_content = if let Some(w) = cell.style.min_width() {
         w
     } else {
-        cell.compute_min_max_sizes().min_content.saturating_add(bp_h)
+        cell.compute_min_max_sizes()
+            .min_content
+            .saturating_add(bp_h)
     };
 
     let max_content = if let Some(w) = cell.style.width() {
         w
     } else {
-        cell.compute_min_max_sizes().max_content.saturating_add(bp_h)
+        cell.compute_min_max_sizes()
+            .max_content
+            .saturating_add(bp_h)
     };
 
     CellConstraints::new(min_content, max_content, 1)
@@ -537,7 +562,13 @@ mod tests {
         // Col 1: 200 + 100 * (200/300) = 267px.
         let sum_w = res.column_widths[0] + res.column_widths[1];
         assert_eq!(sum_w, LayoutUnit::from_px(400));
-        assert_eq!(res.rows[0].cells[0].border_box.inline_start, LayoutUnit::from_px(0));
-        assert_eq!(res.rows[0].cells[1].border_box.inline_start, res.column_widths[0]);
+        assert_eq!(
+            res.rows[0].cells[0].border_box.inline_start,
+            LayoutUnit::from_px(0)
+        );
+        assert_eq!(
+            res.rows[0].cells[1].border_box.inline_start,
+            res.column_widths[0]
+        );
     }
 }

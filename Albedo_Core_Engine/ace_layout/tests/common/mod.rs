@@ -9,9 +9,9 @@
 
 #![allow(dead_code)]
 
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use rustc_hash::FxHashMap;
 
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::{snap_box, LayoutUnit};
@@ -54,7 +54,9 @@ impl FontMetrics {
     /// Total line height derived from vertical metrics: `ascent + descent + line_gap`.
     #[inline]
     pub fn line_height(&self) -> LayoutUnit {
-        self.ascent.saturating_add(self.descent).saturating_add(self.line_gap)
+        self.ascent
+            .saturating_add(self.descent)
+            .saturating_add(self.line_gap)
     }
 }
 
@@ -458,7 +460,7 @@ impl RenderTreeBuilder {
         style: Arc<ComputedStyle>,
         children: Vec<RenderTreeNode>,
     ) -> RenderTreeNode {
-        let node_id = NodeId::from_raw(id).unwrap_or_else(NodeId::new);
+        let node_id = NodeId::from_raw(id).unwrap_or_default();
         RenderTreeNode::new_element(node_id, style, children)
     }
 
@@ -504,7 +506,7 @@ impl RenderTreeBuilder {
 
     /// Constructs a leaf text node.
     pub fn text_node(id: u64, style: Arc<ComputedStyle>) -> RenderTreeNode {
-        let node_id = NodeId::from_raw(id).unwrap_or_else(NodeId::new);
+        let node_id = NodeId::from_raw(id).unwrap_or_default();
         RenderTreeNode {
             node_id,
             kind: RenderNodeKind::Text,
@@ -521,7 +523,12 @@ impl RenderTreeBuilder {
         children: Vec<RenderTreeNode>,
     ) -> RenderTreeNode {
         let style = StyleBuilder::new()
-            .flex_container(direction, wrap, JustifyContent::FlexStart, AlignItems::Stretch)
+            .flex_container(
+                direction,
+                wrap,
+                JustifyContent::FlexStart,
+                AlignItems::Stretch,
+            )
             .build();
         Self::element(id, style, children)
     }
@@ -599,7 +606,11 @@ impl std::fmt::Display for SnappingViolation {
         write!(
             f,
             "SnappingViolation at index {}: left_edge={}, right_edge={}, diff={} ({})",
-            self.index, self.left_edge_snapped, self.right_edge_snapped, self.difference, self.message
+            self.index,
+            self.left_edge_snapped,
+            self.right_edge_snapped,
+            self.difference,
+            self.message
         )
     }
 }
@@ -664,7 +675,7 @@ pub fn verify_zero_pixel_cracking_1d(
 
         previous_snapped_end = Some(snapped_end);
         current_expected_origin = orig + sz;
-        total_accumulated_size = total_accumulated_size + sz;
+        total_accumulated_size += sz;
     }
 
     // Invariant: Total extent check
@@ -771,7 +782,11 @@ impl BenchmarkReport {
     pub fn assert_max_latency_us(&self, max_us: f64, context: &str) {
         println!(
             "[{}] {} ops in {:.4}s ({:.2} µs/op, {:.0} ops/s)",
-            self.operation_name, self.total_ops, self.elapsed_secs, self.micros_per_op, self.ops_per_second
+            self.operation_name,
+            self.total_ops,
+            self.elapsed_secs,
+            self.micros_per_op,
+            self.ops_per_second
         );
         assert!(
             self.micros_per_op <= max_us,
@@ -857,7 +872,11 @@ mod tests {
         ];
 
         let result = verify_zero_pixel_cracking_1d(&slices);
-        assert!(result.is_ok(), "Snapping thirds must not crack: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Snapping thirds must not crack: {:?}",
+            result
+        );
 
         // Individual snapped boxes:
         let (s0_orig, s0_size) = snap_box(slices[0].0, slices[0].1);
@@ -884,10 +903,14 @@ mod tests {
         let mut curr_orig = LayoutUnit::ZERO;
 
         for i in 0..7 {
-            let raw = if i < remainder { base_raw + 1 } else { base_raw };
+            let raw = if i < remainder {
+                base_raw + 1
+            } else {
+                base_raw
+            };
             let size = LayoutUnit::from_raw(raw);
             slices.push((curr_orig, size));
-            curr_orig = curr_orig + size;
+            curr_orig += size;
         }
 
         assert_zero_gaps_1d(&slices);

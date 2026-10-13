@@ -562,8 +562,11 @@ mod tests {
         surrounding_c.padding.right = LayoutUnit::from_px(20);
         style_content.surrounding = Arc::new(surrounding_c);
 
-        let b_content =
-            LayoutBox::new(test_node_id(2), LayoutBoxKind::Block, Arc::new(style_content));
+        let b_content = LayoutBox::new(
+            test_node_id(2),
+            LayoutBoxKind::Block,
+            Arc::new(style_content),
+        );
         let sizes_c = b_content.compute_min_max_sizes();
         assert_eq!(sizes_c.min_content, LayoutUnit::from_px(240));
         assert_eq!(sizes_c.max_content, LayoutUnit::from_px(240));

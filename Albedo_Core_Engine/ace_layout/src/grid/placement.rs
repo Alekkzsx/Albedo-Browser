@@ -123,7 +123,13 @@ impl GridMatrix {
     }
 
     /// Verifica se uma área retangular está livre na matriz.
-    pub fn is_area_free(&self, col_start: usize, col_end: usize, row_start: usize, row_end: usize) -> bool {
+    pub fn is_area_free(
+        &self,
+        col_start: usize,
+        col_end: usize,
+        row_start: usize,
+        row_end: usize,
+    ) -> bool {
         for r in row_start..row_end {
             if r >= self.rows_count {
                 continue;
@@ -138,7 +144,13 @@ impl GridMatrix {
     }
 
     /// Marca uma área retangular como ocupada.
-    pub fn mark_occupied(&mut self, col_start: usize, col_end: usize, row_start: usize, row_end: usize) {
+    pub fn mark_occupied(
+        &mut self,
+        col_start: usize,
+        col_end: usize,
+        row_start: usize,
+        row_end: usize,
+    ) {
         self.ensure_capacity(col_end, row_end);
         for r in row_start..row_end {
             for c in col_start..col_end {
@@ -162,7 +174,9 @@ pub fn place_grid_items(
 
     // 1. Processa itens com posicionamento explícito em ambas as dimensões
     for (i, spec) in items.iter().enumerate() {
-        if let (GridPlacement::Line(c_line), GridPlacement::Line(r_line)) = (spec.col_start, spec.row_start) {
+        if let (GridPlacement::Line(c_line), GridPlacement::Line(r_line)) =
+            (spec.col_start, spec.row_start)
+        {
             let col_start = (c_line - 1).max(0) as usize;
             let col_end = match spec.col_end {
                 GridPlacement::Line(end) => (end - 1).max(0) as usize,
@@ -338,9 +352,33 @@ mod tests {
 
         let (placements, cols, rows) = place_grid_items(&specs, 2, 2, GridAutoFlow::Row);
         assert_eq!(placements.len(), 3);
-        assert_eq!(placements[0], GridItemPlacement { col_start: 0, col_end: 1, row_start: 0, row_end: 1 });
-        assert_eq!(placements[1], GridItemPlacement { col_start: 1, col_end: 2, row_start: 0, row_end: 1 });
-        assert_eq!(placements[2], GridItemPlacement { col_start: 0, col_end: 1, row_start: 1, row_end: 2 });
+        assert_eq!(
+            placements[0],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 1,
+                row_start: 0,
+                row_end: 1
+            }
+        );
+        assert_eq!(
+            placements[1],
+            GridItemPlacement {
+                col_start: 1,
+                col_end: 2,
+                row_start: 0,
+                row_end: 1
+            }
+        );
+        assert_eq!(
+            placements[2],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 1,
+                row_start: 1,
+                row_end: 2
+            }
+        );
         assert_eq!(cols, 2);
         assert_eq!(rows, 2);
     }
@@ -349,18 +387,42 @@ mod tests {
     fn test_grid_placement_auto_flow_row_with_spans() {
         let specs = vec![
             ItemPlacementSpec::with_spans(2, 1), // item 1: span 2 cols
-            ItemPlacementSpec::auto(),            // item 2: 1x1
-            ItemPlacementSpec::auto(),            // item 3: 1x1
+            ItemPlacementSpec::auto(),           // item 2: 1x1
+            ItemPlacementSpec::auto(),           // item 3: 1x1
         ];
 
         let (placements, cols, rows) = place_grid_items(&specs, 2, 1, GridAutoFlow::Row);
         assert_eq!(placements.len(), 3);
         // Item 1 occupies (row 0, col 0..2)
-        assert_eq!(placements[0], GridItemPlacement { col_start: 0, col_end: 2, row_start: 0, row_end: 1 });
+        assert_eq!(
+            placements[0],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 2,
+                row_start: 0,
+                row_end: 1
+            }
+        );
         // Item 2 wraps to row 1, col 0..1
-        assert_eq!(placements[1], GridItemPlacement { col_start: 0, col_end: 1, row_start: 1, row_end: 2 });
+        assert_eq!(
+            placements[1],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 1,
+                row_start: 1,
+                row_end: 2
+            }
+        );
         // Item 3 placed at row 1, col 1..2
-        assert_eq!(placements[2], GridItemPlacement { col_start: 1, col_end: 2, row_start: 1, row_end: 2 });
+        assert_eq!(
+            placements[2],
+            GridItemPlacement {
+                col_start: 1,
+                col_end: 2,
+                row_start: 1,
+                row_end: 2
+            }
+        );
         assert_eq!(cols, 2);
         assert_eq!(rows, 2);
     }
@@ -368,15 +430,39 @@ mod tests {
     #[test]
     fn test_grid_placement_auto_flow_dense() {
         let specs = vec![
-            ItemPlacementSpec::explicit(2, 1),   // item 0 explicitly at (col 1, row 0)
+            ItemPlacementSpec::explicit(2, 1), // item 0 explicitly at (col 1, row 0)
             ItemPlacementSpec::with_spans(2, 1), // item 1 needs 2 cols -> goes to row 1 (cols 0..2)
-            ItemPlacementSpec::auto(),           // item 2 needs 1 col -> dense backtracks to fill hole at row 0, col 0!
+            ItemPlacementSpec::auto(), // item 2 needs 1 col -> dense backtracks to fill hole at row 0, col 0!
         ];
 
         let (placements, _, _) = place_grid_items(&specs, 2, 2, GridAutoFlow::Dense);
-        assert_eq!(placements[0], GridItemPlacement { col_start: 1, col_end: 2, row_start: 0, row_end: 1 });
-        assert_eq!(placements[1], GridItemPlacement { col_start: 0, col_end: 2, row_start: 1, row_end: 2 });
+        assert_eq!(
+            placements[0],
+            GridItemPlacement {
+                col_start: 1,
+                col_end: 2,
+                row_start: 0,
+                row_end: 1
+            }
+        );
+        assert_eq!(
+            placements[1],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 2,
+                row_start: 1,
+                row_end: 2
+            }
+        );
         // Hole filled at row 0, col 0
-        assert_eq!(placements[2], GridItemPlacement { col_start: 0, col_end: 1, row_start: 0, row_end: 1 });
+        assert_eq!(
+            placements[2],
+            GridItemPlacement {
+                col_start: 0,
+                col_end: 1,
+                row_start: 0,
+                row_end: 1
+            }
+        );
     }
 }

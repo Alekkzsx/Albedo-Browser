@@ -11,5 +11,7 @@ pub mod placement;
 pub mod track;
 
 pub use gfc::{GridFormattingContext, GridItemResult, GridLayoutResult};
-pub use placement::{place_grid_items, GridItemPlacement, GridMatrix, GridPlacement, ItemPlacementSpec};
+pub use placement::{
+    place_grid_items, GridItemPlacement, GridMatrix, GridPlacement, ItemPlacementSpec,
+};
 pub use track::{resolve_track_sizes, GridTrack, GridTrackBreadth, GridTrackSize};

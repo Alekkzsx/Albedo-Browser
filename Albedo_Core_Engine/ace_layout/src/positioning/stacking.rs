@@ -232,7 +232,15 @@ mod tests {
         // Layer 7: z2 (2), z10 (10)
         assert_eq!(
             names,
-            vec!["root_bg", "z_minus_10", "z_minus_5", "block", "text", "z2", "z10"]
+            vec![
+                "root_bg",
+                "z_minus_10",
+                "z_minus_5",
+                "block",
+                "text",
+                "z2",
+                "z10"
+            ]
         );
     }
 }

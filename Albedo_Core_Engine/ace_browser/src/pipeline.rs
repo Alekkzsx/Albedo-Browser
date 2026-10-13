@@ -4,10 +4,14 @@
 //! `ace_ipc` -> `ace_net` -> `ace_dom` -> `ace_style` -> `RenderTree`.
 
 use ace_core::id::NodeId;
+use ace_core::math::layout_unit::LayoutUnit;
+use ace_core::math::logical::LogicalSize;
 use ace_dom::parser::StreamingHtmlParser;
 use ace_dom::tree::Document;
 use ace_ipc::protocol::{DomMutationPayload, DomMutationType, RenderFramePayload};
 use ace_ipc::{IpcMessage, IpcRouter, Topic};
+use ace_layout::engine::LayoutEngine;
+use ace_layout::fragment::FragmentTree;
 use ace_net::engine::css_loader::CssLoaderService;
 use ace_net::engine::fetcher::ResourceFetcher;
 use ace_net::engine::priority::PriorityLevel;
@@ -16,10 +20,6 @@ use ace_style::engine::invalidation::DOMMutation;
 use ace_style::engine::restyle_driver::RestyleDriver;
 use ace_style::engine::style_engine::{RenderTree, StyleEngine};
 use ace_style::model::stylesheet::StyleSheet;
-use ace_core::math::layout_unit::LayoutUnit;
-use ace_core::math::logical::LogicalSize;
-use ace_layout::engine::LayoutEngine;
-use ace_layout::fragment::FragmentTree;
 use std::sync::Arc;
 use thiserror::Error;
 use url::Url;
@@ -285,7 +285,10 @@ mod tests {
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, html)
         );
 
-        let render_tree = pipeline.navigate(&data_url).await.expect("Navigation failed");
+        let render_tree = pipeline
+            .navigate(&data_url)
+            .await
+            .expect("Navigation failed");
         assert!(!render_tree.node_styles.is_empty());
 
         let fragment_tree = pipeline

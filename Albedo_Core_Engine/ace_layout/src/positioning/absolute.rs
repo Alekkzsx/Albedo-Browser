@@ -523,8 +523,7 @@ mod tests {
             LayoutUnit::from_px(400),
         ));
         // left: 50, right: 100, width: auto -> width = 500 - 50 - 100 = 350px
-        let style =
-            make_style_with_insets(None, Some(100), None, Some(50), None, None, false);
+        let style = make_style_with_insets(None, Some(100), None, Some(50), None, None, false);
 
         let res = resolve_absolute_position(
             &style,

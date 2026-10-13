@@ -370,16 +370,40 @@ mod tests {
         let mut root = LayoutBox::new(node_id(1), LayoutBoxKind::Block, Arc::clone(&style));
 
         // Run inicial de 3 inlines
-        root.add_child(LayoutBox::new_text(node_id(2), Arc::clone(&style), SmolStr::new("a")));
-        root.add_child(LayoutBox::new(node_id(3), LayoutBoxKind::Inline, Arc::clone(&style)));
-        root.add_child(LayoutBox::new_text(node_id(4), Arc::clone(&style), SmolStr::new("b")));
+        root.add_child(LayoutBox::new_text(
+            node_id(2),
+            Arc::clone(&style),
+            SmolStr::new("a"),
+        ));
+        root.add_child(LayoutBox::new(
+            node_id(3),
+            LayoutBoxKind::Inline,
+            Arc::clone(&style),
+        ));
+        root.add_child(LayoutBox::new_text(
+            node_id(4),
+            Arc::clone(&style),
+            SmolStr::new("b"),
+        ));
 
         // Bloco intermediário
-        root.add_child(LayoutBox::new(node_id(5), LayoutBoxKind::Block, Arc::clone(&style)));
+        root.add_child(LayoutBox::new(
+            node_id(5),
+            LayoutBoxKind::Block,
+            Arc::clone(&style),
+        ));
 
         // Run final de 2 inlines
-        root.add_child(LayoutBox::new_text(node_id(6), Arc::clone(&style), SmolStr::new("c")));
-        root.add_child(LayoutBox::new_text(node_id(7), Arc::clone(&style), SmolStr::new("d")));
+        root.add_child(LayoutBox::new_text(
+            node_id(6),
+            Arc::clone(&style),
+            SmolStr::new("c"),
+        ));
+        root.add_child(LayoutBox::new_text(
+            node_id(7),
+            Arc::clone(&style),
+            SmolStr::new("d"),
+        ));
 
         wrap_anonymous_blocks(&mut root);
 

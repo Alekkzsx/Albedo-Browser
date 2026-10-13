@@ -222,9 +222,12 @@ mod tests {
         style_inline_raw.box_style = Arc::new(box_inline);
         let style_inline = Arc::new(style_inline_raw);
 
-        let inline_rn1 = RenderTreeNode::new_element(node_id(2), Arc::clone(&style_inline), Vec::new());
-        let block_rn = RenderTreeNode::new_element(node_id(3), Arc::clone(&style_block), Vec::new());
-        let inline_rn2 = RenderTreeNode::new_element(node_id(4), Arc::clone(&style_inline), Vec::new());
+        let inline_rn1 =
+            RenderTreeNode::new_element(node_id(2), Arc::clone(&style_inline), Vec::new());
+        let block_rn =
+            RenderTreeNode::new_element(node_id(3), Arc::clone(&style_block), Vec::new());
+        let inline_rn2 =
+            RenderTreeNode::new_element(node_id(4), Arc::clone(&style_inline), Vec::new());
 
         let root_rn = RenderTreeNode::new_element(
             node_id(1),
