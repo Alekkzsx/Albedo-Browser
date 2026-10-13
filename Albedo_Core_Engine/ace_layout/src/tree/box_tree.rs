@@ -204,4 +204,78 @@ mod tests {
         assert_eq!(box_tree.box_count(), 1);
         assert_eq!(box_tree.root().unwrap().id, node_id(1));
     }
+
+    #[test]
+    fn test_box_tree_builder_with_mixed_children_wrapping() {
+        let doc = Document::new(None);
+        let builder = BoxTreeBuilder::new(&doc);
+
+        let mut style_block_raw = ComputedStyle::initial();
+        let mut box_block = (*style_block_raw.box_style).clone();
+        box_block.display = Display::Block;
+        style_block_raw.box_style = Arc::new(box_block);
+        let style_block = Arc::new(style_block_raw);
+
+        let mut style_inline_raw = ComputedStyle::initial();
+        let mut box_inline = (*style_inline_raw.box_style).clone();
+        box_inline.display = Display::Inline;
+        style_inline_raw.box_style = Arc::new(box_inline);
+        let style_inline = Arc::new(style_inline_raw);
+
+        let inline_rn1 = RenderTreeNode::new_element(node_id(2), Arc::clone(&style_inline), Vec::new());
+        let block_rn = RenderTreeNode::new_element(node_id(3), Arc::clone(&style_block), Vec::new());
+        let inline_rn2 = RenderTreeNode::new_element(node_id(4), Arc::clone(&style_inline), Vec::new());
+
+        let root_rn = RenderTreeNode::new_element(
+            node_id(1),
+            Arc::clone(&style_block),
+            vec![inline_rn1, block_rn, inline_rn2],
+        );
+
+        let mut node_styles = FxHashMap::default();
+        node_styles.insert(node_id(1), Arc::clone(&style_block));
+        node_styles.insert(node_id(2), Arc::clone(&style_inline));
+        node_styles.insert(node_id(3), Arc::clone(&style_block));
+        node_styles.insert(node_id(4), Arc::clone(&style_inline));
+
+        let render_tree = RenderTree {
+            root: Some(root_rn),
+            node_styles,
+        };
+
+        let box_tree = builder.build(&render_tree);
+        let root = box_tree.root().unwrap();
+
+        // CSS 2.2 §9.2.1.1 wrapping deve resultar em:
+        // [Anonymous([Inline]), Block, Anonymous([Inline])]
+        assert_eq!(root.children.len(), 3);
+        assert_eq!(root.children[0].kind, LayoutBoxKind::Anonymous);
+        assert_eq!(root.children[1].kind, LayoutBoxKind::Block);
+        assert_eq!(root.children[2].kind, LayoutBoxKind::Anonymous);
+
+        let dump = box_tree.dump();
+        assert!(dump.contains("Block (id=1)"));
+        assert!(dump.contains("Anonymous"));
+    }
+
+    #[test]
+    fn test_box_tree_builder_omits_display_none() {
+        let doc = Document::new(None);
+        let builder = BoxTreeBuilder::new(&doc);
+
+        let mut style_none_raw = ComputedStyle::initial();
+        let mut box_none = (*style_none_raw.box_style).clone();
+        box_none.display = Display::None;
+        style_none_raw.box_style = Arc::new(box_none);
+        let style_none = Arc::new(style_none_raw);
+
+        let root_rn = RenderTreeNode::new_element(node_id(1), Arc::clone(&style_none), Vec::new());
+        let render_tree = RenderTree {
+            root: Some(root_rn),
+            node_styles: FxHashMap::default(),
+        };
+
+        let box_tree = builder.build(&render_tree);
+        assert!(box_tree.is_empty());
+    }
 }

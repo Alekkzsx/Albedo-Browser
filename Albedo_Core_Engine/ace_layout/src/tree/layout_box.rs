@@ -478,4 +478,109 @@ mod tests {
         let cached = text_box.compute_min_max_sizes();
         assert_eq!(cached, sizes);
     }
+
+    #[test]
+    fn test_layout_box_kind_predicates() {
+        assert!(LayoutBoxKind::Block.is_block_level());
+        assert!(LayoutBoxKind::Anonymous.is_block_level());
+        assert!(LayoutBoxKind::Flex.is_block_level());
+        assert!(LayoutBoxKind::Grid.is_block_level());
+        assert!(LayoutBoxKind::Table.is_block_level());
+
+        assert!(LayoutBoxKind::Inline.is_inline_level());
+        assert!(LayoutBoxKind::InlineBlock.is_inline_level());
+        assert!(LayoutBoxKind::TextRun.is_inline_level());
+
+        assert!(LayoutBoxKind::TextRun.is_text_run());
+        assert!(!LayoutBoxKind::Block.is_text_run());
+
+        assert!(LayoutBoxKind::Anonymous.is_anonymous());
+        assert!(!LayoutBoxKind::Block.is_anonymous());
+
+        assert!(LayoutBoxKind::TableRow.is_table_part());
+        assert!(LayoutBoxKind::TableCell.is_table_part());
+
+        assert!(LayoutBoxKind::InlineBlock.establishes_independent_formatting_context());
+        assert!(LayoutBoxKind::Flex.establishes_independent_formatting_context());
+        assert!(LayoutBoxKind::Grid.establishes_independent_formatting_context());
+        assert!(LayoutBoxKind::TableCell.establishes_independent_formatting_context());
+        assert!(!LayoutBoxKind::Block.establishes_independent_formatting_context());
+    }
+
+    #[test]
+    fn test_layout_box_cache_invalidation() {
+        let style = Arc::new(ComputedStyle::initial());
+        let mut b = LayoutBox::new(test_node_id(1), LayoutBoxKind::Block, Arc::clone(&style));
+        b.set_min_max_cache(MinMaxSizes::from_single(LayoutUnit::from_px(100)));
+        assert!(b.min_max_cache().is_some());
+
+        // add_child clears cache
+        b.add_child(LayoutBox::new(
+            test_node_id(2),
+            LayoutBoxKind::Block,
+            Arc::clone(&style),
+        ));
+        assert!(b.min_max_cache().is_none());
+
+        b.set_min_max_cache(MinMaxSizes::from_single(LayoutUnit::from_px(100)));
+        assert!(b.min_max_cache().is_some());
+
+        // children_mut clears cache
+        let _ = b.children_mut();
+        assert!(b.min_max_cache().is_none());
+    }
+
+    #[test]
+    fn test_layout_box_explicit_width_and_box_sizing() {
+        let mut style = ComputedStyle::initial();
+        let mut box_style = (*style.box_style).clone();
+        box_style.width = Some(LayoutUnit::from_px(200));
+        box_style.box_sizing = BoxSizing::BorderBox;
+        style.box_style = Arc::new(box_style);
+
+        let mut surrounding = (*style.surrounding).clone();
+        surrounding.padding.left = LayoutUnit::from_px(20);
+        surrounding.padding.right = LayoutUnit::from_px(20);
+        style.surrounding = Arc::new(surrounding);
+
+        let b = LayoutBox::new(test_node_id(1), LayoutBoxKind::Block, Arc::new(style));
+        let sizes = b.compute_min_max_sizes();
+
+        // BorderBox: explicit width remains 200px
+        assert_eq!(sizes.min_content, LayoutUnit::from_px(200));
+        assert_eq!(sizes.max_content, LayoutUnit::from_px(200));
+
+        // Now ContentBox: explicit width expands by 40px padding = 240px
+        let mut style_content = ComputedStyle::initial();
+        let mut box_style_c = (*style_content.box_style).clone();
+        box_style_c.width = Some(LayoutUnit::from_px(200));
+        box_style_c.box_sizing = BoxSizing::ContentBox;
+        style_content.box_style = Arc::new(box_style_c);
+
+        let mut surrounding_c = (*style_content.surrounding).clone();
+        surrounding_c.padding.left = LayoutUnit::from_px(20);
+        surrounding_c.padding.right = LayoutUnit::from_px(20);
+        style_content.surrounding = Arc::new(surrounding_c);
+
+        let b_content =
+            LayoutBox::new(test_node_id(2), LayoutBoxKind::Block, Arc::new(style_content));
+        let sizes_c = b_content.compute_min_max_sizes();
+        assert_eq!(sizes_c.min_content, LayoutUnit::from_px(240));
+        assert_eq!(sizes_c.max_content, LayoutUnit::from_px(240));
+    }
+
+    #[test]
+    fn test_layout_box_dump_tree() {
+        let style = Arc::new(ComputedStyle::initial());
+        let mut root = LayoutBox::new(test_node_id(1), LayoutBoxKind::Block, Arc::clone(&style));
+        root.add_child(LayoutBox::new_text(
+            test_node_id(2),
+            Arc::clone(&style),
+            SmolStr::new("hello"),
+        ));
+
+        let dump = root.dump_tree(0);
+        assert!(dump.contains("Block (id=1)"));
+        assert!(dump.contains("TextRun (id=2) \"hello\""));
+    }
 }

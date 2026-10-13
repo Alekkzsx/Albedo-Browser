@@ -198,6 +198,18 @@ impl ConstraintSpace {
         self.percentage_resolution_size
     }
 
+    /// Retorna o modo de escrita.
+    #[inline]
+    pub fn writing_mode(&self) -> WritingMode {
+        self.writing_mode
+    }
+
+    /// Retorna a direção de texto.
+    #[inline]
+    pub fn direction(&self) -> Direction {
+        self.direction
+    }
+
     /// Retorna uma nova instância com os tamanhos disponíveis reduzidos por margens/bordas/padding.
     pub fn shrink_by_insets(
         &self,
