@@ -538,7 +538,10 @@ impl BlockFormattingContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use ace_style::computed::ComputedStyle;
     use crate::inline::text_measurer::FixedTextMeasurer;
+    use crate::tree::layout_box::LayoutBoxKind;
 
     fn create_block_box(w: Option<i32>, h: Option<i32>) -> LayoutBox {
         let style = Arc::new(ComputedStyle::initial());
@@ -753,5 +756,113 @@ mod tests {
         // Como o pai é um BFC independente, a margem do primeiro filho NÃO vaza para o pai!
         // O primeiro filho começa em y = 30px
         assert_eq!(res.children[0].border_box.block_start, LayoutUnit::from_px(30));
+    }
+
+    #[test]
+    fn test_bfc_parent_first_child_margin_collapsing() {
+        let bfc = BlockFormattingContext::new();
+        let measurer = FixedTextMeasurer::new();
+
+        // Pai sem border-top e sem padding-top
+        let mut parent = create_block_box(Some(400), None);
+
+        // Primeiro filho com margin-top = 30px
+        let mut child = create_block_box(Some(200), Some(50));
+        let mut s = (*child.style.surrounding).clone();
+        s.margin.top = Some(LayoutUnit::from_px(30));
+        child.style = Arc::new(ComputedStyle { surrounding: Arc::new(s), ..(*child.style).clone() });
+        parent.add_child(child);
+
+        let space = ConstraintSpace::for_container(LogicalSize::new(
+            LayoutUnit::from_px(400),
+            LayoutUnit::from_px(800),
+        ));
+
+        let res = bfc.layout(&parent, &space, &measurer);
+
+        // Primeiro filho colapsa com o pai: começa em y = 0
+        assert_eq!(res.children[0].border_box.block_start, LayoutUnit::ZERO);
+    }
+
+    #[test]
+    fn test_bfc_parent_last_child_margin_collapsing() {
+        let bfc = BlockFormattingContext::new();
+        let measurer = FixedTextMeasurer::new();
+
+        // Pai com height: auto, border-bottom = 0, padding-bottom = 0
+        let mut parent = create_block_box(Some(400), None);
+
+        // Filho com 50px de altura e margin-bottom = 45px
+        let mut child = create_block_box(Some(200), Some(50));
+        let mut s = (*child.style.surrounding).clone();
+        s.margin.bottom = Some(LayoutUnit::from_px(45));
+        child.style = Arc::new(ComputedStyle { surrounding: Arc::new(s), ..(*child.style).clone() });
+        parent.add_child(child);
+
+        let space = ConstraintSpace::for_container(LogicalSize::new(
+            LayoutUnit::from_px(400),
+            LayoutUnit::from_px(800),
+        ));
+
+        let res = bfc.layout(&parent, &space, &measurer);
+
+        // Altura do pai não inclui os 45px do filho
+        assert_eq!(res.height(), LayoutUnit::from_px(50));
+        // A margem inferior do filho vaza pelo end_margin_strut do pai
+        assert_eq!(res.end_margin_strut.solve(), LayoutUnit::from_px(45));
+    }
+
+    #[test]
+    fn test_bfc_negative_mixed_margin_collapsing() {
+        let bfc = BlockFormattingContext::new();
+        let measurer = FixedTextMeasurer::new();
+
+        let mut parent = create_block_box(Some(400), None);
+
+        // Sibling 1: 50px altura, margin-bottom = 30px
+        let mut child1 = create_block_box(Some(200), Some(50));
+        let mut s1 = (*child1.style.surrounding).clone();
+        s1.margin.bottom = Some(LayoutUnit::from_px(30));
+        child1.style = Arc::new(ComputedStyle { surrounding: Arc::new(s1), ..(*child1.style).clone() });
+
+        // Sibling 2: 50px altura, margin-top = -10px
+        let mut child2 = create_block_box(Some(200), Some(50));
+        let mut s2 = (*child2.style.surrounding).clone();
+        s2.margin.top = Some(LayoutUnit::from_px(-10));
+        child2.style = Arc::new(ComputedStyle { surrounding: Arc::new(s2), ..(*child2.style).clone() });
+
+        parent.add_child(child1);
+        parent.add_child(child2);
+
+        let space = ConstraintSpace::for_container(LogicalSize::new(
+            LayoutUnit::from_px(400),
+            LayoutUnit::from_px(800),
+        ));
+
+        let res = bfc.layout(&parent, &space, &measurer);
+
+        // Colapso misto: 30 + (-10) = 20px
+        // Sibling 2 começa em 50 + 20 = 70px
+        assert_eq!(res.children[1].border_box.block_start, LayoutUnit::from_px(70));
+    }
+
+    #[test]
+    fn test_bfc_min_max_width_clamping() {
+        let bfc = BlockFormattingContext::new();
+        let measurer = FixedTextMeasurer::new();
+
+        // width: auto em contêiner de 500px, mas max-width = 300px
+        let mut node = create_block_box(None, Some(100));
+        let mut b = (*node.style.box_style).clone();
+        b.max_width = Some(LayoutUnit::from_px(300));
+        node.style = Arc::new(ComputedStyle { box_style: Arc::new(b), ..(*node.style).clone() });
+
+        let space = ConstraintSpace::for_container(LogicalSize::new(
+            LayoutUnit::from_px(500),
+            LayoutUnit::from_px(600),
+        ));
+
+        let res = bfc.layout(&node, &space, &measurer);
+        assert_eq!(res.width(), LayoutUnit::from_px(300));
     }
 }
