@@ -530,7 +530,7 @@ mod tests {
             &font,
             &measurer,
             LayoutUnit::from_px(50),
-            WhiteSpace::Nowrap,
+            WhiteSpace::NoWrap,
             WordBreak::Normal,
             OverflowWrap::Normal,
         );
