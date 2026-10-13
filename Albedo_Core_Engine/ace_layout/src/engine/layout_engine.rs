@@ -819,7 +819,7 @@ mod tests {
 
         // First pass: cold cache
         let tree1 = engine.layout_tree(&render_tree, &doc, viewport).unwrap();
-        assert!(engine.cache.len() > 0);
+        assert!(!engine.cache.is_empty());
         let _misses = engine.cache.misses();
 
         // Second pass: warm cache
