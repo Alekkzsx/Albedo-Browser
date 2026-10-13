@@ -536,4 +536,59 @@ mod tests {
         assert_eq!(res.border_box.inline_start, LayoutUnit::from_px(50));
         assert_eq!(res.border_box.inline_size, LayoutUnit::from_px(350));
     }
+
+    #[test]
+    fn test_absolute_min_max_clamping() {
+        let cb = ContainingBlock::from_viewport(LogicalSize::new(
+            LayoutUnit::from_px(500),
+            LayoutUnit::from_px(400),
+        ));
+        // left: 0, right: 0, width: auto, min-width: 200, max-width: 300
+        let mut style = ComputedStyle::initial();
+        let mut b = (*style.box_style).clone();
+        b.position = Position::Absolute;
+        b.left = Some(LayoutUnit::from_px(0));
+        b.right = Some(LayoutUnit::from_px(0));
+        b.max_width = Some(LayoutUnit::from_px(300));
+        style.box_style = std::sync::Arc::new(b);
+
+        let res = resolve_absolute_position(
+            &style,
+            &cb,
+            LayoutUnit::from_px(50),
+            LayoutUnit::from_px(50),
+        );
+
+        // Clamped to max_width = 300
+        assert_eq!(res.border_box.inline_size, LayoutUnit::from_px(300));
+    }
+
+    #[test]
+    fn test_absolute_bottom_and_right_insets() {
+        let cb = ContainingBlock::from_viewport(LogicalSize::new(
+            LayoutUnit::from_px(400),
+            LayoutUnit::from_px(300),
+        ));
+        // right: 30, bottom: 40, width: 100, height: 50
+        let mut style = ComputedStyle::initial();
+        let mut b = (*style.box_style).clone();
+        b.position = Position::Absolute;
+        b.right = Some(LayoutUnit::from_px(30));
+        b.bottom = Some(LayoutUnit::from_px(40));
+        b.width = Some(LayoutUnit::from_px(100));
+        b.height = Some(LayoutUnit::from_px(50));
+        style.box_style = std::sync::Arc::new(b);
+
+        let res = resolve_absolute_position(
+            &style,
+            &cb,
+            LayoutUnit::from_px(20),
+            LayoutUnit::from_px(20),
+        );
+
+        // x = 400 - 30 - 100 = 270px
+        assert_eq!(res.border_box.inline_start, LayoutUnit::from_px(270));
+        // y = 300 - 40 - 50 = 210px
+        assert_eq!(res.border_box.block_start, LayoutUnit::from_px(210));
+    }
 }

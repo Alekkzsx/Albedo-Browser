@@ -269,3 +269,36 @@ impl BrowserPipeline {
         self.fragment_tree.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_pipeline_navigation_generates_fragment_tree() {
+        let mut pipeline = BrowserPipeline::new().expect("Failed to initialize pipeline");
+        assert!(pipeline.fragment_tree().is_none());
+
+        let html = "<!DOCTYPE html><html><head><style>body { margin: 0; } .box { display: block; width: 200px; height: 100px; }</style></head><body><div class='box'><p>Albedo Layout Pipeline</p></div></body></html>";
+        let data_url = format!(
+            "data:text/html;base64,{}",
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, html)
+        );
+
+        let render_tree = pipeline.navigate(&data_url).await.expect("Navigation failed");
+        assert!(!render_tree.node_styles.is_empty());
+
+        let fragment_tree = pipeline
+            .fragment_tree()
+            .expect("FragmentTree must be present after navigation");
+        assert!(fragment_tree.total_fragments() > 0);
+        assert_eq!(
+            fragment_tree.viewport().inline_size,
+            LayoutUnit::from_px(1024)
+        );
+        assert_eq!(
+            fragment_tree.viewport().block_size,
+            LayoutUnit::from_px(768)
+        );
+    }
+}
