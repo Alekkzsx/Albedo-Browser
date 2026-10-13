@@ -219,7 +219,26 @@ impl LineBoxFragment {
             return;
         }
 
-        match text_align {
+        // Mapeia Start/End para Left/Right dependendo de direction
+        let effective_align = match text_align {
+            TextAlign::Start => {
+                if direction == Direction::Ltr {
+                    TextAlign::Left
+                } else {
+                    TextAlign::Right
+                }
+            }
+            TextAlign::End => {
+                if direction == Direction::Ltr {
+                    TextAlign::Right
+                } else {
+                    TextAlign::Left
+                }
+            }
+            other => other,
+        };
+
+        match effective_align {
             TextAlign::Left => {
                 let mut curr_x = LayoutUnit::ZERO;
                 for frag in &mut self.fragments {
@@ -277,10 +296,19 @@ impl LineBoxFragment {
                     }
                 }
             }
+            _ => {
+                let mut curr_x = LayoutUnit::ZERO;
+                for frag in &mut self.fragments {
+                    frag.bounds_mut().inline_start = curr_x;
+                    curr_x = curr_x.saturating_add(frag.bounds().inline_size);
+                }
+            }
         }
 
-        // Se a direção for RTL, inverte as coordenadas no eixo inline
-        if direction == Direction::Rtl && text_align != TextAlign::Justify {
+        // Se a direção for RTL e alinhamento for Left, inverte para o lado direito
+        if direction == Direction::Rtl
+            && effective_align == TextAlign::Left
+        {
             self.invert_rtl_offsets(container_width);
         }
     }
