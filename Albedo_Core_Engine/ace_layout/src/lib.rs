@@ -13,7 +13,7 @@ pub mod inline;
 pub mod flex;
 pub mod grid;
 pub mod table;
-pub mod positioning {}
+pub mod positioning;
 pub mod fragment {}
 pub mod engine {}
 
