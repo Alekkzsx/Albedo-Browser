@@ -11,12 +11,9 @@
 //! - Contenção de novos BFCs independentes (`overflow != visible`, `inline-block`, etc.)
 //! - Integração harmoniosa com o `InlineFormattingContext` para filhos inline
 
-use std::sync::Arc;
-
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::LayoutUnit;
 use ace_core::math::logical::{Direction, LogicalRect, LogicalSides, LogicalSize};
-use ace_style::computed::ComputedStyle;
 use ace_style::values::enums::{BoxSizing, Display, Overflow};
 
 use crate::block::margin_strut::MarginStrut;
@@ -24,7 +21,7 @@ use crate::inline::ifc::InlineFormattingContext;
 use crate::inline::line_box::LineBoxFragment;
 use crate::inline::text_measurer::TextMeasurer;
 use crate::tree::constraint_space::ConstraintSpace;
-use crate::tree::layout_box::{LayoutBox, LayoutBoxKind};
+use crate::tree::layout_box::LayoutBox;
 
 /// Resultado do layout de um bloco no BFC.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,7 +97,10 @@ impl BlockFormattingContext {
         }
 
         let display = node.style.display();
-        if display == Display::InlineBlock || display == Display::FlowRoot {
+        if display == Display::InlineBlock
+            || display == Display::InlineFlex
+            || display == Display::InlineGrid
+        {
             return true;
         }
 
