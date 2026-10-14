@@ -18,7 +18,10 @@ pub mod positioning;
 pub mod table;
 
 // Re-exports
-pub use block::{BfcLayoutResult, BlockFormattingContext, MarginStrut};
+pub use block::{
+    BfcLayoutResult, BlockFormattingContext, ClearType, Exclusion, ExclusionSpace, FloatType,
+    LayoutOpportunity, MarginStrut,
+};
 pub use engine::{LayoutCache, LayoutCacheKey, LayoutDump, LayoutEngine};
 pub use error::LayoutError;
 pub use flex::{
@@ -41,9 +44,10 @@ pub use inline::{
 };
 pub use positioning::{
     classify_stacking_layer, establishes_containing_block_for_absolute,
-    establishes_containing_block_for_fixed, establishes_stacking_context,
+    establishes_containing_block_for_fixed, establishes_scrollport, establishes_stacking_context,
     resolve_absolute_position, resolve_fixed_position, sort_paint_items, AbsoluteLayoutResult,
-    ContainingBlock, PaintItem, ResolvedInsets, StackingLayer,
+    ContainingBlock, PaintItem, ResolvedInsets, Scrollport, StackingLayer,
+    StickyConstraintPositioner, StickyInsets, Transform2D,
 };
 pub use table::{
     aggregate_column_constraints, distribute_column_widths, CellConstraints, ColumnConstraints,
