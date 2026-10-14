@@ -82,6 +82,8 @@ pub fn classify_stacking_layer(
         }
     } else if style.position() != Position::Static {
         StackingLayer::Layer6PositionedAutoZero
+    } else if style.box_style.float.is_floating() {
+        StackingLayer::Layer4Floats
     } else if is_inline_or_text || style.display() == Display::Inline {
         StackingLayer::Layer5InlineContent
     } else {
