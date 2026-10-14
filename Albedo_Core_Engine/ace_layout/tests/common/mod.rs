@@ -277,6 +277,69 @@ impl StyleBuilder {
         self
     }
 
+    /// Sets `float` on the element.
+    pub fn float(mut self, float: Float) -> Self {
+        let mut b = (*self.style.box_style).clone();
+        b.float = float;
+        self.style.box_style = Arc::new(b);
+        self
+    }
+
+    /// Sets `float: left`.
+    pub fn float_left(self) -> Self {
+        self.float(Float::Left)
+    }
+
+    /// Sets `float: right`.
+    pub fn float_right(self) -> Self {
+        self.float(Float::Right)
+    }
+
+    /// Sets `clear` on the element.
+    pub fn clear(mut self, clear: Clear) -> Self {
+        let mut b = (*self.style.box_style).clone();
+        b.clear = clear;
+        self.style.box_style = Arc::new(b);
+        self
+    }
+
+    /// Sets `clear: left`.
+    pub fn clear_left(self) -> Self {
+        self.clear(Clear::Left)
+    }
+
+    /// Sets `clear: right`.
+    pub fn clear_right(self) -> Self {
+        self.clear(Clear::Right)
+    }
+
+    /// Sets `clear: both`.
+    pub fn clear_both(self) -> Self {
+        self.clear(Clear::Both)
+    }
+
+    /// Sets `position: sticky`.
+    pub fn position_sticky(self) -> Self {
+        self.position(Position::Sticky)
+    }
+
+    /// Sets `position: sticky` with top in pixels.
+    pub fn sticky_top_px(self, top_px: i32) -> Self {
+        self.position_sticky()
+            .insets_px(Some(top_px), None, None, None)
+    }
+
+    /// Sets `position: sticky` with all insets in pixels.
+    pub fn sticky_insets_px(
+        self,
+        top: Option<i32>,
+        right: Option<i32>,
+        bottom: Option<i32>,
+        left: Option<i32>,
+    ) -> Self {
+        self.position_sticky().insets_px(top, right, bottom, left)
+    }
+
     /// Sets `overflow_x` and `overflow_y`.
     pub fn overflow(mut self, overflow: Overflow) -> Self {
         let mut b = (*self.style.box_style).clone();
@@ -568,6 +631,54 @@ impl RenderTreeBuilder {
         Self::element(id, style, children)
     }
 
+    /// Constructs a floating block node.
+    pub fn float_block(
+        id: u64,
+        float: Float,
+        width_px: i32,
+        height_px: i32,
+    ) -> RenderTreeNode {
+        let style = StyleBuilder::new()
+            .display(Display::Block)
+            .float(float)
+            .width_px(width_px)
+            .height_px(height_px)
+            .build();
+        Self::element(id, style, Vec::new())
+    }
+
+    /// Constructs a cleared block node.
+    pub fn cleared_block(
+        id: u64,
+        clear: Clear,
+        width_px: i32,
+        height_px: i32,
+    ) -> RenderTreeNode {
+        let style = StyleBuilder::new()
+            .display(Display::Block)
+            .clear(clear)
+            .width_px(width_px)
+            .height_px(height_px)
+            .build();
+        Self::element(id, style, Vec::new())
+    }
+
+    /// Constructs a sticky positioned block node.
+    pub fn sticky_block(
+        id: u64,
+        top_px: i32,
+        width_px: i32,
+        height_px: i32,
+    ) -> RenderTreeNode {
+        let style = StyleBuilder::new()
+            .display(Display::Block)
+            .sticky_top_px(top_px)
+            .width_px(width_px)
+            .height_px(height_px)
+            .build();
+        Self::element(id, style, Vec::new())
+    }
+
     /// Assembles a complete `RenderTree` by recursively collecting styles into `node_styles`.
     pub fn build_render_tree(root: RenderTreeNode) -> RenderTree {
         let mut node_styles = FxHashMap::default();
@@ -801,6 +912,129 @@ impl BenchmarkReport {
             context, self.micros_per_op, max_us, self.total_ops
         );
     }
+}
+
+// =============================================================================
+// 4b. Float Overlap and Sticky Invariant Geometric Verifiers
+// =============================================================================
+
+/// Detalhes de violação de sobreposição texto-float.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FloatOverlapViolation {
+    pub line_index: usize,
+    pub float_index: usize,
+    pub line_rect: LogicalRect<LayoutUnit>,
+    pub float_rect: LogicalRect<LayoutUnit>,
+    pub message: String,
+}
+
+impl std::fmt::Display for FloatOverlapViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "FloatOverlapViolation: line[{}] at ({:?}, {:?}) overlaps with float[{}] at ({:?}, {:?}): {}",
+            self.line_index,
+            (self.line_rect.inline_start, self.line_rect.block_start),
+            (self.line_rect.inline_size, self.line_rect.block_size),
+            self.float_index,
+            (self.float_rect.inline_start, self.float_rect.block_start),
+            (self.float_rect.inline_size, self.float_rect.block_size),
+            self.message
+        )
+    }
+}
+
+/// Valida ausência total de sobreposição geométrica entre caixas de linha e caixas flutuantes.
+pub fn verify_zero_float_overlap(
+    lines: &[LogicalRect<LayoutUnit>],
+    floats: &[LogicalRect<LayoutUnit>],
+) -> Result<(), FloatOverlapViolation> {
+    for (l_idx, line) in lines.iter().enumerate() {
+        let l_left = line.inline_start;
+        let l_right = line.inline_start + line.inline_size;
+        let l_top = line.block_start;
+        let l_bottom = line.block_start + line.block_size;
+
+        for (f_idx, float) in floats.iter().enumerate() {
+            let f_left = float.inline_start;
+            let f_right = float.inline_start + float.inline_size;
+            let f_top = float.block_start;
+            let f_bottom = float.block_start + float.block_size;
+
+            let overlap_h = l_left < f_right && l_right > f_left;
+            let overlap_v = l_top < f_bottom && l_bottom > f_top;
+
+            if overlap_h && overlap_v {
+                return Err(FloatOverlapViolation {
+                    line_index: l_idx,
+                    float_index: f_idx,
+                    line_rect: *line,
+                    float_rect: *float,
+                    message: format!(
+                        "Geometric intersection detected! Horiz: [{:?}, {:?}] vs [{:?}, {:?}], Vert: [{:?}, {:?}] vs [{:?}, {:?}]",
+                        l_left, l_right, f_left, f_right, l_top, l_bottom, f_top, f_bottom
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Detalhes de violação de clamping de elemento sticky.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StickyClampViolation {
+    pub node_id: u64,
+    pub scroll_offset: LayoutUnit,
+    pub natural_y: LayoutUnit,
+    pub resolved_y: LayoutUnit,
+    pub expected_y: LayoutUnit,
+    pub cb_bottom: LayoutUnit,
+    pub message: String,
+}
+
+impl std::fmt::Display for StickyClampViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "StickyClampViolation on node {}: resolved_y={:?}, expected_y={:?}, scroll={:?}, natural_y={:?}, cb_bottom={:?}: {}",
+            self.node_id, self.resolved_y, self.expected_y, self.scroll_offset, self.natural_y, self.cb_bottom, self.message
+        )
+    }
+}
+
+/// Valida o cumprimento do invariante matemático de sticky clamping.
+pub fn verify_sticky_clamp_1d(
+    natural_y: LayoutUnit,
+    scroll_y: LayoutUnit,
+    sticky_inset: LayoutUnit,
+    cb_bottom: LayoutUnit,
+    element_height: LayoutUnit,
+    margin_bottom: LayoutUnit,
+    resolved_y: LayoutUnit,
+) -> Result<LayoutUnit, String> {
+    let target_y = scroll_y.saturating_add(sticky_inset);
+    let max_allowed = cb_bottom
+        .saturating_sub(margin_bottom)
+        .saturating_sub(element_height);
+    let expected_y = natural_y.max(target_y.min(max_allowed));
+
+    if resolved_y != expected_y {
+        return Err(format!(
+            "Sticky clamp invariant mismatch: resolved={:?}, expected={:?} (natural={:?}, target={:?}, max_allowed={:?})",
+            resolved_y, expected_y, natural_y, target_y, max_allowed
+        ));
+    }
+
+    if resolved_y.saturating_add(element_height).saturating_add(margin_bottom) > cb_bottom {
+        return Err(format!(
+            "Sticky bottom breach: resolved_bottom={:?} > cb_bottom={:?}",
+            resolved_y.saturating_add(element_height).saturating_add(margin_bottom),
+            cb_bottom
+        ));
+    }
+
+    Ok(expected_y)
 }
 
 // =============================================================================
