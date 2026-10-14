@@ -14,8 +14,9 @@
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::LayoutUnit;
 use ace_core::math::logical::{Direction, LogicalRect, LogicalSides, LogicalSize};
-use ace_style::values::enums::{BoxSizing, Display, Overflow};
+use ace_style::values::enums::{BoxSizing, Clear, Display, Float, Overflow};
 
+use crate::block::exclusion::{ClearType, Exclusion, ExclusionSpace, FloatType};
 use crate::block::margin_strut::MarginStrut;
 use crate::inline::ifc::InlineFormattingContext;
 use crate::inline::line_box::LineBoxFragment;
