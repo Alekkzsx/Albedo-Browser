@@ -15,15 +15,22 @@ use std::time::{Duration, Instant};
 
 use ace_core::id::NodeId;
 use ace_core::math::layout_unit::{snap_box, LayoutUnit};
+use ace_core::math::logical::LogicalRect;
 use ace_dom::Document;
 use ace_style::computed::structs::StyleFont;
 use ace_style::computed::style::ComputedStyle;
 use ace_style::engine::style_engine::{RenderNodeKind, RenderTree, RenderTreeNode, StyleEngine};
 use ace_style::values::enums::{
-    AlignItems, BoxSizing, Direction, Display, FlexDirection, FlexWrap, GridAutoFlow,
+    AlignItems, BoxSizing, Clear, Direction, Display, FlexDirection, FlexWrap, Float, GridAutoFlow,
     JustifyContent, Overflow, OverflowWrap, Position, RectSides, TextAlign, WhiteSpace, WordBreak,
     WritingMode, ZIndex,
 };
+
+/// Alias para tipo de float para testes.
+pub type TestFloatType = Float;
+
+/// Alias para tipo de clear para testes.
+pub type TestClearType = Clear;
 
 // =============================================================================
 // 1. Character-Cell Typography & Mock Deterministic Font Measurer
