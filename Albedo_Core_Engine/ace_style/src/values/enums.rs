@@ -115,6 +115,60 @@ impl Position {
     }
 }
 
+/// Alinhamento de flutuação de caixas (CSS 2.2 §9.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+impl Float {
+    pub fn is_floating(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "none" => Some(Self::None),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+}
+
+/// Modo de desobstrução de caixas flutuantes (CSS 2.2 §9.5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Clear {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+impl Clear {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "none" => Some(Self::None),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+
+    pub fn clears_left(&self) -> bool {
+        matches!(self, Self::Left | Self::Both)
+    }
+
+    pub fn clears_right(&self) -> bool {
+        matches!(self, Self::Right | Self::Both)
+    }
+}
+
 /// Modelo de cálculo de caixa (`box-sizing`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BoxSizing {

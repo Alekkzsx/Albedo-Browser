@@ -198,6 +198,16 @@ fn apply_property(
                 Arc::make_mut(&mut style.box_style).box_sizing = b;
             }
         }
+        "float" => {
+            if let Some(f) = Float::parse(val) {
+                Arc::make_mut(&mut style.box_style).float = f;
+            }
+        }
+        "clear" => {
+            if let Some(c) = Clear::parse(val) {
+                Arc::make_mut(&mut style.box_style).clear = c;
+            }
+        }
         "width" => Arc::make_mut(&mut style.box_style).width = to_unit(val),
         "height" => Arc::make_mut(&mut style.box_style).height = to_unit(val),
         "min-width" => Arc::make_mut(&mut style.box_style).min_width = to_unit(val),
@@ -677,6 +687,8 @@ fn apply_inherit_keyword(style: &mut ComputedStyle, parent: &ComputedStyle, prop
         "display" => Arc::make_mut(&mut style.box_style).display = parent.display(),
         "position" => Arc::make_mut(&mut style.box_style).position = parent.position(),
         "box-sizing" => Arc::make_mut(&mut style.box_style).box_sizing = parent.box_sizing(),
+        "float" => Arc::make_mut(&mut style.box_style).float = parent.box_style.float,
+        "clear" => Arc::make_mut(&mut style.box_style).clear = parent.box_style.clear,
         "width" => Arc::make_mut(&mut style.box_style).width = parent.width(),
         "height" => Arc::make_mut(&mut style.box_style).height = parent.height(),
         "opacity" => Arc::make_mut(&mut style.color).opacity = parent.opacity(),

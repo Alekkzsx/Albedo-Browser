@@ -4,10 +4,10 @@
 //! permitindo compartilhamento de ponteiros estáticos globais e drástica redução de alocações na heap.
 
 use crate::values::enums::{
-    AlignContent, AlignItems, AlignSelf, BorderStyle, BoxSizing, Direction, Display, FlexDirection,
-    FlexWrap, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow, OverflowWrap,
-    Position, RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak, WritingMode,
-    ZIndex,
+    AlignContent, AlignItems, AlignSelf, BorderStyle, BoxSizing, Clear, Direction, Display,
+    FlexDirection, FlexWrap, Float, FontStyle, FontWeight, GridAutoFlow, JustifyContent, Overflow,
+    OverflowWrap, Position, RectSides, TextAlign, TextDecoration, Visibility, WhiteSpace, WordBreak,
+    WritingMode, ZIndex,
 };
 use ace_core::math::border_radii::BorderRadii;
 use ace_core::math::color::Color;
@@ -43,6 +43,8 @@ pub struct StyleBox {
     pub display: Display,
     pub position: Position,
     pub box_sizing: BoxSizing,
+    pub float: Float,
+    pub clear: Clear,
     pub z_index: ZIndex,
     pub overflow_x: Overflow,
     pub overflow_y: Overflow,
@@ -70,6 +72,8 @@ impl StyleBox {
             display: Display::Inline,
             position: Position::Static,
             box_sizing: BoxSizing::ContentBox,
+            float: Float::None,
+            clear: Clear::None,
             z_index: ZIndex::Auto,
             overflow_x: Overflow::Visible,
             overflow_y: Overflow::Visible,
