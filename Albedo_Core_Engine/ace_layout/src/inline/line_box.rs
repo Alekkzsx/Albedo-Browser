@@ -197,6 +197,25 @@ impl LineBoxFragment {
         direction: Direction,
         is_last_line: bool,
     ) {
+        self.apply_horizontal_alignment_with_inset(
+            LayoutUnit::ZERO,
+            container_width,
+            text_align,
+            direction,
+            is_last_line,
+        );
+    }
+
+    /// Executa o alinhamento horizontal com respeito a um inset lateral (`inline_start_inset`)
+    /// proveniente de elementos flutuantes no `ExclusionSpace`.
+    pub fn apply_horizontal_alignment_with_inset(
+        &mut self,
+        inline_start_inset: LayoutUnit,
+        available_width: LayoutUnit,
+        text_align: TextAlign,
+        direction: Direction,
+        is_last_line: bool,
+    ) {
         if self.fragments.is_empty() {
             return;
         }
@@ -206,18 +225,19 @@ impl LineBoxFragment {
             acc.saturating_add(f.bounds().inline_size)
         });
 
+        self.bounds.inline_start = inline_start_inset;
         self.bounds.inline_size = total_content_width;
-        let free_space = container_width.saturating_sub(total_content_width);
+        let free_space = available_width.saturating_sub(total_content_width);
 
         if free_space <= LayoutUnit::ZERO {
             // Sem espaço livre para redistribuição; posiciona sequencialmente
-            let mut curr_x = LayoutUnit::ZERO;
+            let mut curr_x = inline_start_inset;
             for frag in &mut self.fragments {
                 frag.bounds_mut().inline_start = curr_x;
                 curr_x = curr_x.saturating_add(frag.bounds().inline_size);
             }
             if direction == Direction::Rtl {
-                self.invert_rtl_offsets(container_width);
+                self.invert_rtl_offsets_with_inset(inline_start_inset, available_width);
             }
             return;
         }
@@ -232,7 +252,7 @@ impl LineBoxFragment {
                     let gap_addition = LayoutUnit::from_raw(free_space.raw() / gaps_count);
                     let mut remainder_raw = free_space.raw() % gaps_count;
 
-                    let mut curr_x = LayoutUnit::ZERO;
+                    let mut curr_x = inline_start_inset;
                     for frag in &mut self.fragments {
                         frag.bounds_mut().inline_start = curr_x;
                         let extra = if remainder_raw > 0 {
@@ -246,28 +266,25 @@ impl LineBoxFragment {
                             .saturating_add(gap_addition)
                             .saturating_add(extra);
                     }
-                    self.bounds.inline_size = container_width;
+                    self.bounds.inline_size = available_width;
                     if direction == Direction::Rtl {
-                        self.invert_rtl_offsets(container_width);
+                        self.invert_rtl_offsets_with_inset(inline_start_inset, available_width);
                     }
                     return;
-                } else if direction == Direction::Rtl {
-                    // Última linha em RTL inicia à direita
-                    LayoutUnit::ZERO
                 } else {
                     LayoutUnit::ZERO
                 }
             }
         };
 
-        let mut curr_x = base_offset;
+        let mut curr_x = inline_start_inset.saturating_add(base_offset);
         for frag in &mut self.fragments {
             frag.bounds_mut().inline_start = curr_x;
             curr_x = curr_x.saturating_add(frag.bounds().inline_size);
         }
 
         if direction == Direction::Rtl {
-            self.invert_rtl_offsets(container_width);
+            self.invert_rtl_offsets_with_inset(inline_start_inset, available_width);
         }
     }
 
@@ -276,11 +293,23 @@ impl LineBoxFragment {
     /// Fórmula de inversão de coordenadas:
     /// $$x_{\text{rtl}} = \text{container\_width} - x_{\text{ltr}} - \text{fragment\_width}$$
     pub fn invert_rtl_offsets(&mut self, container_width: LayoutUnit) {
+        self.invert_rtl_offsets_with_inset(LayoutUnit::ZERO, container_width);
+    }
+
+    /// Inverte os offsets horizontais para parágrafos RTL respeitando o inset horizontal.
+    pub fn invert_rtl_offsets_with_inset(
+        &mut self,
+        inline_start_inset: LayoutUnit,
+        available_width: LayoutUnit,
+    ) {
         for frag in &mut self.fragments {
-            let orig_x = frag.bounds().inline_start;
+            let orig_rel = frag.bounds().inline_start.saturating_sub(inline_start_inset);
             let w = frag.bounds().inline_size;
-            frag.bounds_mut().inline_start =
-                container_width.saturating_sub(orig_x).saturating_sub(w);
+            let inverted_rel = available_width
+                .saturating_sub(orig_rel)
+                .saturating_sub(w)
+                .max(LayoutUnit::ZERO);
+            frag.bounds_mut().inline_start = inline_start_inset.saturating_add(inverted_rel);
         }
     }
 }
