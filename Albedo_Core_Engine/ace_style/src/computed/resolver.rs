@@ -717,6 +717,8 @@ fn apply_initial_keyword(style: &mut ComputedStyle, prop: &str) {
         "display" => Arc::make_mut(&mut style.box_style).display = initial.display(),
         "position" => Arc::make_mut(&mut style.box_style).position = initial.position(),
         "box-sizing" => Arc::make_mut(&mut style.box_style).box_sizing = initial.box_sizing(),
+        "float" => Arc::make_mut(&mut style.box_style).float = initial.box_style.float,
+        "clear" => Arc::make_mut(&mut style.box_style).clear = initial.box_style.clear,
         "width" => Arc::make_mut(&mut style.box_style).width = initial.width(),
         "height" => Arc::make_mut(&mut style.box_style).height = initial.height(),
         "opacity" => Arc::make_mut(&mut style.color).opacity = initial.opacity(),
